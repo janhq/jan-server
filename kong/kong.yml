@@ -1,0 +1,28 @@
+_format_version: "3.0"
+_transform: true
+
+services:
+  - name: llm-api-svc
+    url: http://host.docker.internal:8080
+    routes:
+      - name: llm-api
+        paths: [/v1]
+        strip_path: false
+        path_handling: v1
+        tags: [public]
+    plugins:
+      - name: key-auth
+        config:
+          key_names: ["X-API-Key"]
+          hide_credentials: true
+          anonymous: anon
+      - name: cors
+        config:
+          origins: ["*"]
+          methods: ["GET", "POST", "OPTIONS"]
+          headers: ["Authorization", "Content-Type", "X-API-Key", "Idempotency-Key", "X-Request-Id"]
+          credentials: false
+
+consumers:
+  - username: anon
+    tags: [anonymous]

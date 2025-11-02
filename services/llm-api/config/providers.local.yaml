@@ -1,0 +1,12 @@
+providers:
+  - name: vllm-local
+    kind: openai
+    base_url: http://host.docker.internal:8001
+    headers:
+      Authorization: "Bearer changeme"
+    models:
+      - id: Qwen/Qwen2.5-0.5B-Instruct
+        served_name: Qwen/Qwen2.5-0.5B-Instruct
+        capabilities: [chat, completions, embeddings]
+routing:
+  default_provider: vllm-local

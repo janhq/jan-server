@@ -1,0 +1,83 @@
+volumes:
+  hf-cache:
+  models-cache:
+
+services:
+  vllm-jan-gpu:
+    image: vllm/vllm-openai:latest
+    pull_policy: always
+    restart: unless-stopped
+    command: >
+      --model ${VLLM_MODEL:-janhq/Jan-v1-4B}
+      --host 0.0.0.0
+      --port 8001
+      --dtype ${VLLM_DTYPE:-float16}
+      --api-key ${VLLM_INTERNAL_KEY:-changeme}
+      --gpu-memory-utilization ${VLLM_GPU_UTIL:-0.66}
+      --enforce-eager
+      --download-dir /models
+    environment:
+      # --- sampling: turn OFF FlashInfer sampler entirely ---
+      VLLM_USE_FLASHINFER_SAMPLER: "0"
+
+      # (optional but safe) also disable any FlashInfer prefill kernels
+      VLLM_DISABLE_FLASHINFER_PREFILL: "1"
+
+      # --- attention backend: force PyTorch SDPA, not Flex/Flash ---
+      VLLM_ATTENTION_BACKEND: "TORCH_SDPA"
+
+      # --- compilation: avoid torch.compile cold-start & kernels ---
+      VLLM_USE_STANDALONE_COMPILE: "0"
+      VLLM_DISABLE_COMPILE_CACHE: "1"    # stops caching; quicker tests
+
+      # you can keep the rest of your env as-is:
+      VLLM_USE_FLASH_ATTENTION: "0"
+      VLLM_USE_FLASHINFER: "0"
+      VLLM_TORCH_COMPILE: "0"
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+      - models-cache:/models
+    shm_size: "4g"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-H", "Authorization: Bearer ${VLLM_INTERNAL_KEY:-changeme}", "http://localhost:8001/v1/models"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+    ports:
+      - "${VLLM_PORT:-8001}:${VLLM_PORT:-8001}"
+
+  # Optional CPU fallback
+  vllm-jan-cpu:
+    image: vllm/vllm-openai:latest
+    pull_policy: always
+    restart: unless-stopped
+    command: >
+      --model ${VLLM_MODEL_CPU:-janhq/Jan-v1-4B}
+      --served-model-name ${VLLM_SERVED_NAME_CPU:-jan-v1-4b}
+      --host 0.0.0.0 --port 8001
+      --dtype ${VLLM_DTYPE_CPU:-float32}
+      --api-key ${VLLM_INTERNAL_KEY:-changeme}
+      --download-dir /models
+      --enforce-eager
+    environment:
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:?set in .env}
+      VLLM_USE_FLASHINFER: 0
+      VLLM_USE_FLASH_ATTENTION: 0
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+      - models-cache:/models
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-H", "Authorization: Bearer ${VLLM_INTERNAL_KEY:-changeme}", "http://localhost:8001/v1/models"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+    profiles: ["cpu"]
+    ports:
+      - "${VLLM_PORT:-8001}:${VLLM_PORT:-8001}"

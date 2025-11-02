@@ -1,0 +1,753 @@
+{
+  "info": {
+    "name": "jan-server Models, Providers & Catalogs API Flow",
+    "_postman_id": "d5f8g9h0-234c-5d6e-7f8g-9h0i1j2k3l4m",
+    "description": "Automated tests for model provider management, model catalogs, and provider model operations.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "item": [
+        {
+          "name": "Service Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{llm_api_url}}/healthz"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('service is healthy', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.status).to.eql('ok');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Provider Management",
+      "item": [
+        {
+          "name": "List All Providers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{llm_api_url}}/v1/admin/providers?limit=20",
+              "host": ["{{llm_api_url}}"],
+              "path": ["v1", "admin", "providers"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('providers list retrieved', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('providers array returned', function () {",
+                  "    pm.expect(data).to.have.property('data');",
+                  "    pm.expect(data.data).to.be.an('array');",
+                  "});",
+                  "pm.test('pagination metadata present', function () {",
+                  "    pm.expect(data).to.have.property('total');",
+                  "    if (data.data.length > 0) {",
+                  "        pm.collectionVariables.set('provider_public_id', data.data[0].public_id);",
+                  "        pm.collectionVariables.set('provider_kind', data.data[0].kind);",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register New Provider",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"display_name\": \"Test OpenAI Provider\",\n  \"kind\": \"openai\",\n  \"base_url\": \"https://api.openai.com/v1\",\n  \"api_key\": \"sk-test-key-placeholder\",\n  \"active\": true,\n  \"is_moderated\": true,\n  \"metadata\": {\n    \"auto_enable_new_models\": \"false\",\n    \"environment\": \"test\"\n  }\n}"
+            },
+            "url": "{{llm_api_url}}/v1/admin/providers"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('provider created successfully', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test('provider has public_id', function () {",
+                  "    pm.expect(data).to.have.property('public_id');",
+                  "    pm.expect(data.public_id).to.be.a('string');",
+                  "    pm.collectionVariables.set('new_provider_id', data.public_id);",
+                  "});",
+                  "pm.test('provider metadata saved', function () {",
+                  "    pm.expect(data).to.have.property('display_name', 'Test OpenAI Provider');",
+                  "    pm.expect(data).to.have.property('kind', 'openai');",
+                  "    pm.expect(data.active).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Provider by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{llm_api_url}}/v1/admin/providers/{{new_provider_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('provider retrieved', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('provider id matches', function () {",
+                  "    pm.expect(data.public_id).to.eql(pm.collectionVariables.get('new_provider_id'));",
+                  "});",
+                  "pm.test('API key is hidden', function () {",
+                  "    pm.expect(data).to.not.have.property('api_key');",
+                  "    pm.expect(data).to.have.property('api_key_hint');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Provider",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"display_name\": \"Test OpenAI Provider (Updated)\",\n  \"active\": false\n}"
+            },
+            "url": "{{llm_api_url}}/v1/admin/providers/{{new_provider_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('provider updated', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('changes applied', function () {",
+                  "    pm.expect(data.display_name).to.include('Updated');",
+                  "    pm.expect(data.active).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Model Catalog Management",
+      "item": [
+        {
+          "name": "List Model Catalogs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{llm_api_url}}/v1/admin/models/catalogs?limit=20&status=filled",
+              "host": ["{{llm_api_url}}"],
+              "path": ["v1", "admin", "models", "catalogs"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "filled"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('catalogs list retrieved', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('catalogs array returned', function () {",
+                  "    pm.expect(data).to.have.property('data');",
+                  "    pm.expect(data.data).to.be.an('array');",
+                  "    if (data.data.length > 0) {",
+                  "        pm.collectionVariables.set('catalog_public_id', data.data[0].public_id);",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Model Catalog Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{llm_api_url}}/v1/admin/models/catalogs/{{catalog_public_id_encoded}}"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const catalogId = pm.collectionVariables.get('catalog_public_id') || 'anthropic/claude-3-5-sonnet';",
+                  "pm.collectionVariables.set('catalog_public_id_encoded', encodeURIComponent(catalogId));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('catalog retrieved', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('catalog has metadata', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('public_id');",
+                  "    pm.expect(data).to.have.property('architecture');",
+                  "    pm.expect(data).to.have.property('supported_parameters');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Model Catalog",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tags\": [\"chat\", \"production\", \"reasoning\"],\n  \"notes\": \"Updated via automation test\",\n  \"active\": true\n}"
+            },
+            "url": "{{llm_api_url}}/v1/admin/models/catalogs/{{catalog_public_id_encoded}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('catalog updated', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('status changed to updated', function () {",
+                  "    pm.expect(data.status).to.eql('updated');",
+                  "});",
+                  "pm.test('tags applied', function () {",
+                  "    pm.expect(data.tags).to.be.an('array');",
+                  "    pm.expect(data.tags).to.include('reasoning');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bulk Toggle Model Catalogs",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enable\": true,\n  \"catalog_ids\": [],\n  \"except_models\": [\"test/invalid-model\"]\n}"
+            },
+            "url": "{{llm_api_url}}/v1/admin/models/catalogs/bulk-toggle"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('bulk toggle executed', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('affected count reported', function () {",
+                  "    pm.expect(data).to.have.property('affected_count');",
+                  "    pm.expect(data.affected_count).to.be.a('number');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Provider Model Management",
+      "item": [
+        {
+          "name": "List Provider Models",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{llm_api_url}}/v1/admin/models/provider-models?active=true&limit=20",
+              "host": ["{{llm_api_url}}"],
+              "path": ["v1", "admin", "models", "provider-models"],
+              "query": [
+                {
+                  "key": "active",
+                  "value": "true"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('provider models retrieved', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('models list contains data', function () {",
+                  "    pm.expect(data).to.have.property('data');",
+                  "    pm.expect(data.data).to.be.an('array');",
+                  "    if (data.data.length > 0) {",
+                  "        const model = data.data[0];",
+                  "        pm.collectionVariables.set('provider_model_public_id', model.public_id);",
+                  "        pm.collectionVariables.set('provider_model_model_key', model.model_public_id);",
+                  "    }",
+                  "});",
+                  "pm.test('models have pricing info', function () {",
+                  "    if (data.data.length > 0) {",
+                  "        pm.expect(data.data[0]).to.have.property('pricing');",
+                  "        pm.expect(data.data[0].pricing).to.have.property('lines');",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filter Models by Provider",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{llm_api_url}}/v1/admin/models/provider-models?provider_id={{provider_public_id}}",
+              "host": ["{{llm_api_url}}"],
+              "path": ["v1", "admin", "models", "provider-models"],
+              "query": [
+                {
+                  "key": "provider_id",
+                  "value": "{{provider_public_id}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('filtered models retrieved', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('all models match provider', function () {",
+                  "    var data = pm.response.json();",
+                  "    if (data.data.length > 0) {",
+                  "        const providerId = pm.collectionVariables.get('provider_public_id');",
+                  "        data.data.forEach(model => {",
+                  "            pm.expect(model.provider_id).to.exist;",
+                  "        });",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Provider Model Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{llm_api_url}}/v1/admin/models/provider-models/{{provider_model_public_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('provider model retrieved', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('model has complete metadata', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('public_id');",
+                  "    pm.expect(data).to.have.property('model_public_id');",
+                  "    pm.expect(data).to.have.property('provider_original_model_id');",
+                  "    pm.expect(data).to.have.property('pricing');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Provider Model",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": true,\n  \"pricing\": {\n    \"lines\": [\n      {\"unit\": \"per_1k_prompt_tokens\", \"amount\": 3000, \"currency\": \"USD\"},\n      {\"unit\": \"per_1k_completion_tokens\", \"amount\": 15000, \"currency\": \"USD\"}\n    ]\n  },\n  \"token_limits\": {\n    \"context_length\": 200000,\n    \"max_completion_tokens\": 4096\n  }\n}"
+            },
+            "url": "{{llm_api_url}}/v1/admin/models/provider-models/{{provider_model_public_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('provider model updated', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('pricing updated', function () {",
+                  "    pm.expect(data.pricing.lines).to.be.an('array');",
+                  "    pm.expect(data.pricing.lines.length).to.eql(2);",
+                  "});",
+                  "pm.test('token limits updated', function () {",
+                  "    pm.expect(data.token_limits).to.have.property('context_length', 200000);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bulk Toggle Provider Models",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enable\": true,\n  \"provider_id\": \"{{provider_public_id}}\",\n  \"except_models\": []\n}"
+            },
+            "url": "{{llm_api_url}}/v1/admin/models/provider-models/bulk-toggle"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('bulk toggle completed', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('affected models count returned', function () {",
+                  "    pm.expect(data).to.have.property('affected_count');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Public Models API",
+      "item": [
+        {
+          "name": "List Public Models",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{llm_api_url}}/v1/models"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('public models list retrieved', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('models in OpenAI format', function () {",
+                  "    pm.expect(data).to.have.property('object', 'list');",
+                  "    pm.expect(data).to.have.property('data');",
+                  "    pm.expect(data.data).to.be.an('array');",
+                  "});",
+                  "pm.test('models have required fields', function () {",
+                  "    if (data.data.length > 0) {",
+                  "        const model = data.data[0];",
+                  "        pm.expect(model).to.have.property('id');",
+                  "        pm.expect(model).to.have.property('object', 'model');",
+                  "        pm.expect(model).to.have.property('created');",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Public Model Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{llm_api_url}}/v1/models/{{model_id_encoded}}"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const modelId = pm.collectionVariables.get('provider_model_model_key') || 'gpt-4';",
+                  "pm.collectionVariables.set('model_id_encoded', encodeURIComponent(modelId));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('model details retrieved', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('model object returned', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('object', 'model');",
+                  "    pm.expect(data).to.have.property('id');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Cleanup",
+      "item": [
+        {
+          "name": "Delete Test Provider",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{llm_api_url}}/v1/admin/providers/{{new_provider_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('provider deleted or not found', function () {",
+                  "    pm.expect([200, 204, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get('admin_token') && !pm.collectionVariables.get('access_token')) {",
+          "    console.warn('No authentication tokens set. Run auth flow first.');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "llm_api_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "admin_token",
+      "value": "",
+      "type": "string",
+      "description": "Admin JWT token for provider/catalog management"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string",
+      "description": "Regular user token for public API access"
+    }
+  ]
+}

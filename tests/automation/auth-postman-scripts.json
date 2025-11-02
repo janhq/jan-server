@@ -1,0 +1,658 @@
+{
+  "info": {
+    "name": "jan-server Auth & LLM API Flows",
+    "_postman_id": "e3b5366c-069a-4d2a-8491-ae9916bd3df1",
+    "description": "Automated smoke tests verifying jan-server guest authentication, Keycloak JWT login, and LLM API interactions. Adjust the collection variables to match your environment (e.g. direct service ports vs. Kong) before running with newman.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Checks",
+      "item": [
+        {
+          "name": "LLM API Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{llm_api_url}}/healthz"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('health status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('body reports ok', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.status).to.eql('ok');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Guest Login Flow",
+      "item": [
+        {
+          "name": "Request Guest Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{llm_api_url}}/auth/guest",
+            "description": "Provision a new guest and capture issued tokens."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('guest token issued', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(data).to.have.property('access_token');",
+                  "    pm.expect(data.access_token).to.be.a('string').and.not.empty;",
+                  "    pm.collectionVariables.set('guest_access_token', data.access_token);",
+                  "    pm.collectionVariables.set('guest_refresh_token', data.refresh_token || '');",
+                  "    pm.collectionVariables.set('guest_user_id', data.user_id || '');",
+                  "    pm.collectionVariables.set('guest_principal_id', data.principal_id || '');",
+                  "    pm.collectionVariables.set('guest_username', data.username || data.user_id || '');",
+                  "});",
+                  "pm.test('response includes expiry', function () {",
+                  "    pm.expect(data).to.have.property('expires_in');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upgrade Guest Account",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let upgradeUsername = pm.collectionVariables.get('guest_upgrade_username');",
+                  "if (!upgradeUsername) {",
+                  "    const base = pm.collectionVariables.get('guest_username') || `guest-${Date.now()}`;",
+                  "    upgradeUsername = `${base}-upgraded`;",
+                  "    pm.collectionVariables.set('guest_upgrade_username', upgradeUsername);",
+                  "    pm.collectionVariables.set('guest_upgrade_email', `${upgradeUsername}@example.com`);",
+                  "}",
+                  "pm.variables.set('upgrade_username', upgradeUsername);",
+                  "pm.variables.set('upgrade_email', pm.collectionVariables.get('guest_upgrade_email'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('upgrade accepted', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('upgrade response confirms status', function () {",
+                  "    pm.expect(data.status).to.eql('upgraded');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{upgrade_username}}\",\n  \"email\": \"{{upgrade_email}}\",\n  \"full_name\": \"Guest Automation User\"\n}"
+            },
+            "url": "{{llm_api_url}}/auth/upgrade",
+            "description": "Upgrade the guest account to a named user."
+          }
+        }
+      ]
+    },
+    {
+      "name": "JWT Login Flow",
+      "item": [
+        {
+          "name": "Obtain Keycloak Admin Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "password"
+                },
+                {
+                  "key": "client_id",
+                  "value": "admin-cli"
+                },
+                {
+                  "key": "username",
+                  "value": "{{keycloak_admin}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{keycloak_admin_password}}"
+                }
+              ]
+            },
+            "url": "{{keycloak_base_url}}/realms/master/protocol/openid-connect/token",
+            "description": "Retrieve a master realm admin token to manage users."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('admin token issued', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data.access_token).to.be.a('string');",
+                  "    pm.collectionVariables.set('kc_admin_access_token', data.access_token);",
+                  "});",
+                  "pm.test('token type is bearer', function () {",
+                  "    pm.expect((data.token_type || '').toLowerCase()).to.eql('bearer');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Test User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{kc_admin_access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{test_user_username}}\",\n  \"email\": \"{{test_user_email}}\",\n  \"enabled\": true,\n  \"attributes\": {\n    \"guest\": [\"false\"],\n    \"pid\": [\"{{test_user_pid}}\"]\n  }\n}"
+            },
+            "url": "{{keycloak_base_url}}/admin/realms/{{realm}}/users",
+            "description": "Create a dedicated automation user in the jan realm."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('user created', function () {",
+                  "    pm.expect([201, 204]).to.include(pm.response.code);",
+                  "});",
+                  "const location = pm.response.headers.get('Location');",
+                  "pm.test('location header exposes user id', function () {",
+                  "    pm.expect(location, 'Location header').to.be.a('string').and.not.empty;",
+                  "});",
+                  "if (location) {",
+                  "    const id = location.substring(location.lastIndexOf('/') + 1);",
+                  "    pm.collectionVariables.set('test_user_id', id);",
+                  "} else {",
+                  "    pm.expect.fail('Keycloak response missing user Location header');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Set Test User Password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{kc_admin_access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"password\",\n  \"value\": \"{{test_user_password}}\",\n  \"temporary\": false\n}"
+            },
+            "url": "{{keycloak_base_url}}/admin/realms/{{realm}}/users/{{test_user_id}}/reset-password",
+            "description": "Assign a permanent password to the automation user."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('password set', function () {",
+                  "    pm.expect(pm.response.code).to.eql(204);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obtain Registered User Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "password"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{client_id_public}}"
+                },
+                {
+                  "key": "username",
+                  "value": "{{test_user_username}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{test_user_password}}"
+                }
+              ]
+            },
+            "url": "{{keycloak_base_url}}/realms/{{realm}}/protocol/openid-connect/token",
+            "description": "Simulate a registered user authenticating via direct access grant."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('user token issued', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data.access_token).to.be.a('string');",
+                  "    pm.collectionVariables.set('user_access_token', data.access_token);",
+                  "    pm.collectionVariables.set('user_refresh_token', data.refresh_token || '');",
+                  "});",
+                  "pm.test('token scoped for realm', function () {",
+                  "    pm.expect((data.token_type || '').toLowerCase()).to.eql('bearer');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LLM API - Guest Token",
+      "item": [
+        {
+          "name": "List Models (Guest Token)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{llm_api_url}}/v1/models",
+            "description": "Validate that the guest token grants read access to model catalogue."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('models request succeeded', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('models payload is non-empty array', function () {",
+                  "    pm.expect(data).to.have.property('data');",
+                  "    pm.expect(data.data).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "pm.test('auth method header is jwt', function () {",
+                  "    pm.expect((pm.response.headers.get('X-Auth-Method') || '').toLowerCase()).to.eql('jwt');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Model Details (Guest Token)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{llm_api_url}}/v1/models/{{model_id_encoded}}",
+            "description": "Fetch metadata for a specific model."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('model lookup succeeded', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('model id matches expectation', function () {",
+                  "    pm.expect(data).to.have.property('data');",
+                  "    pm.expect(data.data).to.have.property('id', pm.collectionVariables.get('model_id'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Chat Completion (Guest Token)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{collection_timestamp}}-guest-chat"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\"role\": \"user\", \"content\": \"Reply with the word ok.\"}\n  ],\n  \"max_tokens\": 16\n}"
+            },
+            "url": "{{llm_api_url}}/v1/chat/completions",
+            "description": "Run a non-streaming chat completion with the guest token."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('chat completion succeeded', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('chat completion returns choices', function () {",
+                  "    pm.expect(data).to.have.property('choices');",
+                  "    pm.expect(data.choices).to.be.an('array').that.is.not.empty;",
+                  "    const message = data.choices[0] && data.choices[0].message;",
+                  "    pm.expect(message).to.have.property('content');",
+                  "});",
+                  "pm.test('auth method header is jwt', function () {",
+                  "    pm.expect((pm.response.headers.get('X-Auth-Method') || '').toLowerCase()).to.eql('jwt');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LLM API - User Token",
+      "item": [
+        {
+          "name": "List Models (Registered User)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_access_token}}"
+              }
+            ],
+            "url": "{{llm_api_url}}/v1/models",
+            "description": "Ensure a registered user token also has catalogue access."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('registered user can list models', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data).to.have.property('data');",
+                  "});",
+                  "pm.test('principal headers returned', function () {",
+                  "    const principal = pm.response.headers.get('X-Principal-Id');",
+                  "    pm.expect(principal).to.be.a('string').and.not.empty;",
+                  "    pm.expect((pm.response.headers.get('X-Auth-Method') || '').toLowerCase()).to.eql('jwt');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Teardown",
+      "item": [
+        {
+          "name": "Delete Test User",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const userId = pm.collectionVariables.get('test_user_id');",
+                  "if (!userId) {",
+                  "    console.warn('Skipping teardown because test_user_id is not set');",
+                  "    pm.execution.setNextRequest(null);",
+                  "}",
+                  "pm.variables.set('teardown_user_id', userId);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('user removed or already absent', function () {",
+                  "    pm.expect([204, 404]).to.include(pm.response.code);",
+                  "});",
+                  "pm.collectionVariables.unset('test_user_id');",
+                  "pm.collectionVariables.unset('user_access_token');",
+                  "pm.collectionVariables.unset('user_refresh_token');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{kc_admin_access_token}}"
+              }
+            ],
+            "url": "{{keycloak_base_url}}/admin/realms/{{realm}}/users/{{teardown_user_id}}",
+            "description": "Remove the automation user created during the run."
+          }
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get('collection_timestamp')) {",
+          "    pm.collectionVariables.set('collection_timestamp', new Date().toISOString());",
+          "}",
+          "if (!pm.collectionVariables.get('test_user_username')) {",
+          "    pm.collectionVariables.set('test_user_username', `automation-user-${Date.now()}`);",
+          "}",
+          "if (!pm.collectionVariables.get('test_user_password')) {",
+          "    pm.collectionVariables.set('test_user_password', `Passw0rd!${Math.floor(Math.random() * 10000)}`);",
+          "}",
+          "if (!pm.collectionVariables.get('test_user_email')) {",
+          "    pm.collectionVariables.set('test_user_email', `${pm.collectionVariables.get('test_user_username')}@example.com`);",
+          "}",
+          "if (!pm.collectionVariables.get('test_user_pid')) {",
+          "    pm.collectionVariables.set('test_user_pid', pm.collectionVariables.get('test_user_username'));",
+          "}",
+          "const modelId = pm.collectionVariables.get('model_id');",
+          "if (modelId) {",
+          "    pm.collectionVariables.set('model_id_encoded', encodeURIComponent(modelId));",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "try {",
+          "const request = pm.request;",
+          "if (request) {",
+          "    const url = request.url && request.url.toString ? request.url.toString() : String(request.url || '');",
+          "    console.log('>>> Request:', request.method, url);",
+          "    if (request.body) {",
+          "        let bodyText = '';",
+          "        if (request.body.mode === 'raw') {",
+          "            bodyText = request.body.raw || '';",
+          "        } else if (typeof request.body.toJSON === 'function') {",
+          "            try {",
+          "                bodyText = JSON.stringify(request.body.toJSON(), null, 2);",
+          "            } catch (err) {",
+          "                bodyText = String(request.body);",
+          "            }",
+          "        }",
+          "        if (bodyText) {",
+          "            console.log('>>> Request Body:', bodyText);",
+          "        }",
+          "    }",
+          "}",
+          "if (pm.response) {",
+          "    console.log('<<< Response:', pm.response.code, pm.response.status);",
+          "    const raw = pm.response.text();",
+          "    if (raw) {",
+          "        console.log('<<< Response Body:', raw);",
+          "    }",
+          "}",
+          "} catch (err) {",
+          "    console.error('logger failed:', err && err.message ? err.message : err);",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "llm_api_url",
+      "value": "http://localhost:8080",
+      "type": "string",
+      "description": "Base URL for the llm-api service (default http://localhost:8080 when hitting the service directly; switch to http://localhost:8000 when routing via Kong)."
+    },
+    {
+      "key": "keycloak_base_url",
+      "value": "http://localhost:8085",
+      "type": "string",
+      "description": "Base URL (scheme + host + port) for Keycloak."
+    },
+    {
+      "key": "realm",
+      "value": "jan",
+      "type": "string",
+      "description": "Keycloak realm used by jan-server."
+    },
+    {
+      "key": "client_id_public",
+      "value": "llm-api",
+      "type": "string",
+      "description": "Public client ID used for direct access grants."
+    },
+    {
+      "key": "keycloak_admin",
+      "value": "admin",
+      "type": "string",
+      "description": "Keycloak master realm admin username."
+    },
+    {
+      "key": "keycloak_admin_password",
+      "value": "admin",
+      "type": "string",
+      "description": "Keycloak master realm admin password."
+    },
+    {
+      "key": "model_id",
+      "value": "Qwen/Qwen2.5-0.5B-Instruct",
+      "type": "string",
+      "description": "Model identifier to exercise chat completions."
+    }
+  ]
+}

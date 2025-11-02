@@ -1,0 +1,14 @@
+# Default Provider Configuration
+# This file contains the default provider configurations for the LLM API
+
+providers:
+  - public_id: "prov_vllm_local"
+    display_name: "VLLM Local Server"
+    kind: "vllm"
+    base_url: "http://localhost:8000"
+    active: true
+    is_moderated: false
+    metadata:
+      auto_enable_new_models: "true"
+      description: "Local VLLM inference server"
+      environment: "development"

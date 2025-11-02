@@ -1,0 +1,185 @@
+### Create Chat Completion (No Conversation)
+# Basic chat completion without conversation persistence
+POST http://localhost:8000/v1/chat/completions
+X-API-Key: {{api_key}}
+Content-Type: application/json
+
+{
+  "model": "jan-v1-2509",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Write a haiku about observability."
+    }
+  ]
+}
+
+### Create Chat Completion with New Conversation (Store=true)
+# Creates a new conversation and stores the interaction
+# Response will include conversation ID and auto-generated title
+POST http://localhost:8000/v1/chat/completions
+Authorization: Bearer {{jwt}}
+Content-Type: application/json
+
+{
+  "model": "jan-v1-2509",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What are the benefits of microservices architecture?"
+    }
+  ],
+  "conversation": {},
+  "store": true
+}
+
+### Continue Conversation (Existing Conversation ID)
+# Continues an existing conversation by providing conversation.id
+# Previous messages from the conversation will be prepended automatically
+POST http://localhost:8000/v1/chat/completions
+Authorization: Bearer {{jwt}}
+Content-Type: application/json
+
+{
+  "model": "jan-v1-2509",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Can you explain the first benefit in more detail?"
+    }
+  ],
+  "conversation": {
+    "id": "conv_1234567890"
+  },
+  "store": true
+}
+
+### Continue Conversation (String Format)
+# Alternative format using conversation as a string ID
+POST http://localhost:8000/v1/chat/completions
+Authorization: Bearer {{jwt}}
+Content-Type: application/json
+
+{
+  "model": "jan-v1-2509",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What about scalability challenges?"
+    }
+  ],
+  "conversation": "conv_1234567890",
+  "store": true
+}
+
+### Streaming Chat with New Conversation
+# Creates new conversation and streams response with SSE
+# Conversation context is injected before [DONE] marker
+POST http://localhost:8000/v1/chat/completions
+Authorization: Bearer {{jwt}}
+Content-Type: application/json
+
+{
+  "model": "jan-v1-2509",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Explain event-driven architecture in simple terms."
+    }
+  ],
+  "stream": true,
+  "conversation": {},
+  "store": true
+}
+
+### Streaming Chat with Existing Conversation
+# Continues conversation and streams response
+POST http://localhost:8000/v1/chat/completions
+Authorization: Bearer {{jwt}}
+Content-Type: application/json
+Idempotency-Key: {{uuid}}
+
+{
+  "model": "jan-v1-2509",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What are some common patterns used in event-driven systems?"
+    }
+  ],
+  "stream": true,
+  "conversation": "conv_1234567890",
+  "store": true
+}
+
+### Chat with Conversation (Store=false)
+# Uses conversation for context but doesn't persist this interaction
+POST http://localhost:8000/v1/chat/completions
+Authorization: Bearer {{jwt}}
+Content-Type: application/json
+
+{
+  "model": "jan-v1-2509",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Quick question: what year did this conversation start?"
+    }
+  ],
+  "conversation": "conv_1234567890",
+  "store": false
+}
+
+### Chat with Conversation (Store Reasoning)
+# Stores interaction including reasoning content (for models that support it)
+POST http://localhost:8000/v1/chat/completions
+Authorization: Bearer {{jwt}}
+Content-Type: application/json
+
+{
+  "model": "jan-v1-2509",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Solve this problem: If a train travels at 60 mph for 2.5 hours, how far does it go?"
+    }
+  ],
+  "conversation": {},
+  "store": true,
+  "store_reasoning": true
+}
+
+### List Conversations
+# View all conversations for the authenticated user
+GET http://localhost:8000/v1/conversations
+Authorization: Bearer {{jwt}}
+
+### Get Conversation by ID
+# Retrieve specific conversation with messages
+GET http://localhost:8000/v1/conversations/conv_1234567890
+Authorization: Bearer {{jwt}}
+
+### Delete Conversation
+# Remove a conversation and all its messages
+DELETE http://localhost:8000/v1/conversations/conv_1234567890
+Authorization: Bearer {{jwt}}
+
+### Advanced: Multi-turn Conversation with Parameters
+POST http://localhost:8000/v1/chat/completions
+Authorization: Bearer {{jwt}}
+Content-Type: application/json
+
+{
+  "model": "jan-v1-2509",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Write a creative story about a robot learning to paint."
+    }
+  ],
+  "conversation": {},
+  "store": true,
+  "temperature": 0.8,
+  "max_tokens": 500,
+  "top_p": 0.9
+}

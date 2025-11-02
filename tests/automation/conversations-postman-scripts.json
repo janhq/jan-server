@@ -1,0 +1,465 @@
+{
+  "info": {
+    "name": "jan-server Conversations API Flow",
+    "_postman_id": "c4e7f8g9-123b-4c5d-6e7f-8g9h0i1j2k3l",
+    "description": "Automated tests for conversation management including creation, branching, message management, and rating system.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "item": [
+        {
+          "name": "LLM API Ready Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{llm_api_url}}/readyz"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('service is ready', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('ready status confirmed', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.status).to.eql('ready');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Basic Conversation Flow",
+      "item": [
+        {
+          "name": "Create New Conversation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\"role\": \"user\", \"content\": \"Hello, how are you?\"}\n  ]\n}"
+            },
+            "url": "{{llm_api_url}}/v1/chat/completions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('conversation created with response', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data).to.have.property('conversation');",
+                  "});",
+                  "pm.test('conversation has id and title', function () {",
+                  "    pm.expect(data.conversation).to.have.property('id');",
+                  "    pm.expect(data.conversation.id).to.be.a('string');",
+                  "    pm.collectionVariables.set('conversation_id', data.conversation.id);",
+                  "    if (data.conversation.title) {",
+                  "        pm.collectionVariables.set('conversation_title', data.conversation.title);",
+                  "    }",
+                  "});",
+                  "pm.test('response includes choices', function () {",
+                  "    pm.expect(data).to.have.property('choices');",
+                  "    pm.expect(data.choices).to.be.an('array').that.is.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Continue Conversation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\"role\": \"user\", \"content\": \"Tell me a joke.\"}\n  ],\n  \"conversation\": {\n    \"id\": \"{{conversation_id}}\"\n  }\n}"
+            },
+            "url": "{{llm_api_url}}/v1/chat/completions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('conversation continued successfully', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('same conversation id returned', function () {",
+                  "    pm.expect(data.conversation.id).to.eql(pm.collectionVariables.get('conversation_id'));",
+                  "});",
+                  "pm.test('assistant response provided', function () {",
+                  "    pm.expect(data.choices[0].message).to.have.property('role', 'assistant');",
+                  "    pm.expect(data.choices[0].message.content).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Conversation Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{llm_api_url}}/v1/conversations/{{conversation_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('conversation retrieved successfully', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('conversation contains items', function () {",
+                  "    pm.expect(data).to.have.property('items');",
+                  "    pm.expect(data.items).to.be.an('array');",
+                  "    pm.expect(data.items.length).to.be.at.least(2);",
+                  "});",
+                  "pm.test('items have expected structure', function () {",
+                  "    const firstItem = data.items[0];",
+                  "    pm.expect(firstItem).to.have.property('id');",
+                  "    pm.expect(firstItem).to.have.property('type');",
+                  "    pm.expect(firstItem).to.have.property('content');",
+                  "    if (firstItem.id) {",
+                  "        pm.collectionVariables.set('first_item_id', firstItem.id);",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List User Conversations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{llm_api_url}}/v1/conversations?limit=10"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('conversations list retrieved', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('list contains conversations', function () {",
+                  "    pm.expect(data).to.have.property('data');",
+                  "    pm.expect(data.data).to.be.an('array');",
+                  "    pm.expect(data.data.length).to.be.at.least(1);",
+                  "});",
+                  "pm.test('pagination metadata present', function () {",
+                  "    pm.expect(data).to.have.property('total');",
+                  "    pm.expect(data.total).to.be.a('number');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Conversation with Category",
+      "item": [
+        {
+          "name": "Create Conversation in Category",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\"role\": \"user\", \"content\": \"Help me with customer support.\"}\n  ]\n}"
+            },
+            "url": "{{llm_api_url}}/v1/category/customer-support/chat/completions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('categorized conversation created', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('conversation has category metadata', function () {",
+                  "    pm.expect(data.conversation).to.have.property('id');",
+                  "    pm.collectionVariables.set('category_conversation_id', data.conversation.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Item Rating Flow",
+      "item": [
+        {
+          "name": "Rate Conversation Item - Like",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": \"like\",\n  \"comment\": \"This response was very helpful!\"\n}"
+            },
+            "url": "{{llm_api_url}}/v1/conversations/{{conversation_id}}/items/{{first_item_id}}/rating"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('item rated successfully', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('rating confirmed', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('rating', 'like');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Item Rating",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{llm_api_url}}/v1/conversations/{{conversation_id}}/items/{{first_item_id}}/rating"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('rating retrieved successfully', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('rating matches what was set', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.rating).to.eql('like');",
+                  "    pm.expect(data.comment).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Conversation Branching",
+      "item": [
+        {
+          "name": "Create Conversation for Branching",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\"role\": \"user\", \"content\": \"What is AI?\"}\n  ]\n}"
+            },
+            "url": "{{llm_api_url}}/v1/chat/completions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('branching conversation created', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.collectionVariables.set('branch_conversation_id', data.conversation.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Conversation Branches",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{llm_api_url}}/v1/conversations/{{branch_conversation_id}}/branches"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('branches retrieved', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('MAIN branch exists', function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.be.an('array');",
+                  "    const mainBranch = data.find(b => b.name === 'MAIN');",
+                  "    pm.expect(mainBranch).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Cleanup",
+      "item": [
+        {
+          "name": "Delete Conversation",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{llm_api_url}}/v1/conversations/{{conversation_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('conversation deleted or not found', function () {",
+                  "    pm.expect([200, 204, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get('access_token')) {",
+          "    console.warn('access_token not set, you may need to run auth flow first');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "llm_api_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "model_id",
+      "value": "Qwen/Qwen2.5-0.5B-Instruct",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string",
+      "description": "Set this from auth flow or manually"
+    }
+  ]
+}

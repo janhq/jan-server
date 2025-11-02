@@ -17,10 +17,7 @@
 # Visual Studio Code editor settings and workspace files
 
 # Visual Studio Code
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
+.vscode
 
 !.vscode/extensions.json
 !.vscode/*.code-snippets
@@ -105,6 +102,7 @@ build/
 develop-eggs/
 dist/
 downloads/
+models/
 
 eggs/
 .eggs/
@@ -246,10 +244,6 @@ go.sum
 node_modules/
 dist/
 
-# helm
-charts/jan-server/charts/*.tgz
-
-# Migration
-apps/jan-api-gateway/application/cmd/codegen/dbmigration/tmp/*
 
 .DS_Store
+cmd/server/__debug_bin*
