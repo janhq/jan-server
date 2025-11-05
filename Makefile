@@ -1,11 +1,12 @@
 COMPOSE ?= docker compose
 VLLM_COMPOSE ?= docker compose -f docker-compose.yml -f docker-compose.vllm.yml
 VLLM_COMPOSE_ONLY ?= docker compose -f docker-compose.vllm.yml
+MONITOR_COMPOSE ?= docker compose -f docker-compose.monitor.yml
 NEWMAN ?= newman
 NEWMAN_AUTH_COLLECTION ?= tests/automation/auth-postman-scripts.json
 NEWMAN_CONVERSATION_COLLECTION ?= tests/automation/conversations-postman-scripts.json
 
-.PHONY: up up-gpu up-cpu down down-db reset-db logs swag curl-chat fmt lint test newman newman-debug up-full-local up-full-docker restart-kong
+.PHONY: up up-gpu up-cpu down down-db reset-db logs swag curl-chat fmt lint test newman newman-debug up-full-local up-full-docker restart-kong monitor-up monitor-down monitor-logs up-mcp-tools
 
 ifeq ($(OS),Windows_NT)
 define compose_full_with_env
@@ -37,6 +38,9 @@ up-infra:
 
 up-llm-api:
 	$(COMPOSE) --profile llm-api up -d --build
+
+up-mcp-tools:
+	$(COMPOSE) --profile mcp-tools up -d --build
 
 up-kong:
 	$(COMPOSE) --profile kong up -d
@@ -81,6 +85,29 @@ restart-kong:
 	@echo "Kong restarted. Waiting for it to be ready..."
 	@sleep 3
 	@echo "Kong is ready."
+
+monitor-up:
+	@echo "Starting Observability Stack (Prometheus, Jaeger, Grafana, OpenTelemetry Collector)..."
+	$(MONITOR_COMPOSE) up -d
+	@echo ""
+	@echo "Observability Stack is starting. Access dashboards at:"
+	@echo "  - Grafana:    http://localhost:3001 (admin/admin)"
+	@echo "  - Prometheus: http://localhost:9090"
+	@echo "  - Jaeger:     http://localhost:16686"
+	@echo ""
+
+monitor-down:
+	@echo "Stopping Observability Stack..."
+	$(MONITOR_COMPOSE) down
+	@echo "Observability Stack stopped."
+
+monitor-down-v:
+	@echo "Stopping Observability Stack and removing volumes..."
+	$(MONITOR_COMPOSE) down -v
+	@echo "Observability Stack stopped and data volumes removed."
+
+monitor-logs:
+	$(MONITOR_COMPOSE) logs -f
 
 logs:
 	$(COMPOSE) logs -f

@@ -45,6 +45,8 @@ func NewHttpServer(
 		cfg,
 	}
 	server.engine.Use(middleware.RequestID())
+	server.engine.Use(middleware.TracingMiddleware(cfg.ServiceName))
+	server.engine.Use(middleware.LoggingMiddleware(infra.Logger))
 	server.engine.Use(middleware.CORSMiddleware())
 
 	// Root health check (for backwards compatibility)

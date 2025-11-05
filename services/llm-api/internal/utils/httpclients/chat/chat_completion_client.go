@@ -15,6 +15,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/sashabaranov/go-openai"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"resty.dev/v3"
 )
 
@@ -100,29 +104,80 @@ func NewChatCompletionClient(client *resty.Client, name, baseURL string) *ChatCo
 }
 
 func (c *ChatCompletionClient) CreateChatCompletion(ctx context.Context, apiKey string, request openai.ChatCompletionRequest) (*openai.ChatCompletionResponse, error) {
+	// Start OpenTelemetry span for tracking
+	ctx, span := otel.Tracer("chat-completion-client").Start(ctx, "CreateChatCompletion",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("llm.provider", c.name),
+			attribute.String("llm.model", request.Model),
+			attribute.Int("llm.message_count", len(request.Messages)),
+			attribute.Bool("llm.stream", false),
+		),
+	)
+	defer span.End()
+
+	// Add optional parameters as attributes
+	if request.Temperature != 0 {
+		span.SetAttributes(attribute.Float64("llm.temperature", float64(request.Temperature)))
+	}
+	if request.MaxTokens != 0 {
+		span.SetAttributes(attribute.Int("llm.max_tokens", request.MaxTokens))
+	}
+	if request.TopP != 0 {
+		span.SetAttributes(attribute.Float64("llm.top_p", float64(request.TopP)))
+	}
+
+	start := time.Now()
+
 	var respBody openai.ChatCompletionResponse
 	resp, err := c.prepareRequest(ctx, apiKey).
 		SetBody(request).
 		SetResult(&respBody).
 		Post(c.endpoint("/chat/completions"))
+
+	duration := time.Since(start)
+
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.Int64("llm.duration_ms", duration.Milliseconds()))
 		return nil, err
 	}
 	if resp.IsError() {
-		return nil, c.errorFromResponse(ctx, resp, "request failed")
+		reqErr := c.errorFromResponse(ctx, resp, "request failed")
+		span.RecordError(reqErr)
+		span.SetStatus(codes.Error, reqErr.Error())
+		span.SetAttributes(
+			attribute.Int("http.status_code", resp.StatusCode()),
+			attribute.Int64("llm.duration_ms", duration.Milliseconds()),
+		)
+		return nil, reqErr
 	}
-	// TODO: Add endpoint event tracking
-	// endpointEvent, ok := endpointevent.GetEndpointEventFromContext(ctx)
-	// if ok {
-	// 	endpointEvent.SetData(endpointevent.LLMModelUsageKey, endpointevent.LLMModelUsage{
-	// 		ModelName:        request.Model,
-	// 		PromptTokens:     respBody.Usage.PromptTokens,
-	// 		CompletionTokens: respBody.Usage.CompletionTokens,
-	// 		TotalTokens:      respBody.Usage.TotalTokens,
-	// 		StartTime:        start,
-	// 		EndTime:          end,
-	// 	})
-	// }
+
+	// Record token usage and timing in span
+	span.SetAttributes(
+		attribute.Int("llm.usage.prompt_tokens", respBody.Usage.PromptTokens),
+		attribute.Int("llm.usage.completion_tokens", respBody.Usage.CompletionTokens),
+		attribute.Int("llm.usage.total_tokens", respBody.Usage.TotalTokens),
+		attribute.Int64("llm.duration_ms", duration.Milliseconds()),
+		attribute.Int("http.status_code", resp.StatusCode()),
+	)
+
+	// Add finish reason if available
+	if len(respBody.Choices) > 0 {
+		span.SetAttributes(attribute.String("llm.finish_reason", string(respBody.Choices[0].FinishReason)))
+	}
+
+	// Add reasoning tokens if available
+	if respBody.Usage.CompletionTokensDetails != nil && respBody.Usage.CompletionTokensDetails.ReasoningTokens > 0 {
+		span.SetAttributes(attribute.Int("llm.usage.reasoning_tokens", respBody.Usage.CompletionTokensDetails.ReasoningTokens))
+	}
+
+	span.SetStatus(codes.Ok, "completion successful")
+	span.AddEvent("chat_completion_completed", trace.WithAttributes(
+		attribute.Int("response.choice_count", len(respBody.Choices)),
+	))
+
 	return &respBody, nil
 }
 
@@ -157,12 +212,38 @@ func (c *ChatCompletionClient) StreamChatCompletionToContext(reqCtx *gin.Context
 }
 
 func (c *ChatCompletionClient) StreamChatCompletionToContextWithCallback(reqCtx *gin.Context, apiKey string, request openai.ChatCompletionRequest, beforeDone BeforeDoneCallback, opts ...StreamOption) (*openai.ChatCompletionResponse, error) {
+	// Start OpenTelemetry span for tracking streaming completion
+	ctx := reqCtx.Request.Context()
+	ctx, span := otel.Tracer("chat-completion-client").Start(ctx, "StreamChatCompletion",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("llm.provider", c.name),
+			attribute.String("llm.model", request.Model),
+			attribute.Int("llm.message_count", len(request.Messages)),
+			attribute.Bool("llm.stream", true),
+		),
+	)
+	defer span.End()
+
+	// Add optional parameters as attributes
+	if request.Temperature != 0 {
+		span.SetAttributes(attribute.Float64("llm.temperature", float64(request.Temperature)))
+	}
+	if request.MaxTokens != 0 {
+		span.SetAttributes(attribute.Int("llm.max_tokens", request.MaxTokens))
+	}
+	if request.TopP != 0 {
+		span.SetAttributes(attribute.Float64("llm.top_p", float64(request.TopP)))
+	}
+
+	start := time.Now()
+
 	// force to true to collect tokens
 	request.StreamOptions = &openai.StreamOptions{
 		IncludeUsage: true,
 	}
 
-	ctx, cancel := context.WithTimeout(reqCtx.Request.Context(), requestTimeout)
+	streamCtx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
 	c.SetupSSEHeaders(reqCtx)
@@ -173,12 +254,16 @@ func (c *ChatCompletionClient) StreamChatCompletionToContextWithCallback(reqCtx 
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	go c.streamResponseToChannel(ctx, apiKey, request, dataChan, errChan, &wg, opts)
+	go c.streamResponseToChannel(streamCtx, apiKey, request, dataChan, errChan, &wg, opts)
 
 	var contentBuilder strings.Builder
 	var reasoningBuilder strings.Builder
 	functionCallAccumulator := make(map[int]*functionCallAccumulator)
 	toolCallAccumulator := make(map[int]*toolCallAccumulator)
+
+	// Track streaming metrics
+	var chunksReceived int
+	var totalUsage *TokenUsage
 
 	streamingComplete := false
 
@@ -204,6 +289,8 @@ func (c *ChatCompletionClient) StreamChatCompletionToContextWithCallback(reqCtx 
 					if err := c.writeSSELine(reqCtx, line); err != nil {
 						cancel()
 						wg.Wait()
+						span.RecordError(err)
+						span.SetStatus(codes.Error, "failed to write SSE done marker")
 						return nil, platformerrors.AsError(ctx, platformerrors.LayerDomain, err, "unable to write SSE line")
 					}
 					streamingComplete = true
@@ -216,13 +303,22 @@ func (c *ChatCompletionClient) StreamChatCompletionToContextWithCallback(reqCtx 
 			if err := c.writeSSELine(reqCtx, line); err != nil {
 				cancel()
 				wg.Wait()
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "failed to write SSE line")
 				return nil, platformerrors.AsError(ctx, platformerrors.LayerDomain, err, "unable to write SSE line")
 			}
 
 			// Process the data chunk
 			if data, found := strings.CutPrefix(line, dataPrefix); found {
+				chunksReceived++
 
-				choice, _ := c.processStreamChunkForChannel(data)
+				choice, usage := c.processStreamChunkForChannel(data)
+
+				// Capture final usage if available
+				if usage != nil {
+					totalUsage = usage
+				}
+
 				if choice != nil {
 					if choice.Delta.Content != "" {
 						contentBuilder.WriteString(choice.Delta.Content)
@@ -246,16 +342,22 @@ func (c *ChatCompletionClient) StreamChatCompletionToContextWithCallback(reqCtx 
 			if ok && err != nil {
 				cancel()
 				wg.Wait()
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "streaming error")
 				return nil, platformerrors.AsError(ctx, platformerrors.LayerDomain, err, "streaming error")
 			}
 
-		case <-ctx.Done():
+		case <-streamCtx.Done():
 			wg.Wait()
-			return nil, platformerrors.AsError(ctx, platformerrors.LayerDomain, ctx.Err(), "streaming context cancelled")
+			span.RecordError(streamCtx.Err())
+			span.SetStatus(codes.Error, "streaming context cancelled")
+			return nil, platformerrors.AsError(ctx, platformerrors.LayerDomain, streamCtx.Err(), "streaming context cancelled")
 
 		case <-reqCtx.Request.Context().Done():
 			cancel()
 			wg.Wait()
+			span.RecordError(reqCtx.Request.Context().Err())
+			span.SetStatus(codes.Error, "client request cancelled")
 			return nil, platformerrors.AsError(reqCtx.Request.Context(), platformerrors.LayerDomain, reqCtx.Request.Context().Err(), "client request cancelled")
 		}
 	}
@@ -266,6 +368,8 @@ func (c *ChatCompletionClient) StreamChatCompletionToContextWithCallback(reqCtx 
 	close(dataChan)
 	close(errChan)
 
+	duration := time.Since(start)
+
 	response := c.buildCompleteResponse(
 		contentBuilder.String(),
 		reasoningBuilder.String(),
@@ -274,6 +378,39 @@ func (c *ChatCompletionClient) StreamChatCompletionToContextWithCallback(reqCtx 
 		request.Model,
 		request,
 	)
+
+	// Record streaming metrics in span
+	span.SetAttributes(
+		attribute.Int("llm.streaming.chunks_received", chunksReceived),
+		attribute.Int64("llm.duration_ms", duration.Milliseconds()),
+	)
+
+	// Add token usage if available from streaming
+	if totalUsage != nil {
+		span.SetAttributes(
+			attribute.Int("llm.usage.prompt_tokens", totalUsage.PromptTokens),
+			attribute.Int("llm.usage.completion_tokens", totalUsage.CompletionTokens),
+			attribute.Int("llm.usage.total_tokens", totalUsage.TotalTokens),
+		)
+	} else {
+		// Use estimated usage from response
+		span.SetAttributes(
+			attribute.Int("llm.usage.prompt_tokens", response.Usage.PromptTokens),
+			attribute.Int("llm.usage.completion_tokens", response.Usage.CompletionTokens),
+			attribute.Int("llm.usage.total_tokens", response.Usage.TotalTokens),
+		)
+	}
+
+	// Add finish reason if available
+	if len(response.Choices) > 0 {
+		span.SetAttributes(attribute.String("llm.finish_reason", string(response.Choices[0].FinishReason)))
+	}
+
+	span.SetStatus(codes.Ok, "streaming completion successful")
+	span.AddEvent("streaming_completed", trace.WithAttributes(
+		attribute.Int("chunks.total", chunksReceived),
+		attribute.Int("content.length", len(contentBuilder.String())),
+	))
 
 	return &response, nil
 }

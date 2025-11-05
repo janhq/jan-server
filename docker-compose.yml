@@ -95,17 +95,6 @@ services:
     ports:
       - "${KEYCLOAK_HTTP_PORT:-8085}:${KEYCLOAK_HTTP_PORT:-8085}"
 
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.90.1
-    restart: unless-stopped
-    volumes:
-      - ./docs/otel-collector.yaml:/etc/otel-collector.yaml:ro
-    command: ["--config=/etc/otel-collector.yaml"]
-    ports:
-      - "${OTEL_GRPC_PORT:-4317}:4317"
-      - "${OTEL_HTTP_PORT:-4318}:4318"
-    profiles: ["otel", "full"]
-
   mcp-tools:
     build: ./services/mcp-tools
     restart: unless-stopped

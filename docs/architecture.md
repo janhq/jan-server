@@ -162,10 +162,31 @@ Jan Server is a modular, microservices-based LLM API platform with enterprise-gr
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        OBSERVABILITY LAYER                                   │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │           OpenTelemetry Collector (Port: 4318)                         │  │
+│  │           OpenTelemetry Collector (Port: 4318/4317)                    │  │
 │  │  • Traces, metrics, logs collection                                    │  │
-│  │  • Exporters configured via otel-collector.yaml                        │  │
+│  │  • OTLP HTTP (4318) and gRPC (4317) receivers                         │  │
+│  │  • Exporters: Prometheus, Jaeger, Console                             │  │
 │  │  • Connected to llm-api telemetry                                      │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                    │                                  │                       │
+│                    ▼                                  ▼                       │
+│  ┌────────────────────────────┐      ┌──────────────────────────────────┐  │
+│  │  Prometheus (Port: 9090)   │      │   Jaeger (Port: 16686)           │  │
+│  │  • Metrics storage         │      │   • Distributed tracing          │  │
+│  │  • Time-series database    │      │   • Trace visualization          │  │
+│  │  • PromQL queries          │      │   • Service dependency graph     │  │
+│  │  • 15s scrape interval     │      │   • Performance analysis         │  │
+│  └────────────────────────────┘      └──────────────────────────────────┘  │
+│                    │                                  │                       │
+│                    └──────────────┬───────────────────┘                       │
+│                                   ▼                                           │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                    Grafana (Port: 3001)                                │  │
+│  │  • Unified dashboards for metrics and traces                          │  │
+│  │  • Pre-configured datasources (Prometheus, Jaeger)                    │  │
+│  │  • Custom dashboards for Jan Server services                          │  │
+│  │  • Alerting and notifications                                          │  │
+│  │  • Default credentials: admin/admin                                    │  │
 │  └───────────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -441,9 +462,58 @@ Response (SSE or JSON)
 
 ### OpenTelemetry Collector
 - **Image**: `otel/opentelemetry-collector-contrib:0.90.1`
-- **Port**: 4318 (OTLP HTTP receiver)
+- **Ports**: 
+  - 4318 (OTLP HTTP receiver)
+  - 4317 (OTLP gRPC receiver)
+  - 8889 (Prometheus metrics exporter)
 - **Config**: `docs/otel-collector.yaml`
 - **Purpose**: Centralized telemetry collection from llm-api
+- **Exporters**:
+  - **Prometheus**: Metrics at `:8889/metrics`
+  - **OTLP (Jaeger)**: Traces to Jaeger via OTLP gRPC (port 4317)
+  - **Logging**: Console output for debugging
+
+### Prometheus
+- **Image**: `prom/prometheus:v2.48.0`
+- **Port**: 9090 (exposed)
+- **Config**: `docs/prometheus.yml`
+- **Purpose**: Metrics storage and querying
+- **Scrape Targets**:
+  - otel-collector:8889 (OpenTelemetry metrics)
+  - llm-api:8080/metrics (if exposed)
+  - mcp-tools:8091/metrics (if exposed)
+- **Storage**: Persistent volume `prometheus-data`
+- **Features**:
+  - Time-series database
+  - PromQL query language
+  - 15s scrape interval
+
+### Jaeger
+- **Image**: `jaegertracing/all-in-one:1.51`
+- **Port**: 16686 (UI, exposed)
+- **Purpose**: Distributed tracing backend and UI
+- **Features**:
+  - Trace collection via OTLP
+  - Service dependency graph
+  - Trace search and visualization
+  - Performance analysis
+  - Root cause analysis
+
+### Grafana
+- **Image**: `grafana/grafana:10.2.2`
+- **Port**: 3001 (exposed, mapped from internal 3000)
+- **Purpose**: Unified observability dashboard
+- **Default Credentials**: admin/admin (configurable via env)
+- **Datasources** (auto-provisioned):
+  - Prometheus (metrics)
+  - Jaeger (traces)
+- **Storage**: Persistent volume `grafana-data`
+- **Features**:
+  - Custom dashboards for Jan Server
+  - Metrics visualization
+  - Trace correlation
+  - Alerting
+  - Dashboard provisioning
 
 ---
 
@@ -492,6 +562,13 @@ HF_TOKEN=<huggingface-token>
 OTEL_ENABLED=false
 OTEL_SERVICE_NAME=llm-api
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+
+# Observability Stack
+PROMETHEUS_PORT=9090
+JAEGER_UI_PORT=16686
+GRAFANA_PORT=3001
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=<secret>
 ```
 
 ### Provider Configuration (providers.yaml)
@@ -585,16 +662,46 @@ Headers injected by llm-api:
 
 ## Deployment Profiles
 
+Docker Compose services are organized by profiles for flexible deployment:
+
+- **Infrastructure only**: `make up` (api-db, keycloak-db, keycloak)
+- **With LLM API**: `make up-llm-api` (+ llm-api service)
+- **With Kong**: `make up-kong` (+ kong gateway)
+- **Full stack**: `make up-full` (all services)
+- **GPU inference**: `make up-gpu` (+ vllm with GPU)
+- **CPU inference**: `make up-cpu` (+ vllm CPU-only)
+- **Monitoring stack**: `make monitor-up` (prometheus, jaeger, grafana, otel-collector)
+
+The monitoring stack is completely separate in `docker-compose.monitor.yml` and can be started/stopped independently.
+
 ### Full Stack + GPU
 ```bash
 make up-gpu
-# Starts: api-db, llm-api, kong, keycloak, keycloak-db, vllm-llama, otel-collector
+# Starts: api-db, llm-api, kong, keycloak, keycloak-db, vllm-llama, mcp-tools
 ```
 
 ### Full Stack + CPU
 ```bash
 make up-cpu
 # Same as GPU but uses vllm-cpu profile (no GPU requirements)
+```
+
+### With Observability
+```bash
+make monitor-up
+# Starts: prometheus, jaeger, grafana, otel-collector
+
+# Or manually:
+docker compose -f docker-compose.monitor.yml up -d
+```
+
+### Stop Observability
+```bash
+make monitor-down
+# Stops monitoring stack, keeps data volumes
+
+make monitor-down-v
+# Stops and removes data volumes (fresh start)
 ```
 
 ### Inference Only (GPU)
@@ -620,13 +727,19 @@ make up-cpu-only
 - `keycloak-db:5432` (PostgreSQL)
 - `keycloak:8080` (Keycloak)
 - `vllm-llama:8000` (vLLM Inference)
-- `otel-collector:4318` (OTLP HTTP)
+- `otel-collector:4318/4317` (OTLP HTTP/gRPC)
+- `prometheus:9090` (Metrics storage)
+- `jaeger:16686` (Trace backend)
+- `grafana:3000` (Dashboards)
 
 ### Exposed Ports
 - `8000` -> Kong Gateway (public API)
 - `8080` -> LLM API (for direct access if needed)
 - `8085` -> Keycloak Admin Console
 - `8091` -> MCP Tools (for direct MCP access if needed)
+- `9090` -> Prometheus UI
+- `16686` -> Jaeger UI
+- `3001` -> Grafana (dashboards)
 
 ---
 
@@ -658,19 +771,45 @@ make up-cpu-only
 
 ## Observability
 
+### Complete Observability Stack
+The platform includes a full observability stack with metrics, traces, and visualization:
+
+- **OpenTelemetry Collector**: Receives telemetry from services
+- **Prometheus**: Stores and queries metrics
+- **Jaeger**: Distributed tracing backend
+- **Grafana**: Unified dashboard for metrics and traces
+
 ### Metrics & Traces
 - **OpenTelemetry** integration in llm-api
-- Traces sent to `otel-collector:4318`
-- Configurable exporters (Jaeger, Prometheus, etc.)
+- Metrics and traces sent to `otel-collector:4318` (HTTP) or `otel-collector:4317` (gRPC)
+- **Prometheus** scrapes metrics from:
+  - OpenTelemetry Collector (`:8889/metrics`)
+  - Services with Prometheus endpoints
+- **Jaeger** receives traces via OTLP from OpenTelemetry Collector
+- **Grafana** visualizes both metrics (from Prometheus) and traces (from Jaeger)
+
+### Accessing Observability UIs
+- **Grafana**: http://localhost:3001 (admin/admin)
+  - Pre-configured dashboards for Jan Server
+  - Metrics from Prometheus
+  - Traces from Jaeger
+- **Prometheus**: http://localhost:9090
+  - Direct PromQL queries
+  - Metrics exploration
+- **Jaeger**: http://localhost:16686
+  - Trace search and analysis
+  - Service dependency graph
 
 ### Logging
 - Structured JSON logs (zerolog)
 - Log levels configurable via `LOG_LEVEL`
 - Request IDs propagated via `X-Request-Id`
+- Trace IDs in logs for correlation
 
 ### Health Checks
 - `GET /healthz` on all services
 - Docker healthchecks configured for readiness
+- Prometheus service discovery and health monitoring
 
 ---
 
@@ -785,7 +924,24 @@ curl -X POST http://localhost:8000/v1/mcp \
   }'
 ```
 
-### 7. Cleanup
+### 7. View Observability Dashboards (Optional)
+```bash
+# Start monitoring stack
+make monitor-up
+
+# Access dashboards
+# Grafana (unified dashboard): http://localhost:3001 (admin/admin)
+# Prometheus (metrics): http://localhost:9090
+# Jaeger (traces): http://localhost:16686
+
+# View monitoring logs
+make monitor-logs
+
+# Stop monitoring stack
+make monitor-down
+```
+
+### 8. Cleanup
 ```bash
 make down  # Removes containers and volumes
 ```
@@ -804,6 +960,9 @@ make down  # Removes containers and volumes
 | Auth            | Keycloak (OpenID Connect)      |
 | Inference       | vLLM (OpenAI-compatible)       |
 | Observability   | OpenTelemetry Collector        |
+| Metrics         | Prometheus 2.48                |
+| Tracing         | Jaeger 1.51                    |
+| Dashboards      | Grafana 10.2                   |
 | Migrations      | golang-migrate                 |
 | Containerization| Docker Compose                 |
 | Documentation   | OpenAPI 3.0 (Swagger)          |
@@ -818,8 +977,11 @@ make down  # Removes containers and volumes
 - [ ] Multi-provider support (OpenAI, Anthropic, etc.)
 - [ ] WebSocket support for bidirectional streaming
 - [ ] Admin API for model/provider management
-- [ ] Prometheus metrics exporter
-- [ ] Distributed tracing visualization (Jaeger UI)
+- [x] ~~Prometheus metrics exporter~~ (Implemented)
+- [x] ~~Distributed tracing visualization (Jaeger UI)~~ (Implemented)
+- [ ] Custom Grafana dashboards for business metrics
+- [ ] Alerting rules in Prometheus
+- [ ] Log aggregation with Loki
 - [ ] Horizontal scaling for llm-api (stateless design ready)
 - [ ] S3/blob storage for conversation exports
 - [ ] Fine-tuning job management
@@ -860,6 +1022,22 @@ make down  # Removes containers and volumes
 - Method not allowed: Verify method is in `allowedMCPMethods` list
 - CORS errors: Check Kong CORS configuration includes MCP headers
 
+### Observability Issues
+- **Grafana not accessible**: Start monitoring stack with `make monitor-up`
+- **No metrics in Prometheus**: 
+  - Ensure monitoring stack is running: `docker compose -f docker-compose.monitor.yml ps`
+  - Verify OTEL collector is running: `make monitor-logs`
+  - Check Prometheus targets: http://localhost:9090/targets
+  - Ensure `OTEL_ENABLED=true` in llm-api environment
+- **No traces in Jaeger**: 
+  - Verify Jaeger is receiving data: `make monitor-logs | grep jaeger`
+  - Check OTEL collector exports: `make monitor-logs | grep otel-collector`
+  - Ensure traces are being generated from llm-api
+- **Grafana datasources not configured**: 
+  - Check provisioning: `make monitor-logs | grep grafana`
+  - Verify `docs/grafana/provisioning` is mounted correctly
+  - Restart monitoring stack: `make monitor-down && make monitor-up`
+
 ---
 
 ## References
@@ -872,4 +1050,7 @@ make down  # Removes containers and volumes
 - [Model Context Protocol (MCP)](https://modelcontextprotocol.io/)
 - [mcp-go Library](https://github.com/mark3labs/mcp-go)
 - [Serper API Documentation](https://serper.dev/docs)
+- [Prometheus Documentation](https://prometheus.io/docs/)
+- [Grafana Documentation](https://grafana.com/docs/)
+- [Jaeger Documentation](https://www.jaegertracing.io/docs/)
 
