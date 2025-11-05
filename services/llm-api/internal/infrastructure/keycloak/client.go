@@ -540,6 +540,37 @@ func (c *Client) adminTokenEndpoint() string {
 	return c.baseURL + "/realms/master/protocol/openid-connect/token"
 }
 
+// RefreshToken exchanges a refresh token for new tokens
+func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (*TokenSet, error) {
+	values := url.Values{}
+	values.Set("grant_type", "refresh_token")
+	values.Set("client_id", c.targetClientID)
+	values.Set("refresh_token", refreshToken)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.tokenEndpoint(), strings.NewReader(values.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		payload, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("refresh token request failed: %s", strings.TrimSpace(string(payload)))
+	}
+
+	var token TokenSet
+	if err := json.NewDecoder(resp.Body).Decode(&token); err != nil {
+		return nil, err
+	}
+	return &token, nil
+}
+
 func extractIDFromLocation(location string) string {
 	if location == "" {
 		return ""

@@ -2,6 +2,7 @@ package guestauth
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -10,6 +11,11 @@ import (
 	"jan-server/services/llm-api/internal/infrastructure/keycloak"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/middlewares"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/responses"
+)
+
+const (
+	// RefreshTokenCookieName is the name of the cookie that stores the refresh token
+	RefreshTokenCookieName = "refresh_token"
 )
 
 // GuestHandler handles guest authentication flows.
@@ -42,6 +48,19 @@ func (h *GuestHandler) CreateGuest(c *gin.Context) {
 		responses.HandleErrorWithStatus(c, http.StatusBadGateway, err, "failed to provision guest")
 
 		return
+	}
+
+	// Set refresh token as an HTTP-only cookie
+	if creds.Tokens.RefreshToken != "" {
+		// Calculate cookie expiration based on token expires_in (in seconds)
+		expiresAt := time.Now().Add(time.Duration(creds.Tokens.ExpiresIn) * time.Second)
+
+		// Set the cookie with security settings
+		http.SetCookie(c.Writer, responses.NewCookieWithSecurity(
+			RefreshTokenCookieName,
+			creds.Tokens.RefreshToken,
+			expiresAt,
+		))
 	}
 
 	c.JSON(http.StatusCreated, gin.H{

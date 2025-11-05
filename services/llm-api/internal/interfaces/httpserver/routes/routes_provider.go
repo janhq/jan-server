@@ -22,6 +22,7 @@ import (
 var RouteProvider = wire.NewSet(
 	// Handlers
 	authhandler.NewAuthHandler,
+	authhandler.NewTokenHandler,
 	chathandler.NewChatHandler,
 	conversationhandler.NewConversationHandler,
 	guestauth.NewGuestHandler,

@@ -16,11 +16,31 @@ func RequestLogger() gin.HandlerFunc {
 
 		c.Next()
 
-		log.Info().
+		// Log errors if any
+		if len(c.Errors) > 0 {
+			for _, e := range c.Errors {
+				log.Error().
+					Str("method", c.Request.Method).
+					Str("path", c.Request.URL.Path).
+					Int("status", c.Writer.Status()).
+					Err(e.Err).
+					Msg("request error")
+			}
+		}
+
+		logEvent := log.Info().
 			Str("method", c.Request.Method).
 			Str("path", c.Request.URL.Path).
-			Int("status", c.Writer.Status()).
-			Msg("request completed")
+			Int("status", c.Writer.Status())
+
+		if c.Writer.Status() >= 400 {
+			logEvent = log.Warn().
+				Str("method", c.Request.Method).
+				Str("path", c.Request.URL.Path).
+				Int("status", c.Writer.Status())
+		}
+
+		logEvent.Msg("request completed")
 	}
 }
 
@@ -28,8 +48,10 @@ func RequestLogger() gin.HandlerFunc {
 func CORS() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-API-Key, Idempotency-Key, X-Request-Id, Mcp-Session-Id, mcp-protocol-version")
+		c.Writer.Header().Set("Access-Control-Expose-Headers", "X-Request-Id")
+		c.Writer.Header().Set("Access-Control-Max-Age", "3600")
 
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)

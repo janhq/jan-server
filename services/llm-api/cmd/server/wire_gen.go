@@ -81,7 +81,8 @@ func CreateApplication() (*Application, error) {
 	client := infrastructure.ProvideKeycloakClient(config, zerologLogger)
 	guestHandler := guestauth.NewGuestHandler(client, zerologLogger)
 	upgradeHandler := guestauth.NewUpgradeHandler(client, zerologLogger)
-	authRoute := auth.NewAuthRoute(guestHandler, upgradeHandler)
+	tokenHandler := authhandler.NewTokenHandler(client, zerologLogger)
+	authRoute := auth.NewAuthRoute(guestHandler, upgradeHandler, tokenHandler)
 	keycloakValidator, err := infrastructure.ProvideKeycloakValidator(config, zerologLogger)
 	if err != nil {
 		return nil, err

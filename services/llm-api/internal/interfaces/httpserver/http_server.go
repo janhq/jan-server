@@ -45,6 +45,7 @@ func NewHttpServer(
 		cfg,
 	}
 	server.engine.Use(middleware.RequestID())
+	server.engine.Use(middleware.CORSMiddleware())
 
 	// Root health check (for backwards compatibility)
 	server.engine.GET("/healthz", func(c *gin.Context) {
@@ -69,7 +70,7 @@ func (httpServer *HttpServer) Run() error {
 
 	// Protected routes (auth middleware applied)
 	protected := httpServer.engine.Group("/")
-	protected.Use(middleware.AuthMiddleware(httpServer.infra.KeycloakValidator, httpServer.infra.Logger))
+	protected.Use(middleware.AuthMiddleware(httpServer.infra.KeycloakValidator, httpServer.infra.Logger), middleware.CORSMiddleware())
 
 	// Register auth routes (passes both public and protected routers)
 	httpServer.authRoute.RegisterRouter(root, protected)

@@ -44,9 +44,6 @@ func (ModelRoute *ModelRoute) RegisterRouter(router *gin.RouterGroup) {
 		"",
 		ModelRoute.authHandler.WithAppUserAuthChain(ModelRoute.GetModels)...,
 	)
-	modelsRoute.GET("/*model_id",
-		ModelRoute.authHandler.WithAppUserAuthChain(ModelRoute.GetModelDetails)...,
-	)
 	modelsRoute.GET("/catalogs/*model_public_id", ModelRoute.GetModelCatalog)
 
 	ModelRoute.modelProvider.RegisterRouter(modelsRoute)
@@ -104,59 +101,6 @@ func (ModelRoute *ModelRoute) GetModels(reqCtx *gin.Context) {
 		})
 	}
 
-}
-
-// GetModelDetails
-// @Summary Retrieve model details
-// @Description Retrieves details of a specific model by its ID
-// @Tags Chat Completions API
-// @Security BearerAuth
-// @Accept json
-// @Produce json
-// @Param model_id path string true "Model ID"
-// @Success 200 {object} modelresponses.ModelResponse "Model details"
-// @Failure 404 {object} responses.ErrorResponse "Model not found"
-// @Failure 500 {object} responses.ErrorResponse "Failed to retrieve model"
-// @Router /v1/models/{model_id} [get]
-func (ModelRoute *ModelRoute) GetModelDetails(reqCtx *gin.Context) {
-	ctx := reqCtx.Request.Context()
-	// Wildcard param includes leading slash, so trim it
-	modelID := strings.TrimPrefix(reqCtx.Param("model_id"), "/")
-
-	accessibleModels, err := ModelRoute.modelHandler.BuildAccessibleProviderModels(ctx)
-	if err != nil || accessibleModels == nil {
-		responses.HandleError(reqCtx, err, "Failed to retrieve accessible models")
-		return
-	}
-
-	if len(accessibleModels.ProviderModels) == 0 || len(accessibleModels.Providers) == 0 {
-		responses.HandleNewError(reqCtx, platformerrors.ErrorTypeNotFound, "model not found", "")
-		return
-	}
-
-	providerByID := make(map[uint]*domainmodel.Provider, len(accessibleModels.Providers))
-	for _, provider := range accessibleModels.Providers {
-		if provider == nil {
-			continue
-		}
-		providerByID[provider.ID] = provider
-	}
-
-	// Merge and find the specific model
-	mergedProviderModels := ModelRoute.modelHandler.MergeModels(accessibleModels.ProviderModels, providerByID)
-
-	// Search for the model by ID (case-insensitive)
-	for _, mergedModel := range mergedProviderModels {
-		if strings.EqualFold(mergedModel.PublicID, modelID) {
-			provider := providerByID[mergedModel.ProviderID]
-			modelResponse := modelresponses.BuildModelResponse(mergedModel, provider)
-			reqCtx.JSON(http.StatusOK, modelResponse)
-			return
-		}
-	}
-
-	// Model not found
-	responses.HandleNewError(reqCtx, platformerrors.ErrorTypeNotFound, "model not found", "")
 }
 
 // GetModelCatalog
