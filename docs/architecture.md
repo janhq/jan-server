@@ -27,62 +27,70 @@ Jan Server is a modular, microservices-based LLM API platform with enterprise-gr
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
 │  │                          KONG API Gateway                              │  │
 │  │  • Declarative Config (kong.yml)                                      │  │
-│  │  • Route: /v1/* → llm-api-svc                                         │  │
+│  │  • Services:                                                           │  │
+│  │    - llm-api-svc → http://host.docker.internal:8080                  │  │
+│  │    - mcp-tools-svc → http://host.docker.internal:8091                │  │
+│  │  • Routes:                                                             │  │
+│  │    - /v1/* (excl. /v1/mcp) → llm-api-svc                             │  │
+│  │    - /v1/mcp → mcp-tools-svc                                          │  │
+│  │    - /auth → llm-api-svc                                              │  │
 │  │  • Plugins:                                                            │  │
-│  │    - Key-Auth (X-API-Key) → Injects X-Consumer-* headers             │  │
-│  │    - CORS                                                              │  │
+│  │    - CORS (with Mcp-Session-Id, mcp-protocol-version headers)        │  │
 │  │  • Port: 8000                                                          │  │
 │  └───────────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────┘
-                             │
-                             ▼
+                    │                              │
+                    ▼                              ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         APPLICATION LAYER                                    │
 │                                                                              │
 │  ┌─────────────────────────────────────┐   ┌────────────────────────────┐  │
-│  │         LLM-API Service             │   │   GuestAuth Service        │  │
-│  │  (Port: 8080, Internal)             │   │   (Port: 8080, Exposed)    │  │
+│  │         LLM-API Service             │   │     MCP-Tools Service      │  │
+│  │  (Port: 8080, Internal)             │   │  (Port: 8091, Internal)    │  │
 │  │                                     │   │                            │  │
-│  │  • REST API (Gin Framework)        │   │  • REST API (Gin)          │  │
-│  │  • OpenAPI/Swagger                  │   │  • Guest User Creation     │  │
-│  │  • Authentication:                  │   │  • Account Upgrade         │  │
-│  │    - JWT (Keycloak JWKS)           │   │  • Keycloak Integration    │  │
+│  │  • REST API (Gin Framework)        │   │  • MCP Protocol (HTTP)     │  │
+│  │  • OpenAPI/Swagger                  │   │  • Stateless mode          │  │
+│  │  • Authentication:                  │   │  • No authentication       │  │
+│  │    - JWT (Keycloak JWKS)           │   │    (internal service)      │  │
 │  │    - API Key (Kong consumer)       │   │                            │  │
-│  │  • Middleware:                      │   │  Endpoints:                │  │
-│  │    - Auth                           │   │  POST /auth/guest          │  │
-│  │    - Request ID                     │   │  POST /auth/upgrade        │  │
-│  │    - SSE Support                    │   │                            │  │
-│  │  • Idempotency Store                │   │                            │  │
+│  │  • Middleware:                      │   │  MCP Tools:                │  │
+│  │    - Auth                           │   │  • google_search           │  │
+│  │    - Request ID                     │   │    (Serper API)            │  │
+│  │    - SSE Support                    │   │  • scrape                  │  │
+│  │  • Idempotency Store                │   │    (Web scraping)          │  │
 │  │  • OpenTelemetry Integration        │   │                            │  │
-│  │                                     │   │                            │  │
-│  │  Endpoints:                         │   └────────────────────────────┘  │
-│  │  • GET  /v1/models                  │                                    │
-│  │  • GET  /v1/models/:id              │                                    │
-│  │  • POST /v1/chat/completions        │                                    │
-│  │  • POST /v1/completions             │                                    │
-│  │  • POST /v1/conversations           │                                    │
-│  │  • GET  /v1/conversations           │                                    │
-│  │  • GET  /v1/conversations/:id       │                                    │
-│  │  • POST /v1/conversations/:id/msgs  │                                    │
-│  │  • GET  /v1/conversations/:id/msgs  │                                    │
-│  │  • POST /v1/conversations/:id/runs  │                                    │
-│  │  • POST /v1/responses               │                                    │
-│  └─────────────────────────────────────┘                                    │
-│             │              │                                                 │
-│             │              └──────────────────┐                              │
-│             ▼                                 ▼                              │
-│  ┌──────────────────────┐         ┌─────────────────────────┐              │
-│  │  Provider Registry   │         │   Repository Layer      │              │
-│  │                      │         │                         │              │
-│  │  • providers.yaml    │         │  • ModelRepository      │              │
-│  │  • Default: vllm     │         │  • ConversationRepo     │              │
-│  │  • Model routing     │         │  • MessageRepository    │              │
-│  │  • Capability flags  │         │  • GORM ORM             │              │
-│  └──────────────────────┘         └─────────────────────────┘              │
-│             │                                 │                              │
-└─────────────┼─────────────────────────────────┼──────────────────────────────┘
-              │                                 │
-              ▼                                 ▼
+│  │                                     │   │  Endpoint:                 │  │
+│  │  Endpoints:                         │   │  POST /v1/mcp              │  │
+│  │  • GET  /v1/models                  │   │                            │  │
+│  │  • GET  /v1/models/:id              │   │  Allowed Methods:          │  │
+│  │  • POST /v1/chat/completions        │   │  • initialize              │  │
+│  │  • POST /v1/completions             │   │  • ping                    │  │
+│  │  • POST /v1/conversations           │   │  • tools/list              │  │
+│  │  • GET  /v1/conversations           │   │  • tools/call              │  │
+│  │  • GET  /v1/conversations/:id       │   │                            │  │
+│  │  • POST /v1/conversations/:id/msgs  │   │  Health:                   │  │
+│  │  • GET  /v1/conversations/:id/msgs  │   │  GET /healthz, /readyz     │  │
+│  │  • POST /v1/conversations/:id/runs  │   └────────────────────────────┘  │
+│  │  • POST /v1/responses               │              │                     │
+│  │  • POST /auth/guest                 │              │                     │
+│  │  • POST /auth/upgrade               │              ▼                     │
+│  └─────────────────────────────────────┘   ┌────────────────────────────┐  │
+│             │              │                │   Serper Service           │  │
+│             │              │                │  • Search API client       │  │
+│             │              └──────────┐     │  • Scrape API client       │  │
+│             ▼                         ▼     └────────────────────────────┘  │
+│  ┌──────────────────────┐  ┌─────────────────────────┐                     │
+│  │  Provider Registry   │  │   Repository Layer      │                     │
+│  │                      │  │                         │                     │
+│  │  • providers.yaml    │  │  • ModelRepository      │                     │
+│  │  • Default: vllm     │  │  • ConversationRepo     │                     │
+│  │  • Model routing     │  │  • MessageRepository    │                     │
+│  │  • Capability flags  │  │  • GORM ORM             │                     │
+│  └──────────────────────┘  └─────────────────────────┘                     │
+│             │                          │                                     │
+└─────────────┼──────────────────────────┼─────────────────────────────────────┘
+              │                          │
+              ▼                          ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        INFERENCE LAYER                                       │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
@@ -178,7 +186,7 @@ Client
   ▼
 Kong Gateway
   │ ✓ CORS check
-  │ ✓ Key-auth (skipped, anonymous consumer)
+  │ ✓ Route to llm-api-svc
   │
   ▼
 LLM-API Service
@@ -207,12 +215,56 @@ LLM-API
 Client (streaming response)
 ```
 
-### Pattern 2: Guest User Creation
+### Pattern 2: MCP Tool Execution
+
+```
+Client (MCP Client)
+  │
+  │ POST /v1/mcp
+  │ Body: {jsonrpc: "2.0", method: "tools/call", params: {name: "google_search", arguments: {q: "..."}}}
+  │
+  ▼
+Kong Gateway
+  │ ✓ CORS check (allows Mcp-Session-Id, mcp-protocol-version)
+  │ ✓ Route to mcp-tools-svc
+  │
+  ▼
+MCP-Tools Service
+  │ ✓ Method guard (validate allowed MCP method)
+  │ ✓ Parse MCP request
+  │
+  ▼
+MCP Server (mark3labs/mcp-go)
+  │ ✓ Stateless mode (no session management)
+  │ ✓ Route to tool handler
+  │
+  ▼
+Tool Handler (e.g., google_search)
+  │ ✓ Extract arguments
+  │ ✓ Call Serper API
+  │
+  ▼
+Serper API (External)
+  │ HTTP Request to api.serper.dev
+  │
+  ▼
+Response (MCP JSON-RPC)
+  │ {jsonrpc: "2.0", id: ..., result: {content: [{type: "text", text: "..."}]}}
+  │
+  ▼
+Client
+```
+
+### Pattern 3: Guest User Creation
 
 ```
 Client
   │
   │ POST /auth/guest
+  │
+  ▼
+Kong Gateway
+  │ ✓ Route to llm-api-svc
   │
   ▼
 LLM-API (/auth endpoints on Port 8080)
@@ -232,7 +284,7 @@ Response
 Client (can now call /v1/chat/completions with JWT)
 ```
 
-### Pattern 3: Conversation Management
+### Pattern 4: Conversation Management
 
 ```
 Client
@@ -289,12 +341,16 @@ Response (SSE or JSON)
 - **Image**: `kong:3.5`
 - **Config**: Declarative (`kong.yml`)
 - **Services**:
-  - `llm-api-svc` → `http://llm-api:8080`
-- **Routes**: `/v1/*`
+  - `llm-api-svc` → `http://host.docker.internal:8080`
+  - `mcp-tools-svc` → `http://host.docker.internal:8091`
+- **Routes**: 
+  - `/v1/*` (except `/v1/mcp`) → llm-api-svc
+  - `/v1/mcp` → mcp-tools-svc
+  - `/auth` → llm-api-svc
+  - Health checks → respective services
 - **Plugins**:
-  - `key-auth`: Validates `X-API-Key`, creates anonymous consumer if missing
-  - `cors`: Allows cross-origin requests
-- **Consumer Injection**: Sets `X-Consumer-Username`, `X-Consumer-ID` headers
+  - `cors`: Allows cross-origin requests with MCP-specific headers (Mcp-Session-Id, mcp-protocol-version)
+- **Port**: 8000 (exposed)
 
 ### LLM-API Service
 - **Language**: Go
@@ -312,6 +368,36 @@ Response (SSE or JSON)
   - Provider abstraction (supports multiple backends)
   - Conversation & message persistence
   - Embedded database migrations applied on startup
+  - Guest authentication endpoints
+
+### MCP-Tools Service
+- **Language**: Go
+- **Framework**: Gin (HTTP server), mcp-go (MCP protocol)
+- **Port**: 8091 (internal)
+- **Protocol**: Model Context Protocol (MCP) over HTTP
+- **Mode**: Stateless (no session management required)
+- **Dependencies**:
+  - Serper API (external search service)
+- **Architecture**: Clean Architecture
+  - Domain: Business logic (SerperService)
+  - Infrastructure: External clients (SerperClient)
+  - Interfaces: HTTP routes, MCP handlers
+  - Utils: Error handling, MCP utilities
+- **Tools Available**:
+  - `google_search`: Web search via Serper API
+    - Parameters: q (query), gl (region), hl (language), location, num, tbs, page, autocorrect
+  - `scrape`: Web page scraping
+    - Parameters: url, includeMarkdown
+- **MCP Methods Supported**:
+  - `initialize`: MCP handshake
+  - `ping`: Health check
+  - `tools/list`: List available tools
+  - `tools/call`: Execute a tool
+- **Key Features**:
+  - No authentication (internal service)
+  - Method guard middleware
+  - Enhanced error logging
+  - CORS support for MCP headers
 
 ### Guest Authentication (within llm-api)
 - **Language**: Go (part of llm-api binary)
@@ -366,10 +452,10 @@ Response (SSE or JSON)
 ### Environment Variables (.env)
 ```bash
 # Database
-POSTGRES_USER=jan
+POSTGRES_USER=jan_user
 POSTGRES_PASSWORD=<secret>
-POSTGRES_DB=jan_api
-DATABASE_URL=postgres://jan:<secret>@api-db:5432/jan_api
+POSTGRES_DB=jan_llm_api
+DATABASE_URL=postgres://jan_user:<secret>@api-db:5432/jan_llm_api
 
 # LLM-API
 HTTP_PORT=8080
@@ -377,11 +463,16 @@ LOG_LEVEL=info
 LOG_FORMAT=json
 AUTO_MIGRATE=true
 
+# MCP-Tools
+MCP_TOOLS_HTTP_PORT=8091
+SERPER_API_KEY=<your-serper-api-key>
+
 # Keycloak
 KEYCLOAK_BASE_URL=http://keycloak:8080
 KEYCLOAK_REALM=jan
-KC_BOOTSTRAP_ADMIN_USERNAME=admin
-KC_BOOTSTRAP_ADMIN_PASSWORD=<secret>
+KEYCLOAK_HTTP_PORT=8085
+KEYCLOAK_ADMIN=admin
+KEYCLOAK_ADMIN_PASSWORD=<secret>
 
 # Guest Provisioning (handled by llm-api)
 BACKEND_CLIENT_ID=backend
@@ -396,6 +487,11 @@ VLLM_INTERNAL_KEY=changeme
 VLLM_GPU_UTIL=0.95
 VLLM_MAX_LEN=512
 HF_TOKEN=<huggingface-token>
+
+# OpenTelemetry
+OTEL_ENABLED=false
+OTEL_SERVICE_NAME=llm-api
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 ```
 
 ### Provider Configuration (providers.yaml)
@@ -520,6 +616,7 @@ make up-cpu-only
 ### Internal Services (Docker Network)
 - `api-db:5432` (PostgreSQL)
 - `llm-api:8080` (LLM API Service)
+- `mcp-tools:8091` (MCP Tools Service)
 - `keycloak-db:5432` (PostgreSQL)
 - `keycloak:8080` (Keycloak)
 - `vllm-llama:8000` (vLLM Inference)
@@ -527,8 +624,9 @@ make up-cpu-only
 
 ### Exposed Ports
 - `8000` -> Kong Gateway (public API)
-- `8080` -> LLM API (guest and v1 endpoints)
+- `8080` -> LLM API (for direct access if needed)
 - `8085` -> Keycloak Admin Console
+- `8091` -> MCP Tools (for direct MCP access if needed)
 
 ---
 
@@ -543,11 +641,13 @@ make up-cpu-only
 
 2. **Network Isolation**:
    - Internal services communicate via Docker network
-   - Only Kong, Keycloak, GuestAuth exposed externally
+   - Only Kong exposed externally (all API traffic goes through gateway)
+   - MCP-Tools has no authentication (internal service only)
 
 3. **Authentication Layers**:
-   - Kong: API key validation (optional)
+   - Kong: CORS and routing (no key-auth in current setup)
    - LLM-API: JWT validation (required for user data)
+   - MCP-Tools: No authentication (stateless, internal only)
    - vLLM: Internal bearer token
 
 4. **CORS**:
@@ -649,16 +749,43 @@ make swag  # Merges OpenAPI specs
 ### 5. Test Chat
 ```bash
 # Get guest token
-curl -X POST http://localhost:8080/auth/guest
+curl -X POST http://localhost:8000/auth/guest
 
-# Use token
+# Use token for chat
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"model":"jan-v1-4b","messages":[{"role":"user","content":"Hello"}]}'
 ```
 
-### 6. Cleanup
+### 6. Test MCP Tools
+```bash
+# List available tools
+curl -X POST http://localhost:8000/v1/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/list"
+  }'
+
+# Execute google_search tool
+curl -X POST http://localhost:8000/v1/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "google_search",
+      "arguments": {
+        "q": "latest AI news"
+      }
+    }
+  }'
+```
+
+### 7. Cleanup
 ```bash
 make down  # Removes containers and volumes
 ```
@@ -671,6 +798,7 @@ make down  # Removes containers and volumes
 |-----------------|--------------------------------|
 | API Gateway     | Kong 3.5                       |
 | Services        | Go 1.21+ (Gin framework)       |
+| MCP Server      | mark3labs/mcp-go v0.7.0        |
 | ORM             | GORM                           |
 | Database        | PostgreSQL 16                  |
 | Auth            | Keycloak (OpenID Connect)      |
@@ -679,6 +807,7 @@ make down  # Removes containers and volumes
 | Migrations      | golang-migrate                 |
 | Containerization| Docker Compose                 |
 | Documentation   | OpenAPI 3.0 (Swagger)          |
+| External APIs   | Serper API (search/scrape)     |
 
 ---
 
@@ -694,6 +823,11 @@ make down  # Removes containers and volumes
 - [ ] Horizontal scaling for llm-api (stateless design ready)
 - [ ] S3/blob storage for conversation exports
 - [ ] Fine-tuning job management
+- [ ] Additional MCP tools (e.g., calculator, file system, database)
+- [ ] MCP resources support (for dynamic content)
+- [ ] MCP prompts support (for template management)
+- [ ] Session management for MCP (if needed for stateful workflows)
+- [ ] Authentication for MCP endpoints (if exposing externally)
 
 ---
 
@@ -717,7 +851,14 @@ make down  # Removes containers and volumes
 ### Authentication Errors
 - JWT validation: Check `KEYCLOAK_BASE_URL` and `KEYCLOAK_REALM` in `.env`
 - JWKS fetch: Ensure llm-api can reach Keycloak: `docker compose exec llm-api curl http://keycloak:8080/realms/jan/protocol/openid-connect/certs`
-- Guest token: Verify guest endpoints are running: `curl http://localhost:8080/healthz`
+- Guest token: Verify guest endpoints are running: `curl http://localhost:8000/auth/guest`
+
+### MCP Tools Issues
+- Serper API: Verify `SERPER_API_KEY` is set correctly
+- Tool execution: Check mcp-tools logs: `docker compose logs mcp-tools`
+- Stateless mode: No session ID required - if getting session errors, check that `WithStateLess(true)` is set
+- Method not allowed: Verify method is in `allowedMCPMethods` list
+- CORS errors: Check Kong CORS configuration includes MCP headers
 
 ---
 
@@ -728,4 +869,7 @@ make down  # Removes containers and volumes
 - [vLLM Documentation](https://docs.vllm.ai/)
 - [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/)
 - [GORM Documentation](https://gorm.io/docs/)
+- [Model Context Protocol (MCP)](https://modelcontextprotocol.io/)
+- [mcp-go Library](https://github.com/mark3labs/mcp-go)
+- [Serper API Documentation](https://serper.dev/docs)
 
