@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	decimal "github.com/shopspring/decimal"
 	"jan-server/services/llm-api/internal/domain/query"
 	"jan-server/services/llm-api/internal/utils/httpclients/chat"
 	"jan-server/services/llm-api/internal/utils/platformerrors"
@@ -194,9 +195,47 @@ func buildModelCatalogFromModel(kind ProviderKind, model chat.Model) *ModelCatal
 		notes = ptr.ToString(desc)
 	}
 
+	defaultParameterNames := []string{
+		"temperature",
+		"max_tokens",
+		"top_p",
+		"frequency_penalty",
+		"presence_penalty",
+		"stop",
+		"stream",
+		"n",
+		"tools",
+		"tool_choice",
+		"response_format",
+	}
+
+	supportedNames := extractStringSlice(model.Raw["supported_parameters"])
+	nameSet := make(map[string]struct{}, len(supportedNames)+len(defaultParameterNames))
+	for _, name := range supportedNames {
+		nameSet[name] = struct{}{}
+	}
+	for _, name := range defaultParameterNames {
+		if _, exists := nameSet[name]; !exists {
+			supportedNames = append(supportedNames, name)
+			nameSet[name] = struct{}{}
+		}
+	}
+
+	defaultParameters := extractDefaultParameters(model.Raw["default_parameters"])
+	if _, exists := defaultParameters["top_p"]; !exists {
+		if val, err := decimal.NewFromString("1"); err == nil {
+			defaultParameters["top_p"] = &val
+		}
+	}
+	if _, exists := defaultParameters["temperature"]; !exists {
+		if val, err := decimal.NewFromString("0.7"); err == nil {
+			defaultParameters["temperature"] = &val
+		}
+	}
+
 	supportedParameters := SupportedParameters{
-		Names:   extractStringSlice(model.Raw["supported_parameters"]),
-		Default: extractDefaultParameters(model.Raw["default_parameters"]),
+		Names:   supportedNames,
+		Default: defaultParameters,
 	}
 
 	architecture := Architecture{}
