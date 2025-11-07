@@ -10,6 +10,10 @@
 *.env
 .env.*
 
+# Production and secrets (never commit these!)
+config/production.env
+config/secrets.env
+
 # Local configuration that shouldn't be shared
 *.local
 

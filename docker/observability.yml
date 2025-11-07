@@ -1,3 +1,6 @@
+# Observability Stack
+# Prometheus, Grafana, Jaeger, OpenTelemetry Collector
+
 volumes:
   prometheus-data:
   grafana-data:
@@ -7,7 +10,7 @@ services:
     image: otel/opentelemetry-collector-contrib:0.90.1
     restart: unless-stopped
     volumes:
-      - ./docs/otel-collector.yaml:/etc/otel-collector.yaml:ro
+      - ./monitoring/otel-collector.yaml:/etc/otel-collector.yaml:ro
     command: ["--config=/etc/otel-collector.yaml"]
     ports:
       - "${OTEL_GRPC_PORT:-4317}:4317"
@@ -20,7 +23,7 @@ services:
     image: prom/prometheus:v2.48.0
     restart: unless-stopped
     volumes:
-      - ./docs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -50,7 +53,7 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./docs/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
     ports:
       - "${GRAFANA_PORT:-3001}:3000"
     depends_on:

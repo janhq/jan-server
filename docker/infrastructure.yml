@@ -1,0 +1,102 @@
+# Core infrastructure services
+# PostgreSQL, Keycloak, Kong
+
+volumes:
+  api-db-data:
+  keycloak-db-data:
+
+networks:
+  default:
+    name: jan-server_default
+  mcp-network:
+    driver: bridge
+    name: jan-server_mcp-network
+
+services:
+  # PostgreSQL Database for LLM API
+  api-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-jan_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jan_password}
+      POSTGRES_DB: ${POSTGRES_DB:-jan_llm_api}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - api-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jan_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles: ["infra", "full"]
+
+  # PostgreSQL Database for Keycloak
+  keycloak-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak
+      POSTGRES_DB: keycloak
+    ports:
+      - "${KEYCLOAK_DB_PORT:-5433}:5432"
+    volumes:
+      - keycloak-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles: ["infra", "full"]
+
+  # Keycloak Authentication Server
+  keycloak:
+    build: ./keycloak
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      KC_DB: postgres
+      KC_DB_URL_HOST: keycloak-db
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak
+      KC_DB_URL_DATABASE: keycloak
+      KC_FEATURES: token-exchange
+      KC_HTTP_PORT: ${KEYCLOAK_HTTP_PORT:-8085}
+      KC_HOSTNAME_URL: http://localhost:8085
+      KC_HOSTNAME_ADMIN_URL: http://localhost:8085
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    ports:
+      - "${KEYCLOAK_HTTP_PORT:-8085}:${KEYCLOAK_HTTP_PORT:-8085}"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:${KEYCLOAK_HTTP_PORT:-8085}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    profiles: ["infra", "full"]
+
+  # Kong API Gateway
+  kong:
+    image: kong:3.5
+    restart: unless-stopped
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/kong.yml
+      KONG_LOG_LEVEL: info
+    volumes:
+      - ./kong/kong.yml:/kong/kong.yml:ro
+    ports:
+      - "${KONG_HTTP_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles: ["infra", "full"]

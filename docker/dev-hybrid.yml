@@ -1,0 +1,71 @@
+# Hybrid Development Mode Configuration
+# For running services natively (outside Docker) with infrastructure in Docker
+
+services:
+  # PostgreSQL accessible from host
+  api-db-hybrid:
+    extends:
+      file: infrastructure.yml
+      service: api-db
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles: ["hybrid"]
+
+  # Keycloak accessible from host
+  keycloak-hybrid:
+    extends:
+      file: infrastructure.yml
+      service: keycloak
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles: ["hybrid"]
+
+  # Keycloak DB for hybrid mode
+  keycloak-db-hybrid:
+    extends:
+      file: infrastructure.yml
+      service: keycloak-db
+    profiles: ["hybrid"]
+
+  # Kong accessible from host (optional in hybrid mode)
+  kong-hybrid:
+    extends:
+      file: infrastructure.yml
+      service: kong
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Point Kong to API running on host
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/kong-hybrid.yml
+      KONG_LOG_LEVEL: info
+    volumes:
+      - ./kong/kong-hybrid.yml:/kong/kong-hybrid.yml:ro
+    profiles: ["hybrid-kong"]
+
+  # MCP infrastructure for hybrid mode
+  redis-searxng-hybrid:
+    extends:
+      file: services-mcp.yml
+      service: redis-searxng
+    profiles: ["hybrid-mcp"]
+
+  searxng-hybrid:
+    extends:
+      file: services-mcp.yml
+      service: searxng
+    profiles: ["hybrid-mcp"]
+
+  vector-store-hybrid:
+    extends:
+      file: services-mcp.yml
+      service: vector-store
+    profiles: ["hybrid-mcp"]
+
+  sandboxfusion-hybrid:
+    extends:
+      file: services-mcp.yml
+      service: sandboxfusion
+    profiles: ["hybrid-mcp"]
+
+# Note: Networks are defined in infrastructure.yml and shared across all compose files

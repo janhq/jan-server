@@ -1,8 +1,12 @@
+# vLLM Inference Services
+# GPU and CPU model inference
+
 volumes:
   hf-cache:
   models-cache:
 
 services:
+  # vLLM GPU Inference (requires NVIDIA GPU)
   vllm-jan-gpu:
     image: vllm/vllm-openai:latest
     pull_policy: always
@@ -54,11 +58,12 @@ services:
     ports:
       - "${VLLM_PORT:-8001}:${VLLM_PORT:-8001}"
 
-  # Optional CPU fallback
+  # vLLM CPU Inference (slower, no GPU required)
   vllm-jan-cpu:
     image: vllm/vllm-openai:latest
     pull_policy: always
     restart: unless-stopped
+    profiles: ["cpu"]
     command: >
       --model ${VLLM_MODEL_CPU:-janhq/Jan-v1-4B}
       --served-model-name ${VLLM_SERVED_NAME_CPU:-jan-v1-4b}
@@ -79,6 +84,5 @@ services:
       interval: 10s
       timeout: 5s
       retries: 60
-    profiles: ["cpu"]
     ports:
       - "${VLLM_PORT:-8001}:${VLLM_PORT:-8001}"

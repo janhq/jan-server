@@ -1,0 +1,36 @@
+# LLM API Service
+
+services:
+  llm-api:
+    build: ./services/llm-api
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      HTTP_PORT: ${HTTP_PORT:-8080}
+      DB_DSN: ${DB_DSN:-postgres://jan_user:jan_password@api-db:5432/jan_llm_api?sslmode=disable}
+      KEYCLOAK_BASE_URL: ${KEYCLOAK_BASE_URL:-http://keycloak:8085}
+      JWKS_URL: ${JWKS_URL:-http://keycloak:8085/realms/jan/protocol/openid-connect/certs}
+      ISSUER: ${ISSUER:-http://localhost:8090/realms/jan}
+      AUDIENCE: ${AUDIENCE:-jan-client}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-llm-api}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4317}
+    ports:
+      - "${HTTP_PORT:-8080}:${HTTP_PORT:-8080}"
+    depends_on:
+      api-db:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    volumes:
+      - ./services/llm-api/config:/app/config:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:${HTTP_PORT:-8080}/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    profiles: ["api", "full"]

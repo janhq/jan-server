@@ -127,7 +127,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 
 ### Prometheus Configuration
 
-The `docs/prometheus.yml` file defines scrape targets:
+The `monitoring/prometheus.yml` file defines scrape targets:
 
 ```yaml
 scrape_configs:
@@ -146,7 +146,7 @@ scrape_configs:
 
 ### Grafana Datasources
 
-Datasources are auto-provisioned from `docs/grafana/provisioning/datasources/datasources.yml`:
+Datasources are auto-provisioned from `monitoring/grafana/provisioning/datasources/datasources.yml`:
 
 - **Prometheus**: Default datasource for metrics
 - **Jaeger**: Datasource for distributed traces
@@ -191,7 +191,7 @@ Datasources are auto-provisioned from `docs/grafana/provisioning/datasources/dat
 
 To persist dashboards:
 1. Export as JSON
-2. Save to `docs/grafana/provisioning/dashboards/json/`
+2. Save to `monitoring/grafana/provisioning/dashboards/json/`
 3. Restart Grafana: `make monitor-down && make monitor-up`
 
 ## Data Persistence
@@ -227,7 +227,7 @@ docker run --rm -v jan-server_grafana-data:/data -v $(pwd):/backup alpine sh -c 
 
 ```bash
 # Check if services are running
-docker compose -f docker-compose.monitor.yml ps
+docker compose -f docker/observability.yml ps
 
 # View logs
 make monitor-logs
@@ -241,7 +241,7 @@ make monitor-up
 
 1. Check if OpenTelemetry Collector is running:
    ```bash
-   docker compose -f docker-compose.monitor.yml ps otel-collector
+   docker compose -f docker/observability.yml ps otel-collector
    ```
 
 2. Verify Prometheus targets are healthy:
@@ -277,19 +277,19 @@ make monitor-up
 
 2. Verify provisioning:
    ```bash
-   docker compose -f docker-compose.monitor.yml exec grafana ls -la /etc/grafana/provisioning/datasources
+   docker compose -f docker/observability.yml exec grafana ls -la /etc/grafana/provisioning/datasources
    ```
 
 3. Restart Grafana:
    ```bash
-   docker compose -f docker-compose.monitor.yml restart grafana
+   docker compose -f docker/observability.yml restart grafana
    ```
 
 ## Advanced Configuration
 
 ### Custom Prometheus Retention
 
-Edit `docker-compose.monitor.yml`:
+Edit `docker/observability.yml`:
 
 ```yaml
 prometheus:
@@ -300,7 +300,7 @@ prometheus:
 
 ### Custom Grafana Plugins
 
-Edit `docker-compose.monitor.yml`:
+Edit `docker/observability.yml`:
 
 ```yaml
 grafana:
@@ -310,7 +310,7 @@ grafana:
 
 ### Enable Jaeger Sampling
 
-Edit `docker-compose.monitor.yml`:
+Edit `docker/observability.yml`:
 
 ```yaml
 jaeger:

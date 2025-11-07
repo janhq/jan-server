@@ -155,7 +155,7 @@ If any tests fail, check:
 
 2. **Vector Store Issues**:
    - Verify `VECTOR_STORE_URL` env var inside `mcp-tools` (should be `http://vector-store-mcp:3015`)
-   - Check logs: `docker compose -f docker-compose.mcp.yml logs vector-store-mcp`
+   - Check logs: `docker compose logs vector-store-mcp`
    - Ensure the service is accessible at `http://localhost:3015`
 
 3. **MCP Bridge Issues**:
@@ -165,7 +165,7 @@ If any tests fail, check:
 
 4. **SearXNG Issues**:
    - Check if Redis is running: `docker logs jan-server-redis-searxng-1`
-   - Check SearXNG logs: `docker compose -f docker-compose.mcp.yml logs searxng`
+   - Check SearXNG logs: `docker compose logs searxng`
    - Verify the service is accessible at `http://localhost:8086`
 
 ## 6. Recent Fixes
