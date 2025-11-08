@@ -13,7 +13,9 @@
 #   make up-full        - Start all services (infrastructure + API + MCP)
 #   make health-check   - Check if all services are healthy
 #   make test-all       - Run all integration tests
-#   make down           - Stop all services
+#   make stop           - Stop all services (keeps containers & volumes)
+#   make down           - Stop and remove containers (keeps volumes)
+#   make down-clean     - Stop, remove containers and volumes (full cleanup)
 #
 # ============================================================================================================
 # COMMON COMMANDS
@@ -33,7 +35,9 @@
 #   make up-full                     - Start all services (infra + api + mcp + vllm-gpu)
 #   make up-vllm-gpu                 - Start vLLM GPU inference only
 #   make up-vllm-cpu                 - Start vLLM CPU inference only
-#   make down                        - Stop all services
+#   make stop                        - Stop all services (keeps containers & volumes)
+#   make down                        - Stop and remove containers (keeps volumes)
+#   make down-clean                  - Stop, remove containers and volumes (full cleanup)
 #
 # Development (Hybrid Mode):
 #   make hybrid-dev-api              - Setup for API development (native + Docker)
@@ -436,7 +440,35 @@ logs-vllm:
 
 # --- Full Stack ---
 
-.PHONY: up-full down-full restart-full logs logs-follow
+.PHONY: up-full down-full restart-full logs logs-follow stop down down-clean stop-info
+
+stop-info:
+	@echo ==========================================
+	@echo Stop/Down Commands Comparison
+	@echo ==========================================
+	@echo.
+	@echo make stop
+	@echo   - Stops all services
+	@echo   - Keeps containers (fast restart)
+	@echo   - Keeps volumes
+	@echo   - Keeps networks
+	@echo   - Use: Quick pause during development
+	@echo.
+	@echo make down
+	@echo   - Stops all services
+	@echo   - Removes containers
+	@echo   - Keeps volumes (data preserved)
+	@echo   - Removes networks
+	@echo   - Use: Clean shutdown, data preserved
+	@echo.
+	@echo make down-clean
+	@echo   - Stops all services
+	@echo   - Removes containers
+	@echo   - Removes volumes (data deleted)
+	@echo   - Removes networks
+	@echo   - Use: Complete cleanup, fresh start
+	@echo.
+	@echo ==========================================
 
 up-full:
 	@echo "Starting full stack..."
@@ -462,9 +494,28 @@ down-full:
 restart-full:
 	$(COMPOSE) --profile full restart
 
+stop:
+	@echo "Stopping all services (containers will be preserved)..."
+	$(COMPOSE) --profile full stop
+	@echo "✅ All services stopped (containers preserved)"
+	@echo ""
+	@echo "To restart: make up-full"
+	@echo "To remove containers: make down"
+
 down:
-	$(COMPOSE) down -v
-	@echo "✅ All services stopped and volumes removed"
+	@echo "Stopping and removing all containers (volumes will be preserved)..."
+	$(COMPOSE) --profile full down
+	@echo "✅ All containers stopped and removed (volumes preserved)"
+	@echo ""
+	@echo "To restart: make up-full"
+	@echo "To clean volumes: make down-clean"
+
+down-clean:
+	@echo "Stopping and removing all containers and volumes..."
+	$(COMPOSE) --profile full down -v
+	@echo "✅ All containers and volumes removed (full cleanup)"
+	@echo ""
+	@echo "To restart: make up-full"
 
 logs:
 	$(COMPOSE) logs -f
