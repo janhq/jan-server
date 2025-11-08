@@ -1,7 +1,27 @@
 #!/bin/bash
-# Script to run LLM API service natively while infrastructure runs in Docker
+# Hybrid Run: LLM API (Unix)
+# ---------------------------------------------
+# Purpose: Run the LLM API locally while keeping infra (Postgres, Keycloak, Kong) in Docker.
+# Mirrors functionality of hybrid-run-api.ps1.
+#
+# Prerequisites:
+#   - Docker infrastructure running: make hybrid-infra-up OR docker compose --profile infra up -d
+#   - Go toolchain installed (go >= 1.21)
+#
+# What it does:
+#   1. Validates infra containers (api-db) are Up
+#   2. Ensures llm-api container is not already running
+#   3. Loads hybrid env vars (config/hybrid.env overrides) + localhost URLs
+#   4. Builds and starts ./bin/llm-api
+#
+# Usage:
+#   ./scripts/hybrid-run-api.sh
+#
+# Fast restart:
+#   Ctrl+C then re-run; use 'make stop' or 'make down' to manage Docker state.
+# ---------------------------------------------
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
@@ -25,7 +45,7 @@ fi
 
 # Check if infrastructure is running
 print_info "Checking infrastructure services..."
-if ! docker compose ps | grep -q "postgres.*running"; then
+if ! docker compose ps | grep -qE "api-db.*Up"; then
     print_error "Infrastructure is not running. Start it with:"
     print_info "  docker compose --profile infra up -d"
     exit 1

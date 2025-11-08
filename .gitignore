@@ -110,7 +110,6 @@ models/
 
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 

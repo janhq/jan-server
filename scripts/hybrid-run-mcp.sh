@@ -1,7 +1,24 @@
 #!/bin/bash
-# Script to run MCP Tools service natively while infrastructure runs in Docker
+# Hybrid Run: MCP Tools (Unix)
+# ---------------------------------------------
+# Purpose: Run the MCP Tools locally while keeping MCP infra (searxng, vector-store, sandboxfusion) in Docker.
+# Mirrors functionality of hybrid-run-mcp.ps1.
+#
+# Prerequisites:
+#   - MCP infra running: make hybrid-mcp-up OR docker compose --profile mcp up -d searxng vector-store sandboxfusion
+#   - Go toolchain installed (go >= 1.21)
+#
+# What it does:
+#   1. Validates vector-store container is Up
+#   2. Ensures mcp-tools container is not already running
+#   3. Loads hybrid env vars (config/hybrid.env overrides) + localhost URLs
+#   4. Builds and starts ./bin/mcp-tools
+#
+# Usage:
+#   ./scripts/hybrid-run-mcp.sh
+# ---------------------------------------------
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
@@ -25,7 +42,7 @@ fi
 
 # Check if MCP infrastructure is running
 print_info "Checking MCP infrastructure services..."
-if ! docker compose --profile mcp ps | grep -q "vector-store.*running"; then
+if ! docker compose --profile mcp ps | grep -qE "vector-store.*Up"; then
     print_error "MCP infrastructure is not running. Start it with:"
     print_info "  docker compose --profile mcp up -d searxng vector-store sandboxfusion"
     exit 1
