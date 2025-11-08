@@ -106,7 +106,6 @@ build/
 develop-eggs/
 dist/
 downloads/
-models/
 
 eggs/
 .eggs/
@@ -238,8 +237,6 @@ vendor/
 *.out
 go.work
 
-go.sum
-
 ### Typescript ###
 # typescript specific files
 
@@ -247,6 +244,8 @@ go.sum
 node_modules/
 dist/
 
-
 .DS_Store
 cmd/server/__debug_bin*
+
+# Downloaded models (large files - root directory only)
+/models/
