@@ -46,9 +46,21 @@ postgresql:
     initdb:
       scripts:
         init.sql: |
-          -- Create databases for different services
-          CREATE DATABASE IF NOT EXISTS media_api;
-          CREATE USER IF NOT EXISTS media WITH PASSWORD 'media';
+          \connect postgres
+
+          DO
+          $do$
+          BEGIN
+            IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'media') THEN
+              CREATE ROLE media LOGIN PASSWORD 'media';
+            END IF;
+          END
+          $do$;
+
+          SELECT 'CREATE DATABASE media_api OWNER media'
+          WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'media_api')
+          \gexec
+
           GRANT ALL PRIVILEGES ON DATABASE media_api TO media;
 
 ## ============================================================================

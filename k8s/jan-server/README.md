@@ -94,6 +94,7 @@ The following table lists the configurable parameters and their default values.
 | `mediaApi.image.repository` | Image repository | `jan/media-api` |
 | `mediaApi.image.tag` | Image tag | `latest` |
 | `mediaApi.service.port` | Service port | `8285` |
+| `mediaApi.ingress.enabled` | Enable Media API ingress | `false` |
 | `mediaApi.secrets.s3Endpoint` | S3 endpoint URL | `https://s3.menlo.ai` |
 | `mediaApi.secrets.s3Bucket` | S3 bucket name | `platform-dev` |
 | `mediaApi.secrets.s3AccessKey` | S3 access key | `XXXXX` |
