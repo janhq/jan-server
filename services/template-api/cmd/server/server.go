@@ -13,6 +13,7 @@ import (
 
 	"jan-server/services/template-api/internal/config"
 	domain "jan-server/services/template-api/internal/domain/sample"
+	"jan-server/services/template-api/internal/infrastructure/auth"
 	"jan-server/services/template-api/internal/infrastructure/database"
 	"jan-server/services/template-api/internal/infrastructure/logger"
 	"jan-server/services/template-api/internal/infrastructure/observability"
@@ -80,10 +81,15 @@ func main() {
 		log.Fatal().Err(err).Msg("migrate database")
 	}
 
+	authValidator, err := auth.NewValidator(ctx, cfg, log)
+	if err != nil {
+		log.Fatal().Err(err).Msg("initialize auth validator")
+	}
+
 	sampleRepository := repo.NewPostgresRepository(db)
 	sampleService := domain.NewService(sampleRepository, log)
 
-	httpServer := httpserver.New(cfg, log, sampleService)
+	httpServer := httpserver.New(cfg, log, sampleService, authValidator)
 	app := NewApplication(httpServer, log)
 
 	if err := app.Start(ctx); err != nil {

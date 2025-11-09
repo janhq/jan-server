@@ -3,8 +3,10 @@ module jan-server/services/template-api
 go 1.23.0
 
 require (
+	github.com/MicahParks/keyfunc/v2 v2.1.0
 	github.com/caarlos0/env/v10 v10.0.0
 	github.com/gin-gonic/gin v1.10.0
+	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/google/uuid v1.4.0
 	github.com/google/wire v0.7.0
 	github.com/joho/godotenv v1.5.1

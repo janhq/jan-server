@@ -13,6 +13,7 @@ import (
 	templateapidocs "jan-server/services/template-api/docs/swagger"
 	"jan-server/services/template-api/internal/config"
 	domain "jan-server/services/template-api/internal/domain/sample"
+	"jan-server/services/template-api/internal/infrastructure/auth"
 	"jan-server/services/template-api/internal/interfaces/httpserver/handlers"
 	"jan-server/services/template-api/internal/interfaces/httpserver/routes"
 )
@@ -27,7 +28,7 @@ type HttpServer struct {
 }
 
 // New constructs the HTTP server with default middleware and routes.
-func New(cfg *config.Config, log zerolog.Logger, sampleService domain.Service) *HttpServer {
+func New(cfg *config.Config, log zerolog.Logger, sampleService domain.Service, authValidator *auth.Validator) *HttpServer {
 	if cfg.Environment == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -36,6 +37,9 @@ func New(cfg *config.Config, log zerolog.Logger, sampleService domain.Service) *
 	engine := gin.New()
 	engine.Use(gin.Recovery())
 	engine.Use(gin.Logger())
+	if authValidator != nil {
+		engine.Use(authValidator.Middleware())
+	}
 	handlerProvider := handlers.NewProvider(sampleService)
 	routeProvider := routes.NewProvider(handlerProvider)
 	registerCoreRoutes(engine, cfg, routeProvider)

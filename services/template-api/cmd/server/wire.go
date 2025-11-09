@@ -12,6 +12,7 @@ import (
 
 	"jan-server/services/template-api/internal/config"
 	domain "jan-server/services/template-api/internal/domain/sample"
+	"jan-server/services/template-api/internal/infrastructure/auth"
 	"jan-server/services/template-api/internal/infrastructure/database"
 	"jan-server/services/template-api/internal/infrastructure/logger"
 	repo "jan-server/services/template-api/internal/infrastructure/repository/sample"
@@ -31,6 +32,7 @@ func BuildApplication(ctx context.Context) (*Application, error) {
 		logger.New,
 		newDatabaseConfig,
 		newGormDB,
+		newAuthValidator,
 		sampleSet,
 		httpserver.New,
 		NewApplication,
@@ -57,4 +59,8 @@ func newGormDB(ctx context.Context, cfg database.Config, log zerolog.Logger) (*g
 		return nil, err
 	}
 	return db, nil
+}
+
+func newAuthValidator(ctx context.Context, cfg *config.Config, log zerolog.Logger) (*auth.Validator, error) {
+	return auth.NewValidator(ctx, cfg, log)
 }

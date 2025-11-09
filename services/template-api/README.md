@@ -7,6 +7,7 @@
 - Optional OpenTelemetry tracing.
 - PostgreSQL access via GORM with auto-migrations and seed helpers.
 - Missing databases are auto-created when using standard `postgres://` URLs.
+- Optional Keycloak JWT auth (toggle `AUTH_ENABLED` and set issuer/audience/JWKS).
 - Gin-powered HTTP server with health endpoints.
 - Wire-ready dependency injection entrypoint.
 - Makefile, Dockerfile, and example environment file for local dev.
@@ -29,3 +30,9 @@ Set configuration values in your shell or using `config/example.env`. See `servi
 
 - Point `TEMPLATE_DATABASE_URL` at your PostgreSQL instance (default assumes `postgres:postgres@localhost:5432/template_api`).
 - On startup the service runs GORM auto-migrations for the `samples` table and seeds a single row, which powers the `/v1/sample` endpoint.
+
+## Authentication
+
+- Set `AUTH_ENABLED=true` to require Bearer tokens issued by Keycloak (or any OIDC provider).
+- Provide `AUTH_ISSUER`, `AUTH_AUDIENCE`, and `AUTH_JWKS_URL`; the server caches JWKS keys and rejects missing/invalid tokens.
+- Leave `AUTH_ENABLED=false` for open endpoints during local development.

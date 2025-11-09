@@ -14,6 +14,7 @@ import (
 	logger2 "gorm.io/gorm/logger"
 	"jan-server/services/template-api/internal/config"
 	sample2 "jan-server/services/template-api/internal/domain/sample"
+	"jan-server/services/template-api/internal/infrastructure/auth"
 	"jan-server/services/template-api/internal/infrastructure/database"
 	"jan-server/services/template-api/internal/infrastructure/logger"
 	"jan-server/services/template-api/internal/infrastructure/repository/sample"
@@ -36,7 +37,11 @@ func BuildApplication(ctx context.Context) (*Application, error) {
 	}
 	postgresRepository := sample.NewPostgresRepository(db)
 	service := sample2.NewService(postgresRepository, zerologLogger)
-	httpServer := httpserver.New(configConfig, zerologLogger, service)
+	validator, err := newAuthValidator(ctx, configConfig, zerologLogger)
+	if err != nil {
+		return nil, err
+	}
+	httpServer := httpserver.New(configConfig, zerologLogger, service, validator)
 	application := NewApplication(httpServer, zerologLogger)
 	return application, nil
 }
@@ -64,4 +69,8 @@ func newGormDB(ctx context.Context, cfg database.Config, log zerolog.Logger) (*g
 		return nil, err
 	}
 	return db, nil
+}
+
+func newAuthValidator(ctx context.Context, cfg *config.Config, log zerolog.Logger) (*auth.Validator, error) {
+	return auth.NewValidator(ctx, cfg, log)
 }

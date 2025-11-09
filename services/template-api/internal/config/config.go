@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/caarlos0/env/v10"
@@ -20,6 +21,10 @@ type Config struct {
 	DBMaxIdleConns  int           `env:"DB_MAX_IDLE_CONNS" envDefault:"5"`
 	DBMaxOpenConns  int           `env:"DB_MAX_OPEN_CONNS" envDefault:"15"`
 	DBConnLifetime  time.Duration `env:"DB_CONN_MAX_LIFETIME" envDefault:"30m"`
+	AuthEnabled     bool          `env:"AUTH_ENABLED" envDefault:"false"`
+	AuthIssuer      string        `env:"AUTH_ISSUER"`
+	AuthAudience    string        `env:"AUTH_AUDIENCE"`
+	AuthJWKSURL     string        `env:"AUTH_JWKS_URL"`
 }
 
 // Load parses environment variables into Config.
@@ -27,6 +32,18 @@ func Load() (*Config, error) {
 	cfg := &Config{}
 	if err := env.Parse(cfg); err != nil {
 		return nil, fmt.Errorf("parse env config: %w", err)
+	}
+
+	if cfg.AuthEnabled {
+		if strings.TrimSpace(cfg.AuthIssuer) == "" {
+			return nil, fmt.Errorf("AUTH_ISSUER is required when AUTH_ENABLED is true")
+		}
+		if strings.TrimSpace(cfg.AuthAudience) == "" {
+			return nil, fmt.Errorf("AUTH_AUDIENCE is required when AUTH_ENABLED is true")
+		}
+		if strings.TrimSpace(cfg.AuthJWKSURL) == "" {
+			return nil, fmt.Errorf("AUTH_JWKS_URL is required when AUTH_ENABLED is true")
+		}
 	}
 	return cfg, nil
 }
