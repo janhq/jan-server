@@ -1,0 +1,61 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "Reference Go microservice skeleton for Jan Server",
+        "title": "Template API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "basePath": "/",
+    "paths": {
+        "/v1/sample": {
+            "get": {
+                "description": "Demonstrates route -\u003e handler -\u003e domain -\u003e repository wiring.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sample"
+                ],
+                "summary": "Fetch sample payload",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/v1.sampleResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/v1.errorResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "v1.errorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                }
+            }
+        },
+        "v1.sampleResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "example": "sample-2"
+                },
+                "message": {
+                    "type": "string",
+                    "example": "Customize this implementation for real data sources"
+                }
+            }
+        }
+    }
+}

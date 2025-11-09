@@ -71,6 +71,12 @@ jan-server/
 └── Makefile          # Build & run commands
 ```
 
+## Service Template
+
+- `services/template-api` provides a Go microservice skeleton with config, logging, tracing, HTTP server, Makefile, and Dockerfile.
+- Run `scripts/new-service-from-template.ps1 -Name my-service` to clone the template with placeholders replaced.
+- See `docs/guides/services-template.md` and `services/template-api/NEW_SERVICE_GUIDE.md` for detailed instructions.
+
 ## Development
 
 ### Quick Commands

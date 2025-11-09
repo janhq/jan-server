@@ -36,6 +36,7 @@ Services will be available at: http://localhost:8000
 - 🧪 [Testing Guide](guides/testing.md) - Running tests
 - 🔄 [Hybrid Mode](guides/hybrid-mode.md) - Hybrid development setup
 - 📊 [Monitoring](guides/monitoring.md) - Observability and monitoring
+- 🧱 [Service Template](guides/services-template.md) - Clone the Go microservice scaffold
 
 ### For API Consumers
 - 📡 [LLM API](api/llm-api/) - Chat completions and conversations
