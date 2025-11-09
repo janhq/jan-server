@@ -34,6 +34,7 @@ NC='\033[0m' # No Color
 # Directories
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LLM_API_DIR="$ROOT_DIR/services/llm-api"
+MEDIA_API_DIR="$ROOT_DIR/services/media-api"
 MCP_TOOLS_DIR="$ROOT_DIR/services/mcp-tools"
 
 missing_any=0
@@ -52,6 +53,23 @@ if [ -f "./docs/swagger/swagger.json" ]; then
   echo -e "${GREEN}✓ llm-api swagger generated successfully${NC}"
 else
   echo -e "${YELLOW}⚠ llm-api swagger.json not found${NC}"
+  missing_any=1
+fi
+
+# Generate swagger for media-api
+echo -e "${BLUE}dY\"? Generating swagger for media-api service...${NC}"
+cd "$MEDIA_API_DIR"
+swag init \
+  --dir ./cmd/server,./internal/interfaces/httpserver/routes \
+  --generalInfo server.go \
+  --output ./docs/swagger \
+  --parseDependency \
+  --parseInternal
+
+if [ -f "./docs/swagger/swagger.json" ]; then
+  echo -e "${GREEN}✅ media-api swagger generated successfully${NC}"
+else
+  echo -e "${YELLOW}⚠ media-api swagger.json not found${NC}"
   missing_any=1
 fi
 
@@ -77,6 +95,7 @@ echo -e "${GREEN}✅ Swagger generation complete!${NC}"
 echo ""
 echo "Generated files:"
 echo "  - $LLM_API_DIR/docs/swagger/swagger.json (LLM API service)"
+echo "  - $MEDIA_API_DIR/docs/swagger/swagger.json (Media API service)"
 echo "  - $MCP_TOOLS_DIR/docs/swagger/swagger.json (MCP Tools service)"
 if [ -f "$LLM_API_DIR/docs/swagger/swagger-combined.json" ]; then
   echo "  - $LLM_API_DIR/docs/swagger/swagger-combined.json (Combined spec)"
@@ -86,6 +105,7 @@ fi
 echo ""
 echo "View the API documentation:"
 echo "  - LLM API: http://localhost:8080/api/swagger/index.html"
+echo "  - Media API: http://localhost:8285/swagger/index.html"
 echo ""
 
 # Optionally merge if both exist and combine tool present

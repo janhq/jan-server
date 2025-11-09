@@ -1,0 +1,449 @@
+# Default values for jan-server
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+## Global settings
+global:
+  ## Image registry for all images
+  imageRegistry: ""
+  ## Image pull secrets
+  imagePullSecrets: []
+  storageClass: ""
+
+## Common labels to add to all resources
+commonLabels: {}
+
+## Common annotations to add to all resources
+commonAnnotations: {}
+
+## Service account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+## ============================================================================
+## PostgreSQL Database (using Bitnami chart)
+## ============================================================================
+postgresql:
+  enabled: true
+  auth:
+    username: jan_user
+    password: jan_password
+    database: jan_llm_api
+    postgresPassword: postgres
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 250m
+      limits:
+        memory: 512Mi
+        cpu: 500m
+    initdb:
+      scripts:
+        init.sql: |
+          -- Create databases for different services
+          CREATE DATABASE IF NOT EXISTS media_api;
+          CREATE USER IF NOT EXISTS media WITH PASSWORD 'media';
+          GRANT ALL PRIVILEGES ON DATABASE media_api TO media;
+
+## ============================================================================
+## Redis (for SearXNG and caching)
+## ============================================================================
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: false
+    resources:
+      requests:
+        memory: 128Mi
+        cpu: 100m
+      limits:
+        memory: 256Mi
+        cpu: 200m
+
+## ============================================================================
+## Keycloak Authentication Server
+## ============================================================================
+keycloak:
+  enabled: true
+  replicaCount: 1
+  
+  image:
+    registry: docker.io
+    repository: jan/keycloak
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 8085
+    targetPort: 8085
+  
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts:
+      - host: auth.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+  
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 250m
+    limits:
+      memory: 1Gi
+      cpu: 500m
+  
+  env:
+    - name: KC_DB
+      value: postgres
+    - name: KC_DB_URL_HOST
+      value: "{{ .Release.Name }}-postgresql"
+    - name: KC_DB_USERNAME
+      value: keycloak
+    - name: KC_DB_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: "{{ .Release.Name }}-keycloak-secret"
+          key: password
+    - name: KC_DB_URL_DATABASE
+      value: keycloak
+    - name: KC_FEATURES
+      value: token-exchange
+    - name: KC_HTTP_PORT
+      value: "8085"
+    - name: KC_HOSTNAME_STRICT_HTTPS
+      value: "false"
+    - name: KEYCLOAK_ADMIN
+      value: admin
+    - name: KEYCLOAK_ADMIN_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: "{{ .Release.Name }}-keycloak-secret"
+          key: admin-password
+  
+  admin:
+    username: admin
+    password: changeme  # Override in production
+  
+  database:
+    password: keycloak  # Override in production
+
+## ============================================================================
+## Kong API Gateway
+## ============================================================================
+kong:
+  enabled: true
+  replicaCount: 1
+  
+  image:
+    registry: docker.io
+    repository: kong
+    tag: "3.5"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: LoadBalancer
+    port: 8000
+    targetPort: 8000
+  
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts:
+      - host: api.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+  
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 256Mi
+      cpu: 200m
+  
+  config:
+    # Kong configuration will be mounted from ConfigMap
+
+## ============================================================================
+## LLM API Service
+## ============================================================================
+llmApi:
+  enabled: true
+  replicaCount: 2
+  
+  image:
+    registry: docker.io
+    repository: jan/llm-api
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 8080
+    targetPort: 8080
+  
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts:
+      - host: llm-api.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+  
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+  
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 80
+  
+  env:
+    HTTP_PORT: "8080"
+    LOG_LEVEL: info
+    LOG_FORMAT: json
+    AUTO_MIGRATE: "true"
+    OTEL_ENABLED: "false"
+    JAN_DEFAULT_NODE_SETUP: "true"
+    JAN_DEFAULT_NODE_URL: "http://localhost:8001/v1"
+  
+  secrets:
+    # Database connection
+    dbDsn: "postgres://jan_user:jan_password@{{ .Release.Name }}-postgresql:5432/jan_llm_api?sslmode=disable"
+
+## ============================================================================
+## Media API Service
+## ============================================================================
+mediaApi:
+  enabled: true
+  replicaCount: 2
+  
+  image:
+    registry: docker.io
+    repository: jan/media-api
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 8285
+    targetPort: 8285
+  
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts:
+      - host: media-api.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+  
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+  
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+  
+  env:
+    MEDIA_API_PORT: "8285"
+    MEDIA_MAX_BYTES: "20971520"
+    MEDIA_PROXY_DOWNLOAD: "true"
+    MEDIA_RETENTION_DAYS: "30"
+    MEDIA_REMOTE_FETCH_TIMEOUT: "15s"
+    MEDIA_S3_PRESIGN_TTL: "5m"
+    MEDIA_S3_USE_PATH_STYLE: "true"
+    MEDIA_S3_REGION: "us-west-2"
+  
+  secrets:
+    # Database connection
+    databaseUrl: "postgres://media:media@{{ .Release.Name }}-postgresql:5432/media_api?sslmode=disable"
+    # S3 credentials
+    serviceKey: changeme-media-key
+    s3Endpoint: https://s3.menlo.ai
+    s3Bucket: platform-dev
+    s3AccessKey: XXXXX
+    s3SecretKey: YYYY
+
+## ============================================================================
+## MCP Tools Service
+## ============================================================================
+mcpTools:
+  enabled: true
+  replicaCount: 2
+  
+  image:
+    registry: docker.io
+    repository: jan/mcp-tools
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 8091
+    targetPort: 8091
+  
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts:
+      - host: mcp-tools.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+  
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+  
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+  
+  env:
+    HTTP_PORT: "8091"
+    LOG_LEVEL: info
+    LOG_FORMAT: json
+  
+  secrets:
+    serperApiKey: ""
+
+## ============================================================================
+## SearXNG Meta Search Engine
+## ============================================================================
+searxng:
+  enabled: true
+  replicaCount: 1
+  
+  image:
+    registry: docker.io
+    repository: searxng/searxng
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 8080
+    targetPort: 8080
+  
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 256Mi
+      cpu: 200m
+  
+  env:
+    SEARXNG_BASE_URL: "http://localhost:8086/"
+
+## ============================================================================
+## Vector Store Service
+## ============================================================================
+vectorStore:
+  enabled: true
+  replicaCount: 1
+  
+  image:
+    registry: docker.io
+    repository: jan/vector-store
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 3015
+    targetPort: 3015
+  
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 256Mi
+      cpu: 200m
+  
+  env:
+    VECTOR_STORE_PORT: "3015"
+
+## ============================================================================
+## SandboxFusion Code Interpreter
+## ============================================================================
+sandboxfusion:
+  enabled: true
+  replicaCount: 1
+  
+  image:
+    registry: docker.io
+    repository: volcengine/sandbox-fusion
+    tag: "server-20250609"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 8080
+    targetPort: 8080
+  
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 200m
+    limits:
+      memory: 512Mi
+      cpu: 400m
+
+## ============================================================================
+## Monitoring (Optional)
+## ============================================================================
+monitoring:
+  enabled: false
+  prometheus:
+    enabled: false
+  grafana:
+    enabled: false
+  jaeger:
+    enabled: false

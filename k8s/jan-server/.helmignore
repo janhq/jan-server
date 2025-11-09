@@ -1,0 +1,12 @@
+# Patterns to ignore when building packages
+*.md
+.git/
+.gitignore
+.helmignore
+OWNERS
+examples/
+test/
+*.bak
+*.tmp
+*~
+.DS_Store

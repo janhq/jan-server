@@ -1,0 +1,45 @@
+{{- if .Values.llmApi.enabled }}
+{{- if .Values.llmApi.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "jan-server.fullname" . }}-llm-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "jan-server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: llm-api
+  {{- with .Values.llmApi.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.llmApi.ingress.className }}
+  ingressClassName: {{ .Values.llmApi.ingress.className }}
+  {{- end }}
+  {{- if .Values.llmApi.ingress.tls }}
+  tls:
+    {{- range .Values.llmApi.ingress.tls }}
+    - hosts:
+        {{- range .hosts }}
+        - {{ . | quote }}
+        {{- end }}
+      secretName: {{ .secretName }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- range .Values.llmApi.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "jan-server.fullname" $ }}-llm-api
+                port:
+                  number: {{ $.Values.llmApi.service.port }}
+          {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }}

@@ -23,6 +23,26 @@ export LOG_FORMAT="console"
 export AUTO_MIGRATE="true"
 EOF
             ;;
+        media-api|media)
+            cat << 'EOF'
+export MEDIA_DATABASE_URL="postgres://media:media@localhost:5432/media_api?sslmode=disable"
+export MEDIA_SERVICE_KEY="changeme-media-key"
+export MEDIA_API_KEY="changeme-media-key"
+export MEDIA_API_PORT="8285"
+export MEDIA_API_URL="http://localhost:8285"
+export MEDIA_S3_ENDPOINT="https://s3.menlo.ai"
+export MEDIA_S3_REGION="us-west-2"
+export MEDIA_S3_BUCKET="platform-dev"
+export MEDIA_S3_ACCESS_KEY="XXXXX"
+export MEDIA_S3_SECRET_KEY="YYYY"
+export MEDIA_S3_USE_PATH_STYLE="true"
+export MEDIA_S3_PRESIGN_TTL="5m"
+export MEDIA_MAX_BYTES="20971520"
+export MEDIA_PROXY_DOWNLOAD="true"
+export MEDIA_RETENTION_DAYS="30"
+export MEDIA_REMOTE_FETCH_TIMEOUT="15s"
+EOF
+            ;;
         mcp-tools|mcp)
             cat << 'EOF'
 export HTTP_PORT="8091"
@@ -35,7 +55,7 @@ EOF
             ;;
         *)
             print_error "Unknown service: $service"
-            print_info "Available services: llm-api, mcp-tools"
+            print_info "Available services: llm-api, media-api, mcp-tools"
             return 1
             ;;
     esac
@@ -67,6 +87,26 @@ load_hybrid_env() {
         llm-api|api)
             export HTTP_PORT="8080"
             export LOG_LEVEL="debug"
+            ;;
+        media-api|media)
+            export MEDIA_DATABASE_URL="${MEDIA_DATABASE_URL:-postgres://media:media@localhost:5432/media_api?sslmode=disable}"
+            export MEDIA_SERVICE_KEY="${MEDIA_SERVICE_KEY:-changeme-media-key}"
+            export MEDIA_API_KEY="${MEDIA_API_KEY:-$MEDIA_SERVICE_KEY}"
+            local media_port="${MEDIA_API_PORT:-8285}"
+            export MEDIA_API_PORT="$media_port"
+            export MEDIA_API_URL="${MEDIA_API_URL:-http://localhost:$media_port}"
+            export MEDIA_S3_ENDPOINT="${MEDIA_S3_ENDPOINT:-https://s3.menlo.ai}"
+            export MEDIA_S3_REGION="${MEDIA_S3_REGION:-us-west-2}"
+            export MEDIA_S3_BUCKET="${MEDIA_S3_BUCKET:-platform-dev}"
+            export MEDIA_S3_ACCESS_KEY="${MEDIA_S3_ACCESS_KEY:-XXXXX}"
+            export MEDIA_S3_SECRET_KEY="${MEDIA_S3_SECRET_KEY:-YYYY}"
+            export MEDIA_S3_USE_PATH_STYLE="${MEDIA_S3_USE_PATH_STYLE:-true}"
+            export MEDIA_S3_PRESIGN_TTL="${MEDIA_S3_PRESIGN_TTL:-5m}"
+            export MEDIA_MAX_BYTES="${MEDIA_MAX_BYTES:-20971520}"
+            export MEDIA_PROXY_DOWNLOAD="${MEDIA_PROXY_DOWNLOAD:-true}"
+            export MEDIA_RETENTION_DAYS="${MEDIA_RETENTION_DAYS:-30}"
+            export MEDIA_REMOTE_FETCH_TIMEOUT="${MEDIA_REMOTE_FETCH_TIMEOUT:-15s}"
+            export LOG_LEVEL="${LOG_LEVEL:-debug}"
             ;;
         mcp-tools|mcp)
             export HTTP_PORT="8091"

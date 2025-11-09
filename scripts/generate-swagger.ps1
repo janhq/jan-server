@@ -9,6 +9,7 @@ Write-Host "Generating Swagger documentation for Jan Server..." -ForegroundColor
 # Directories
 $ROOT_DIR = Split-Path -Parent $PSScriptRoot
 $LLM_API_DIR = Join-Path (Join-Path $ROOT_DIR "services") "llm-api"
+$MEDIA_API_DIR = Join-Path (Join-Path $ROOT_DIR "services") "media-api"
 $MCP_TOOLS_DIR = Join-Path (Join-Path $ROOT_DIR "services") "mcp-tools"
 
 # Generate swagger for llm-api
@@ -49,9 +50,26 @@ Write-Host ""
 Write-Host "Generated files:"
 Write-Host "  - $LLM_API_DIR/docs/swagger/swagger.json (LLM API service)"
 Write-Host "  - $LLM_API_DIR/docs/swagger/swagger-combined.json (Combined spec)"
+Write-Host "  - $MEDIA_API_DIR/docs/swagger/swagger.json (Media API service)"
 Write-Host "  - $MCP_TOOLS_DIR/docs/swagger/swagger.json (MCP Tools service)"
 Write-Host ""
 Write-Host "View the API documentation:"
 Write-Host "  - LLM API: http://localhost:8080/api/swagger/index.html"
+Write-Host "  - Media API: http://localhost:8285/swagger/index.html"
 Write-Host ""
 
+# Generate swagger for media-api
+Write-Host "Generating swagger for media-api service..." -ForegroundColor Blue
+Push-Location $MEDIA_API_DIR
+try {
+    & swag init --dir ./cmd/server,./internal/interfaces/httpserver/routes --generalInfo server.go --output ./docs/swagger --parseDependency --parseInternal
+
+    $mediaApiSwagger = Join-Path (Join-Path (Join-Path $MEDIA_API_DIR "docs") "swagger") "swagger.json"
+    if (Test-Path $mediaApiSwagger) {
+        Write-Host "OK media-api swagger generated successfully" -ForegroundColor Green
+    } else {
+        Write-Host "WARNING media-api swagger.json not found" -ForegroundColor Yellow
+    }
+} finally {
+    Pop-Location
+}

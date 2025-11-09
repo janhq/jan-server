@@ -1,0 +1,27 @@
+apiVersion: v2
+name: jan-server
+description: A Helm chart for Jan Server - LLM API Platform with MCP Tools
+type: application
+version: 1.0.0
+appVersion: "2.0.0"
+keywords:
+  - llm
+  - api
+  - mcp
+  - keycloak
+  - media
+maintainers:
+  - name: Jan Team
+    email: support@jan.ai
+home: https://github.com/janhq/jan-server
+sources:
+  - https://github.com/janhq/jan-server
+dependencies:
+  - name: postgresql
+    version: "~15.2.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+  - name: redis
+    version: "~19.0.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled

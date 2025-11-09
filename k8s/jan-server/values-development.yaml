@@ -1,0 +1,173 @@
+# Development values for Jan Server
+# Minimal resource allocation for local development
+
+global:
+  storageClass: "standard"
+  imagePullSecrets: []
+
+## PostgreSQL - Development Configuration
+postgresql:
+  enabled: true
+  auth:
+    username: jan_user
+    password: "devpassword"
+    database: jan_llm_api
+  primary:
+    persistence:
+      enabled: true
+      size: 5Gi
+    resources:
+      requests:
+        memory: 128Mi
+        cpu: 100m
+      limits:
+        memory: 256Mi
+        cpu: 200m
+
+## Redis - Development Configuration
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: false
+    resources:
+      requests:
+        memory: 64Mi
+        cpu: 50m
+      limits:
+        memory: 128Mi
+        cpu: 100m
+
+## Keycloak - Development Configuration
+keycloak:
+  enabled: true
+  replicaCount: 1
+  admin:
+    username: admin
+    password: "admin"
+  database:
+    password: "keycloak"
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 250m
+
+## Kong - Development Configuration
+kong:
+  enabled: true
+  replicaCount: 1
+  service:
+    type: ClusterIP  # Use port-forward for local access
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 50m
+    limits:
+      memory: 128Mi
+      cpu: 100m
+
+## LLM API - Development Configuration
+llmApi:
+  enabled: true
+  replicaCount: 1
+  image:
+    tag: "latest"
+    pullPolicy: Always
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 256Mi
+      cpu: 250m
+  autoscaling:
+    enabled: false
+  env:
+    LOG_LEVEL: debug
+    LOG_FORMAT: console
+    AUTO_MIGRATE: "true"
+    OTEL_ENABLED: "false"
+
+## Media API - Development Configuration
+mediaApi:
+  enabled: true
+  replicaCount: 1
+  image:
+    tag: "latest"
+    pullPolicy: Always
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 256Mi
+      cpu: 250m
+  autoscaling:
+    enabled: false
+  env:
+    MEDIA_MAX_BYTES: "10485760"  # 10MB
+    MEDIA_RETENTION_DAYS: "7"
+  secrets:
+    serviceKey: "dev-media-key"
+
+## MCP Tools - Development Configuration
+mcpTools:
+  enabled: true
+  replicaCount: 1
+  image:
+    tag: "latest"
+    pullPolicy: Always
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 256Mi
+      cpu: 250m
+  autoscaling:
+    enabled: false
+  secrets:
+    serperApiKey: ""
+
+## Supporting Services - Development Configuration
+searxng:
+  enabled: true
+  replicaCount: 1
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 50m
+    limits:
+      memory: 128Mi
+      cpu: 100m
+
+vectorStore:
+  enabled: true
+  replicaCount: 1
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 50m
+    limits:
+      memory: 128Mi
+      cpu: 100m
+
+sandboxfusion:
+  enabled: true
+  replicaCount: 1
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 256Mi
+      cpu: 200m
+
+## Monitoring - Disabled for Development
+monitoring:
+  enabled: false

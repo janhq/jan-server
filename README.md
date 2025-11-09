@@ -16,6 +16,7 @@ make setup && make up-full
 - API Gateway: http://localhost:8000
 - API Documentation: http://localhost:8000/v1/swagger/
 - Keycloak Console: http://localhost:8085
+- Media API: http://localhost:8285 (send `X-Media-Service-Key`)
 
 **Full setup guide**: [Getting Started →](docs/getting-started/README.md)
 
@@ -70,6 +71,10 @@ jan-server/
 ├── keycloak/         # Auth server config
 └── Makefile          # Build & run commands
 ```
+
+Additional microservices:
+
+- `services/media-api` – shared media ingestion/resolution service backing jan_* IDs and S3 storage.
 
 ## Service Template
 

@@ -1,0 +1,681 @@
+{
+  "info": {
+    "name": "Media API Automation",
+    "description": "Comprehensive Postman collection for media-api endpoints including upload, deduplication, resolution, presigning, and download flows. Adjust collection variables (media_api_url, media_service_key) to match your environment before running with newman.",
+    "_postman_id": "media-api-automation-collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{media_api_url}}/healthz",
+          "host": [
+            "{{media_api_url}}"
+          ],
+          "path": [
+            "healthz"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('health status is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test('body reports ok', function () {",
+              "    var data = pm.response.json();",
+              "    pm.expect(data.status).to.eql('ok');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Prepare Upload (Get Presigned URL)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"mime_type\": \"image/png\",\n  \"user_id\": \"automation\"\n}"
+        },
+        "url": {
+          "raw": "{{media_api_url}}/v1/media/prepare-upload",
+          "host": [
+            "{{media_api_url}}"
+          ],
+          "path": [
+            "v1",
+            "media",
+            "prepare-upload"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('prepare upload successful', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var data = pm.response.json();",
+              "",
+              "pm.test('response contains jan_id', function () {",
+              "    pm.expect(data).to.have.property('id');",
+              "    pm.expect(data.id).to.match(/^jan_[a-z0-9]+$/);",
+              "});",
+              "",
+              "pm.test('response contains presigned upload URL', function () {",
+              "    pm.expect(data).to.have.property('upload_url');",
+              "    pm.expect(data.upload_url).to.be.a('string');",
+              "    pm.expect(data.upload_url).to.match(/https?:\\/\\//);",
+              "});",
+              "",
+              "pm.test('response contains mime type', function () {",
+              "    pm.expect(data).to.have.property('mime_type');",
+              "    pm.expect(data.mime_type).to.eql('image/png');",
+              "});",
+              "",
+              "pm.test('response contains expires_in', function () {",
+              "    pm.expect(data).to.have.property('expires_in');",
+              "    pm.expect(data.expires_in).to.be.a('number').above(0);",
+              "});",
+              "",
+              "// Store for client-side upload simulation",
+              "if (data.id && data.upload_url) {",
+              "    pm.collectionVariables.set('presigned_upload_id', data.id);",
+              "    pm.collectionVariables.set('presigned_upload_url', data.upload_url);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Ingest Media (Remote URL)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"source\": {\n    \"type\": \"remote_url\",\n    \"url\": \"https://placekitten.com/256/256\"\n  },\n  \"filename\": \"kitten.png\",\n  \"user_id\": \"automation\"\n}"
+        },
+        "url": {
+          "raw": "{{media_api_url}}/v1/media",
+          "host": [
+            "{{media_api_url}}"
+          ],
+          "path": [
+            "v1",
+            "media"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('upload successful', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var data = pm.response.json();",
+              "",
+              "pm.test('response contains media id', function () {",
+              "    pm.expect(data).to.have.property('id');",
+              "    pm.expect(data.id).to.be.a('string');",
+              "    pm.expect(data.id).to.match(/^jan_[a-z0-9]+$/);",
+              "});",
+              "",
+              "pm.test('response contains mime type', function () {",
+              "    pm.expect(data).to.have.property('mime');",
+              "    pm.expect(data.mime).to.match(/^image\\//);",
+              "});",
+              "",
+              "pm.test('response contains bytes size', function () {",
+              "    pm.expect(data).to.have.property('bytes');",
+              "    pm.expect(data.bytes).to.be.above(0);",
+              "});",
+              "",
+              "pm.test('response indicates deduplication status', function () {",
+              "    pm.expect(data).to.have.property('deduped');",
+              "    pm.expect(data.deduped).to.be.a('boolean');",
+              "});",
+              "",
+              "pm.test('response contains presigned URL', function () {",
+              "    pm.expect(data).to.have.property('presigned_url');",
+              "    if (data.presigned_url) {",
+              "        pm.expect(data.presigned_url).to.be.a('string');",
+              "        pm.expect(data.presigned_url).to.match(/https?:\\/\\//);",
+              "    }",
+              "});",
+              "",
+              "// Store the media ID for subsequent tests",
+              "if (data.id) {",
+              "    pm.collectionVariables.set('latest_media_id', data.id);",
+              "    pm.collectionVariables.set('latest_media_mime', data.mime);",
+              "    pm.collectionVariables.set('latest_media_bytes', data.bytes);",
+              "    if (data.presigned_url) {",
+              "        pm.collectionVariables.set('latest_presigned_url', data.presigned_url);",
+              "    }",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Ingest Media (Data URL)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"source\": {\n    \"type\": \"data_url\",\n    \"data_url\": \"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==\"\n  },\n  \"filename\": \"test-pixel.png\",\n  \"user_id\": \"automation\"\n}"
+        },
+        "url": {
+          "raw": "{{media_api_url}}/v1/media",
+          "host": [
+            "{{media_api_url}}"
+          ],
+          "path": [
+            "v1",
+            "media"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('upload successful', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var data = pm.response.json();",
+              "",
+              "pm.test('response contains media id', function () {",
+              "    pm.expect(data).to.have.property('id');",
+              "    pm.expect(data.id).to.match(/^jan_[a-z0-9]+$/);",
+              "});",
+              "",
+              "pm.test('mime type is image', function () {",
+              "    pm.expect(data.mime).to.match(/^image\\//);",
+              "});",
+              "",
+              "pm.test('presigned URL provided', function () {",
+              "    pm.expect(data).to.have.property('presigned_url');",
+              "    if (data.presigned_url) {",
+              "        pm.expect(data.presigned_url).to.match(/https?:\\/\\//);",
+              "    }",
+              "});",
+              "",
+              "// Store for deduplication test",
+              "pm.collectionVariables.set('dataurl_media_id', data.id);",
+              "pm.collectionVariables.set('dataurl_deduped_first', data.deduped);"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Test Deduplication (Upload Same Data URL)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"source\": {\n    \"type\": \"data_url\",\n    \"data_url\": \"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==\"\n  },\n  \"filename\": \"test-pixel-duplicate.png\",\n  \"user_id\": \"automation\"\n}"
+        },
+        "url": {
+          "raw": "{{media_api_url}}/v1/media",
+          "host": [
+            "{{media_api_url}}"
+          ],
+          "path": [
+            "v1",
+            "media"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('upload successful', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var data = pm.response.json();",
+              "var firstId = pm.collectionVariables.get('dataurl_media_id');",
+              "",
+              "pm.test('deduplication returns same id', function () {",
+              "    pm.expect(data.id).to.eql(firstId);",
+              "});",
+              "",
+              "pm.test('deduped flag is true', function () {",
+              "    pm.expect(data.deduped).to.be.true;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Resolve Payload with jan_* Placeholder",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"payload\": {\n    \"messages\": [\n      {\n        \"role\": \"user\",\n        \"content\": [\n          {\n            \"type\": \"text\",\n            \"text\": \"What's in this image?\"\n          },\n          {\n            \"type\": \"image_url\",\n            \"image_url\": {\n              \"url\": \"data:image/png;{{latest_media_id}}\"\n            }\n          }\n        ]\n      }\n    ]\n  }\n}"
+        },
+        "url": {
+          "raw": "{{media_api_url}}/v1/media/resolve",
+          "host": [
+            "{{media_api_url}}"
+          ],
+          "path": [
+            "v1",
+            "media",
+            "resolve"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('resolve successful', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var data = pm.response.json();",
+              "",
+              "pm.test('payload is returned', function () {",
+              "    pm.expect(data).to.have.property('payload');",
+              "    pm.expect(data.payload).to.be.an('object');",
+              "});",
+              "",
+              "pm.test('jan_* placeholder replaced with signed URL', function () {",
+              "    var payload = JSON.stringify(data.payload);",
+              "    pm.expect(payload).to.not.include('jan_');",
+              "    pm.expect(payload).to.match(/https?:\\/\\//);",
+              "});",
+              "",
+              "pm.test('messages structure preserved', function () {",
+              "    pm.expect(data.payload.messages).to.be.an('array');",
+              "    pm.expect(data.payload.messages[0]).to.have.property('content');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Proxy Download (Direct Stream)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}"
+          }
+        ],
+        "url": {
+          "raw": "{{media_api_url}}/v1/media/{{latest_media_id}}",
+          "host": [
+            "{{media_api_url}}"
+          ],
+          "path": [
+            "v1",
+            "media",
+            "{{latest_media_id}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('download successful', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('content-type header is set', function () {",
+              "    var contentType = pm.response.headers.get('Content-Type');",
+              "    pm.expect(contentType).to.exist;",
+              "    // Could be direct binary stream or presigned URL response",
+              "    pm.expect(contentType).to.match(/(image\\/|application\\/json)/);",
+              "});",
+              "",
+              "// If PROXY_DOWNLOAD=false, we get JSON with presigned URL",
+              "if (pm.response.headers.get('Content-Type').includes('application/json')) {",
+              "    pm.test('presigned URL returned', function () {",
+              "        var data = pm.response.json();",
+              "        pm.expect(data).to.have.property('url');",
+              "        pm.expect(data.url).to.match(/https?:\\/\\//);",
+              "        pm.collectionVariables.set('latest_presigned_url', data.url);",
+              "    });",
+              "} else {",
+              "    pm.test('binary data received', function () {",
+              "        pm.expect(pm.response).to.have.property('stream');",
+              "    });",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Get Nonexistent Media (404 Test)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}"
+          }
+        ],
+        "url": {
+          "raw": "{{media_api_url}}/v1/media/jan_nonexistent123",
+          "host": [
+            "{{media_api_url}}"
+          ],
+          "path": [
+            "v1",
+            "media",
+            "jan_nonexistent123"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns 404 for nonexistent media', function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "",
+              "pm.test('error message provided', function () {",
+              "    var data = pm.response.json();",
+              "    pm.expect(data).to.have.property('error');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Ingest Invalid Source Type (Error Test)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"source\": {\n    \"type\": \"invalid_type\",\n    \"url\": \"https://example.com/image.png\"\n  },\n  \"user_id\": \"automation\"\n}"
+        },
+        "url": {
+          "raw": "{{media_api_url}}/v1/media",
+          "host": [
+            "{{media_api_url}}"
+          ],
+          "path": [
+            "v1",
+            "media"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns 400 for invalid source type', function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test('error message provided', function () {",
+              "    var data = pm.response.json();",
+              "    pm.expect(data).to.have.property('error');",
+              "    pm.expect(data.error).to.include('unknown source type');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Ingest Without Auth Key (401 Test)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"source\": {\n    \"type\": \"remote_url\",\n    \"url\": \"https://placekitten.com/128/128\"\n  },\n  \"user_id\": \"automation\"\n}"
+        },
+        "url": {
+          "raw": "{{media_api_url}}/v1/media",
+          "host": [
+            "{{media_api_url}}"
+          ],
+          "path": [
+            "v1",
+            "media"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns 401 without auth key', function () {",
+              "    pm.response.to.have.status(401);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Resolve Payload Without Placeholders",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"payload\": {\n    \"messages\": [\n      {\n        \"role\": \"user\",\n        \"content\": \"Hello, this message has no media placeholders.\"\n      }\n    ]\n  }\n}"
+        },
+        "url": {
+          "raw": "{{media_api_url}}/v1/media/resolve",
+          "host": [
+            "{{media_api_url}}"
+          ],
+          "path": [
+            "v1",
+            "media",
+            "resolve"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('resolve successful', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var data = pm.response.json();",
+              "",
+              "pm.test('payload returned unchanged', function () {",
+              "    pm.expect(data.payload).to.deep.equal({",
+              "        messages: [{",
+              "            role: 'user',",
+              "            content: 'Hello, this message has no media placeholders.'",
+              "        }]",
+              "    });",
+              "});"
+            ]
+          }
+        }
+      ],
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "media_api_url",
+      "value": "http://localhost:8285"
+    },
+    {
+      "key": "media_service_key",
+      "value": "changeme-media-key"
+    },
+    {
+      "key": "latest_media_id",
+      "value": ""
+    },
+    {
+      "key": "latest_media_mime",
+      "value": ""
+    },
+    {
+      "key": "latest_media_bytes",
+      "value": ""
+    },
+    {
+      "key": "dataurl_media_id",
+      "value": ""
+    },
+    {
+      "key": "dataurl_deduped_first",
+      "value": ""
+    },
+    {
+      "key": "latest_presigned_url",
+      "value": ""
+    },
+    {
+      "key": "presigned_upload_id",
+      "value": ""
+    },
+    {
+      "key": "presigned_upload_url",
+      "value": ""
+    }
+  ]
+}

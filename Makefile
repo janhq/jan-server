@@ -42,6 +42,7 @@
 # Development (Hybrid Mode):
 #   make hybrid-dev-api              - Setup for API development (native + Docker)
 #   make hybrid-run-api              - Run API natively with hot reload
+#   make hybrid-run-media            - Run Media API natively with hot reload
 #   make hybrid-dev-mcp              - Setup for MCP development
 #   make hybrid-run-mcp              - Run MCP natively with hot reload
 #
@@ -254,14 +255,21 @@ volumes-clean:
 # SECTION 3: BUILD TARGETS
 # ============================================================================================================
 
-.PHONY: build build-api build-mcp build-all clean-build
+.PHONY: build build-api build-mcp build-all clean-build build-llm-api build-media-api
 
 build: build-api build-mcp
 
-build-api:
+build-api: build-llm-api build-media-api
+
+build-llm-api:
 	@echo "Building LLM API..."
 	@cd services/llm-api && go build -o bin/llm-api .
 	@echo "✅ LLM API built: services/llm-api/bin/llm-api"
+
+build-media-api:
+	@echo "Building Media API..."
+	@cd services/media-api && go build -o bin/media-api .
+	@echo "✅ Media API built: services/media-api/bin/media-api"
 
 build-mcp:
 	@echo "Building MCP Tools..."
@@ -276,12 +284,13 @@ build-all:
 clean-build:
 	@echo "Cleaning build artifacts..."
 	@rm -rf services/llm-api/bin
+	@rm -rf services/media-api/bin
 	@rm -rf services/mcp-tools/bin
 	@echo "✅ Build artifacts cleaned"
 
 # --- Swagger Documentation ---
 
-.PHONY: swagger swagger-llm-api swagger-mcp-tools swagger-combine swagger-install
+.PHONY: swagger swagger-llm-api swagger-media-api swagger-mcp-tools swagger-combine swagger-install
 
 swagger:
 	@echo "Generating Swagger documentation for all services..."
@@ -303,6 +312,16 @@ swagger-llm-api:
 		--parseDependency \
 		--parseInternal
 	@echo "✅ llm-api swagger generated at services/llm-api/docs/swagger"
+
+swagger-media-api:
+	@echo "Generating Swagger for media-api service..."
+	@cd services/media-api && swag init \
+		--dir ./cmd/server,./internal/interfaces/httpserver/routes \
+		--generalInfo server.go \
+		--output ./docs/swagger \
+		--parseDependency \
+		--parseInternal
+	@echo "✅ media-api swagger generated at services/media-api/docs/swagger"
 
 swagger-mcp-tools:
 	@echo "Generating Swagger for mcp-tools service..."
@@ -375,12 +394,14 @@ logs-infra:
 
 # --- LLM API Service ---
 
-.PHONY: up-api down-api restart-api logs-api
+.PHONY: up-api down-api restart-api logs-api logs-media-api
 
 up-api:
 	@echo "Starting LLM API..."
 	$(COMPOSE) --profile api up -d
-	@echo "✅ LLM API started at http://localhost:8080"
+	@echo "✅ API services started:"
+	@echo "   - LLM API:   http://localhost:8080"
+	@echo "   - Media API: http://localhost:8285"
 
 down-api:
 	$(COMPOSE) --profile api down
@@ -390,6 +411,9 @@ restart-api:
 
 logs-api:
 	$(COMPOSE) --profile api logs -f llm-api
+
+logs-media-api:
+	$(COMPOSE) --profile api logs -f media-api
 
 # --- MCP Services ---
 
@@ -811,8 +835,9 @@ hybrid-infra-up:
 	@echo "  - Keycloak:   http://localhost:8085"
 	@echo ""
 	@echo "You can now run services natively:"
-	@echo "  - API:  ./scripts/hybrid-run-api.sh (or .ps1 on Windows)"
-	@echo "  - MCP:  ./scripts/hybrid-run-mcp.sh (or .ps1 on Windows)"
+	@echo "  - API:   ./scripts/hybrid-run-api.sh (or .ps1 on Windows)"
+	@echo "  - Media: ./scripts/hybrid-run-media-api.sh (or .ps1 on Windows)"
+	@echo "  - MCP:   ./scripts/hybrid-run-mcp.sh (or .ps1 on Windows)"
 
 hybrid-infra-down:
 	docker compose -f docker-compose.yml -f docker/dev-hybrid.yml --profile hybrid down
@@ -834,7 +859,7 @@ hybrid-mcp-down:
 
 # --- Run Services Natively ---
 
-.PHONY: hybrid-run-api hybrid-run-mcp hybrid-env-api hybrid-env-mcp
+.PHONY: hybrid-run-api hybrid-run-media hybrid-run-mcp hybrid-env-api hybrid-env-media hybrid-env-mcp
 
 hybrid-run-api:
 	@echo "Running LLM API natively..."
@@ -842,6 +867,14 @@ ifeq ($(OS),Windows_NT)
 	@powershell -ExecutionPolicy Bypass -File scripts/hybrid-run-api.ps1
 else
 	@bash scripts/hybrid-run-api.sh
+endif
+
+hybrid-run-media:
+	@echo "Running Media API natively..."
+ifeq ($(OS),Windows_NT)
+	@powershell -ExecutionPolicy Bypass -File scripts/hybrid-run-media-api.ps1
+else
+	@bash scripts/hybrid-run-media-api.sh
 endif
 
 hybrid-run-mcp:
@@ -863,6 +896,28 @@ hybrid-env-api:
 	@echo "export LOG_LEVEL='debug'"
 	@echo "export LOG_FORMAT='console'"
 	@echo "export AUTO_MIGRATE='true'"
+	@echo ""
+	@echo "Or load from config: source config/hybrid.env"
+
+hybrid-env-media:
+	@echo "Environment variables for native Media API development:"
+	@echo ""
+	@echo "export MEDIA_DATABASE_URL='postgres://media:media@localhost:5432/media_api?sslmode=disable'"
+	@echo "export MEDIA_API_PORT='8285'"
+	@echo "export MEDIA_API_URL='http://localhost:8285'"
+	@echo "export MEDIA_SERVICE_KEY='changeme-media-key'"
+	@echo "export MEDIA_API_KEY='changeme-media-key'"
+	@echo "export MEDIA_S3_ENDPOINT='https://s3.menlo.ai'"
+	@echo "export MEDIA_S3_REGION='us-west-2'"
+	@echo "export MEDIA_S3_BUCKET='platform-dev'"
+	@echo "export MEDIA_S3_ACCESS_KEY='XXXXX'"
+	@echo "export MEDIA_S3_SECRET_KEY='YYYY'"
+	@echo "export MEDIA_S3_USE_PATH_STYLE='true'"
+	@echo "export MEDIA_S3_PRESIGN_TTL='5m'"
+	@echo "export MEDIA_MAX_BYTES='20971520'"
+	@echo "export MEDIA_PROXY_DOWNLOAD='true'"
+	@echo "export MEDIA_RETENTION_DAYS='30'"
+	@echo "export MEDIA_REMOTE_FETCH_TIMEOUT='15s'"
 	@echo ""
 	@echo "Or load from config: source config/hybrid.env"
 
@@ -891,7 +946,9 @@ hybrid-dev-api:
 	@echo ""
 	@echo "Next steps:"
 	@echo "  1. Start API: make hybrid-run-api"
-	@echo "  2. Or manually: cd services/llm-api && source ../../config/hybrid.env && go run ."
+	@echo "  2. Start Media API: make hybrid-run-media"
+	@echo "  3. Or manually: cd services/llm-api && source ../../config/hybrid.env && go run ."
+	@echo "     (Media API example: cd services/media-api && source ../../config/hybrid.env && go run .)"
 
 hybrid-dev-mcp:
 	@echo "Setting up hybrid MCP development environment..."
@@ -914,8 +971,9 @@ hybrid-dev-full:
 	@echo "✅ Ready for full hybrid development!"
 	@echo ""
 	@echo "Run services:"
-	@echo "  - API:  make hybrid-run-api"
-	@echo "  - MCP:  make hybrid-run-mcp"
+	@echo "  - API:   make hybrid-run-api"
+	@echo "  - Media: make hybrid-run-media"
+	@echo "  - MCP:   make hybrid-run-mcp"
 
 hybrid-stop:
 	@echo "Stopping hybrid infrastructure..."
@@ -965,6 +1023,7 @@ dev-clean:
 	@$(MAKE) clean-build
 	@rm -f newman.json coverage.out coverage.html
 	@rm -rf services/llm-api/docs/swagger
+	@rm -rf services/media-api/docs/swagger
 	@rm -rf services/mcp-tools/docs/swagger
 	@find . -name "*.log" -type f -delete
 	@echo "✅ Development artifacts cleaned"
@@ -1169,7 +1228,8 @@ ifeq ($(OS),Windows_NT)
 	@powershell -Command "try { $$null = docker compose exec -T api-db pg_isready -U jan_user 2>&1 | Out-Null; if ($$LASTEXITCODE -eq 0) { Write-Host '  ✓ PostgreSQL: healthy' } else { Write-Host '  ✗ PostgreSQL: unhealthy' } } catch { Write-Host '  ✗ PostgreSQL: unhealthy' }"
 	@echo.
 	@echo [API Services]
-	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:8080/healthz -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '  ✓ LLM API:    healthy' } catch { Write-Host '  ✗ LLM API:    unhealthy' }"
+	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:8080/healthz -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '  LLM API:    healthy' } catch { Write-Host '  LLM API:    unhealthy' }"
+	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:8285/healthz -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '  Media API:  healthy' } catch { Write-Host '  Media API:  unhealthy' }"
 	@echo.
 	@echo [MCP Services]
 	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:8091/healthz -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '  ✓ MCP Tools:      healthy' } catch { Write-Host '  ✗ MCP Tools:      unhealthy' }"
@@ -1188,7 +1248,8 @@ else
 	@$(COMPOSE) exec -T api-db pg_isready -U jan_user >/dev/null 2>&1 && echo "  ✓ PostgreSQL: healthy" || echo "  ✗ PostgreSQL: unhealthy"
 	@echo ""
 	@echo "[API Services]"
-	@curl -sf http://localhost:8080/healthz >/dev/null && echo "  ✓ LLM API:    healthy" || echo "  ✗ LLM API:    unhealthy"
+	@curl -sf http://localhost:8080/healthz >/dev/null && echo "  LLM API:    healthy" || echo "  LLM API:    unhealthy"
+	@curl -sf http://localhost:8285/healthz >/dev/null && echo "  Media API:  healthy" || echo "  Media API:  unhealthy"
 	@echo ""
 	@echo "[MCP Services]"
 	@curl -sf http://localhost:8091/healthz >/dev/null && echo "  ✓ MCP Tools:      healthy" || echo "  ✗ MCP Tools:      unhealthy"
@@ -1213,9 +1274,11 @@ endif
 
 health-api:
 ifeq ($(OS),Windows_NT)
-	@powershell -Command "try { Invoke-WebRequest -Uri http://localhost:8080/healthz -UseBasicParsing | Select-Object -ExpandProperty Content | ConvertFrom-Json | ConvertTo-Json } catch { Write-Host 'ERROR API not responding' }"
+	@powershell -Command "try { Invoke-WebRequest -Uri http://localhost:8080/healthz -UseBasicParsing | Select-Object -ExpandProperty Content | ConvertFrom-Json | ConvertTo-Json } catch { Write-Host 'ERROR LLM API not responding' }"
+	@powershell -Command "try { Invoke-WebRequest -Uri http://localhost:8285/healthz -UseBasicParsing | Select-Object -ExpandProperty Content | ConvertFrom-Json | ConvertTo-Json } catch { Write-Host 'ERROR Media API not responding' }"
 else
-	@curl -sf http://localhost:8080/healthz | jq || echo "❌ API not responding"
+	@curl -sf http://localhost:8080/healthz | jq || echo "? LLM API not responding"
+	@curl -sf http://localhost:8285/healthz | jq || echo "? Media API not responding"
 endif
 
 health-mcp:

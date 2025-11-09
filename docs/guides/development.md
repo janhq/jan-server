@@ -109,8 +109,9 @@ Best for: Debugging, hot-reloading, native IDE integration
 # 1. Start infrastructure in Docker
 make hybrid-dev-api
 
-# 2. Run API natively
+# 2. Run APIs natively
 make hybrid-run-api
+make hybrid-run-media
 
 # Or manually:
 cd services/llm-api
@@ -378,6 +379,7 @@ Faster iteration, better debugging:
 make hybrid-dev-api
 # In another terminal:
 make hybrid-run-api
+make hybrid-run-media
 ```
 
 ### 3. Run Tests Before Committing

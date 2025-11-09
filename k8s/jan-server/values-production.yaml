@@ -1,0 +1,250 @@
+# Production values for Jan Server
+# Override default values for production deployment
+
+global:
+  storageClass: "gp3"  # AWS EBS gp3, change for your cloud provider
+  imagePullSecrets:
+    - name: docker-registry-secret
+
+## PostgreSQL - Production Configuration
+postgresql:
+  enabled: true
+  auth:
+    username: jan_user
+    password: "CHANGE_ME_STRONG_PASSWORD"  # Use external secret in production
+    database: jan_llm_api
+    postgresPassword: "CHANGE_ME_POSTGRES_PASSWORD"
+  primary:
+    persistence:
+      enabled: true
+      size: 50Gi
+      storageClass: "gp3"
+    resources:
+      requests:
+        memory: 1Gi
+        cpu: 500m
+      limits:
+        memory: 2Gi
+        cpu: 1000m
+  metrics:
+    enabled: true
+
+## Redis - Production Configuration
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: "CHANGE_ME_REDIS_PASSWORD"
+  master:
+    persistence:
+      enabled: true
+      size: 8Gi
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 200m
+      limits:
+        memory: 512Mi
+        cpu: 500m
+
+## Keycloak - Production Configuration
+keycloak:
+  enabled: true
+  replicaCount: 2
+  admin:
+    username: admin
+    password: "CHANGE_ME_ADMIN_PASSWORD"
+  database:
+    password: "CHANGE_ME_KC_DB_PASSWORD"
+  resources:
+    requests:
+      memory: 1Gi
+      cpu: 500m
+    limits:
+      memory: 2Gi
+      cpu: 1000m
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    hosts:
+      - host: auth.yourdomain.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: keycloak-tls
+        hosts:
+          - auth.yourdomain.com
+
+## Kong - Production Configuration
+kong:
+  enabled: true
+  replicaCount: 2
+  service:
+    type: LoadBalancer
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 200m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    hosts:
+      - host: api.yourdomain.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: kong-tls
+        hosts:
+          - api.yourdomain.com
+
+## LLM API - Production Configuration
+llmApi:
+  enabled: true
+  replicaCount: 3
+  image:
+    registry: your-registry.io
+    repository: jan/llm-api
+    tag: "v2.0.0"
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 500m
+    limits:
+      memory: 1Gi
+      cpu: 1000m
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  env:
+    LOG_LEVEL: info
+    LOG_FORMAT: json
+    AUTO_MIGRATE: "false"  # Run migrations separately in prod
+    OTEL_ENABLED: "true"
+  ingress:
+    enabled: true
+    className: "nginx"
+    hosts:
+      - host: llm-api.yourdomain.com
+        paths:
+          - path: /
+            pathType: Prefix
+
+## Media API - Production Configuration
+mediaApi:
+  enabled: true
+  replicaCount: 3
+  image:
+    registry: your-registry.io
+    repository: jan/media-api
+    tag: "v2.0.0"
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 500m
+    limits:
+      memory: 1Gi
+      cpu: 1000m
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  env:
+    MEDIA_MAX_BYTES: "52428800"  # 50MB
+    MEDIA_RETENTION_DAYS: "90"
+  secrets:
+    databaseUrl: "postgres://media:STRONG_PASSWORD@jan-server-postgresql:5432/media_api?sslmode=require"
+    serviceKey: "CHANGE_ME_STRONG_SERVICE_KEY"
+    s3Endpoint: "https://s3.your-region.amazonaws.com"
+    s3Bucket: "your-production-bucket"
+    s3AccessKey: "YOUR_AWS_ACCESS_KEY"
+    s3SecretKey: "YOUR_AWS_SECRET_KEY"
+  ingress:
+    enabled: true
+    className: "nginx"
+    hosts:
+      - host: media.yourdomain.com
+        paths:
+          - path: /
+            pathType: Prefix
+
+## MCP Tools - Production Configuration
+mcpTools:
+  enabled: true
+  replicaCount: 3
+  image:
+    registry: your-registry.io
+    repository: jan/mcp-tools
+    tag: "v2.0.0"
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 500m
+    limits:
+      memory: 1Gi
+      cpu: 1000m
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+  secrets:
+    serperApiKey: "YOUR_SERPER_API_KEY"
+
+## Supporting Services - Production Configuration
+searxng:
+  enabled: true
+  replicaCount: 2
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 200m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+
+vectorStore:
+  enabled: true
+  replicaCount: 2
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 200m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+
+sandboxfusion:
+  enabled: true
+  replicaCount: 2
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 400m
+    limits:
+      memory: 1Gi
+      cpu: 800m
+
+## Monitoring - Production Configuration
+monitoring:
+  enabled: true
+  prometheus:
+    enabled: true
+  grafana:
+    enabled: true
+  jaeger:
+    enabled: true

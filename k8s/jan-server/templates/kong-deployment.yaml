@@ -1,0 +1,116 @@
+{{- if .Values.kong.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "jan-server.fullname" . }}-kong-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "jan-server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kong
+data:
+  kong.yml: |
+    _format_version: "3.0"
+    services:
+      - name: llm-api-service
+        url: http://{{ include "jan-server.fullname" . }}-llm-api:{{ .Values.llmApi.service.port }}
+        routes:
+          - name: llm-api-route
+            paths:
+              - /api/llm
+            strip_path: true
+      
+      - name: media-api-service
+        url: http://{{ include "jan-server.fullname" . }}-media-api:{{ .Values.mediaApi.service.port }}
+        routes:
+          - name: media-api-route
+            paths:
+              - /api/media
+            strip_path: true
+      
+      - name: mcp-tools-service
+        url: http://{{ include "jan-server.fullname" . }}-mcp-tools:{{ .Values.mcpTools.service.port }}
+        routes:
+          - name: mcp-tools-route
+            paths:
+              - /api/mcp
+            strip_path: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "jan-server.fullname" . }}-kong
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "jan-server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kong
+spec:
+  replicas: {{ .Values.kong.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "jan-server.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: kong
+  template:
+    metadata:
+      labels:
+        {{- include "jan-server.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: kong
+    spec:
+      containers:
+      - name: kong
+        image: "{{ .Values.kong.image.registry }}/{{ .Values.kong.image.repository }}:{{ .Values.kong.image.tag }}"
+        imagePullPolicy: {{ .Values.kong.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.kong.service.targetPort }}
+          protocol: TCP
+        env:
+        - name: KONG_DATABASE
+          value: "off"
+        - name: KONG_DECLARATIVE_CONFIG
+          value: /kong/kong.yml
+        - name: KONG_LOG_LEVEL
+          value: info
+        volumeMounts:
+        - name: config
+          mountPath: /kong
+          readOnly: true
+        livenessProbe:
+          exec:
+            command:
+              - kong
+              - health
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+              - kong
+              - health
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          {{- toYaml .Values.kong.resources | nindent 10 }}
+      volumes:
+      - name: config
+        configMap:
+          name: {{ include "jan-server.fullname" . }}-kong-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "jan-server.fullname" . }}-kong
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "jan-server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kong
+spec:
+  type: {{ .Values.kong.service.type }}
+  ports:
+  - port: {{ .Values.kong.service.port }}
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    {{- include "jan-server.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: kong
+{{- end }}

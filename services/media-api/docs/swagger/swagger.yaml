@@ -1,0 +1,149 @@
+basePath: /
+definitions:
+  handlers.ingestResponse:
+    properties:
+      bytes:
+        type: integer
+      deduped:
+        type: boolean
+      id:
+        type: string
+      mime:
+        type: string
+    type: object
+  handlers.resolveRequest:
+    properties:
+      payload:
+        items:
+          type: integer
+        type: array
+    required:
+    - payload
+    type: object
+  handlers.resolveResponse:
+    properties:
+      payload:
+        items:
+          type: integer
+        type: array
+    type: object
+  media.IngestRequest:
+    properties:
+      filename:
+        type: string
+      source:
+        $ref: '#/definitions/media.Source'
+      user_id:
+        type: string
+    required:
+    - source
+    type: object
+  media.Source:
+    properties:
+      data_url:
+        type: string
+      type:
+        type: string
+      url:
+        type: string
+    required:
+    - type
+    type: object
+info:
+  contact: {}
+  description: Secure media ingestion and resolution service
+  title: Media API
+  version: "1.0"
+paths:
+  /v1/media:
+    post:
+      consumes:
+      - application/json
+      description: Accepts data URLs or remote URLs and stores content privately.
+      parameters:
+      - description: Media request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/media.IngestRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.ingestResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Upload media
+      tags:
+      - media
+  /v1/media/{id}:
+    get:
+      description: Streams the object through the media API without exposing storage
+        URLs.
+      parameters:
+      - description: Media ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: binary data
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Stream media bytes
+      tags:
+      - media
+  /v1/media/resolve:
+    post:
+      consumes:
+      - application/json
+      description: Replaces pseudo data URLs with short-lived signed URLs.
+      parameters:
+      - description: Payload to resolve
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.resolveRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.resolveResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Resolve jan_* placeholders
+      tags:
+      - media
+securityDefinitions:
+  ApiKeyAuth:
+    in: header
+    name: X-Media-Service-Key
+    type: apiKey
+swagger: "2.0"

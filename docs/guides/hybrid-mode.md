@@ -71,8 +71,9 @@ Hybrid mode allows you to run services natively (outside Docker) while keeping i
 # Terminal 1: Start infrastructure
 make hybrid-dev-api
 
-# Terminal 2: Run API natively
-make hybrid-run-api
+# Terminal 2: Run APIs natively
+make hybrid-run-api        # LLM API
+make hybrid-run-media      # Media API
 
 # Or manually
 cd services/llm-api
@@ -163,12 +164,17 @@ Run both API and MCP natively:
 # Terminal 1: Infrastructure
 make hybrid-dev-full
 
-# Terminal 2: API
+# Terminal 2: LLM API
 cd services/llm-api
 source ../../config/hybrid.env
 go run .
 
-# Terminal 3: MCP
+# Terminal 3: Media API
+cd services/media-api
+source ../../config/hybrid.env
+go run .
+
+# Terminal 4: MCP
 cd services/mcp-tools
 source ../../config/hybrid.env
 go run .
@@ -196,6 +202,8 @@ SANDBOXFUSION_URL=http://localhost:3010
 # Service ports
 HTTP_PORT=8080              # API port
 MCP_TOOLS_HTTP_PORT=8091    # MCP port
+MEDIA_API_PORT=8285         # Media API port
+MEDIA_SERVICE_KEY=changeme-media-key
 
 # Logging (console for native)
 LOG_LEVEL=debug
@@ -203,6 +211,12 @@ LOG_FORMAT=console
 
 # Auto-migrate
 AUTO_MIGRATE=true
+
+# Media storage defaults
+MEDIA_S3_ENDPOINT=https://s3.menlo.ai
+MEDIA_S3_BUCKET=platform-dev
+MEDIA_S3_ACCESS_KEY=XXXXX
+MEDIA_S3_SECRET_KEY=YYYY
 ```
 
 ### Loading Environment
@@ -223,8 +237,10 @@ Get-Content config\hybrid.env | ForEach-Object {
 
 **Or use helper scripts**:
 ```bash
-./scripts/hybrid-run-api.sh     # Linux/Mac
-.\scripts\hybrid-run-api.ps1    # Windows
+./scripts/hybrid-run-api.sh         # Linux/Mac (LLM API)
+./scripts/hybrid-run-media-api.sh   # Linux/Mac (Media API)
+.\scripts\hybrid-run-api.ps1        # Windows (LLM API)
+.\scripts\hybrid-run-media-api.ps1  # Windows (Media API)
 ```
 
 ## Debugging
@@ -418,10 +434,12 @@ go run .             # Now it works
 
 ```bash
 # Instead of manual setup
-./scripts/hybrid-run-api.sh  # Does everything
+./scripts/hybrid-run-api.sh        # LLM API
+./scripts/hybrid-run-media-api.sh  # Media API
 
 # Or make targets
 make hybrid-run-api
+make hybrid-run-media
 make hybrid-run-mcp
 ```
 
