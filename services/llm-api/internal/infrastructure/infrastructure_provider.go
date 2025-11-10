@@ -13,6 +13,7 @@ import (
 	"jan-server/services/llm-api/internal/infrastructure/inference"
 	"jan-server/services/llm-api/internal/infrastructure/keycloak"
 	"jan-server/services/llm-api/internal/infrastructure/logger"
+	"jan-server/services/llm-api/internal/infrastructure/mediaresolver"
 
 	"github.com/google/wire"
 	"github.com/rs/zerolog"
@@ -81,6 +82,11 @@ func ProvideTransactionDatabase(db *gorm.DB) *transaction.Database {
 	return transaction.NewDatabase(db)
 }
 
+// ProvideMediaResolver wires the HTTP-based media placeholder resolver.
+func ProvideMediaResolver(cfg *config.Config, log zerolog.Logger) mediaresolver.Resolver {
+	return mediaresolver.NewResolver(cfg, log)
+}
+
 // Infrastructure holds all infrastructure dependencies
 type Infrastructure struct {
 	DB                *gorm.DB
@@ -115,6 +121,9 @@ var InfrastructureProvider = wire.NewSet(
 
 	// Provider registry
 	inference.NewInferenceProvider,
+
+	// Media resolver
+	ProvideMediaResolver,
 
 	// Logger
 	logger.GetLogger,

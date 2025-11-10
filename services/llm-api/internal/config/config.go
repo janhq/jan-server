@@ -76,6 +76,11 @@ type Config struct {
 	AutoMigrate   bool `env:"AUTO_MIGRATE" envDefault:"true"`
 	EnableSwagger bool `env:"ENABLE_SWAGGER" envDefault:"true"`
 
+	// Media integration
+	MediaResolveURL     string        `env:"MEDIA_RESOLVE_URL" envDefault:"http://media-api:8285/v1/media/resolve"`
+	MediaServiceKey     string        `env:"MEDIA_SERVICE_KEY"`
+	MediaResolveTimeout time.Duration `env:"MEDIA_RESOLVE_TIMEOUT" envDefault:"5s"`
+
 	// Internal
 	EnvReloadedAt time.Time
 }

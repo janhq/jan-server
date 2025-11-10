@@ -15,6 +15,7 @@ import (
 	"jan-server/services/llm-api/internal/domain/conversation"
 	"jan-server/services/llm-api/internal/infrastructure/inference"
 	"jan-server/services/llm-api/internal/infrastructure/logger"
+	"jan-server/services/llm-api/internal/infrastructure/mediaresolver"
 	"jan-server/services/llm-api/internal/infrastructure/observability"
 	conversationHandler "jan-server/services/llm-api/internal/interfaces/httpserver/handlers/conversationhandler"
 	modelHandler "jan-server/services/llm-api/internal/interfaces/httpserver/handlers/modelhandler"
@@ -39,6 +40,7 @@ type ChatHandler struct {
 	providerHandler     *modelHandler.ProviderHandler
 	conversationHandler *conversationHandler.ConversationHandler
 	conversationService *conversation.ConversationService
+	mediaResolver       mediaresolver.Resolver
 }
 
 // NewChatHandler creates a new chat handler
@@ -47,12 +49,14 @@ func NewChatHandler(
 	providerHandler *modelHandler.ProviderHandler,
 	conversationHandler *conversationHandler.ConversationHandler,
 	conversationService *conversation.ConversationService,
+	mediaResolver mediaresolver.Resolver,
 ) *ChatHandler {
 	return &ChatHandler{
 		inferenceProvider:   inferenceProvider,
 		providerHandler:     providerHandler,
 		conversationHandler: conversationHandler,
 		conversationService: conversationService,
+		mediaResolver:       mediaResolver,
 	}
 }
 
@@ -152,6 +156,9 @@ func (h *ChatHandler) CreateChatCompletion(
 
 	// Override the request model with the provider's original model ID
 	request.Model = selectedProviderModel.ProviderOriginalModelID
+
+	// Resolve jan_* media placeholders (best-effort)
+	request.Messages = h.resolveMediaPlaceholders(ctx, request.Messages)
 
 	// Get chat completion client
 	chatClient, err := h.inferenceProvider.GetChatCompletionClient(ctx, selectedProvider)
@@ -328,6 +335,24 @@ func (h *ChatHandler) streamCompletion(
 	}
 
 	return resp, nil
+}
+
+func (h *ChatHandler) resolveMediaPlaceholders(ctx context.Context, messages []openai.ChatCompletionMessage) []openai.ChatCompletionMessage {
+	if h.mediaResolver == nil || len(messages) == 0 {
+		return messages
+	}
+
+	resolved, changed, err := h.mediaResolver.ResolveMessages(ctx, messages)
+	if err != nil {
+		log := logger.GetLogger()
+		log.Warn().Err(err).Msg("media placeholder resolution failed")
+		return messages
+	}
+	if changed {
+		observability.AddSpanEvent(ctx, "media_placeholders_resolved")
+		return resolved
+	}
+	return messages
 }
 
 func (h *ChatHandler) createConversationWithReferrer(ctx context.Context, userID uint, referrer string) (*conversation.Conversation, error) {

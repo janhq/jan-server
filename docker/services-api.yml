@@ -19,6 +19,9 @@ services:
       OTEL_ENABLED: ${OTEL_ENABLED:-false}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-llm-api}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4317}
+      MEDIA_RESOLVE_URL: ${MEDIA_RESOLVE_URL:-http://media-api:8285/v1/media/resolve}
+      MEDIA_SERVICE_KEY: ${MEDIA_SERVICE_KEY:-changeme-media-key}
+      MEDIA_RESOLVE_TIMEOUT: ${MEDIA_RESOLVE_TIMEOUT:-5s}
     ports:
       - "${HTTP_PORT:-8080}:${HTTP_PORT:-8080}"
     depends_on:

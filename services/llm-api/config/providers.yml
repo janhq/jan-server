@@ -15,7 +15,7 @@ providers:
         
     - name: Local vLLM
       type: vllm
-      url: http://vllm-jan-gpu:8001/v1
+      url: http://10.200.108.153:9000/v1
       api_key: ${VLLM_INTERNAL_KEY}
       description: "Local Jan vLLM instance (Docker profile: full)"
       auto_enable_new_models: true

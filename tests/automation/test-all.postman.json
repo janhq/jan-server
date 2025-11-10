@@ -290,7 +290,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [\n        {\n          \"type\": \"text\",\n          \"text\": \"Describe this image briefly, mention semaglutide, and cite notable visual cues.\"\n        },\n        {\n          \"type\": \"image_url\",\n          \"image_url\": {\n            \"url\": \"{{media_placeholder}}\"\n          }\n        }\n      ]\n    }\n  ],\n  \"max_tokens\": 120,\n  \"temperature\": 0.4\n}"
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [\n        {\n          \"type\": \"text\",\n          \"text\": \"Describe this image briefly, mention semaglutide, and cite notable visual cues.\"\n        },\n        {\n          \"type\": \"image_url\",\n          \"image_url\": {\n            \"url\": \"{{media_placeholder}}\"\n          }\n        }\n      ]\n    }\n  ],\n  \"max_tokens\": 12000,\n  \"temperature\": 0.4\n}"
             },
             "url": "{{llm_api_url}}/v1/chat/completions",
             "description": "Ensure models can reference stored media via jan_id through the gateway."
