@@ -12,14 +12,15 @@ This directory contains Helm charts for deploying the entire Jan Server stack:
 │                    (LoadBalancer)                        │
 └─────────────────────────────────────────────────────────┘
                            │
-        ┌──────────────────┼──────────────────┐
-        │                  │                  │
-        ▼                  ▼                  ▼
-   ┌─────────┐      ┌──────────┐      ┌──────────┐
-   │ LLM API │      │Media API │      │MCP Tools │
-   └─────────┘      └──────────┘      └──────────┘
-        │                  │                  │
-        └──────────────────┼──────────────────┘
+        ┌──────────────────┼──────────────────┬──────────┐
+        │                  │                  │          │
+        ▼                  ▼                  ▼          ▼
+   ┌─────────┐      ┌──────────┐      ┌──────────┐ ┌─────────┐
+   │ LLM API │      │Media API │      │Response  │ │MCP Tools│
+   │         │      │          │      │   API    │ │         │
+   └─────────┘      └──────────┘      └──────────┘ └─────────┘
+        │                  │                  │          │
+        └──────────────────┼──────────────────┴──────────┘
                            │
                            ▼
                    ┌──────────────┐
@@ -67,7 +68,12 @@ cd ../../keycloak && docker build -t jan/keycloak:latest .
 cd ..
 
 # Step 2: Load images into minikube
-minikube image load jan/llm-api:latest jan/media-api:latest jan/response-api:latest jan/mcp-tools:latest jan/keycloak:latest
+minikube image load jan/llm-api:latest
+minikube image load jan/media-api:latest
+minikube image load jan/response-api:latest
+minikube image load jan/mcp-tools:latest
+minikube image load jan/keycloak:latest
+
 docker pull bitnami/postgresql:latest bitnami/redis:latest
 minikube image load bitnami/postgresql:latest bitnami/redis:latest
 
@@ -111,13 +117,13 @@ kubectl get pods -n jan-server
 # Port forward to access services locally (in separate terminals)
 kubectl port-forward -n jan-server svc/jan-server-llm-api 8080:8080
 kubectl port-forward -n jan-server svc/jan-server-media-api 8285:8285
-kubectl port-forward -n jan-server svc/jan-server-response-api 8280:8280
+kubectl port-forward -n jan-server svc/jan-server-response-api 8082:8082
 kubectl port-forward -n jan-server svc/jan-server-keycloak 8085:8085
 
 # Test health endpoints
 curl http://localhost:8080/healthz
 curl http://localhost:8285/healthz
-curl http://localhost:8280/healthz
+curl http://localhost:8082/healthz
 
 # Access Keycloak Admin Console
 # Username: admin, Password: changeme
@@ -201,7 +207,7 @@ postgresql:
 
 #### 3. Environment Variables
 
-LLM API requires these key settings:
+**LLM API** key settings:
 ```yaml
 llmApi:
   env:
@@ -212,12 +218,37 @@ llmApi:
     TARGET_CLIENT_ID: "jan-client"
 ```
 
+**Response API** key settings:
+```yaml
+responseApi:
+  env:
+    SERVICE_NAME: "response-api"
+    HTTP_PORT: "8082"
+    LLM_API_URL: "http://jan-server-llm-api:8080"
+    MCP_TOOLS_URL: "http://jan-server-mcp-tools:8091"
+    MAX_TOOL_EXECUTION_DEPTH: "8"
+    TOOL_EXECUTION_TIMEOUT: "45s"
+    AUTO_MIGRATE: "true"
+```
+
+**Media API** key settings:
+```yaml
+mediaApi:
+  env:
+    MEDIA_API_PORT: "8285"
+    MEDIA_MAX_BYTES: "20971520"  # 20MB
+    MEDIA_PROXY_DOWNLOAD: "true"
+    MEDIA_RETENTION_DAYS: "30"
+```
+
 #### 4. S3 Storage (Media API)
 
 **Required** for media-api to function:
 ```yaml
 mediaApi:
   secrets:
+    serviceKey: "changeme-media-key"  # Required!
+    apiKey: "changeme-media-key"      # Required!
     s3Endpoint: "https://s3.amazonaws.com"
     s3Bucket: "your-bucket"  # Required!
     s3AccessKey: "YOUR_KEY"   # Required!
@@ -291,7 +322,11 @@ minikube start --cpus=4 --memory=8192 --driver=docker
 
 # Build and load images (see SETUP.md for complete steps)
 # ... build services and docker images ...
-minikube image load jan/llm-api:latest jan/media-api:latest jan/mcp-tools:latest jan/keycloak:latest
+minikube image load jan/llm-api:latest
+minikube image load jan/media-api:latest
+minikube image load jan/response-api:latest
+minikube image load jan/mcp-tools:latest
+minikube image load jan/keycloak:latest
 
 # Install
 cd k8s

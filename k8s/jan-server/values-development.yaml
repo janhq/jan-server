@@ -114,6 +114,29 @@ mediaApi:
     MEDIA_RETENTION_DAYS: "7"
   secrets:
     serviceKey: "dev-media-key"
+    apiKey: "dev-media-key"
+
+## Response API - Development Configuration
+responseApi:
+  enabled: true
+  replicaCount: 1
+  image:
+    tag: "latest"
+    pullPolicy: Always
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 256Mi
+      cpu: 250m
+  autoscaling:
+    enabled: false
+  env:
+    LOG_LEVEL: debug
+    LOG_FORMAT: console
+    AUTO_MIGRATE: "true"
+    MAX_TOOL_EXECUTION_DEPTH: "8"
 
 ## MCP Tools - Development Configuration
 mcpTools:

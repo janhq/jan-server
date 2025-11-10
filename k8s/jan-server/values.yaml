@@ -321,10 +321,70 @@ mediaApi:
     databaseUrl: "postgres://jan_user:jan_password@{{ .Release.Name }}-postgresql:5432/jan_llm_api?sslmode=disable"
     # S3 credentials
     serviceKey: changeme-media-key
+    apiKey: changeme-media-key
     s3Endpoint: https://s3.menlo.ai
     s3Bucket: platform-dev
     s3AccessKey: XXXXX
     s3SecretKey: YYYY
+
+## ============================================================================
+## Response API Service
+## ============================================================================
+responseApi:
+  enabled: true
+  replicaCount: 2
+  
+  image:
+    registry: docker.io
+    repository: jan/response-api
+    tag: "latest"
+    pullPolicy: Never
+  
+  service:
+    type: ClusterIP
+    port: 8082
+    targetPort: 8082
+  
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts:
+      - host: response-api.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+  
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+  
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+  
+  env:
+    SERVICE_NAME: "response-api"
+    HTTP_PORT: "8082"
+    LOG_LEVEL: info
+    LOG_FORMAT: json
+    AUTO_MIGRATE: "true"
+    OTEL_ENABLED: "false"
+    MAX_TOOL_EXECUTION_DEPTH: "8"
+    TOOL_EXECUTION_TIMEOUT: "45s"
+    LLM_API_URL: "http://{{ .Release.Name }}-llm-api:8080"
+    MCP_TOOLS_URL: "http://{{ .Release.Name }}-mcp-tools:8091"
+  
+  secrets:
+    # Database connection - using jan_user and jan_llm_api database
+    databaseUrl: "postgres://jan_user:jan_password@{{ .Release.Name }}-postgresql:5432/jan_llm_api?sslmode=disable"
 
 ## ============================================================================
 ## MCP Tools Service

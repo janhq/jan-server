@@ -27,6 +27,14 @@ data:
               - /api/media
             strip_path: true
       
+      - name: response-api-service
+        url: http://{{ include "jan-server.fullname" . }}-response-api:{{ .Values.responseApi.service.port }}
+        routes:
+          - name: response-api-route
+            paths:
+              - /api/responses
+            strip_path: true
+      
       - name: mcp-tools-service
         url: http://{{ include "jan-server.fullname" . }}-mcp-tools:{{ .Values.mcpTools.service.port }}
         routes:

@@ -172,6 +172,7 @@ mediaApi:
   secrets:
     databaseUrl: "postgres://media:STRONG_PASSWORD@jan-server-postgresql:5432/media_api?sslmode=require"
     serviceKey: "CHANGE_ME_STRONG_SERVICE_KEY"
+    apiKey: "CHANGE_ME_STRONG_API_KEY"
     s3Endpoint: "https://s3.your-region.amazonaws.com"
     s3Bucket: "your-production-bucket"
     s3AccessKey: "YOUR_AWS_ACCESS_KEY"
@@ -181,6 +182,43 @@ mediaApi:
     className: "nginx"
     hosts:
       - host: media.yourdomain.com
+        paths:
+          - path: /
+            pathType: Prefix
+
+## Response API - Production Configuration
+responseApi:
+  enabled: true
+  replicaCount: 3
+  image:
+    registry: your-registry.io
+    repository: jan/response-api
+    tag: "v2.0.0"
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 500m
+    limits:
+      memory: 1Gi
+      cpu: 1000m
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  env:
+    LOG_LEVEL: info
+    LOG_FORMAT: json
+    AUTO_MIGRATE: "false"
+    MAX_TOOL_EXECUTION_DEPTH: "10"
+    TOOL_EXECUTION_TIMEOUT: "60s"
+  secrets:
+    databaseUrl: "postgres://jan_user:STRONG_PASSWORD@jan-server-postgresql:5432/jan_llm_api?sslmode=require"
+  ingress:
+    enabled: true
+    className: "nginx"
+    hosts:
+      - host: responses.yourdomain.com
         paths:
           - path: /
             pathType: Prefix

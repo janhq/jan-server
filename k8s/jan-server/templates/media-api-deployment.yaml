@@ -67,6 +67,11 @@ spec:
             secretKeyRef:
               name: {{ include "jan-server.fullname" . }}-media-api-secret
               key: service-key
+        - name: MEDIA_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "jan-server.fullname" . }}-media-api-secret
+              key: api-key
         - name: MEDIA_S3_ENDPOINT
           valueFrom:
             secretKeyRef:

@@ -9,6 +9,21 @@ This guide walks through setting up a Kubernetes cluster and deploying Jan Serve
 - Helm 3.8+
 - Go 1.23+ (for building services)
 
+## Services Overview
+
+Jan Server includes the following microservices:
+
+- **LLM API** (port 8080) - Core LLM orchestration service
+- **Media API** (port 8285) - Media upload and management
+- **Response API** (port 8082) - Response generation with tool orchestration
+- **MCP Tools** (port 8091) - Model Context Protocol tools integration
+- **Keycloak** (port 8085) - Authentication server
+- **Kong** (port 8000) - API Gateway
+- **PostgreSQL** (port 5432) - Database (shared by all services)
+- **Redis** (port 6379) - Caching
+- **SearXNG** (port 8080) - Meta search engine
+- **SandboxFusion** (port 8080) - Code interpreter
+
 ## Option 1: Minikube (Recommended for Development)
 
 ### Install Minikube
@@ -216,7 +231,7 @@ kubectl port-forward -n jan-server svc/jan-server-keycloak 8085:8085
 # Optional: Direct service access
 kubectl port-forward -n jan-server svc/jan-server-llm-api 8080:8080
 kubectl port-forward -n jan-server svc/jan-server-media-api 8285:8285
-kubectl port-forward -n jan-server svc/jan-server-response-api 8280:8280
+kubectl port-forward -n jan-server svc/jan-server-response-api 8082:8082
 kubectl port-forward -n jan-server svc/jan-server-mcp-tools 8091:8091
 ```
 
@@ -228,6 +243,12 @@ curl http://localhost:8000/api/llm/healthz
 curl http://localhost:8000/api/media/healthz
 curl http://localhost:8000/api/responses/healthz
 curl http://localhost:8000/api/mcp/healthz
+
+# Or test direct service access
+curl http://localhost:8080/healthz  # LLM API
+curl http://localhost:8285/healthz  # Media API
+curl http://localhost:8082/healthz  # Response API
+curl http://localhost:8091/healthz  # MCP Tools
 
 # Access Keycloak Admin
 # Open browser: http://localhost:8085
@@ -407,10 +428,18 @@ keycloak:
 mediaApi:
   secrets:
     serviceKey: "YOUR_SERVICE_KEY"
+    apiKey: "YOUR_API_KEY"
     s3Endpoint: "https://your-s3-endpoint.com"
     s3Bucket: "your-bucket"
     s3AccessKey: "YOUR_ACCESS_KEY"
     s3SecretKey: "YOUR_SECRET_KEY"
+
+responseApi:
+  secrets:
+    databaseUrl: "postgres://jan_user:STRONG_PASSWORD@jan-server-postgresql:5432/jan_llm_api?sslmode=disable"
+  env:
+    maxToolExecutionDepth: "5"
+    toolExecutionTimeout: "30s"
 
 kong:
   service:
@@ -422,6 +451,20 @@ llmApi:
     enabled: true
     minReplicas: 3
     maxReplicas: 10
+
+responseApi:
+  replicaCount: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+
+mediaApi:
+  replicaCount: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
 ```
 
 Deploy with:

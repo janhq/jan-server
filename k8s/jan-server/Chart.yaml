@@ -1,8 +1,8 @@
 apiVersion: v2
 name: jan-server
-description: A Helm chart for Jan Server - LLM API Platform with MCP Tools
+description: A Helm chart for Jan Server - LLM API Platform with MCP Tools, Media API, and Response API
 type: application
-version: 1.0.0
+version: 1.1.0
 appVersion: "2.0.0"
 keywords:
   - llm
@@ -10,6 +10,7 @@ keywords:
   - mcp
   - keycloak
   - media
+  - responses
 maintainers:
   - name: Jan Team
     email: support@jan.ai
