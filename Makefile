@@ -271,12 +271,12 @@ build-api: build-llm-api build-media-api
 
 build-llm-api:
 	@echo "Building LLM API..."
-	@cd services/llm-api && go build -o bin/llm-api .
+	@cd services/llm-api && go build -o bin/llm-api ./cmd/server
 	@echo " LLM API built: services/llm-api/bin/llm-api"
 
 build-media-api:
 	@echo "Building Media API..."
-	@cd services/media-api && go build -o bin/media-api .
+	@cd services/media-api && go build -o bin/media-api ./cmd/server
 	@echo " Media API built: services/media-api/bin/media-api"
 
 build-mcp:
@@ -457,18 +457,18 @@ logs-mcp:
 up-vllm-gpu:
 	@echo "Starting vLLM GPU inference..."
 	$(COMPOSE) --profile gpu up -d
-	@echo " vLLM GPU started at http://localhost:8001"
+	@echo " vLLM GPU started at http://localhost:8101"
 	@echo ""
 	@echo "Test inference:"
-	@echo "  curl http://localhost:8001/v1/models"
+	@echo "  curl http://localhost:8101/v1/models"
 
 up-vllm-cpu:
 	@echo "Starting vLLM CPU inference..."
 	$(COMPOSE) --profile cpu up -d
-	@echo " vLLM CPU started at http://localhost:8001"
+	@echo " vLLM CPU started at http://localhost:8101"
 	@echo ""
 	@echo "Test inference:"
-	@echo "  curl http://localhost:8001/v1/models"
+	@echo "  curl http://localhost:8101/v1/models"
 
 down-vllm:
 	@echo "Stopping vLLM services..."
@@ -554,7 +554,7 @@ up-full:
 	@echo "  - SearXNG:        http://localhost:8086"
 	@echo "  - Vector Store:   http://localhost:3015"
 	@echo "  - SandboxFusion:  http://localhost:3010"
-	@echo "  - vLLM GPU:       http://localhost:8001"
+	@echo "  - vLLM GPU:       http://localhost:8101"
 
 down-full:
 	$(COMPOSE) --profile full down

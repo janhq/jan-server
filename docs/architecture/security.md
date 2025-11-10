@@ -13,7 +13,7 @@
 
 ## Network Boundaries
 - **Public**: Kong (8000) and, optionally, Keycloak admin (8085) when protected.
-- **Private**: LLM API (8080), Response API (8082), Media API (8285), MCP Tools (8091), vLLM (8001).
+- **Private**: LLM API (8080), Response API (8082), Media API (8285), MCP Tools (8091), vLLM (8101).
 - **MCP network**: SearXNG, Redis, Vector Store, SandboxFusion run on `jan-server_mcp-network` and are not exposed externally.
 - **Kubernetes**: use NetworkPolicies to isolate namespaces or rely on service mesh if available.
 

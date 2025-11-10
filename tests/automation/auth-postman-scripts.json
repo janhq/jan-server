@@ -191,11 +191,11 @@
                   "        if (!username || !realm || !baseUrl || !token) {",
                   "            pm.expect.fail('missing context to look up existing user');",
                   "        } else {",
-                  "            const lookupUrl = ${baseUrl}/admin/realms//users?username=;",
+                  "            const lookupUrl = `${baseUrl}/admin/realms/${realm}/users?username=${username}`;",
                   "            pm.sendRequest({",
                   "                url: lookupUrl,",
                   "                method: 'GET',",
-                  "                header: [{ key: 'Authorization', value: Bearer  }]",
+                  "                header: [{ key: 'Authorization', value: `Bearer ${token}` }]",
                   "            }, function (err, res) {",
                   "                if (err) {",
                   "                    pm.expect.fail('failed to lookup existing user: ' + err.message);",
@@ -346,7 +346,14 @@
                   "});",
                   "pm.test('auth method header is jwt', function () {",
                   "    pm.expect((pm.response.headers.get('X-Auth-Method') || '').toLowerCase()).to.eql('jwt');",
-                  "});"
+                  "});",
+                  "",
+                  "// Save first model ID for subsequent tests",
+                  "if (data.data && data.data.length > 0) {",
+                  "    pm.environment.set('model_id', data.data[0].id);",
+                  "    pm.environment.set('model_id_encoded', encodeURIComponent(data.data[0].id));",
+                  "    console.log('Set model_id to:', data.data[0].id);",
+                  "}"
                 ]
               }
             }
@@ -688,11 +695,11 @@
                   "        if (!username || !realm || !baseUrl || !token) {",
                   "            pm.expect.fail('missing context to look up existing user');",
                   "        } else {",
-                  "            const lookupUrl = ${baseUrl}/admin/realms//users?username=;",
+                  "            const lookupUrl = `${baseUrl}/admin/realms/${realm}/users?username=${username}`;",
                   "            pm.sendRequest({",
                   "                url: lookupUrl,",
                   "                method: 'GET',",
-                  "                header: [{ key: 'Authorization', value: Bearer  }]",
+                  "                header: [{ key: 'Authorization', value: `Bearer ${token}` }]",
                   "            }, function (err, res) {",
                   "                if (err) {",
                   "                    pm.expect.fail('failed to lookup existing user: ' + err.message);",
@@ -873,10 +880,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const data = pm.response.json();",
+                  "const responseData = pm.response.json();",
                   "pm.test('list returns items', function () {",
                   "    pm.response.to.have.status(200);",
-                  "    pm.expect(data).to.have.property('items');",
+                  "    pm.expect(responseData).to.have.property('items');",
                   "});"
                 ]
               }
@@ -1066,12 +1073,6 @@
       "value": "admin",
       "type": "string",
       "description": "Keycloak master realm admin password."
-    },
-    {
-      "key": "model_id",
-      "value": "qwen/qwen2.5-0.5b-instruct",
-      "type": "string",
-      "description": "Model identifier to exercise chat completions."
     }
   ]
 }

@@ -327,7 +327,7 @@ providers:
   default:
     - name: Local vLLM Provider
       type: jan
-      url: http://vllm-jan-gpu:8001/v1
+      url: http://vllm-jan-gpu:8101/v1
       api_key: ${VLLM_INTERNAL_KEY}
       auto_enable_new_models: true
       sync_models: true

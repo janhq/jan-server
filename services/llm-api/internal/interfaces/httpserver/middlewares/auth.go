@@ -79,12 +79,21 @@ func setPrincipal(c *gin.Context, principal domain.Principal) {
 
 func principalFromAPIKey(c *gin.Context, fallbackIssuer string) (domain.Principal, bool) {
 	headers := c.Request.Header
+
+	// Check if there's actually an API key credential present
+	// Kong sets X-Credential-Identifier only when a real API key is used
+	if headers.Get("X-Credential-Identifier") == "" {
+		return domain.Principal{}, false
+	}
+
 	consumerID := headers.Get("X-Consumer-ID")
 	if consumerID == "" {
 		return domain.Principal{}, false
 	}
-	customID := headers.Get("X-Consumer-Custom-ID")
+
 	username := headers.Get("X-Consumer-Username")
+	customID := headers.Get("X-Consumer-Custom-ID")
+
 	principalID := customID
 	if principalID == "" {
 		principalID = username

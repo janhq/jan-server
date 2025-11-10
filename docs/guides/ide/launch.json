@@ -20,7 +20,7 @@
                 "LOG_FORMAT": "console",
                 "AUTO_MIGRATE": "true",
                 "OTEL_EXPORTER_OTLP_ENDPOINT": "",
-                "VLLM_PROVIDER_URL": "http://localhost:8001/v1",
+                "VLLM_PROVIDER_URL": "http://localhost:8101/v1",
                 "JAN_PROVIDER_CONFIGS": "true",
                 "JAN_PROVIDER_CONFIGS_FILE": "config/providers.yml",
                 "JAN_PROVIDER_CONFIG_SET": "default",

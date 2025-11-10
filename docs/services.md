@@ -13,7 +13,7 @@ Jan Server ships four core services plus shared infrastructure. Use this documen
 - **Kong Gateway (8000)**: exposes public APIs, enforces rate limits, and bridges clients to services.
 - **Keycloak (8085)**: handles OAuth2/OIDC flows; see `keycloak/`.
 - **PostgreSQL**: `api-db` (LLM/Response/Media data) and `keycloak-db` (Keycloak state).
-- **vLLM (8001)**: inference backend reachable from llm-api.
+- **vLLM (8101)**: inference backend reachable from llm-api.
 - **Observability stack**: Prometheus (9090), Grafana (3001), Jaeger (16686), OpenTelemetry Collector.
 - **MCP support services**: SearXNG (search), Vector Store (file search), SandboxFusion (python execution).
 

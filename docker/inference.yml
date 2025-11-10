@@ -15,7 +15,7 @@ services:
     command: >
       --model ${VLLM_MODEL:-janhq/Jan-v1-4B}
       --host 0.0.0.0
-      --port 8001
+      --port 8101
       --dtype ${VLLM_DTYPE:-float16}
       --api-key ${VLLM_INTERNAL_KEY:-changeme}
       --gpu-memory-utilization ${VLLM_GPU_UTIL:-0.66}
@@ -51,12 +51,12 @@ services:
               count: all
               capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "-H", "Authorization: Bearer ${VLLM_INTERNAL_KEY:-changeme}", "http://localhost:8001/v1/models"]
+      test: ["CMD", "curl", "-fsS", "-H", "Authorization: Bearer ${VLLM_INTERNAL_KEY:-changeme}", "http://localhost:8101/v1/models"]
       interval: 10s
       timeout: 5s
       retries: 60
     ports:
-      - "${VLLM_PORT:-8001}:${VLLM_PORT:-8001}"
+      - "${VLLM_PORT:-8101}:${VLLM_PORT:-8101}"
 
   # vLLM CPU Inference (slower, no GPU required)
   vllm-jan-cpu:
@@ -67,7 +67,7 @@ services:
     command: >
       --model ${VLLM_MODEL_CPU:-janhq/Jan-v1-4B}
       --served-model-name ${VLLM_SERVED_NAME_CPU:-jan-v1-4b}
-      --host 0.0.0.0 --port 8001
+      --host 0.0.0.0 --port 8101
       --dtype ${VLLM_DTYPE_CPU:-float32}
       --api-key ${VLLM_INTERNAL_KEY:-changeme}
       --download-dir /models
@@ -80,9 +80,9 @@ services:
       - hf-cache:/root/.cache/huggingface
       - models-cache:/models
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "-H", "Authorization: Bearer ${VLLM_INTERNAL_KEY:-changeme}", "http://localhost:8001/v1/models"]
+      test: ["CMD", "curl", "-fsS", "-H", "Authorization: Bearer ${VLLM_INTERNAL_KEY:-changeme}", "http://localhost:8101/v1/models"]
       interval: 10s
       timeout: 5s
       retries: 60
     ports:
-      - "${VLLM_PORT:-8001}:${VLLM_PORT:-8001}"
+      - "${VLLM_PORT:-8101}:${VLLM_PORT:-8101}"

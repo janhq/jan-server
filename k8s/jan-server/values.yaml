@@ -249,7 +249,7 @@ llmApi:
     AUTO_MIGRATE: "true"
     OTEL_ENABLED: "false"
     JAN_DEFAULT_NODE_SETUP: "false"
-    JAN_DEFAULT_NODE_URL: "http://localhost:8001/v1"
+    JAN_DEFAULT_NODE_URL: "http://localhost:8101/v1"
     KEYCLOAK_BASE_URL: "http://{{ .Release.Name }}-keycloak:8085"
     KEYCLOAK_REALM: "jan"
     BACKEND_CLIENT_ID: "llm-api"

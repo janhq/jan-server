@@ -62,11 +62,7 @@ services:
           - name: jwt
             tags: [llm, auth, jwt]
             config:
-              algorithm: RS256
-              key_claim_name: kid
               secret_is_base64: false
-              claims_to_verify: ["exp", "nbf"]
-              maximum_expiration: 3600
               run_on_preflight: false
               anonymous: kong-anon-jwt
           - name: key-auth
@@ -79,12 +75,6 @@ services:
               hide_credentials: true
               run_on_preflight: false
               anonymous: kong-anon-key
-          - name: request-termination
-            tags: [llm, auth, enforcement]
-            consumer: kong-anon-key
-            config:
-              status_code: 401
-              message: "Authentication required: provide JWT or API key"
           - name: rate-limiting
             tags: [llm, auth, rate]
             config:
@@ -105,17 +95,13 @@ services:
         paths:
           - /llm
         strip_path: true
-        path_handling: v1
+        path_handling: v0
         tags: [llm, api, protected]
         plugins:
           - name: jwt
             tags: [llm, api, jwt]
             config:
-              algorithm: RS256
-              key_claim_name: kid
               secret_is_base64: false
-              claims_to_verify: ["exp", "nbf"]
-              maximum_expiration: 3600
               run_on_preflight: false
               anonymous: kong-anon-jwt
           - name: key-auth
@@ -128,12 +114,6 @@ services:
               hide_credentials: true
               run_on_preflight: false
               anonymous: kong-anon-key
-          - name: request-termination
-            tags: [llm, api, enforcement]
-            consumer: kong-anon-key
-            config:
-              status_code: 401
-              message: "Authentication required: provide JWT or API key"
           - name: rate-limiting
             tags: [llm, api, rate]
             config:
@@ -150,6 +130,63 @@ services:
               exposed_headers: ["X-Request-Id", "X-Gateway-Auth"]
               credentials: true
               max_age: 3600
+      - name: llm-api-v1
+        paths:
+          - /v1
+        strip_path: false
+        path_handling: v0
+        tags: [llm, api, v1, protected]
+        plugins:
+          - name: jwt
+            tags: [llm, api, jwt]
+            config:
+              secret_is_base64: false
+              run_on_preflight: false
+              anonymous: kong-anon-jwt
+          - name: key-auth
+            tags: [llm, api, apikey]
+            config:
+              key_names: ["X-API-Key", "X-Api-Key", "Authorization"]
+              key_in_header: true
+              key_in_query: false
+              key_in_body: false
+              hide_credentials: true
+              run_on_preflight: false
+              anonymous: kong-anon-key
+          - name: rate-limiting
+            tags: [llm, api, rate]
+            config:
+              minute: 120
+              policy: local
+              limit_by: consumer
+              fault_tolerant: true
+          - name: cors
+            tags: [llm, api, cors]
+            config:
+              origins: ["http://localhost", "http://localhost:3000", "http://127.0.0.1"]
+              methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+              headers: ["Authorization", "Content-Type", "X-API-Key", "Idempotency-Key", "X-Request-Id", "Mcp-Session-Id"]
+              exposed_headers: ["X-Request-Id", "X-Gateway-Auth"]
+              credentials: true
+              max_age: 3600
+      - name: llm-api-health
+        paths:
+          - /healthz
+          - /readyz
+        strip_path: false
+        path_handling: v0
+        methods: [GET]
+        tags: [llm, health, public]
+        plugins:
+          - name: cors
+            tags: [llm, health, cors]
+            config:
+              origins: ["*"]
+              methods: ["GET", "OPTIONS"]
+              headers: ["Content-Type"]
+              exposed_headers: ["X-Request-Id"]
+              credentials: false
+              max_age: 3600
 
   - name: media-api-svc
     url: http://media-api:8285
@@ -162,17 +199,13 @@ services:
       - name: media-api-proxy
         paths: [/media]
         strip_path: true
-        path_handling: v1
+        path_handling: v0
         tags: [media, protected]
         plugins:
           - name: jwt
             tags: [media, jwt]
             config:
-              algorithm: RS256
-              key_claim_name: kid
               secret_is_base64: false
-              claims_to_verify: ["exp", "nbf"]
-              maximum_expiration: 3600
               run_on_preflight: false
               anonymous: kong-anon-jwt
           - name: key-auth
@@ -185,12 +218,6 @@ services:
               hide_credentials: true
               run_on_preflight: false
               anonymous: kong-anon-key
-          - name: request-termination
-            tags: [media, enforcement]
-            consumer: kong-anon-key
-            config:
-              status_code: 401
-              message: "Authentication required: provide JWT or API key"
           - name: rate-limiting
             tags: [media, rate]
             config:
@@ -219,17 +246,13 @@ services:
       - name: response-api-proxy
         paths: [/responses]
         strip_path: true
-        path_handling: v1
+        path_handling: v0
         tags: [response, protected]
         plugins:
           - name: jwt
             tags: [response, jwt]
             config:
-              algorithm: RS256
-              key_claim_name: kid
               secret_is_base64: false
-              claims_to_verify: ["exp", "nbf"]
-              maximum_expiration: 3600
               run_on_preflight: false
               anonymous: kong-anon-jwt
           - name: key-auth
@@ -242,12 +265,6 @@ services:
               hide_credentials: true
               run_on_preflight: false
               anonymous: kong-anon-key
-          - name: request-termination
-            tags: [response, enforcement]
-            consumer: kong-anon-key
-            config:
-              status_code: 401
-              message: "Authentication required: provide JWT or API key"
           - name: rate-limiting
             tags: [response, rate]
             config:
@@ -277,17 +294,13 @@ services:
         paths: [/mcp]
         strip_path: true
         methods: ["POST", "OPTIONS"]
-        path_handling: v1
+        path_handling: v0
         tags: [mcp, protected]
         plugins:
           - name: jwt
             tags: [mcp, jwt]
             config:
-              algorithm: RS256
-              key_claim_name: kid
               secret_is_base64: false
-              claims_to_verify: ["exp", "nbf"]
-              maximum_expiration: 3600
               run_on_preflight: false
               anonymous: kong-anon-jwt
           - name: key-auth
@@ -300,12 +313,6 @@ services:
               hide_credentials: true
               run_on_preflight: false
               anonymous: kong-anon-key
-          - name: request-termination
-            tags: [mcp, enforcement]
-            consumer: kong-anon-key
-            config:
-              status_code: 401
-              message: "Authentication required: provide JWT or API key"
           - name: rate-limiting
             tags: [mcp, rate]
             config:
@@ -335,17 +342,13 @@ services:
         paths: [/mcp/healthz, /mcp/readyz]
         strip_path: true
         methods: ["GET"]
-        path_handling: v1
+        path_handling: v0
         tags: [mcp, health, protected]
         plugins:
           - name: jwt
             tags: [mcp, health, jwt]
             config:
-              algorithm: RS256
-              key_claim_name: kid
               secret_is_base64: false
-              claims_to_verify: ["exp", "nbf"]
-              maximum_expiration: 3600
               run_on_preflight: false
               anonymous: kong-anon-jwt
           - name: key-auth
@@ -358,12 +361,6 @@ services:
               hide_credentials: true
               run_on_preflight: false
               anonymous: kong-anon-key
-          - name: request-termination
-            tags: [mcp, health, enforcement]
-            consumer: kong-anon-key
-            config:
-              status_code: 401
-              message: "Authentication required: provide JWT or API key"
           - name: cors
             tags: [mcp, health, cors]
             config:

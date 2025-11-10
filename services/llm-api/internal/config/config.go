@@ -43,12 +43,12 @@ type Config struct {
 	AuthClockSkew       time.Duration `env:"AUTH_CLOCK_SKEW" envDefault:"60s"`
 
 	// API Keys
-	APIKeySecret       []byte        `env:"APIKEY_SECRET"`
-	APIKeyDefaultTTL   time.Duration `env:"API_KEY_DEFAULT_TTL" envDefault:"2160h"` // 90 days
-	APIKeyMaxTTL       time.Duration `env:"API_KEY_MAX_TTL" envDefault:"2160h"`
-	APIKeyMaxPerUser   int           `env:"API_KEY_MAX_PER_USER" envDefault:"5"`
-	APIKeyPrefix       string        `env:"API_KEY_PREFIX" envDefault:"sk_live"`
-	KongAdminURL       string        `env:"KONG_ADMIN_URL" envDefault:"http://kong:8001"`
+	APIKeySecret     []byte        `env:"APIKEY_SECRET"`
+	APIKeyDefaultTTL time.Duration `env:"API_KEY_DEFAULT_TTL" envDefault:"2160h"` // 90 days
+	APIKeyMaxTTL     time.Duration `env:"API_KEY_MAX_TTL" envDefault:"2160h"`
+	APIKeyMaxPerUser int           `env:"API_KEY_MAX_PER_USER" envDefault:"5"`
+	APIKeyPrefix     string        `env:"API_KEY_PREFIX" envDefault:"sk_live"`
+	KongAdminURL     string        `env:"KONG_ADMIN_URL" envDefault:"http://kong:8001"`
 
 	// PostgreSQL
 	DBPostgresqlWriteDSN string `env:"DB_POSTGRESQL_WRITE_DSN"`
@@ -57,7 +57,7 @@ type Config struct {
 	// Model Provider
 	ModelProviderSecret       string                   `env:"MODEL_PROVIDER_SECRET" envDefault:"jan-model-provider-secret-2024"`
 	JanDefaultNodeSetup       bool                     `env:"JAN_DEFAULT_NODE_SETUP" envDefault:"true"`
-	JanDefaultNodeURL         string                   `env:"JAN_DEFAULT_NODE_URL" envDefault:"http://localhost:8001/v1"`
+	JanDefaultNodeURL         string                   `env:"JAN_DEFAULT_NODE_URL" envDefault:"http://localhost:8101/v1"`
 	JanDefaultNodeAPIKey      string                   `env:"JAN_DEFAULT_NODE_API_KEY" envDefault:"changeme"`
 	JanProviderConfigsEnabled bool                     `env:"JAN_PROVIDER_CONFIGS" envDefault:"false"`
 	JanProviderConfigSet      string                   `env:"JAN_PROVIDER_CONFIG_SET" envDefault:"default"`
@@ -98,7 +98,7 @@ func Load() (*Config, error) {
 	}
 
 	cfg.JanProviderConfigSet = strings.TrimSpace(cfg.JanProviderConfigSet)
-		if cfg.JanProviderConfigSet == "" {
+	if cfg.JanProviderConfigSet == "" {
 		cfg.JanProviderConfigSet = "default"
 	}
 

@@ -224,7 +224,7 @@ VS Code debug configurations use a two-layer environment setup:
     "OTEL_EXPORTER_OTLP_ENDPOINT": "",
     
     // Provider Configuration (YAML mode)
-    "VLLM_PROVIDER_URL": "http://localhost:8001/v1",
+    "VLLM_PROVIDER_URL": "http://localhost:8101/v1",
     "JAN_PROVIDER_CONFIGS": "true",
     "JAN_PROVIDER_CONFIGS_FILE": "config/providers.yml",
     "JAN_PROVIDER_CONFIG_SET": "default",
@@ -327,7 +327,7 @@ providers:
 **Enable in .env:**
 ```properties
 JAN_DEFAULT_NODE_SETUP=true
-JAN_DEFAULT_NODE_URL=http://vllm-jan-gpu:8001/v1
+JAN_DEFAULT_NODE_URL=http://vllm-jan-gpu:8101/v1
 JAN_DEFAULT_NODE_API_KEY=changeme
 ```
 
@@ -355,12 +355,12 @@ JAN_PROVIDER_CONFIG_SET=testing
 
 **For Docker (in .env):**
 ```properties
-VLLM_PROVIDER_URL=http://vllm-jan-gpu:8001/v1
+VLLM_PROVIDER_URL=http://vllm-jan-gpu:8101/v1
 ```
 
 **For local debugging (in launch.json):**
 ```json
-"VLLM_PROVIDER_URL": "http://localhost:8001/v1"
+"VLLM_PROVIDER_URL": "http://localhost:8101/v1"
 ```
 
 **In providers.yml:**
@@ -564,7 +564,7 @@ dial tcp: lookup keycloak: no such host
 Verify `launch.json` has localhost overrides:
 ```json
 "env": {
-    "VLLM_PROVIDER_URL": "http://localhost:8001/v1",
+    "VLLM_PROVIDER_URL": "http://localhost:8101/v1",
     "KEYCLOAK_BASE_URL": "http://localhost:8085",
     // ... etc
 }

@@ -33,8 +33,8 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_started
-      vllm-jan-gpu:
-        condition: service_healthy
+      # vllm-jan-gpu:
+      #   condition: service_healthy
     volumes:
       - ../services/llm-api/config:/app/config:ro
     healthcheck:

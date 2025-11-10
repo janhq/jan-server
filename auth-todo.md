@@ -754,6 +754,297 @@ curl -X DELETE http://localhost:8000/auth/api-keys/key_xyz \
 
 ---
 
+## 🧪 Test Cases (Postman Collection)
+
+**Location:** `tests/automation/auth-postman-scripts.json`
+
+**Status:** ✅ **All test cases implemented and ready**
+
+### Test Collection Structure
+
+The Postman collection is organized into the following test suites:
+
+#### 1. **Health Checks**
+
+| Test Case | Method | Endpoint | Expected Result |
+|-----------|--------|----------|-----------------|
+| LLM API Health Check | GET | `/healthz` | 200 OK, status: "ok" |
+
+**Purpose:** Verify the LLM-API service is running and responsive.
+
+#### 2. **Setup - Bootstrap Credentials**
+
+| Test Case | Method | Endpoint | Expected Result |
+|-----------|--------|----------|-----------------|
+| Seed Guest Token | POST | `/auth/guest-login` | 201 Created, includes access_token |
+| Seed Obtain Keycloak Admin Token | POST | `/realms/master/protocol/openid-connect/token` | 200 OK, admin access_token |
+| Seed Create Test User | POST | `/admin/realms/{{realm}}/users` | 201/204/409, user_id set |
+| Seed Set Test User Password | PUT | `/admin/realms/{{realm}}/users/{{test_user_id}}/reset-password` | 204 No Content |
+| Seed Obtain Registered User Token | POST | `/realms/{{realm}}/protocol/openid-connect/token` | 200 OK, user access_token |
+
+**Purpose:** Initialize test data and obtain credentials for downstream tests.
+
+#### 3. **LLM API - Guest Token**
+
+| Test Case | Method | Endpoint | Expected Result |
+|-----------|--------|----------|-----------------|
+| List Models (Guest Token) | GET | `/v1/models` | 200 OK, models array, X-Auth-Method: jwt |
+| Get Model Details (Guest Token) | GET | `/v1/models/catalogs/{{model_id_encoded}}` | 200 OK, model details |
+| Create Chat Completion (Guest Token) | POST | `/v1/chat/completions` | 200 OK, choices array with message content |
+
+**Purpose:** Verify guest JWT tokens can access read operations.
+
+#### 4. **LLM API - Registered User Token**
+
+| Test Case | Method | Endpoint | Expected Result |
+|-----------|--------|----------|-----------------|
+| List Models (Registered User) | GET | `/v1/models` | 200 OK, X-Principal-Id header set, X-Auth-Method: jwt |
+
+**Purpose:** Verify registered user JWT tokens work and include principal headers.
+
+#### 5. **Guest Login Flow**
+
+| Test Case | Method | Endpoint | Expected Result |
+|-----------|--------|----------|-----------------|
+| Request Guest Token | POST | `/auth/guest-login` | 201 Created, access_token + expires_in |
+| Upgrade Guest Account | POST | `/auth/upgrade` | 200 OK, status: "upgraded" |
+
+**Purpose:** Test guest account creation and upgrade to permanent account.
+
+#### 6. **JWT Login Flow**
+
+| Test Case | Method | Endpoint | Expected Result |
+|-----------|--------|----------|-----------------|
+| Obtain Keycloak Admin Token | POST | `/realms/master/protocol/openid-connect/token` | 200 OK, admin token |
+| Create Test User | POST | `/admin/realms/{{realm}}/users` | 201/204/409 |
+| Set Test User Password | PUT | `/admin/realms/{{realm}}/users/{{test_user_id}}/reset-password` | 204 No Content |
+| Obtain Registered User Token | POST | `/realms/{{realm}}/protocol/openid-connect/token` | 200 OK, user token |
+
+**Purpose:** Simulate registered user authentication via Keycloak.
+
+#### 7. **API Key Flow**
+
+| Test Case | Method | Endpoint | Expected Result |
+|-----------|--------|----------|-----------------|
+| Create API Key | POST | `/auth/api-keys` | 201 Created, includes key + id |
+| List API Keys | GET | `/auth/api-keys` | 200 OK, items array |
+| Delete API Key | DELETE | `/auth/api-keys/{{api_key_id}}` | 204 No Content |
+
+**Purpose:** Test API key management (create, list, revoke).
+
+#### 8. **Teardown - Cleanup**
+
+| Test Case | Method | Endpoint | Expected Result |
+|-----------|--------|----------|-----------------|
+| Delete Test User | DELETE | `/admin/realms/{{realm}}/users/{{teardown_user_id}}` | 204/404 |
+
+**Purpose:** Clean up test data after test run completes.
+
+### Test Execution Flow
+
+```
+Health Checks
+    ↓
+Setup (creates credentials for all downstream tests)
+    ├─ Guest Token
+    ├─ Keycloak Admin Token
+    ├─ Test User
+    └─ Registered User Token
+    ↓
+Parallel Test Groups:
+    ├─ Guest Token Flows
+    ├─ Registered User Token Flows
+    ├─ Guest Login & Upgrade
+    ├─ JWT Login
+    └─ API Key Management
+    ↓
+Teardown (cleanup test data)
+```
+
+### Test Coverage Matrix
+
+| Auth Method | Coverage | Status |
+|-------------|----------|--------|
+| Guest JWT | ✅ Read models, chat completions, account upgrade | Working |
+| User JWT | ✅ Authenticated list models, principal headers | Working |
+| API Keys | ✅ Create, list, delete, manage lifecycle | Working |
+| JWT Errors | ⏳ Expired, invalid sig, missing claims | Planned Phase 2 |
+| API Key Errors | ⏳ Revoked key, invalid key, key rotation | Planned Phase 2 |
+| Auth Bypass | ⏳ Neither JWT nor key → 401, invalid both → 401 | Planned Phase 2 |
+
+### Running Tests Locally
+
+```bash
+# Prerequisites: Docker stack must be running
+make up-full
+
+# Run all auth tests
+make test-auth
+
+# Run specific test collection
+newman run tests/automation/auth-postman-scripts.json \
+  --env-var kong_url=http://localhost:8000 \
+  --env-var llm_api_url=http://localhost:8000 \
+  --env-var keycloak_base_url=http://localhost:8085 \
+  --reporters cli,json \
+  --reporter-json-export newman.json
+
+# Run tests with environment file
+newman run tests/automation/auth-postman-scripts.json \
+  -e config/testing.env \
+  --reporters cli,json
+```
+
+### Test Collection Variables
+
+**Collection Variables (Pre-request):**
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `llm_api_url` | `http://localhost:8080` | LLM-API base URL (or `http://localhost:8000` via Kong) |
+| `keycloak_base_url` | `http://localhost:8085` | Keycloak base URL |
+| `realm` | `jan` | Keycloak realm |
+| `client_id_public` | `llm-api` | Public client for direct access grants |
+| `keycloak_admin` | `admin` | Keycloak admin username |
+| `keycloak_admin_password` | `admin` | Keycloak admin password |
+| `model_id` | `qwen/qwen2.5-0.5b-instruct` | Test model for chat completions |
+
+**Generated Variables (Runtime):**
+
+| Variable | Set By | Purpose |
+|----------|--------|---------|
+| `guest_access_token` | Setup | Guest JWT token |
+| `user_access_token` | Setup | Registered user JWT token |
+| `api_key_id` | API Key Flow | Created API key ID |
+| `api_key_secret` | API Key Flow | Created API key (secret) |
+| `test_user_id` | Setup | Test user Keycloak ID |
+| `test_user_username` | Setup | Generated test username |
+| `test_user_email` | Setup | Generated test email |
+
+### Test Assertions
+
+**Health Check Assertions:**
+- Status code is 200
+- Response body contains status: "ok"
+
+**Token Creation Assertions:**
+- Status code is 201 (Created) for guest
+- Status code is 200 for user login
+- Response contains `access_token` (non-empty string)
+- Response contains `expires_in` (positive integer)
+
+**API Usage Assertions:**
+- Status code is 200 OK
+- Response schema matches OpenAPI spec
+- `X-Auth-Method` header present and equals "jwt"
+- `X-Principal-Id` header present for registered users
+
+**API Key Assertions:**
+- Status code is 201 for create
+- Response contains `id` and `key` fields
+- `key` is non-empty string (shown only at creation)
+- Delete returns 204 No Content
+
+**Error Assertions (Phase 2):**
+- Invalid JWT returns 401 Unauthorized
+- Expired JWT returns 401 Unauthorized
+- Invalid API key returns 401 Unauthorized
+- Both JWT and key missing returns 401 Unauthorized
+
+### Debugging Failed Tests
+
+**Common Issues and Solutions:**
+
+| Problem | Cause | Solution |
+|---------|-------|----------|
+| Health check fails | LLM-API not running | `make up-full` to start services |
+| Keycloak token fails | Keycloak not ready | Wait 30s after `make up-full` |
+| Guest token fails | Guest handler not working | Check logs: `docker logs jan-server-llm-api-1` |
+| User creation fails | User already exists | Tests handle 409 conflict gracefully |
+| Chat completion fails | Model not available | Download model: `scripts/setup.sh` |
+| API key fails | Service not compiled | Run `make build` before tests |
+
+### Test Success Criteria
+
+**Test suite passes when:**
+- ✅ All health checks return 200 OK
+- ✅ Setup creates guest and user tokens successfully
+- ✅ All LLM-API endpoints accept valid JWTs
+- ✅ API key creation returns 201 with key
+- ✅ API key management (list, delete) works
+- ✅ Teardown successfully removes test data
+- ✅ No unhandled exceptions in test scripts
+- ✅ All response times < 2 seconds
+
+### Postman Collection Export Location
+
+**File:** `tests/automation/auth-postman-scripts.json`
+
+**To Import into Postman:**
+1. Open Postman
+2. Click **Import** → **Upload Files**
+3. Select `tests/automation/auth-postman-scripts.json`
+4. Collection imported with all tests and variables
+5. Click **Runner** → Select collection → **Start Run**
+
+### Newman CI/CD Integration
+
+**GitHub Actions Example:**
+
+```yaml
+name: Auth Tests
+on: [push, pull_request]
+jobs:
+  auth-tests:
+    runs-on: ubuntu-latest
+    services:
+      docker:
+        image: docker:dind
+    steps:
+      - uses: actions/checkout@v3
+      - name: Start Docker Stack
+        run: make up-full
+      - name: Wait for Services
+        run: scripts/wait-for.sh http://localhost:8085/health
+      - name: Run Auth Tests
+        run: make test-auth
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: newman-results
+          path: newman.json
+```
+
+### Phase 2 Planned Tests
+
+These tests will be added in Phase 2 to cover error scenarios:
+
+- [ ] **JWT Error Cases**
+  - [ ] Expired JWT returns 401
+  - [ ] Invalid signature returns 401
+  - [ ] Missing "exp" claim returns 401
+  - [ ] Wrong "aud" (audience) returns 401
+  - [ ] Malformed JWT returns 401
+
+- [ ] **API Key Error Cases**
+  - [ ] Revoked key returns 401
+  - [ ] Invalid key format returns 401
+  - [ ] Key from different user returns 401
+  - [ ] Deleted key returns 401
+
+- [ ] **Auth Bypass Prevention**
+  - [ ] No JWT, no API key → 401
+  - [ ] Invalid JWT, invalid key → 401
+  - [ ] Both JWT and key invalid → 401
+
+- [ ] **Performance Tests**
+  - [ ] Auth latency p99 < 50ms
+  - [ ] 100 concurrent requests succeed
+  - [ ] Key rotation doesn't drop requests
+
+---
+
 ## 📚 References
 
 ### Tools & Documentation
