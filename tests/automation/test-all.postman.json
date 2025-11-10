@@ -30,16 +30,16 @@
               "listen": "test",
               "script": {
                 "type": "text/javascript",
-                  "exec": [
-                    "const authPayload = pm.response.json();",
-                    "pm.test('guest token issued', function () {",
-                    "  pm.response.to.have.status(201);",
-                    "  pm.expect(authPayload).to.have.property('access_token');",
-                    "});",
-                    "pm.collectionVariables.set('guest_access_token', authPayload.access_token);",
-                    "pm.collectionVariables.set('guest_user_id', authPayload.user_id || 'guest');",
-                    "pm.collectionVariables.set('guest_refresh_token', authPayload.refresh_token || '');"
-                  ]
+                "exec": [
+                  "const authPayload = pm.response.json();",
+                  "pm.test('guest token issued', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(authPayload).to.have.property('access_token');",
+                  "});",
+                  "pm.collectionVariables.set('guest_access_token', authPayload.access_token);",
+                  "pm.collectionVariables.set('guest_user_id', authPayload.user_id || 'guest');",
+                  "pm.collectionVariables.set('guest_refresh_token', authPayload.refresh_token || '');"
+                ]
               }
             }
           ]
@@ -111,22 +111,66 @@
               "listen": "test",
               "script": {
                 "type": "text/javascript",
-                  "exec": [
-                    "const mediaPayload = pm.response.json();",
-                    "pm.test('media upload succeeded', function () {",
-                    "  pm.response.to.have.status(200);",
-                    "  pm.expect(mediaPayload.id).to.match(/^jan_/);",
-                    "});",
-                    "pm.test('presigned download url issued', function () {",
-                    "  pm.expect(mediaPayload.presigned_url).to.be.a('string').and.not.empty;",
-                    "});",
-                    "pm.test('presigned url is external', function () {",
-                    "  pm.expect(mediaPayload.presigned_url).to.match(/^https?:\\/\\//);",
-                    "});",
-                    "pm.collectionVariables.set('media_id', mediaPayload.id);",
-                    "pm.collectionVariables.set('media_placeholder', `data:${mediaPayload.mime};${mediaPayload.id}`);",
-                    "pm.collectionVariables.set('media_presigned_url', mediaPayload.presigned_url);"
-                  ]
+                "exec": [
+                  "const mediaPayload = pm.response.json();",
+                  "pm.test('media upload succeeded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(mediaPayload.id).to.match(/^jan_/);",
+                  "});",
+                  "pm.test('presigned download url issued', function () {",
+                  "  pm.expect(mediaPayload.presigned_url).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('presigned url is external', function () {",
+                  "  pm.expect(mediaPayload.presigned_url).to.match(/^https?:\\/\\//);",
+                  "});",
+                  "pm.collectionVariables.set('media_id', mediaPayload.id);",
+                  "pm.collectionVariables.set('media_placeholder', `data:${mediaPayload.mime};${mediaPayload.id}`);",
+                  "pm.collectionVariables.set('media_presigned_url', mediaPayload.presigned_url);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upload Remote Image",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Media-Service-Key",
+                "value": "{{media_service_key}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": {\n    \"type\": \"remote_url\",\n    \"url\": \"https://httpbin.org/image/png\"\n  },\n  \"user_id\": \"{{guest_user_id}}\",\n  \"filename\": \"semaglutide-remote.png\"\n}"
+            },
+            "url": "{{media_api_url}}/v1/media",
+            "description": "Fetch an external image via remote_url ingestion."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const remotePayload = pm.response.json();",
+                  "pm.test('remote media upload succeeded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(remotePayload.id).to.match(/^jan_/);",
+                  "});",
+                  "pm.test('remote mime is image', function () {",
+                  "  pm.expect(remotePayload.mime).to.match(/^image\\//);",
+                  "});",
+                  "pm.test('remote media has bytes', function () {",
+                  "  pm.expect(remotePayload.bytes).to.be.above(0);",
+                  "});",
+                  "pm.collectionVariables.set('media_remote_id', remotePayload.id);"
+                ]
               }
             }
           ]
@@ -246,7 +290,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Generate a short caption for the uploaded media reference {{media_placeholder}} and mention semaglutide.\"\n    }\n  ],\n  \"max_tokens\": 120,\n  \"temperature\": 0.4\n}"
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [\n        {\n          \"type\": \"text\",\n          \"text\": \"Describe this image briefly, mention semaglutide, and cite notable visual cues.\"\n        },\n        {\n          \"type\": \"image_url\",\n          \"image_url\": {\n            \"url\": \"{{media_placeholder}}\"\n          }\n        }\n      ]\n    }\n  ],\n  \"max_tokens\": 120,\n  \"temperature\": 0.4\n}"
             },
             "url": "{{llm_api_url}}/v1/chat/completions",
             "description": "Ensure models can reference stored media via jan_id through the gateway."
@@ -444,7 +488,10 @@
     {
       "key": "response_id",
       "value": ""
+    },
+    {
+      "key": "media_remote_id",
+      "value": ""
     }
   ]
 }
-

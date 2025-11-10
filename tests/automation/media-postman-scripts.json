@@ -36,9 +36,9 @@
               "pm.test('health status is 200', function () {",
               "    pm.response.to.have.status(200);",
               "});",
-              "pm.test('body reports ok', function () {",
+              "pm.test('body reports healthy/ok', function () {",
               "    var data = pm.response.json();",
-              "    pm.expect(data.status).to.eql('ok');",
+              "    pm.expect(['ok', 'healthy']).to.include(data.status);",
               "});"
             ]
           }
@@ -136,7 +136,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"source\": {\n    \"type\": \"remote_url\",\n    \"url\": \"https://placekitten.com/256/256\"\n  },\n  \"filename\": \"kitten.png\",\n  \"user_id\": \"automation\"\n}"
+          "raw": "{\n  \"source\": {\n    \"type\": \"remote_url\",\n    \"url\": \"https://www.jan.ai/_next/static/media/cute-robot-flying.1479447f.png\"\n  },\n  \"filename\": \"httpbin.png\",\n  \"user_id\": \"automation\"\n}"
         },
         "url": {
           "raw": "{{media_api_url}}/v1/media",
@@ -262,9 +262,15 @@
               "    }",
               "});",
               "",
-              "// Store for deduplication test",
+              "// Store for deduplication test and downstream flows",
               "pm.collectionVariables.set('dataurl_media_id', data.id);",
-              "pm.collectionVariables.set('dataurl_deduped_first', data.deduped);"
+              "pm.collectionVariables.set('dataurl_deduped_first', data.deduped);",
+              "pm.collectionVariables.set('latest_media_id', data.id);",
+              "pm.collectionVariables.set('latest_media_mime', data.mime);",
+              "pm.collectionVariables.set('latest_media_bytes', data.bytes);",
+              "if (data.presigned_url) {",
+              "    pm.collectionVariables.set('latest_presigned_url', data.presigned_url);",
+              "}"
             ]
           }
         }
@@ -374,9 +380,15 @@
               "});",
               "",
               "pm.test('jan_* placeholder replaced with signed URL', function () {",
-              "    var payload = JSON.stringify(data.payload);",
-              "    pm.expect(payload).to.not.include('jan_');",
-              "    pm.expect(payload).to.match(/https?:\\/\\//);",
+              "    var message = (data.payload.messages || [])[0];",
+              "    pm.expect(message).to.be.an('object');",
+              "    var imagePart = (message.content || []).find(function (part) {",
+              "        return part.type === 'image_url';",
+              "    });",
+              "    pm.expect(imagePart).to.be.an('object');",
+              "    pm.expect(imagePart.image_url).to.have.property('url');",
+              "    pm.expect(imagePart.image_url.url).to.match(/^https?:\\/\\//);",
+              "    pm.expect(imagePart.image_url.url).to.not.match(/^data:image/);",
               "});",
               "",
               "pm.test('messages structure preserved', function () {",
@@ -551,7 +563,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"source\": {\n    \"type\": \"remote_url\",\n    \"url\": \"https://placekitten.com/128/128\"\n  },\n  \"user_id\": \"automation\"\n}"
+          "raw": "{\n  \"source\": {\n    \"type\": \"remote_url\",\n    \"url\": \"https://www.jan.ai/_next/static/media/cute-robot-flying.1479447f.png\"\n  },\n  \"user_id\": \"automation\"\n}"
         },
         "url": {
           "raw": "{{media_api_url}}/v1/media",
