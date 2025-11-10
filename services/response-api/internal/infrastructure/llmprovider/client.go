@@ -36,11 +36,16 @@ func NewClient(baseURL string) *Client {
 // CreateChatCompletion calls llm-api /v1/chat/completions.
 func (c *Client) CreateChatCompletion(ctx context.Context, req llm.ChatCompletionRequest) (*llm.ChatCompletionResponse, error) {
 	var completion llm.ChatCompletionResponse
-	resp, err := c.httpClient.R().
+	request := c.httpClient.R().
 		SetContext(ctx).
 		SetBody(req).
-		SetResult(&completion).
-		Post("/v1/chat/completions")
+		SetResult(&completion)
+
+	if token := llm.AuthTokenFromContext(ctx); token != "" {
+		request.SetHeader("Authorization", token)
+	}
+
+	resp, err := request.Post("/v1/chat/completions")
 	if err != nil {
 		return nil, err
 	}
@@ -67,6 +72,9 @@ func (c *Client) CreateChatCompletionStream(ctx context.Context, req llm.ChatCom
 
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "text/event-stream")
+	if token := llm.AuthTokenFromContext(ctx); token != "" {
+		httpReq.Header.Set("Authorization", token)
+	}
 
 	httpClient := &http.Client{Timeout: 120 * time.Second}
 	resp, err := httpClient.Do(httpReq)

@@ -137,11 +137,14 @@ Copy `config/example.env` and tweak the following keys:
 | `MEDIA_DATABASE_URL` | Postgres DSN for metadata. |
 | `MEDIA_SERVICE_KEY` | Shared secret required via `X-Media-Service-Key`. |
 | `MEDIA_S3_ENDPOINT` | S3-compatible endpoint (`https://s3.menlo.ai`). |
+| `MEDIA_S3_PUBLIC_ENDPOINT` | Optional public endpoint used when returning presigned URLs (e.g., `http://localhost:9000`). |
 | `MEDIA_S3_ACCESS_KEY` / `MEDIA_S3_SECRET_KEY` | Credentials (`XXXXX` / `YYYY`). |
 | `MEDIA_S3_BUCKET` | Target bucket (`platform-dev`). |
 | `MEDIA_MAX_BYTES` | Max upload size (default 20 MB). |
 | `MEDIA_S3_PRESIGN_TTL` | Lifespan of presigned URLs (default 5 min). |
 | `MEDIA_RETENTION_DAYS` | Metadata retention window. |
+
+> If the S3 bucket or credentials are omitted the service still starts, but media upload/resolve endpoints will respond with `media storage backend is not configured` until valid `MEDIA_S3_*` values are provided.
 
 All env samples already contain the provided Menlo dev bucket configuration.
 

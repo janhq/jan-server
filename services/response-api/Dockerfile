@@ -7,7 +7,13 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/response-api ./cmd/server
 
-FROM gcr.io/distroless/base-debian12
-COPY --from=build /out/response-api /response-api
+FROM debian:bookworm-slim
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates curl && \
+    rm -rf /var/lib/apt/lists/*
+RUN useradd --system --home /app --no-create-home --uid 10003 response
+WORKDIR /app
+COPY --from=build /out/response-api /app/response-api
 EXPOSE 8082
-ENTRYPOINT ["/response-api"]
+USER response
+ENTRYPOINT ["/app/response-api"]

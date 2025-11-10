@@ -29,7 +29,7 @@ Jan Server supports multiple deployment strategies to accommodate different use 
 ### All Deployments
 
 - Docker 24+ and Docker Compose V2
-- PostgreSQL 16+ (managed or in-cluster)
+- PostgreSQL 18+ (managed or in-cluster)
 - Redis 7+ (managed or in-cluster)
 - S3-compatible storage (for media-api)
 

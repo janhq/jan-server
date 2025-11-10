@@ -2,19 +2,69 @@ _format_version: "3.0"
 _transform: true
 
 services:
-  - name: mcp-tools-svc
-    url: http://host.docker.internal:8091
+  - name: llm-api-svc
+    url: http://host.docker.internal:8080
     routes:
-      - name: mcp-tools-v1-mcp
-        paths: [/v1/mcp]
-        strip_path: false
-        path_handling: v1
-        tags: [public]
-      - name: mcp-tools-health
-        paths: [/mcp/healthz, /mcp/readyz]
+      - name: llm-api-proxy
+        paths: [/llm]
         strip_path: true
         path_handling: v1
-        tags: [public]
+        tags: [public, llm]
+    plugins:
+      - name: cors
+        config:
+          origins: ["http://localhost", "http://localhost:3000", "http://localhost:8080", "http://127.0.0.1"]
+          methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+          headers: ["Authorization", "Content-Type", "X-API-Key", "Idempotency-Key", "X-Request-Id", "Mcp-Session-Id"]
+          credentials: true
+          exposed_headers: ["X-Request-Id"]
+          max_age: 3600
+
+  - name: media-api-svc
+    url: http://host.docker.internal:8285
+    routes:
+      - name: media-api-proxy
+        paths: [/media]
+        strip_path: true
+        path_handling: v1
+        tags: [public, media]
+    plugins:
+      - name: cors
+        config:
+          origins: ["http://localhost", "http://localhost:3000", "http://localhost:8080", "http://127.0.0.1"]
+          methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+          headers: ["Authorization", "Content-Type", "X-API-Key", "Idempotency-Key", "X-Request-Id", "Media-Service-Key"]
+          credentials: true
+          exposed_headers: ["X-Request-Id"]
+          max_age: 3600
+
+  - name: response-api-svc
+    url: http://host.docker.internal:8082
+    routes:
+      - name: response-api-proxy
+        paths: [/responses]
+        strip_path: true
+        path_handling: v1
+        tags: [public, responses]
+    plugins:
+      - name: cors
+        config:
+          origins: ["http://localhost", "http://localhost:3000", "http://localhost:8080", "http://127.0.0.1"]
+          methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+          headers: ["Authorization", "Content-Type", "X-API-Key", "Idempotency-Key", "X-Request-Id", "Mcp-Session-Id"]
+          credentials: true
+          exposed_headers: ["X-Request-Id"]
+          max_age: 3600
+
+  - name: mcp-tools-rpc-svc
+    url: http://host.docker.internal:8091/v1/mcp
+    routes:
+      - name: mcp-tools-rpc
+        paths: [/mcp]
+        methods: ["POST", "OPTIONS"]
+        strip_path: true
+        path_handling: v1
+        tags: [public, mcp]
     plugins:
       - name: cors
         config:
@@ -25,30 +75,12 @@ services:
           exposed_headers: ["X-Request-Id"]
           max_age: 3600
 
-  - name: llm-api-svc
-    url: http://host.docker.internal:8080
+  - name: mcp-tools-health-svc
+    url: http://host.docker.internal:8091
     routes:
-      - name: llm-api-v1
-        paths: [/v1]
-        strip_path: false
+      - name: mcp-tools-health
+        paths: [/mcp]
+        methods: ["GET"]
+        strip_path: true
         path_handling: v1
-        tags: [public]
-      - name: llm-api-auth
-        paths: [/auth]
-        strip_path: false
-        path_handling: v1
-        tags: [public]
-      - name: llm-api-health
-        paths: [/healthz, /health]
-        strip_path: false
-        path_handling: v1
-        tags: [public]
-    plugins:
-      - name: cors
-        config:
-          origins: ["http://localhost", "http://localhost:3000", "http://localhost:8080", "http://127.0.0.1"]
-          methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-          headers: ["Authorization", "Content-Type", "X-API-Key", "Idempotency-Key", "X-Request-Id", "Mcp-Session-Id"]
-          credentials: true
-          exposed_headers: ["X-Request-Id"]
-          max_age: 3600
+        tags: [public, mcp, health]

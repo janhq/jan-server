@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -150,7 +151,7 @@ func (s *Service) ResolvePayload(ctx context.Context, payload json.RawMessage) (
 			return nil, err
 		}
 
-		replacements[match[0]] = url
+		replacements[match[0]] = s.externalizeURL(url)
 	}
 
 	builder := strings.Builder{}
@@ -196,7 +197,11 @@ func (s *Service) Presign(ctx context.Context, id string) (string, error) {
 	if obj == nil {
 		return "", fmt.Errorf("media %s not found", id)
 	}
-	return s.storage.PresignGet(ctx, obj.StorageKey, s.cfg.S3PresignTTL)
+	url, err := s.storage.PresignGet(ctx, obj.StorageKey, s.cfg.S3PresignTTL)
+	if err != nil {
+		return "", err
+	}
+	return s.externalizeURL(url), nil
 }
 
 // PrepareUpload generates a presigned upload URL and reserves a jan_id for client-side upload.
@@ -216,6 +221,7 @@ func (s *Service) PrepareUpload(ctx context.Context, mimeType string, userID str
 	if err != nil {
 		return nil, err
 	}
+	uploadURL = s.externalizeURL(uploadURL)
 
 	// Create placeholder record in database (with zero bytes initially)
 	obj := &MediaObject{
@@ -223,8 +229,8 @@ func (s *Service) PrepareUpload(ctx context.Context, mimeType string, userID str
 		StorageProvider: "s3",
 		StorageKey:      key,
 		MimeType:        mimeType,
-		Bytes:           0,  // Will be updated after upload
-		Sha256:          "", // Will be updated after upload
+		Bytes:           0,                             // Will be updated after upload
+		Sha256:          fmt.Sprintf("pending_%s", id), // Placeholder hash to satisfy unique index
 		CreatedBy:       userID,
 		RetentionUntil:  time.Now().Add(time.Duration(s.cfg.RetentionDays) * 24 * time.Hour),
 	}
@@ -239,6 +245,59 @@ func (s *Service) PrepareUpload(ctx context.Context, mimeType string, userID str
 		MimeType:  mimeType,
 		ExpiresIn: int(s.cfg.S3PresignTTL.Seconds()),
 	}, nil
+}
+
+func (s *Service) externalizeURL(raw string) string {
+	publicEndpoint := strings.TrimSpace(s.cfg.S3PublicEndpoint)
+	if publicEndpoint == "" || strings.TrimSpace(raw) == "" {
+		return raw
+	}
+
+	target, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+
+	external, err := url.Parse(publicEndpoint)
+	if err != nil || external.Scheme == "" || external.Host == "" {
+		return raw
+	}
+
+	target.Scheme = external.Scheme
+	target.Host = external.Host
+
+	if path := strings.TrimSpace(external.Path); path != "" && path != "/" {
+		target.Path = joinPublicPath(path, target.Path)
+	}
+
+	return target.String()
+}
+
+func joinPublicPath(basePath, objectPath string) string {
+	base := strings.TrimSuffix(basePath, "/")
+	if base == "" {
+		return ensureLeadingSlash(objectPath)
+	}
+
+	if !strings.HasPrefix(base, "/") {
+		base = "/" + base
+	}
+
+	relative := strings.TrimPrefix(objectPath, "/")
+	if relative == "" {
+		return base
+	}
+	return base + "/" + relative
+}
+
+func ensureLeadingSlash(path string) string {
+	if path == "" {
+		return "/"
+	}
+	if strings.HasPrefix(path, "/") {
+		return path
+	}
+	return "/" + path
 }
 
 func (s *Service) loadBytes(ctx context.Context, source Source) ([]byte, error) {

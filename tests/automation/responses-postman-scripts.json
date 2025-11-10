@@ -113,7 +113,7 @@
               "mode": "raw",
               "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/list\",\n  \"params\": {},\n  \"id\": 1\n}"
             },
-            "url": "{{mcp_tools_url}}/v1/mcp"
+            "url": "{{mcp_tools_url}}"
           },
           "event": [
             {
@@ -763,3 +763,4 @@
     }
   ]
 }
+

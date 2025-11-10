@@ -103,6 +103,10 @@ NEWMAN = newman
 NEWMAN_AUTH_COLLECTION = tests/automation/auth-postman-scripts.json
 NEWMAN_CONVERSATION_COLLECTION = tests/automation/conversations-postman-scripts.json
 NEWMAN_MCP_COLLECTION = tests/automation/mcp-postman-scripts.json
+NEWMAN_E2E_COLLECTION = tests/automation/test-all.postman.json
+
+MEDIA_SERVICE_KEY ?= changeme-media-key
+MEDIA_API_KEY ?= changeme-media-key
 
 # ============================================================================================================
 # BACKWARD COMPATIBILITY ALIASES
@@ -705,9 +709,9 @@ test-coverage:
 
 # --- Integration Tests (Newman) ---
 
-.PHONY: test-all test-auth test-conversations test-mcp-integration newman-debug
+.PHONY: test-all test-auth test-conversations test-mcp-integration test-e2e newman-debug
 
-test-all: test-auth test-conversations test-mcp-integration
+test-all: test-auth test-conversations test-mcp-integration test-e2e
 	@echo ""
 	@echo "✅ All integration tests passed!"
 
@@ -715,7 +719,7 @@ test-auth:
 	@echo "Running authentication tests..."
 	@$(NEWMAN) run $(NEWMAN_AUTH_COLLECTION) \
 		--env-var "kong_url=http://localhost:8000" \
-		--env-var "llm_api_url=http://localhost:8080" \
+		--env-var "llm_api_url=http://localhost:8000/llm" \
 		--env-var "keycloak_base_url=http://localhost:8085" \
 		--env-var "keycloak_admin=admin" \
 		--env-var "keycloak_admin_password=admin" \
@@ -728,7 +732,7 @@ test-conversations:
 	@echo "Running conversation API tests..."
 	@$(NEWMAN) run $(NEWMAN_CONVERSATION_COLLECTION) \
 		--env-var "kong_url=http://localhost:8000" \
-		--env-var "llm_api_url=http://localhost:8080" \
+		--env-var "llm_api_url=http://localhost:8000/llm" \
 		--env-var "keycloak_base_url=http://localhost:8085" \
 		--env-var "keycloak_admin=admin" \
 		--env-var "keycloak_admin_password=admin" \
@@ -741,19 +745,31 @@ test-mcp-integration:
 	@echo "Running MCP integration tests..."
 	@$(NEWMAN) run $(NEWMAN_MCP_COLLECTION) \
 		--env-var "kong_url=http://localhost:8000" \
-		--env-var "llm_api_url=http://localhost:8080" \
-		--env-var "mcp_tools_url=http://localhost:8091" \
+		--env-var "llm_api_url=http://localhost:8000/llm" \
+		--env-var "mcp_tools_url=http://localhost:8000/mcp" \
 		--env-var "searxng_url=http://localhost:8086" \
 		--verbose \
 		--reporters cli
 	@echo "✅ MCP integration tests passed"
+
+test-e2e:
+	@echo "Running gateway end-to-end tests..."
+	@$(NEWMAN) run $(NEWMAN_E2E_COLLECTION) \
+		--env-var "gateway_url=http://localhost:8000" \
+		--env-var "llm_api_url=http://localhost:8000/llm" \
+		--env-var "media_api_url=http://localhost:8000/media" \
+		--env-var "response_api_url=http://localhost:8000/responses" \
+		--env-var "mcp_tools_url=http://localhost:8000/mcp" \
+		--env-var "media_service_key=$(MEDIA_SERVICE_KEY)" \
+		--reporters cli
+	@echo "�o. Gateway end-to-end tests passed"
 
 newman-debug:
 	@echo "Running authentication tests with debug output..."
 ifeq ($(OS),Windows_NT)
 	@set NODE_DEBUG=request && $(NEWMAN) run $(NEWMAN_AUTH_COLLECTION) \
 		--env-var "kong_url=http://localhost:8000" \
-		--env-var "llm_api_url=http://localhost:8080" \
+		--env-var "llm_api_url=http://localhost:8000/llm" \
 		--env-var "keycloak_base_url=http://localhost:8085" \
 		--env-var "keycloak_admin=admin" \
 		--env-var "keycloak_admin_password=admin" \
@@ -766,7 +782,7 @@ ifeq ($(OS),Windows_NT)
 else
 	@NODE_DEBUG=request $(NEWMAN) run $(NEWMAN_AUTH_COLLECTION) \
 		--env-var "kong_url=http://localhost:8000" \
-		--env-var "llm_api_url=http://localhost:8080" \
+		--env-var "llm_api_url=http://localhost:8000/llm" \
 		--env-var "keycloak_base_url=http://localhost:8085" \
 		--env-var "keycloak_admin=admin" \
 		--env-var "keycloak_admin_password=admin" \

@@ -80,7 +80,7 @@
               "mode": "raw",
               "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"google_search\",\n    \"arguments\": {\n      \"q\": \"Example Domain\",\n      \"domain_allow_list\": [\"example.com\"]\n    }\n  },\n  \"id\": 4\n}"
             },
-            "url": "{{mcp_tools_url}}/v1/mcp"
+            "url": "{{mcp_tools_url}}"
           },
           "event": [
             {
@@ -145,7 +145,7 @@
               "mode": "raw",
               "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"google_search\",\n    \"arguments\": {\n      \"q\": \"offline mode smoke test\",\n      \"offline_mode\": true\n    }\n  },\n  \"id\": 5\n}"
             },
-            "url": "{{mcp_tools_url}}/v1/mcp"
+            "url": "{{mcp_tools_url}}"
           },
           "event": [
             {
@@ -214,7 +214,7 @@
               "mode": "raw",
               "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/list\",\n  \"id\": 1\n}"
             },
-            "url": "{{mcp_tools_url}}/v1/mcp"
+            "url": "{{mcp_tools_url}}"
           },
           "event": [
             {
@@ -274,7 +274,7 @@
               "mode": "raw",
               "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"google_search\",\n    \"arguments\": {\n      \"q\": \"Model Context Protocol\"\n    }\n  },\n  \"id\": 2\n}"
             },
-            "url": "{{mcp_tools_url}}/v1/mcp"
+            "url": "{{mcp_tools_url}}"
           },
           "event": [
             {
@@ -349,7 +349,7 @@
               "mode": "raw",
               "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"scrape\",\n    \"arguments\": {\n      \"url\": \"https://example.com\"\n    }\n  },\n  \"id\": 3\n}"
             },
-            "url": "{{mcp_tools_url}}/v1/mcp"
+            "url": "{{mcp_tools_url}}"
           },
           "event": [
             {
@@ -425,7 +425,7 @@
               "mode": "raw",
               "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"file_search_index\",\n    \"arguments\": {\n      \"document_id\": \"postman-doc-1\",\n      \"text\": \"Postman MCP automation smoke guide covering Model Context Protocol flows.\",\n      \"metadata\": {\n        \"category\": \"kb\",\n        \"version\": \"1.0\"\n      },\n      \"tags\": [\"automation\", \"kb\"]\n    }\n  },\n  \"id\": 6\n}"
             },
-            "url": "{{mcp_tools_url}}/v1/mcp"
+            "url": "{{mcp_tools_url}}"
           },
           "event": [
             {
@@ -489,7 +489,7 @@
               "mode": "raw",
               "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"file_search_query\",\n    \"arguments\": {\n      \"query\": \"automation smoke\",\n      \"top_k\": 3,\n      \"document_ids\": [\"postman-doc-1\"]\n    }\n  },\n  \"id\": 7\n}"
             },
-            "url": "{{mcp_tools_url}}/v1/mcp"
+            "url": "{{mcp_tools_url}}"
           },
           "event": [
             {
@@ -555,7 +555,7 @@
               "mode": "raw",
               "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"python_exec\",\n    \"arguments\": {\n      \"code\": \"print(\\\"hello from sandbox\\\")\",\n      \"language\": \"python\",\n      \"approved\": true\n    }\n  },\n  \"id\": 8\n}"
             },
-            "url": "{{mcp_tools_url}}/v1/mcp"
+            "url": "{{mcp_tools_url}}"
           },
           "event": [
             {
@@ -721,3 +721,4 @@
     }
   ]
 }
+

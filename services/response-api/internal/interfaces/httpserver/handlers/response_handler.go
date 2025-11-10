@@ -73,6 +73,9 @@ func (h *ResponseHandler) Create(c *gin.Context) {
 		Metadata:           req.Metadata,
 	}
 
+	authCtx := llm.ContextWithAuthToken(c.Request.Context(), strings.TrimSpace(c.GetHeader("Authorization")))
+	c.Request = c.Request.WithContext(authCtx)
+
 	if stream {
 		h.streamResponse(c, params)
 		return

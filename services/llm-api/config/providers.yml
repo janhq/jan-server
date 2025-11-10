@@ -13,11 +13,11 @@ providers:
     #     image_input: '{"supported":true,"url":true,"base64":true,"schema":"..."}'
     #     file_attachment: '{"supported":false,"url":false,"base64":false,"file_upload":false}'
         
-    - name: Internal Jan v2
+    - name: Local vLLM
       type: vllm
-      url: http://10.200.108.153:9000/v1
-      api_key: none
-      description: Internal Jan v2 instance
+      url: http://vllm-jan-gpu:8001/v1
+      api_key: ${VLLM_INTERNAL_KEY}
+      description: "Local Jan vLLM instance (Docker profile: full)"
       auto_enable_new_models: true
       sync_models: true
       metadata:

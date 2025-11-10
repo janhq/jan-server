@@ -536,7 +536,7 @@ kubectl get pods -n jan-server -l app.kubernetes.io/name=postgresql
 
 # Test connection
 kubectl run -n jan-server psql-test --rm -it \
-  --image=postgres:16 \
+  --image=postgres:18 \
   -- psql -h jan-server-postgresql -U jan_user -d jan_llm_api
 ```
 

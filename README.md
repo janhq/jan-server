@@ -209,7 +209,7 @@ See [Monitoring Guide](docs/guides/monitoring.md) for configuration.
 |-------|------------|
 | API Gateway | Kong 3.5 |
 | Services | Go 1.21+ (Gin) |
-| Database | PostgreSQL 16 |
+| Database | PostgreSQL 18 |
 | Auth | Keycloak (OIDC) |
 | Inference | vLLM |
 | Observability | OpenTelemetry, Prometheus, Jaeger, Grafana |

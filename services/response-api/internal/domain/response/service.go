@@ -117,16 +117,24 @@ func (s *ServiceImpl) Create(ctx context.Context, params CreateParams) (*Respons
 		}
 	}
 
-	orchestratorResult, err := s.orchestrator.Execute(tool.ExecuteParams{
-		Ctx:             ctx,
-		Model:           params.Model,
-		Messages:        messages,
-		Temperature:     params.Temperature,
-		MaxTokens:       params.MaxTokens,
-		ToolChoice:      params.ToolChoice,
-		ToolDefinitions: toolDefs,
-		StreamObserver:  params.StreamObserver,
-	})
+	execParams := func(defs []llm.ToolDefinition, toolChoice *llm.ToolChoice) tool.ExecuteParams {
+		return tool.ExecuteParams{
+			Ctx:             ctx,
+			Model:           params.Model,
+			Messages:        messages,
+			Temperature:     params.Temperature,
+			MaxTokens:       params.MaxTokens,
+			ToolChoice:      toolChoice,
+			ToolDefinitions: defs,
+			StreamObserver:  params.StreamObserver,
+		}
+	}
+
+	orchestratorResult, err := s.orchestrator.Execute(execParams(toolDefs, params.ToolChoice))
+	if err != nil && shouldRetryWithoutTools(err) && len(toolDefs) > 0 {
+		s.log.Warn().Err(err).Str("response_id", responseModel.PublicID).Msg("llm provider rejected tool definitions, retrying without tools")
+		orchestratorResult, err = s.orchestrator.Execute(execParams(nil, nil))
+	}
 	if err != nil {
 		return s.failResponse(ctx, responseModel, err)
 	}
@@ -361,4 +369,18 @@ func mapToChatMessage(raw interface{}) (llm.ChatMessage, error) {
 
 func newPublicID(prefix string) string {
 	return fmt.Sprintf("%s_%s", prefix, uuid.NewString())
+}
+
+func shouldRetryWithoutTools(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	if strings.Contains(message, "failed to complete chat request") {
+		return true
+	}
+	if strings.Contains(message, "tools unsupported") {
+		return true
+	}
+	return false
 }

@@ -44,7 +44,7 @@ type resolveResponse struct {
 }
 
 // JSONPayload is used to document arbitrary JSON blobs in swagger.
-type JSONPayload []byte
+type JSONPayload = json.RawMessage
 
 // Ingest godoc
 // @Summary      Upload media

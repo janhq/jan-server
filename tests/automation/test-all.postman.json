@@ -1,0 +1,450 @@
+{
+  "info": {
+    "name": "Gateway Full Stack Tests",
+    "description": "Covers auth, media, LLM, MCP, and Responses APIs exclusively through the Kong gateway.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Request Guest Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{llm_api_url}}/auth/guest-login",
+            "description": "Provision a guest identity for downstream authenticated calls."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                  "exec": [
+                    "const authPayload = pm.response.json();",
+                    "pm.test('guest token issued', function () {",
+                    "  pm.response.to.have.status(201);",
+                    "  pm.expect(authPayload).to.have.property('access_token');",
+                    "});",
+                    "pm.collectionVariables.set('guest_access_token', authPayload.access_token);",
+                    "pm.collectionVariables.set('guest_user_id', authPayload.user_id || 'guest');",
+                    "pm.collectionVariables.set('guest_refresh_token', authPayload.refresh_token || '');"
+                  ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Model Catalogue",
+      "item": [
+        {
+          "name": "List Available Models",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{llm_api_url}}/v1/models",
+            "description": "Fetch available models via Kong."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var payload = pm.response.json();",
+                  "pm.test('models request succeeded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(payload.data).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "pm.collectionVariables.set('model_id', payload.data[0].id);",
+                  "pm.collectionVariables.set('model_label', payload.data[0].id || payload.data[0].name);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Media Workflows",
+      "item": [
+        {
+          "name": "Upload Sample Image",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Media-Service-Key",
+                "value": "{{media_service_key}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": {\n    \"type\": \"data_url\",\n    \"data_url\": \"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAuMBg6W7NcgAAAAASUVORK5CYII=\"\n  },\n  \"user_id\": \"{{guest_user_id}}\",\n  \"filename\": \"semaglutide.png\"\n}"
+            },
+            "url": "{{media_api_url}}/v1/media",
+            "description": "Upload a tiny PNG via data URL and capture jan_id + presigned URL."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                  "exec": [
+                    "const mediaPayload = pm.response.json();",
+                    "pm.test('media upload succeeded', function () {",
+                    "  pm.response.to.have.status(200);",
+                    "  pm.expect(mediaPayload.id).to.match(/^jan_/);",
+                    "});",
+                    "pm.test('presigned download url issued', function () {",
+                    "  pm.expect(mediaPayload.presigned_url).to.be.a('string').and.not.empty;",
+                    "});",
+                    "pm.test('presigned url is external', function () {",
+                    "  pm.expect(mediaPayload.presigned_url).to.match(/^https?:\\/\\//);",
+                    "});",
+                    "pm.collectionVariables.set('media_id', mediaPayload.id);",
+                    "pm.collectionVariables.set('media_placeholder', `data:${mediaPayload.mime};${mediaPayload.id}`);",
+                    "pm.collectionVariables.set('media_presigned_url', mediaPayload.presigned_url);"
+                  ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resolve Placeholder",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Media-Service-Key",
+                "value": "{{media_service_key}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payload\": {\n    \"hero_image\": \"{{media_placeholder}}\"\n  }\n}"
+            },
+            "url": "{{media_api_url}}/v1/media/resolve",
+            "description": "Swap jan_* placeholder for a signed download URL."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('resolve succeeded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "let resolvedPayload = body.payload;",
+                  "if (typeof resolvedPayload === 'string') {",
+                  "  try {",
+                  "    resolvedPayload = JSON.parse(resolvedPayload);",
+                  "  } catch (err) {",
+                  "    // fallback to raw string",
+                  "  }",
+                  "}",
+                  "const flattened = typeof resolvedPayload === 'string'",
+                  "  ? resolvedPayload",
+                  "  : JSON.stringify(resolvedPayload || {});",
+                  "pm.test('jan placeholder replaced', function () {",
+                  "  pm.expect(flattened).to.include('http');",
+                  "  pm.expect(flattened).to.not.include('data:image');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Prepare Upload Slot",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Media-Service-Key",
+                "value": "{{media_service_key}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mime_type\": \"image/png\",\n  \"user_id\": \"{{guest_user_id}}\"\n}"
+            },
+            "url": "{{media_api_url}}/v1/media/prepare-upload",
+            "description": "Reserve a jan_id and obtain a presigned upload URL."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const prep = pm.response.json();",
+                  "pm.test('upload slot issued', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(prep.upload_url).to.be.a('string').and.not.empty;",
+                  "  pm.expect(prep.id).to.match(/^jan_/);",
+                  "});",
+                  "pm.test('upload url is external', function () {",
+                  "  pm.expect(prep.upload_url).to.match(/^https?:\\/\\//);",
+                  "});",
+                  "pm.collectionVariables.set('upload_media_id', prep.id);",
+                  "pm.collectionVariables.set('upload_url', prep.upload_url);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. LLM Completion",
+      "item": [
+        {
+          "name": "Call Chat Completions with jan_id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Generate a short caption for the uploaded media reference {{media_placeholder}} and mention semaglutide.\"\n    }\n  ],\n  \"max_tokens\": 120,\n  \"temperature\": 0.4\n}"
+            },
+            "url": "{{llm_api_url}}/v1/chat/completions",
+            "description": "Ensure models can reference stored media via jan_id through the gateway."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var resp = pm.response.json();",
+                  "pm.test('chat completion ok', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(resp.choices).to.be.an('array').that.is.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. MCP Tools",
+      "item": [
+        {
+          "name": "List Tools",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/list\",\n  \"params\": {},\n  \"id\": 1\n}"
+            },
+            "url": "{{mcp_tools_url}}",
+            "description": "Verify MCP tool discovery via Kong."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('mcp tools listed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.text()).to.include('google_search');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Responses API",
+      "item": [
+        {
+          "name": "Create Analytical Response",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"input\": \"Research the economic impact of semaglutide on global healthcare systems.\\nDo:\\n- Include specific figures, trends, statistics, and measurable outcomes.\\n- Prioritize reliable, up-to-date sources: peer-reviewed research, health organizations (e.g., WHO, CDC), regulatory agencies, or pharmaceutical earnings reports.\\n- Include inline citations and return all source metadata.\\n\\nBe analytical, avoid generalities, and ensure that each section supports data-backed reasoning that could inform healthcare policy or financial modeling.\",\n  \"stream\": false,\n  \"metadata\": {\n    \"suite\": \"gateway-e2e\",\n    \"media_reference\": \"{{media_id}}\"\n  },\n  \"tool_choice\": {\n    \"type\": \"auto\"\n  },\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"google_search\",\n        \"description\": \"Search the public web for authoritative results\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"q\": {\n              \"type\": \"string\",\n              \"description\": \"query\"\n            },\n            \"num\": {\n              \"type\": \"integer\",\n              \"description\": \"number of results\"\n            }\n          },\n          \"required\": [\n            \"q\"\n          ]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"scrape\",\n        \"description\": \"Scrape the contents of a URL\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"url\": {\n              \"type\": \"string\"\n            },\n            \"include_markdown\": {\n              \"type\": \"boolean\"\n            }\n          },\n          \"required\": [\n            \"url\"\n          ]\n        }\n      }\n    }\n  ]\n}"
+            },
+            "url": "{{response_api_url}}/v1/responses",
+            "description": "Run the complex semaglutide prompt with tool orchestration."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var body = pm.response.json();",
+                  "pm.test('response request accepted', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(body.id).to.match(/^resp_/);",
+                  "});",
+                  "pm.collectionVariables.set('response_id', body.id);",
+                  "pm.expect(body.status).to.be.oneOf(['completed', 'in_progress']);",
+                  "pm.test('response contained usage or executions metadata', function () {",
+                  "  pm.expect(body).to.have.property('status');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Fetch Response",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{response_api_url}}/v1/responses/{{response_id}}",
+            "description": "Confirm the response completed successfully."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var result = pm.response.json();",
+                  "pm.test('response fetched', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(result.status).to.not.eql('failed');",
+                  "});",
+                  "pm.expect(result).to.have.property('output');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "gateway_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "llm_api_url",
+      "value": "http://localhost:8000/llm"
+    },
+    {
+      "key": "media_api_url",
+      "value": "http://localhost:8000/media"
+    },
+    {
+      "key": "response_api_url",
+      "value": "http://localhost:8000/responses"
+    },
+    {
+      "key": "mcp_tools_url",
+      "value": "http://localhost:8000/mcp"
+    },
+    {
+      "key": "media_service_key",
+      "value": "changeme-media-key"
+    },
+    {
+      "key": "guest_access_token",
+      "value": ""
+    },
+    {
+      "key": "guest_user_id",
+      "value": ""
+    },
+    {
+      "key": "model_id",
+      "value": ""
+    },
+    {
+      "key": "media_id",
+      "value": ""
+    },
+    {
+      "key": "media_placeholder",
+      "value": ""
+    },
+    {
+      "key": "media_presigned_url",
+      "value": ""
+    },
+    {
+      "key": "upload_media_id",
+      "value": ""
+    },
+    {
+      "key": "upload_url",
+      "value": ""
+    },
+    {
+      "key": "response_id",
+      "value": ""
+    }
+  ]
+}
+

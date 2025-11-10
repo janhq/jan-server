@@ -25,6 +25,7 @@ type Config struct {
 	APIKey             string        `env:"MEDIA_API_KEY"`
 	APIURL             string        `env:"MEDIA_API_URL"`
 	S3Endpoint         string        `env:"MEDIA_S3_ENDPOINT" envDefault:"https://s3.menlo.ai"`
+	S3PublicEndpoint   string        `env:"MEDIA_S3_PUBLIC_ENDPOINT"`
 	S3Region           string        `env:"MEDIA_S3_REGION" envDefault:"us-west-2"`
 	S3Bucket           string        `env:"MEDIA_S3_BUCKET"`
 	S3AccessKey        string        `env:"MEDIA_S3_ACCESS_KEY"`
@@ -45,12 +46,11 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("parse env config: %w", err)
 	}
 
-	if strings.TrimSpace(cfg.S3Bucket) == "" {
-		return nil, fmt.Errorf("MEDIA_S3_BUCKET is required")
-	}
-	if strings.TrimSpace(cfg.S3AccessKey) == "" || strings.TrimSpace(cfg.S3SecretKey) == "" {
-		return nil, fmt.Errorf("MEDIA_S3_ACCESS_KEY and MEDIA_S3_SECRET_KEY are required")
-	}
+	cfg.S3Bucket = strings.TrimSpace(cfg.S3Bucket)
+	cfg.S3AccessKey = strings.TrimSpace(cfg.S3AccessKey)
+	cfg.S3SecretKey = strings.TrimSpace(cfg.S3SecretKey)
+	cfg.S3Endpoint = strings.TrimSpace(cfg.S3Endpoint)
+	cfg.S3PublicEndpoint = strings.TrimSpace(cfg.S3PublicEndpoint)
 	if cfg.MaxMediaBytes <= 0 {
 		cfg.MaxMediaBytes = 20 * 1024 * 1024
 	}

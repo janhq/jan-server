@@ -37,7 +37,7 @@ The system is organized into several layers:
 | Services        | Go 1.21+ (Gin framework)       |
 | MCP Server      | mark3labs/mcp-go v0.7.0        |
 | ORM             | GORM                           |
-| Database        | PostgreSQL 16                  |
+| Database        | PostgreSQL 18                  |
 | Auth            | Keycloak (OpenID Connect)      |
 | Inference       | vLLM (OpenAI-compatible)       |
 | Observability   | OpenTelemetry Collector        |
