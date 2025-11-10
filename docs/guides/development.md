@@ -452,5 +452,3 @@ make docker-prune
 5. Ask in team chat or create an issue
 
 ---
-
-**Happy Coding! **

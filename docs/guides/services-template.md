@@ -11,7 +11,7 @@ The `services/template-api` directory contains a production-ready skeleton for n
 
 ## Getting Started
 1. Run the scaffold script (or copy the folder manually).
-2. Update `go.mod`, `config/example.env`, and `cmd/server/server.go` with your service-specific names and dependencies.
+2. Update `go.mod`, the service section inside `.env.template`, and `cmd/server/server.go` with your service-specific names and dependencies.
 3. Configure `TEMPLATE_DATABASE_URL` (or rename it) and run `make run` so migrations seed the database.
 4. Decide whether to enable JWT auth (`AUTH_ENABLED`, `AUTH_ISSUER`, `AUTH_AUDIENCE`, `AUTH_JWKS_URL`).
 5. Register your handlers inside `internal/interfaces/httpserver`.

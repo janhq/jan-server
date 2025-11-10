@@ -541,4 +541,3 @@ Connect with your favorite GUI:
 
 ---
 
-**Happy Hybrid Development! **

@@ -1,6 +1,6 @@
 # Response API Documentation
 
 - `NEW_SERVICE_GUIDE.md`: step-by-step instructions for turning the template into a real service or migrating an existing one.
-- `config/example.env`: copy into your environment to start the service quickly.
+- `.env.template`: run `make env-create` to pull the latest env vars (including `RESPONSE_*` entries).
 
 Add service-specific ADRs, API docs, and runbooks inside this folder when you clone the template.

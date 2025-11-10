@@ -1,117 +1,64 @@
-# Jan Server Documentation
+# Documentation Hub
 
-Welcome to the Jan Server documentation! This guide will help you find what you need.
+Welcome to the Jan Server documentation. Use this page as a map to the rest of the guides.
 
-##  New to Jan Server?
+> New to the project? Start with the [Documentation Index](INDEX.md).  
+> Need to know what was reviewed? See the [Documentation Checklist](DOCUMENTATION_CHECKLIST.md).
 
-**Choose your deployment:**
-- **Docker Compose (Local Development)**: [Getting Started Guide](getting-started/README.md)
-- **Kubernetes (Production/Staging)**: [Kubernetes Setup Guide](../k8s/SETUP.md)
+## Structure
 
-Quick Docker Compose setup:
-```bash
-make setup && make up-full
-```
+| Section | Description | Key Files |
+|---------|-------------|-----------|
+| **Getting Started** | Five minute setup for Docker Compose | [getting-started/README.md](getting-started/README.md) |
+| **Guides** | Development, deployment, monitoring, IDE, troubleshooting | [guides/](guides/) |
+| **API Reference** | LLM, Response, Media, MCP Tools APIs | [api/README.md](api/README.md) |
+| **Services** | Responsibilities, ports, dependencies | [services.md](services.md) |
+| **Architecture** | System design, security, observability, data flow | [architecture/](architecture/) |
+| **Conventions** | Code standards and workflows | [conventions/CONVENTIONS.md](conventions/CONVENTIONS.md) |
+| **Audits** | Latest documentation review | [AUDIT_SUMMARY.md](AUDIT_SUMMARY.md) |
 
-Services will be available at: http://localhost:8000
+## Quick Links
 
-## 📚 Documentation Structure
+### New users
+- [Quick Start](getting-started/README.md)
+- [API Overview](api/README.md)
+- [Authentication](api/llm-api/README.md#authentication)
 
-| Section | Description |
-|---------|-------------|
-| **[Getting Started](getting-started/)** | Quick setup and first steps |
-| **[Guides](guides/)** | Development, testing, deployment, and troubleshooting |
-| **[API Reference](api/)** | Complete API documentation and examples |
-| **[Architecture](architecture/)** | System design and technical details |
-| **[Conventions](conventions/)** | Code standards and best practices |
+### Developers
+- [Development Guide](guides/development.md)
+- [Testing Guide](guides/testing.md)
+- [Hybrid Mode](guides/hybrid-mode.md)
+- [Service Template](guides/services-template.md)
+- [IDE Setup](guides/ide/vscode.md)
 
-## 📖 Quick Links
+### API consumers
+- [LLM API](api/llm-api/README.md)
+- [Response API](api/response-api/README.md)
+- [Media API](api/media-api/README.md)
+- [MCP Tools](api/mcp-tools/README.md)
+- [LLM Examples](api/llm-api/examples.md)
 
-### For New Users
-- 🆕 [Quick Start](getting-started/README.md) - Get up and running in 5 minutes
-- 📡 [API Overview](api/README.md) - Understanding the APIs
-- 🔐 [Authentication](api/llm-api/authentication.md) - How to authenticate
+### Operators
+- [Deployment Guide](guides/deployment.md)
+- [Kubernetes Setup](../k8s/SETUP.md)
+- [Monitoring Guide](guides/monitoring.md)
+- [Troubleshooting](guides/troubleshooting.md)
+- [Security Policy](../SECURITY.md)
+- [Architecture Security](architecture/security.md)
+- [Observability](architecture/observability.md)
 
-### For Developers
-- 💻 [Development Guide](guides/development.md) - Local development workflow
-- 🖥️ [VS Code Guide](guides/ide/vscode.md) - VS Code debugging and tasks
-- 🧪 [Testing Guide](guides/testing.md) - Running tests
-- 🔄 [Hybrid Mode](guides/hybrid-mode.md) - Hybrid development setup
-- 📊 [Monitoring](guides/monitoring.md) - Observability and monitoring
-- 🧱 [Service Template](guides/services-template.md) - Clone the Go microservice scaffold
--  [Deployment](guides/deployment.md) - Kubernetes, Docker Compose, and hybrid deployments
-
-### For API Consumers
-- 📡 [LLM API](api/llm-api/) - Chat completions and conversations
-- 🛠️ [MCP Tools](api/mcp-tools/) - Model Context Protocol tools
-- 💡 [Examples](api/llm-api/examples.md) - Code samples
-
-### For Architects
-- 🏗️ [Architecture Overview](architecture/README.md) - System architecture
-- 🔒 [Security Model](architecture/security.md) - Security considerations
-- 📈 [Observability](architecture/observability.md) - Monitoring stack
-
-## 🆘 Need Help?
+## Need help?
 
 | Issue | Resource |
 |-------|----------|
-| **Service won't start** | [Troubleshooting Guide](guides/troubleshooting.md) |
-| **API errors** | [API Documentation](api/README.md) |
-| **Authentication issues** | [Auth Guide](api/llm-api/authentication.md) |
-| **Performance problems** | [Monitoring Guide](guides/monitoring.md) |
+| Services fail to start | [Troubleshooting Guide](guides/troubleshooting.md) |
+| API errors | [API Reference](api/README.md) |
+| Auth problems | [LLM API Auth](api/llm-api/README.md#authentication) |
+| Performance issues | [Monitoring Guide](guides/monitoring.md) |
 
-## 🗂️ Common Tasks
+## Contributing and Updates
+- Contribution process: [../CONTRIBUTING.md](../CONTRIBUTING.md)
+- Security process: [../SECURITY.md](../SECURITY.md)
+- Release notes: [../CHANGELOG.md](../CHANGELOG.md)
 
-### Setup & Installation
-```bash
-# Initial setup
-make setup
-
-# Start full stack
-make up-full
-
-# Start with monitoring
-make up-full && make monitor-up
-```
-
-### Development
-```bash
-# Build LLM API
-make build-llm-api
-
-# Run tests
-make test
-
-# Generate API docs
-make swag
-```
-
-### Monitoring
-```bash
-# Start monitoring stack
-make monitor-up
-
-# View dashboards
-# Grafana: http://localhost:3001 (admin/admin)
-# Prometheus: http://localhost:9090
-# Jaeger: http://localhost:16686
-```
-
-## 📝 Contributing
-
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for contribution guidelines.
-
-## 📋 Conventions
-
-All code follows the conventions documented in [conventions/](conventions/):
-- [Architecture Conventions](conventions/architecture.md)
-- [Code Patterns](conventions/patterns.md)
-- [Workflow](conventions/workflow.md)
-
-## 🔄 What's New
-
-See [CHANGELOG.md](../CHANGELOG.md) for version history and changes.
-
----
-
-**Can't find what you're looking for?** Check the full documentation structure above or search within specific sections.
+Still lost? Jump to the [Documentation Index](INDEX.md) or search within this directory.

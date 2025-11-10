@@ -16,8 +16,10 @@ Key capabilities:
 ## Quick start
 
 ```bash
+# From repo root
+make env-create            # populates .env from .env.template
+
 cd services/response-api
-cp config/example.env .env   # edit as needed
 go mod tidy
 make run
 
@@ -47,7 +49,7 @@ Useful targets:
 | `TOOL_EXECUTION_TIMEOUT` | Per-tool call timeout | `45s` |
 | `AUTH_ENABLED` + `AUTH_*` | Toggle and configure OIDC validation | disabled |
 
-See `config/example.env` for the full list including tracing/logging knobs.
+See `.env.template` in the repo root for the full list including tracing/logging knobs.
 
 ## Database
 

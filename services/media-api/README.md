@@ -129,7 +129,7 @@ curl -X POST http://localhost:8285/v1/media/resolve \
 
 ## Environment variables
 
-Copy `config/example.env` and tweak the following keys:
+Populate the repo-level `.env` (via `make env-create`) and tweak the following keys:
 
 | Variable | Description |
 | --- | --- |
@@ -170,9 +170,9 @@ See `docs/swagger/swagger.yaml` for the full OpenAPI schema (regenerate with `ma
 
 ## Development scripts
 
-- `make run` � start the service locally (loads `.env`).
-- `make wire` � regenerate dependency injection graph after wiring changes.
-- `make swagger` � refresh OpenAPI docs after editing handler annotations.
-- `make tidy` � clean up go.mod / go.sum.
+- `make run` - start the service locally (loads `.env`).
+- `make wire` - regenerate dependency injection graph after wiring changes.
+- `make swagger` - refresh OpenAPI docs after editing handler annotations.
+- `make tidy` - clean up go.mod / go.sum.
 
-Need to integrate with `llm-api`? Follow `media-api-todo.md`: add the media client, dual-write uploads, resolve before calling the LLM, then enforce `jan_*` identifiers everywhere.
+Need to integrate with `llm-api`? Wire the media client, dual-write uploads, resolve before calling the LLM, then enforce `jan_*` identifiers everywhere (see `docs/services.md` for the full flow).

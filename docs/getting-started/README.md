@@ -33,7 +33,9 @@ cd jan-server
 
 ```bash
 # Create .env file from template
-cp .env.example .env
+make env-create
+# or manually copy
+cp .env.template .env
 
 # Edit .env and set required values:
 # - SERPER_API_KEY (get from https://serper.dev)

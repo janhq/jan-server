@@ -21,7 +21,7 @@ make setup && make up-full
 - **API Documentation**: http://localhost:8000/v1/swagger/
 - **Keycloak Console**: http://localhost:8085 (admin/admin)
 
-**Full setup guide**: [Getting Started →](docs/getting-started/README.md)
+**Full setup guide**: [Getting Started](docs/getting-started/README.md)
 
 ## What is Jan Server?
 
@@ -51,133 +51,62 @@ Jan Server is an enterprise-grade LLM API platform that provides:
 
 ## Documentation
 
--  [**Getting Started**](docs/getting-started/) - Setup & first steps
-- 📖 [**Guides**](docs/guides/) - Development, testing, deployment
-- 📡 [**API Reference**](docs/api/) - Endpoint documentation
-- 🏗️ [**Architecture**](docs/architecture/) - System design
-- 📋 [**Conventions**](docs/conventions/) - Code standards
+Primary entry points:
+- [docs/README.md](docs/README.md) - section overview
+- [docs/INDEX.md](docs/INDEX.md) - full navigation map
+- [docs/services.md](docs/services.md) - service responsibilities and ports
+- [docs/api/README.md](docs/api/README.md) - API reference hub
+- [docs/getting-started/README.md](docs/getting-started/README.md) - five minute setup
+- [docs/QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) - Make command cheat sheet
 
-**Full documentation**: [docs/README.md](docs/README.md)
+Governance and quality:
+- [docs/DOCUMENTATION_CHECKLIST.md](docs/DOCUMENTATION_CHECKLIST.md) - release gating list
+- [docs/AUDIT_SUMMARY.md](docs/AUDIT_SUMMARY.md) - latest audit findings
+- [docs/PROJECT_COMPLETION_REPORT.md](docs/PROJECT_COMPLETION_REPORT.md) - change log for this refresh
+- [CONTRIBUTING.md](CONTRIBUTING.md) - development workflow expectations
+- [SECURITY.md](SECURITY.md) - disclosure and hardening guidance
 
 ## Project Structure
 
-```
+```text
 jan-server/
-├── services/              # Microservices (Go)
-│   ├── llm-api/          # Core LLM orchestration (port 8080)
-│   ├── response-api/     # Multi-step tool orchestration (port 8082)
-│   ├── media-api/        # Media management with S3 (port 8285)
-│   ├── mcp-tools/        # MCP protocol tools (port 8091)
-│   └── template-api/     # Service template for new services
-├── docker/               # Docker Compose configurations
-│   ├── infrastructure.yml   # PostgreSQL, Redis, Keycloak
-│   ├── services-api.yml     # API microservices
-│   ├── services-mcp.yml     # MCP tools services
-│   └── inference.yml        # vLLM inference
-├── monitoring/           # Observability configs
-│   ├── grafana/         # Dashboards & provisioning
-│   ├── prometheus.yml   # Metrics collection
-│   └── otel-collector.yaml # OpenTelemetry
-├── k8s/                 # Kubernetes/Helm charts
-│   └── jan-server/      # Helm chart v1.1.0
-├── docs/                # Documentation
-│   ├── getting-started/
-│   ├── guides/
-│   ├── api/
-│   └── architecture/
-├── kong/                # API gateway config
-├── keycloak/            # Auth server config
-└── Makefile             # 100+ build & run commands
+|-- services/              # Go microservices
+|   |-- llm-api/
+|   |-- response-api/
+|   |-- media-api/
+|   |-- mcp-tools/
+|   |-- template-api/
+|-- docs/                  # Documentation hub
+|-- docker/                # Compose profiles (infra, api, mcp, inference)
+|-- monitoring/            # Grafana, Prometheus, OTEL configs
+|-- k8s/                   # Helm chart + setup guide
+|-- config/                # Environment templates and helpers
+|-- kong/                  # Gateway declarative config
+|-- keycloak/              # Realm + theme customisation
+|-- scripts/               # Utility scripts (new service template, etc.)
+|-- Makefile               # Build, test, deploy targets
 ```
 
-## Microservices Architecture
+Key directories:
+- `services/` - source for each microservice plus local docs.
+- `docs/` - user, operator, and developer documentation (see [docs/README.md](docs/README.md)).
+- `docker/` - compose files included via `docker-compose.yml`.
+- `monitoring/` - observability stack definitions (Grafana dashboards live here).
+- `k8s/` - Helm chart (`k8s/jan-server`) and cluster setup notes.
+- `config/` - `.env` templates and environment overlays.
+- `kong/` / `keycloak/` - edge and auth configuration.
+- `scripts/` - automation (service scaffolding, utility scripts).
 
-Jan Server consists of 4 core microservices:
+### Microservices Overview
 
-### 1. **LLM API** (Port 8080)
-Core LLM orchestration service providing OpenAI-compatible endpoints.
+| Service | Purpose | Port(s) | Source | Docs |
+|---------|---------|---------|--------|------|
+| LLM API | OpenAI-compatible chat, conversations, models | 8080 (direct), 8000 via Kong | `services/llm-api` | `docs/api/llm-api/README.md` |
+| Response API | Multi-step orchestration using MCP tools | 8082 | `services/response-api` | `docs/api/response-api/README.md` |
+| Media API | jan_* IDs, S3 ingest, media resolution | 8285 | `services/media-api` | `docs/api/media-api/README.md` |
+| MCP Tools | Model Context Protocol tools (search, scrape, file search, python) | 8091 | `services/mcp-tools` | `docs/api/mcp-tools/README.md` |
 
-**Features:**
-- Chat completions with streaming support
-- Conversation and message management
-- Model provider abstraction (vLLM, OpenAI, Anthropic, etc.)
-- Media resolution via Media API
-- JWT authentication with Keycloak
-- PostgreSQL persistence with GORM
-
-**Endpoints:**
-- `POST /v1/chat/completions` - Chat completion (streaming/non-streaming)
-- `GET /v1/conversations` - List conversations
-- `GET /v1/models` - List available models
-- `GET /healthz` - Health check
-
-### 2. **Response API** (Port 8082)
-Multi-step tool orchestration for complex workflows.
-
-**Features:**
-- OpenAI Responses contract implementation
-- Multi-step tool execution (max depth: 8)
-- Tool timeout management (default: 45s)
-- Integration with MCP Tools for tool discovery
-- LLM API delegation for language generation
-- PostgreSQL persistence for responses and executions
-
-**Configuration:**
-- `MAX_TOOL_EXECUTION_DEPTH=8` - Max recursive tool chain depth
-- `TOOL_EXECUTION_TIMEOUT=45s` - Per-tool call timeout
-- `LLM_API_URL` - LLM API base URL
-- `MCP_TOOLS_URL` - MCP Tools base URL
-
-**Endpoints:**
-- `POST /v1/responses` - Create response with tool orchestration
-- `GET /v1/responses/:id` - Get response by ID
-- `GET /healthz` - Health check
-
-### 3. **Media API** (Port 8285)
-Media ingestion and resolution with S3 storage.
-
-**Features:**
-- `jan_*` ID system for persistent media references
-- S3-compatible storage integration (Menlo S3)
-- Presigned URL generation (5-minute TTL)
-- Direct upload and remote URL ingestion
-- Data URL support (base64 images)
-- Deduplication by content hash
-- PostgreSQL metadata store
-- API key authentication (`X-Media-Service-Key`)
-
-**Storage Flow:**
-1. Client uploads via data URL or remote URL
-2. Media API pushes to S3 (`platform-dev` bucket)
-3. Returns `jan_id` + presigned URL
-4. Other services resolve `jan_*` IDs to presigned URLs
-
-**Endpoints:**
-- `POST /v1/media` - Upload media (direct or remote)
-- `POST /v1/media/prepare-upload` - Get presigned upload URL
-- `POST /v1/media/resolve` - Resolve `jan_*` IDs to URLs
-- `GET /healthz` - Health check
-
-### 4. **MCP Tools** (Port 8091)
-Model Context Protocol tools integration.
-
-**Features:**
-- JSON-RPC 2.0 protocol
-- Google Search via Serper API
-- Web scraping and content extraction
-- Code execution via SandboxFusion
-- Tool discovery and listing
-- Extensible tool architecture
-
-**Available Tools:**
-- `google_search` - Web search with Serper API
-- `web_scraper` - Extract content from URLs
-- `code_executor` - Execute code in sandboxed environment
-
-**Endpoints:**
-- `POST /v1/mcp` - MCP JSON-RPC endpoint
-- `GET /v1/mcp/tools` - List available tools
-- `GET /healthz` - Health check
+See [docs/services.md](docs/services.md) for dependency graphs and integration notes.
 
 ## Service Template
 
@@ -379,7 +308,7 @@ curl -X POST http://localhost:8082/v1/responses \
 # - Execution metadata (depth, duration, etc.)
 ```
 
-More examples: [API Documentation →](docs/api/)
+More examples: [API Documentation ->](docs/api/)
 
 ## Deployment
 
