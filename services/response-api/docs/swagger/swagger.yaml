@@ -1,0 +1,202 @@
+basePath: /
+definitions:
+  dto.CreateResponseRequest:
+    properties:
+      conversation:
+        type: string
+      input: {}
+      max_tokens:
+        type: integer
+      metadata:
+        additionalProperties: true
+        type: object
+      model:
+        type: string
+      previous_response_id:
+        type: string
+      stream:
+        type: boolean
+      system_prompt:
+        type: string
+      temperature:
+        type: number
+      tool_choice:
+        $ref: '#/definitions/dto.ToolChoice'
+      tools:
+        items:
+          $ref: '#/definitions/dto.ToolDefinition'
+        type: array
+      user:
+        type: string
+    required:
+    - input
+    - model
+    type: object
+  dto.ResponsePayload:
+    properties:
+      conversation_id:
+        type: string
+      created:
+        type: integer
+      error: {}
+      id:
+        type: string
+      input: {}
+      metadata:
+        additionalProperties: true
+        type: object
+      model:
+        type: string
+      object:
+        type: string
+      output: {}
+      previous_response_id:
+        type: string
+      status:
+        type: string
+      stream:
+        type: boolean
+      system_prompt:
+        type: string
+      usage: {}
+    type: object
+  dto.ToolChoice:
+    properties:
+      function:
+        properties:
+          name:
+            type: string
+        type: object
+      type:
+        type: string
+    type: object
+  dto.ToolDefinition:
+    properties:
+      function:
+        $ref: '#/definitions/dto.ToolFunctionDefinition'
+      type:
+        type: string
+    type: object
+  dto.ToolFunctionDefinition:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      parameters:
+        additionalProperties: true
+        type: object
+    type: object
+info:
+  contact: {}
+  description: Reference Go microservice skeleton for Jan Server
+  title: Response API
+  version: "1.0"
+paths:
+  /v1/responses:
+    post:
+      consumes:
+      - application/json
+      description: Creates a response and orchestrates MCP tool calls when required.
+      parameters:
+      - description: Create request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateResponseRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ResponsePayload'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create a response
+      tags:
+      - Responses
+  /v1/responses/{response_id}:
+    delete:
+      parameters:
+      - description: Response ID
+        in: path
+        name: response_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ResponsePayload'
+      summary: Delete/Cancel a response
+      tags:
+      - Responses
+    get:
+      parameters:
+      - description: Response ID
+        in: path
+        name: response_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ResponsePayload'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get a response by ID
+      tags:
+      - Responses
+  /v1/responses/{response_id}/cancel:
+    post:
+      parameters:
+      - description: Response ID
+        in: path
+        name: response_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ResponsePayload'
+      summary: Cancel a response
+      tags:
+      - Responses
+  /v1/responses/{response_id}/input_items:
+    get:
+      parameters:
+      - description: Response ID
+        in: path
+        name: response_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List conversation input items
+      tags:
+      - Responses
+swagger: "2.0"

@@ -1,0 +1,765 @@
+{
+  "info": {
+    "name": "Response API with Tool Calling Tests",
+    "description": "Comprehensive test suite for Response API with MCP tool orchestration",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "response_api_url",
+      "value": "http://localhost:8082",
+      "description": "Response API base URL (use http://localhost:8082 for local, http://response-api:8082 for docker)"
+    },
+    {
+      "key": "llm_api_url",
+      "value": "http://localhost:8080",
+      "description": "LLM API base URL (use http://localhost:8080 for local, http://llm-api:8080 for docker)"
+    },
+    {
+      "key": "mcp_tools_url",
+      "value": "http://localhost:8091",
+      "description": "MCP Tools base URL (use http://localhost:8091 for local, http://mcp-tools:8091 for docker)"
+    },
+    {
+      "key": "guest_access_token",
+      "value": ""
+    },
+    {
+      "key": "response_id",
+      "value": ""
+    },
+    {
+      "key": "conversation_id",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Request Guest Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{llm_api_url}}/auth/guest-login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const guestData = pm.response.json();",
+                  "pm.test('Guest token issued', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(guestData).to.have.property('access_token');",
+                  "  pm.collectionVariables.set('guest_access_token', guestData.access_token);",
+                  "});",
+                  "pm.test('Response includes expiry', function () {",
+                  "  pm.expect(guestData).to.have.property('expires_in');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Health & Service Checks",
+      "item": [
+        {
+          "name": "Response API Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{response_api_url}}/healthz"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Health check passed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MCP Tools Available",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/list\",\n  \"params\": {},\n  \"id\": 1\n}"
+            },
+            "url": "{{mcp_tools_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('MCP tools listed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.text();",
+                  "  pm.expect(body).to.include('google_search');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "LLM API Chat Completion Smoke",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o-mini\",\n  \"messages\": [\n    {\"role\": \"user\", \"content\": \"Say hello from the health check.\"}\n  ],\n  \"max_tokens\": 20,\n  \"stream\": false\n}"
+            },
+            "url": "{{llm_api_url}}/v1/chat/completions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('LLM API responded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data).to.have.property('choices');",
+                  "  pm.expect(data.choices[0]).to.have.property('message');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Basic Responses (No Tools)",
+      "item": [
+        {
+          "name": "Create Simple Text Response",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4\",\n  \"input\": \"What is 2+2?\",\n  \"stream\": false\n}"
+            },
+            "url": "{{response_api_url}}/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Response created successfully', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response).to.have.property('id');",
+                  "  pm.expect(response).to.have.property('object', 'response');",
+                  "  pm.expect(response).to.have.property('status');",
+                  "  pm.collectionVariables.set('response_id', response.id);",
+                  "});",
+                  "pm.test('Response has output', function () {",
+                  "  pm.expect(response).to.have.property('output');",
+                  "});",
+                  "pm.test('Status is completed', function () {",
+                  "  pm.expect(response.status).to.be.oneOf(['completed', 'in_progress']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Response by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{response_api_url}}/v1/responses/{{response_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Response retrieved', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response.id).to.equal(pm.collectionVariables.get('response_id'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Streaming Response",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4\",\n  \"input\": \"Count from 1 to 5\",\n  \"stream\": true\n}"
+            },
+            "url": "{{response_api_url}}/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Streaming response started', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream');",
+                  "});",
+                  "const body = pm.response.text();",
+                  "pm.test('Response contains SSE events', function () {",
+                  "  pm.expect(body).to.include('event: response.created');",
+                  "  pm.expect(body).to.include('event: response.completed');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Tool Calling - Google Search",
+      "item": [
+        {
+          "name": "Create Response with Search Tool",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4\",\n  \"input\": \"Search for the latest news about OpenAI and summarize the top 3 results\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"google_search\",\n        \"description\": \"Search the web using Google\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"q\": {\n              \"type\": \"string\",\n              \"description\": \"Search query\"\n            },\n            \"num\": {\n              \"type\": \"integer\",\n              \"description\": \"Number of results\"\n            }\n          },\n          \"required\": [\"q\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{response_api_url}}/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Response created with tool call', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response).to.have.property('id');",
+                  "  pm.collectionVariables.set('response_id', response.id);",
+                  "});",
+                  "pm.test('Tool was executed', function () {",
+                  "  // Response should contain tool execution metadata",
+                  "  pm.expect(response.output).to.exist;",
+                  "});",
+                  "pm.test('Response contains search results', function () {",
+                  "  const outputText = JSON.stringify(response.output).toLowerCase();",
+                  "  pm.expect(outputText).to.satisfy(function(text) {",
+                  "    return text.includes('openai') || text.includes('search') || text.includes('result');",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Stream Response with Search Tool",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4\",\n  \"input\": \"Search for Python tutorials and explain the first result\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"google_search\",\n        \"description\": \"Search the web\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"q\": {\"type\": \"string\"}\n          },\n          \"required\": [\"q\"]\n        }\n      }\n    }\n  ],\n  \"stream\": true\n}"
+            },
+            "url": "{{response_api_url}}/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Streaming with tool call', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream');",
+                  "});",
+                  "const body = pm.response.text();",
+                  "pm.test('Contains tool call event', function () {",
+                  "  pm.expect(body).to.satisfy(function(text) {",
+                  "    return text.includes('google_search') || text.includes('tool');",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Tool Calling - Multi-Step",
+      "item": [
+        {
+          "name": "Search and Scrape Chain",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4\",\n  \"input\": \"Search for the official OpenAI website, then scrape the homepage and tell me what's their main product\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"google_search\",\n        \"description\": \"Search the web\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\"q\": {\"type\": \"string\"}},\n          \"required\": [\"q\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"scrape\",\n        \"description\": \"Scrape webpage content\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"url\": {\"type\": \"string\", \"description\": \"URL to scrape\"}\n          },\n          \"required\": [\"url\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{response_api_url}}/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Multi-step tool execution completed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response.status).to.equal('completed');",
+                  "});",
+                  "pm.test('Response contains final answer', function () {",
+                  "  pm.expect(response.output).to.exist;",
+                  "  const outputText = JSON.stringify(response.output).toLowerCase();",
+                  "  pm.expect(outputText.length).to.be.greaterThan(50);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Tool Calling - File Search",
+      "item": [
+        {
+          "name": "Index Document",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4\",\n  \"input\": \"Index this document: OpenAI released GPT-4 in March 2023. It's a large multimodal model.\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"file_search_index\",\n        \"description\": \"Index text for search\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"document_id\": {\"type\": \"string\"},\n            \"text\": {\"type\": \"string\"},\n            \"metadata\": {\"type\": \"object\"}\n          },\n          \"required\": [\"document_id\", \"text\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{response_api_url}}/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Document indexed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Query Indexed Documents",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4\",\n  \"input\": \"When was GPT-4 released? Search my indexed documents.\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"file_search_query\",\n        \"description\": \"Query indexed documents\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"query\": {\"type\": \"string\"},\n            \"top_k\": {\"type\": \"integer\"}\n          },\n          \"required\": [\"query\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{response_api_url}}/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('File search executed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Response mentions GPT-4', function () {",
+                  "  const outputText = JSON.stringify(response.output).toLowerCase();",
+                  "  pm.expect(outputText).to.include('gpt-4');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. Conversation Continuity",
+      "item": [
+        {
+          "name": "Create Response with Conversation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4\",\n  \"input\": \"My name is Alice and I live in Paris\",\n  \"stream\": false\n}"
+            },
+            "url": "{{response_api_url}}/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Response created', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.collectionVariables.set('response_id', response.id);",
+                  "  if (response.conversation) {",
+                  "    pm.collectionVariables.set('conversation_id', response.conversation.id);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Continue from Previous Response",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4\",\n  \"input\": \"What's my name and where do I live?\",\n  \"previous_response_id\": \"{{response_id}}\",\n  \"stream\": false\n}"
+            },
+            "url": "{{response_api_url}}/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Conversation continued', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Response remembers context', function () {",
+                  "  const outputText = JSON.stringify(response.output).toLowerCase();",
+                  "  pm.expect(outputText).to.include('alice');",
+                  "  pm.expect(outputText).to.include('paris');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Input Items",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{response_api_url}}/v1/responses/{{response_id}}/input_items"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Input items retrieved', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const items = pm.response.json();",
+                  "  pm.expect(items).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "8. Error Handling",
+      "item": [
+        {
+          "name": "Invalid Tool Name",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4\",\n  \"input\": \"Use the invalid_tool\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"invalid_tool_that_does_not_exist\",\n        \"description\": \"Non-existent tool\",\n        \"parameters\": {\"type\": \"object\", \"properties\": {}}\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{response_api_url}}/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Handles invalid tool gracefully', function () {",
+                  "  // Should either return error or complete without tool",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 422]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Missing Required Parameters",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"input\": \"Test without model\",\n  \"stream\": false\n}"
+            },
+            "url": "{{response_api_url}}/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Validates required fields', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancel Response",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{response_api_url}}/v1/responses/{{response_id}}/cancel"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Cancel endpoint exists', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404, 409]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "9. Complex Scenario",
+      "item": [
+        {
+          "name": "Search, Scrape, Analyze Chain",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4\",\n  \"input\": \"Search for recent AI news, scrape the top result, and execute Python code to count how many times 'AI' appears in the content\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"google_search\",\n        \"description\": \"Search the web\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\"q\": {\"type\": \"string\"}},\n          \"required\": [\"q\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"scrape\",\n        \"description\": \"Scrape webpage\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\"url\": {\"type\": \"string\"}},\n          \"required\": [\"url\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"python_exec\",\n        \"description\": \"Execute Python code\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"code\": {\"type\": \"string\"},\n            \"language\": {\"type\": \"string\"}\n          },\n          \"required\": [\"code\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{response_api_url}}/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Complex tool chain executed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response.status).to.equal('completed');",
+                  "});",
+                  "pm.test('Response contains analysis', function () {",
+                  "  pm.expect(response.output).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

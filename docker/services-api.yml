@@ -69,3 +69,38 @@ services:
       timeout: 5s
       retries: 10
     profiles: ["api", "full"]
+
+  response-api:
+    build: ../services/response-api
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-../.env}
+    environment:
+      HTTP_PORT: ${RESPONSE_API_PORT:-8082}
+      RESPONSE_DATABASE_URL: ${RESPONSE_DATABASE_URL:-postgres://response_api:response_api@api-db:5432/response_api?sslmode=disable}
+      LLM_API_URL: ${LLM_API_URL:-http://llm-api:8080}
+      MCP_TOOLS_URL: ${MCP_TOOLS_URL:-http://mcp-tools:8091}
+      MAX_TOOL_EXECUTION_DEPTH: ${MAX_TOOL_EXECUTION_DEPTH:-8}
+      TOOL_EXECUTION_TIMEOUT: ${TOOL_EXECUTION_TIMEOUT:-45s}
+      AUTH_ENABLED: ${AUTH_ENABLED:-false}
+      AUTH_ISSUER: ${ISSUER:-http://localhost:8090/realms/jan}
+      AUTH_AUDIENCE: ${AUDIENCE:-jan-client}
+      AUTH_JWKS_URL: ${JWKS_URL:-http://keycloak:8085/realms/jan/protocol/openid-connect/certs}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      ENABLE_TRACING: ${OTEL_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4317}
+    ports:
+      - "${RESPONSE_API_PORT:-8082}:${RESPONSE_API_PORT:-8082}"
+    depends_on:
+      api-db:
+        condition: service_healthy
+      llm-api:
+        condition: service_healthy
+      mcp-tools:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:${RESPONSE_API_PORT:-8082}/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    profiles: ["api", "full"]
