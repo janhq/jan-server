@@ -4,22 +4,72 @@ Complete API documentation for Jan Server services.
 
 ## Available APIs
 
-### LLM API
+### 1. LLM API (Port 8080)
 OpenAI-compatible API for chat completions, conversations, and models.
 
-- **[Overview](llm-api/overview.md)** - Service description and capabilities (Coming Soon)
-- **[Endpoints](llm-api/endpoints.md)** - Complete endpoint reference (Coming Soon)
-- **[Authentication](llm-api/authentication.md)** - Auth methods and token management (Coming Soon)
-- **[Examples](llm-api/examples.md)** - Code samples and use cases (Coming Soon)
-- **[OpenAPI Spec](llm-api/openapi.md)** - Swagger/OpenAPI documentation (Coming Soon)
+**Features:**
+- Chat completions with streaming
+- Conversation and message management
+- Model listing and provider abstraction
+- Media support via `jan_*` IDs
+- Full observability and tracing
 
-### MCP Tools API
-Model Context Protocol tools for web search, scraping, and more.
+**Documentation:**
+- **[Complete Documentation](llm-api/)** - Full API reference, endpoints, examples
+- **[Authentication](llm-api/#authentication)** - Auth methods and token management
+- **[Chat Completions](llm-api/#chat-completions)** - Main completion endpoint
+- **[Conversations](llm-api/#conversations)** - Conversation CRUD operations
+- **[With Media](llm-api/#with-media-visual-input)** - Media references using `jan_*` IDs
 
-- **[Overview](mcp-tools/overview.md)** - MCP service description (Coming Soon)
-- **[Tools Reference](mcp-tools/tools-reference.md)** - Available tools and parameters (Coming Soon)
-- **[Providers](mcp-tools/providers.md)** - MCP provider integration
-- **[Integration](mcp-tools/integration.md)** - How to integrate MCP tools
+### 2. Response API (Port 8082)
+Multi-step tool orchestration for complex workflows.
+
+**Features:**
+- Tool orchestration (max depth: 8)
+- Multi-step execution with tool chaining
+- LLM integration for final generation
+- MCP tools support
+- Execution metadata and timing
+
+**Documentation:**
+- **[Complete Documentation](response-api/)** - Full API reference, configuration, examples
+- **[Create Response](response-api/#create-response-multi-step-orchestration)** - Main orchestration endpoint
+- **[Tool Execution Flow](response-api/#tool-execution-flow)** - How tools are executed
+- **[Configuration](response-api/#toolexecution-parameters)** - Depth and timeout settings
+
+### 3. Media API (Port 8285)
+Media ingestion, storage, and resolution with S3 integration.
+
+**Features:**
+- `jan_*` ID system for persistent media references
+- S3 storage with presigned URLs
+- Deduplication by content hash
+- Support for remote URLs, data URLs, and direct uploads
+- Automatic metadata storage
+
+**Documentation:**
+- **[Complete Documentation](media-api/)** - Full API reference, storage flow, examples
+- **[Upload Media](media-api/#upload-media)** - Upload from remote URL or data URL
+- **[Presigned URL](media-api/#prepare-upload-presigned-url)** - Client-side S3 upload
+- **[Jan ID System](media-api/#jan-id-system)** - Understanding `jan_*` identifiers
+- **[Resolution](media-api/#resolve-media-ids)** - Convert IDs to presigned URLs
+
+### 4. MCP Tools API (Port 8091)
+Model Context Protocol tools for web search, scraping, and code execution.
+
+**Available Tools:**
+- **google_search** - Web search via Serper API
+- **web_scraper** - Extract content from URLs
+- **code_executor** - Execute code in sandboxed environment
+
+**Documentation:**
+- **[Complete Documentation](mcp-tools/)** - Full API reference, tool descriptions, examples
+- **[JSON-RPC Protocol](mcp-tools/#json-rpc-20-protocol)** - Standard protocol format
+- **[Call Tool](mcp-tools/#call-tool)** - Execute any tool
+- **[List Tools](mcp-tools/#list-tools)** - Discover available tools
+- **[Tool Details](mcp-tools/#available-tools)** - Specific tool parameters
+- **[Providers](mcp-tools/providers.md)** - MCP provider configuration
+- **[Integration](mcp-tools/integration.md)** - Integration guide
 
 ## Quick Reference
 
@@ -191,7 +241,7 @@ Try API calls directly from your browser with built-in authentication.
 
 ### Official SDKs
 
-(Coming Soon)
+Official SDKs are coming soon. In the meantime, use OpenAI-compatible clients with the Jan Server base URL.
 
 ### Community SDKs
 

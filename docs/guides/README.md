@@ -16,7 +16,7 @@ Comprehensive how-to guides for working with Jan Server.
 ### Operations
 - **[Monitoring](monitoring.md)** - Observability, metrics, traces, and dashboards
 - **[Deployment](deployment.md)** - Kubernetes, Docker Compose, and hybrid deployment strategies
-- **[Troubleshooting](troubleshooting.md)** - Common issues and solutions (Coming Soon)
+- **[Troubleshooting](troubleshooting.md)** - Common issues and solutions
 
 ### Special Topics
 - **[MCP Testing](mcp-testing.md)** - Testing MCP (Model Context Protocol) integration

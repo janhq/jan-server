@@ -51,13 +51,27 @@ Jan Server is an enterprise-grade LLM API platform that provides:
 
 ## Documentation
 
--  [**Getting Started**](docs/getting-started/) - Setup & first steps
-- 📖 [**Guides**](docs/guides/) - Development, testing, deployment
-- 📡 [**API Reference**](docs/api/) - Endpoint documentation
-- 🏗️ [**Architecture**](docs/architecture/) - System design
-- 📋 [**Conventions**](docs/conventions/) - Code standards
+📚 **Complete Documentation Hub**: [docs/README.md](docs/README.md)
 
-**Full documentation**: [docs/README.md](docs/README.md)
+**Quick Navigation**:
+- 🚀 [Getting Started](docs/getting-started/README.md) - Setup & first steps (5 min)
+- 📖 [Complete Index & Navigation](docs/INDEX.md) - Find what you need
+- 📡 [API Reference](docs/api/README.md) - All 4 APIs documented
+  - [LLM API](docs/api/llm-api/README.md) - Chat, conversations, models
+  - [Response API](docs/api/response-api/README.md) - Multi-step orchestration
+  - [Media API](docs/api/media-api/README.md) - File uploads, storage
+  - [MCP Tools API](docs/api/mcp-tools/README.md) - Web search, scraping, code execution
+- 💻 [Development Guide](docs/guides/development.md) - Local development
+- 🧪 [Testing Guide](docs/guides/testing.md) - Test suites & procedures
+- 🚀 [Deployment Guide](docs/guides/deployment.md) - Docker, Kubernetes, Hybrid
+- 📊 [Monitoring Guide](docs/guides/monitoring.md) - Observability stack
+- 🐛 [Troubleshooting Guide](docs/guides/troubleshooting.md) - Common issues & solutions
+- 🏗️ [Architecture](docs/architecture/README.md) - System design
+- ⚙️ [Configuration](config/README.md) - Environment setup
+- ☸️ [Kubernetes Setup](k8s/SETUP.md) - Production deployment
+
+**Documentation Quality**: ✅ All 82 .md files reviewed & updated for v0.2.0  
+**Latest Audit**: [Project Completion Report](docs/PROJECT_COMPLETION_REPORT.md)
 
 ## Project Structure
 
