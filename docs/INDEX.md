@@ -109,6 +109,8 @@ Deployment & Infrastructure
 │   ├── Jaeger Tracing
 │   ├── Grafana Dashboards
 │   └── Service Health Monitoring
+├── [Authentication & Gateway](guides/authentication.md)
+│   └── Kong + Keycloak enforcement
 ├── [Configuration Management](../config/README.md)
 │   ├── Default Configuration
 │   ├── Development Environment
