@@ -13,6 +13,11 @@ func GetCursorPaginationFromQuery(reqCtx *gin.Context, findByLastID func(string)
 	offsetStr := reqCtx.Query("offset")
 	order := reqCtx.DefaultQuery("order", "desc")
 	afterStr := reqCtx.DefaultQuery("after", "")
+	if afterStr == "" {
+		if cursor := reqCtx.Query("cursor"); cursor != "" {
+			afterStr = cursor
+		}
+	}
 
 	var limit *int
 	if limitStr != "" {
@@ -32,11 +37,20 @@ func GetCursorPaginationFromQuery(reqCtx *gin.Context, findByLastID func(string)
 		}
 		offset = &offsetInt
 	} else if afterStr != "" {
-		lastID, err := findByLastID(afterStr)
-		if err != nil {
-			return nil, platformerrors.NewError(reqCtx.Request.Context(), platformerrors.LayerHandler, platformerrors.ErrorTypeValidation, "invalid offset number", nil, "1f9ee4ee-56ed-448e-9296-d978c9a03726")
+		if findByLastID != nil {
+			lastID, err := findByLastID(afterStr)
+			if err != nil {
+				return nil, platformerrors.NewError(reqCtx.Request.Context(), platformerrors.LayerHandler, platformerrors.ErrorTypeValidation, "invalid offset number", nil, "1f9ee4ee-56ed-448e-9296-d978c9a03726")
+			}
+			after = lastID
+		} else {
+			parsedID, err := strconv.ParseUint(afterStr, 10, 64)
+			if err != nil {
+				return nil, platformerrors.NewError(reqCtx.Request.Context(), platformerrors.LayerHandler, platformerrors.ErrorTypeValidation, "invalid pagination cursor", err, "9a5c2c48-5c59-4f40-9f27-5861e9c62d2f")
+			}
+			tempID := uint(parsedID)
+			after = &tempID
 		}
-		after = lastID
 	}
 
 	if order != "asc" && order != "desc" {

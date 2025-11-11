@@ -15,5 +15,6 @@ WORKDIR /app
 COPY --from=builder /out/llm-api /app/llm-api
 COPY config /app/config
 COPY docs /app/docs
+COPY migrations /app/migrations
 USER appuser
 ENTRYPOINT ["/app/llm-api"]

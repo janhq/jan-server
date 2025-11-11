@@ -118,6 +118,565 @@
       ]
     },
     {
+      "name": "Project Management",
+      "description": "Comprehensive tests for project CRUD operations, including creation, listing, updates, and deletion.",
+      "item": [
+        {
+          "name": "Create Project - Marketing Campaign",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Marketing Campaign\",\n  \"instruction\": \"You are a marketing expert. Provide creative and data-driven marketing strategies. Always consider ROI and target audience demographics.\"\n}"
+            },
+            "url": {
+              "raw": "{{llm_api_url}}/v1/llm/projects",
+              "host": ["{{llm_api_url}}"],
+              "path": ["v1", "llm", "projects"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Project created successfully', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "pm.test('Response contains project details', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.object).to.equal('project');",
+                  "    pm.expect(response.id).to.exist;",
+                  "    pm.expect(response.id).to.include('proj_');",
+                  "    pm.expect(response.name).to.equal('Marketing Campaign');",
+                  "    pm.expect(response.instruction).to.include('marketing expert');",
+                  "    pm.expect(response.created_at).to.exist;",
+                  "    pm.expect(response.updated_at).to.exist;",
+                  "    ",
+                  "    pm.collectionVariables.set('project_id_1', response.id);",
+                  "    console.log('Created project_id_1:', response.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Project - Technical Support",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Technical Support\",\n  \"instruction\": \"You are a technical support specialist. Provide clear, step-by-step troubleshooting guidance. Be patient and ask clarifying questions when needed.\"\n}"
+            },
+            "url": {
+              "raw": "{{llm_api_url}}/v1/llm/projects",
+              "host": ["{{llm_api_url}}"],
+              "path": ["v1", "llm", "projects"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Second project created', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.name).to.equal('Technical Support');",
+                  "    pm.collectionVariables.set('project_id_2', response.id);",
+                  "    console.log('Created project_id_2:', response.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Project - Personal Assistant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Personal Assistant\",\n  \"instruction\": \"You are a helpful personal assistant. Help with scheduling, reminders, and general life organization.\"\n}"
+            },
+            "url": {
+              "raw": "{{llm_api_url}}/v1/llm/projects",
+              "host": ["{{llm_api_url}}"],
+              "path": ["v1", "llm", "projects"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Third project created', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('project_id_3', response.id);",
+                  "    console.log('Created project_id_3:', response.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Single Project",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{llm_api_url}}/v1/llm/projects/{{project_id_1}}",
+              "host": ["{{llm_api_url}}"],
+              "path": ["v1", "llm", "projects", "{{project_id_1}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Project retrieved successfully', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Project details are correct', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.id).to.equal(pm.collectionVariables.get('project_id_1'));",
+                  "    pm.expect(response.name).to.equal('Marketing Campaign');",
+                  "    pm.expect(response.instruction).to.exist;",
+                  "    pm.expect(response.object).to.equal('project');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List All Projects - Page 1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{llm_api_url}}/v1/llm/projects?limit=2",
+              "host": ["{{llm_api_url}}"],
+              "path": ["v1", "llm", "projects"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "2"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Projects list retrieved', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Pagination works correctly', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.object).to.equal('list');",
+                  "    pm.expect(response.data).to.be.an('array');",
+                  "    pm.expect(response.data.length).to.be.at.most(2);",
+                  "    pm.expect(response.has_more).to.exist;",
+                  "    ",
+                  "    if (response.has_more) {",
+                  "        pm.expect(response.next_cursor).to.exist;",
+                  "        pm.collectionVariables.set('next_cursor', response.next_cursor);",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test('Projects have correct structure', function () {",
+                  "    const response = pm.response.json();",
+                  "    response.data.forEach(project => {",
+                  "        pm.expect(project.object).to.equal('project');",
+                  "        pm.expect(project.id).to.include('proj_');",
+                  "        pm.expect(project.name).to.exist;",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Projects - Page 2 (with cursor)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{llm_api_url}}/v1/llm/projects?limit=2&cursor={{next_cursor}}",
+              "host": ["{{llm_api_url}}"],
+              "path": ["v1", "llm", "projects"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "2"
+                },
+                {
+                  "key": "cursor",
+                  "value": "{{next_cursor}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Next page retrieved', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.data).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Project - Name",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Marketing Campaign 2024\"\n}"
+            },
+            "url": {
+              "raw": "{{llm_api_url}}/v1/llm/projects/{{project_id_1}}",
+              "host": ["{{llm_api_url}}"],
+              "path": ["v1", "llm", "projects", "{{project_id_1}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Project name updated', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.name).to.equal('Marketing Campaign 2024');",
+                  "    pm.expect(response.updated_at).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Project - Instruction",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"instruction\": \"You are a marketing expert specializing in digital campaigns. Focus on social media, SEO, and content marketing strategies.\"\n}"
+            },
+            "url": {
+              "raw": "{{llm_api_url}}/v1/llm/projects/{{project_id_1}}",
+              "host": ["{{llm_api_url}}"],
+              "path": ["v1", "llm", "projects", "{{project_id_1}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Project instruction updated', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.instruction).to.include('digital campaigns');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Project - Mark as Favorite",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_favorite\": true\n}"
+            },
+            "url": {
+              "raw": "{{llm_api_url}}/v1/llm/projects/{{project_id_1}}",
+              "host": ["{{llm_api_url}}"],
+              "path": ["v1", "llm", "projects", "{{project_id_1}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Project marked as favorite', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.is_favorite).to.equal(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Project - Archive",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_archived\": true\n}"
+            },
+            "url": {
+              "raw": "{{llm_api_url}}/v1/llm/projects/{{project_id_2}}",
+              "host": ["{{llm_api_url}}"],
+              "path": ["v1", "llm", "projects", "{{project_id_2}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Project archived', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.is_archived).to.equal(true);",
+                  "    pm.expect(response.archived_at).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Project - Unarchive",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_archived\": false\n}"
+            },
+            "url": {
+              "raw": "{{llm_api_url}}/v1/llm/projects/{{project_id_2}}",
+              "host": ["{{llm_api_url}}"],
+              "path": ["v1", "llm", "projects", "{{project_id_2}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Project unarchived', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.is_archived).to.equal(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Validation - Create Project with Long Name",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"This is a very long project name that exceeds the maximum allowed length of 120 characters and should be rejected by the validation logic in the backend\",\n  \"instruction\": \"Test instruction\"\n}"
+            },
+            "url": {
+              "raw": "{{llm_api_url}}/v1/llm/projects",
+              "host": ["{{llm_api_url}}"],
+              "path": ["v1", "llm", "projects"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Long name rejected', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([400, 422]);",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.error).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Validation - Create Project with Empty Name",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\",\n  \"instruction\": \"Test instruction\"\n}"
+            },
+            "url": {
+              "raw": "{{llm_api_url}}/v1/llm/projects",
+              "host": ["{{llm_api_url}}"],
+              "path": ["v1", "llm", "projects"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Empty name rejected', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([400, 422]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Basic Conversation Flow",
       "item": [
         {
@@ -392,7 +951,7 @@
       "name": "Cleanup",
       "item": [
         {
-          "name": "Step 9: Delete Conversation",
+          "name": "Delete Conversation",
           "request": {
             "method": "DELETE",
             "header": [
@@ -411,6 +970,110 @@
                 "exec": [
                   "pm.test('conversation deleted or not found', function () {",
                   "    pm.expect([200, 204, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Project 1",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{llm_api_url}}/v1/llm/projects/{{project_id_1}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Project 1 deleted (soft-delete)', function () {",
+                  "    pm.expect([200, 204]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Project 2",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{llm_api_url}}/v1/llm/projects/{{project_id_2}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Project 2 deleted', function () {",
+                  "    pm.expect([200, 204]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Project 3",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{llm_api_url}}/v1/llm/projects/{{project_id_3}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Project 3 deleted', function () {",
+                  "    pm.expect([200, 204]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify Deleted Project Not Found",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{llm_api_url}}/v1/llm/projects/{{project_id_1}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Deleted project returns 404', function () {",
+                  "    pm.response.to.have.status(404);",
                   "});"
                 ]
               }
@@ -436,6 +1099,26 @@
       "value": "",
       "type": "string",
       "description": "Set this from auth flow or manually"
+    },
+    {
+      "key": "project_id_1",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "project_id_2",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "project_id_3",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "next_cursor",
+      "value": "",
+      "type": "string"
     }
   ]
 }

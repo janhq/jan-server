@@ -30,7 +30,7 @@ type Project struct {
 
 // TableName specifies the table name for Project
 func (Project) TableName() string {
-	return "projects"
+	return "llm_api.projects"
 }
 
 // ===============================================

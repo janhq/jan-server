@@ -10,6 +10,6 @@ type CreateProjectRequest struct {
 type UpdateProjectRequest struct {
 	Name        *string `json:"name,omitempty"`
 	Instruction *string `json:"instruction,omitempty"`
-	Archived    *bool   `json:"archived,omitempty"`
-	Favorite    *bool   `json:"favorite,omitempty"`
+	Archived    *bool   `json:"is_archived,omitempty"`
+	Favorite    *bool   `json:"is_favorite,omitempty"`
 }

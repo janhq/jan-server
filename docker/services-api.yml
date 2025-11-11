@@ -37,6 +37,7 @@ services:
       #   condition: service_healthy
     volumes:
       - ../services/llm-api/config:/app/config:ro
+      - ../services/llm-api/migrations:/app/migrations:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:${HTTP_PORT:-8080}/healthz"]
       interval: 10s

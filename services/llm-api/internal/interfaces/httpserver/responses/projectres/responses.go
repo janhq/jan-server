@@ -10,7 +10,8 @@ type ProjectResponse struct {
 	Object      string  `json:"object"`
 	Name        string  `json:"name"`
 	Instruction *string `json:"instruction,omitempty"`
-	Favorite    bool    `json:"favorite"`
+	Favorite    bool    `json:"is_favorite"`
+	IsArchived  bool    `json:"is_archived"`
 	ArchivedAt  *int64  `json:"archived_at,omitempty"`
 	CreatedAt   int64   `json:"created_at"`
 	UpdatedAt   int64   `json:"updated_at"`
@@ -22,6 +23,7 @@ type ProjectListResponse struct {
 	Data    []ProjectResponse `json:"data"`
 	FirstID string            `json:"first_id,omitempty"`
 	LastID  string            `json:"last_id,omitempty"`
+	NextCursor *string        `json:"next_cursor,omitempty"`
 	HasMore bool              `json:"has_more"`
 	Total   int64             `json:"total"`
 }
@@ -41,6 +43,7 @@ func NewProjectResponse(proj *project.Project) *ProjectResponse {
 		Name:        proj.Name,
 		Instruction: proj.Instruction,
 		Favorite:    proj.Favorite,
+		IsArchived:  proj.ArchivedAt != nil,
 		CreatedAt:   proj.CreatedAt.Unix(),
 		UpdatedAt:   proj.UpdatedAt.Unix(),
 	}
@@ -54,7 +57,7 @@ func NewProjectResponse(proj *project.Project) *ProjectResponse {
 }
 
 // NewProjectListResponse creates a list response from domain projects
-func NewProjectListResponse(projects []*project.Project, hasMore bool, total int64) *ProjectListResponse {
+func NewProjectListResponse(projects []*project.Project, hasMore bool, nextCursor *string, total int64) *ProjectListResponse {
 	data := make([]ProjectResponse, len(projects))
 	for i, proj := range projects {
 		data[i] = *NewProjectResponse(proj)
@@ -65,6 +68,7 @@ func NewProjectListResponse(projects []*project.Project, hasMore bool, total int
 		Data:    data,
 		HasMore: hasMore,
 		Total:   total,
+		NextCursor: nextCursor,
 	}
 
 	if len(data) > 0 {

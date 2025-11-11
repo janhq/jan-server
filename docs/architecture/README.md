@@ -13,6 +13,7 @@ The system is organized into several layers:
 3. **[Data Flow](data-flow.md)** - Request flow patterns and interactions
 4. **[Security](security.md)** - Authentication, authorization, and security considerations
 5. **[Observability](observability.md)** - Monitoring, tracing, and logging
+6. **[Test Flows](test-flows.md)** - Automated test architecture and flow diagrams
 
 ## Quick Reference
 
@@ -81,5 +82,7 @@ Production deployments use Helm charts with flexible configuration:
 - [Data Flow Patterns](data-flow.md)
 - [Security Model](security.md)
 - [Observability Guide](observability.md)
+- [Test Flows & Diagrams](test-flows.md)
 - [API Reference](../api/README.md)
 - [Development Guide](../guides/development.md)
+
