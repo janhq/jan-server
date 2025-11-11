@@ -143,12 +143,17 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 
 **GET** `/v1/conversations`
 
-List all conversations.
+List all conversations for the authenticated user.
 
 ```bash
 curl -H "Authorization: Bearer <token>" \
   http://localhost:8000/v1/conversations
 ```
+
+**Query Parameters:**
+- `limit` (optional) - Number of conversations to return (default: 20)
+- `after` (optional) - Cursor for pagination
+- `order` (optional) - Sort order: "asc" or "desc" (default: "desc")
 
 **POST** `/v1/conversations`
 
@@ -157,45 +162,210 @@ Create a new conversation.
 ```bash
 curl -X POST -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
-  -d '{"title": "My Conversation"}' \
+  -d '{
+    "title": "My Conversation",
+    "project_id": "proj_123"
+  }' \
   http://localhost:8000/v1/conversations
 ```
 
-**GET** `/v1/conversations/{id}`
+**GET** `/v1/conversations/{conv_public_id}`
 
-Get a specific conversation with messages.
+Get a specific conversation with its items.
 
 ```bash
 curl -H "Authorization: Bearer <token>" \
   http://localhost:8000/v1/conversations/conv_123
 ```
 
-### Messages
+**POST** `/v1/conversations/{conv_public_id}`
 
-**GET** `/v1/conversations/{conversation_id}/messages`
+Update a conversation (title, archived status).
 
-List messages in a conversation.
+```bash
+curl -X POST -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Updated Title"}' \
+  http://localhost:8000/v1/conversations/conv_123
+```
 
-**POST** `/v1/conversations/{conversation_id}/messages`
+**DELETE** `/v1/conversations/{conv_public_id}`
 
-Add a message to a conversation.
+Delete a conversation.
+
+```bash
+curl -X DELETE -H "Authorization: Bearer <token>" \
+  http://localhost:8000/v1/conversations/conv_123
+```
+
+### Conversation Items (Messages)
+
+**GET** `/v1/conversations/{conv_public_id}/items`
+
+List all items (messages) in a conversation.
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+  http://localhost:8000/v1/conversations/conv_123/items
+```
+
+**POST** `/v1/conversations/{conv_public_id}/items`
+
+Add items (messages) to a conversation.
+
+```bash
+curl -X POST -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "items": [
+      {
+        "type": "message",
+        "role": "user",
+        "content": [
+          {"type": "input_text", "text": "Hello!"}
+        ]
+      }
+    ]
+  }' \
+  http://localhost:8000/v1/conversations/conv_123/items
+```
+
+**GET** `/v1/conversations/{conv_public_id}/items/{item_id}`
+
+Get a specific item from a conversation.
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+  http://localhost:8000/v1/conversations/conv_123/items/item_456
+```
+
+**DELETE** `/v1/conversations/{conv_public_id}/items/{item_id}`
+
+Delete an item from a conversation.
+
+```bash
+curl -X DELETE -H "Authorization: Bearer <token>" \
+  http://localhost:8000/v1/conversations/conv_123/items/item_456
+```
+
+### Projects
+
+Projects help organize conversations into logical groups.
+
+**POST** `/v1/projects`
+
+Create a new project.
+
+```bash
+curl -X POST -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Marketing Campaign",
+    "instruction": "You are a marketing expert."
+  }' \
+  http://localhost:8000/v1/projects
+```
+
+**GET** `/v1/projects`
+
+List all projects for the authenticated user.
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+  http://localhost:8000/v1/projects
+```
+
+**Query Parameters:**
+- `limit` (optional) - Number of projects to return
+- `after` (optional) - Cursor for pagination
+- `order` (optional) - Sort order: "asc" or "desc"
+
+**GET** `/v1/projects/{project_id}`
+
+Get a specific project by ID.
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+  http://localhost:8000/v1/projects/proj_123
+```
+
+**PATCH** `/v1/projects/{project_id}`
+
+Update a project's name, instruction, or archived status.
+
+```bash
+curl -X PATCH -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Updated Project Name",
+    "instruction": "New instruction text",
+    "archived": false
+  }' \
+  http://localhost:8000/v1/projects/proj_123
+```
+
+**DELETE** `/v1/projects/{project_id}`
+
+Soft-delete a project.
+
+```bash
+curl -X DELETE -H "Authorization: Bearer <token>" \
+  http://localhost:8000/v1/projects/proj_123
+```
 
 ### Models
 
 **GET** `/v1/models`
 
-List available models.
+List all available models.
 
 ```bash
-curl http://localhost:8000/v1/models
+curl -H "Authorization: Bearer <token>" \
+  http://localhost:8000/v1/models
 ```
 
-### Health Check
+**GET** `/v1/models/catalogs/{model_public_id}`
 
-**GET** `/healthz`
+Get details for a specific model from the catalog.
 
 ```bash
-curl http://localhost:8080/healthz
+curl -H "Authorization: Bearer <token>" \
+  http://localhost:8000/v1/models/catalogs/jan-v1-4b
+```
+
+**GET** `/v1/models/providers`
+
+List all available model providers.
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+  http://localhost:8000/v1/models/providers
+```
+
+### Health Checks
+
+**GET** `/v1/healthz`
+
+Basic health check endpoint.
+
+```bash
+curl http://localhost:8080/v1/healthz
+```
+
+**GET** `/v1/readyz`
+
+Readiness check endpoint (service ready to accept traffic).
+
+```bash
+curl http://localhost:8080/v1/readyz
+```
+
+**GET** `/v1/version`
+
+Get API version and build information.
+
+```bash
+curl http://localhost:8080/v1/version
 ```
 
 ## With Media (Visual Input)

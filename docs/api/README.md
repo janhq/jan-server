@@ -5,20 +5,25 @@ Complete API documentation for Jan Server services.
 ## Available APIs
 
 ### 1. LLM API (Port 8080)
-OpenAI-compatible API for chat completions, conversations, and models.
+OpenAI-compatible API for chat completions, conversations, projects, and models.
 
 **Features:**
 - Chat completions with streaming
 - Conversation and message management
+- Project organization for conversations
+- Authentication and API key management
+- Admin endpoints for provider/model management
 - Model listing and provider abstraction
 - Media support via `jan_*` IDs
 - Full observability and tracing
 
 **Documentation:**
 - **[Complete Documentation](llm-api/)** - Full API reference, endpoints, examples
-- **[Authentication](llm-api/#authentication)** - Auth methods and token management
+- **[Authentication](llm-api/#authentication)** - Auth methods, API keys, and token management
 - **[Chat Completions](llm-api/#chat-completions)** - Main completion endpoint
 - **[Conversations](llm-api/#conversations)** - Conversation CRUD operations
+- **[Projects](llm-api/#projects)** - Project management for organizing conversations
+- **[Admin Endpoints](llm-api/#admin-endpoints)** - Provider and model catalog management
 - **[With Media](llm-api/#with-media-visual-input)** - Media references using `jan_*` IDs
 - **[Examples](llm-api/examples.md)** - cURL, Python, and JavaScript snippets
 
