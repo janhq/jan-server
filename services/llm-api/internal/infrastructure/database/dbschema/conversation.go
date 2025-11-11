@@ -24,13 +24,19 @@ type Conversation struct {
 	Title        *string                         `gorm:"type:varchar(256)"`
 	UserID       uint                            `gorm:"index:idx_conversation_user_referrer;index:idx_conversation_user_status;not null"`
 	User         User                            `gorm:"foreignKey:UserID"`
+	ProjectID    *uint                           `gorm:"index:idx_conversations_project_updated_at"` // Optional project grouping
 	Status       conversation.ConversationStatus `gorm:"type:varchar(20);index:idx_conversation_user_status;not null;default:'active'"`
 	ActiveBranch string                          `gorm:"type:varchar(50);not null;default:'MAIN'"` // Currently active branch
 	Referrer     *string                         `gorm:"type:varchar(100);index:idx_conversation_user_referrer"`
 	Metadata     JSONMap                         `gorm:"type:jsonb"`
 	IsPrivate    *bool                           `gorm:"default:false"`
-	Items        []ConversationItem              `gorm:"foreignKey:ConversationID"`
-	Branches     []ConversationBranch            `gorm:"foreignKey:ConversationID"`
+
+	// Project instruction inheritance
+	InstructionVersion           int     `gorm:"not null;default:1"` // Version of project instruction when conversation was created
+	EffectiveInstructionSnapshot *string `gorm:"type:text"`          // Snapshot of merged instruction for reproducibility
+
+	Items    []ConversationItem   `gorm:"foreignKey:ConversationID"`
+	Branches []ConversationBranch `gorm:"foreignKey:ConversationID"`
 }
 
 // ConversationBranch represents metadata about a conversation branch
@@ -141,15 +147,18 @@ func NewSchemaConversation(c *conversation.Conversation) *Conversation {
 			CreatedAt: c.CreatedAt,
 			UpdatedAt: c.UpdatedAt,
 		},
-		PublicID:     c.PublicID,
-		Object:       c.Object,
-		Title:        c.Title,
-		UserID:       c.UserID,
-		Status:       c.Status,
-		ActiveBranch: c.ActiveBranch,
-		Referrer:     c.Referrer,
-		Metadata:     JSONMap(c.Metadata),
-		IsPrivate:    &isPrivate,
+		PublicID:                     c.PublicID,
+		Object:                       c.Object,
+		Title:                        c.Title,
+		UserID:                       c.UserID,
+		ProjectID:                    c.ProjectID,
+		Status:                       c.Status,
+		ActiveBranch:                 c.ActiveBranch,
+		Referrer:                     c.Referrer,
+		Metadata:                     JSONMap(c.Metadata),
+		IsPrivate:                    &isPrivate,
+		InstructionVersion:           c.InstructionVersion,
+		EffectiveInstructionSnapshot: c.EffectiveInstructionSnapshot,
 	}
 }
 
@@ -191,19 +200,22 @@ func (c *Conversation) EtoD() *conversation.Conversation {
 		isPrivate = *c.IsPrivate
 	}
 	conv := &conversation.Conversation{
-		ID:             c.ID,
-		PublicID:       c.PublicID,
-		Object:         c.Object,
-		Title:          c.Title,
-		UserID:         c.UserID,
-		Status:         c.Status,
-		ActiveBranch:   c.ActiveBranch,
-		Branches:       make(map[string][]conversation.Item),
-		BranchMetadata: make(map[string]conversation.BranchMetadata),
-		Metadata:       map[string]string(c.Metadata),
-		IsPrivate:      isPrivate,
-		CreatedAt:      c.CreatedAt,
-		UpdatedAt:      c.UpdatedAt,
+		ID:                           c.ID,
+		PublicID:                     c.PublicID,
+		Object:                       c.Object,
+		Title:                        c.Title,
+		UserID:                       c.UserID,
+		ProjectID:                    c.ProjectID,
+		Status:                       c.Status,
+		ActiveBranch:                 c.ActiveBranch,
+		Branches:                     make(map[string][]conversation.Item),
+		BranchMetadata:               make(map[string]conversation.BranchMetadata),
+		Metadata:                     map[string]string(c.Metadata),
+		IsPrivate:                    isPrivate,
+		InstructionVersion:           c.InstructionVersion,
+		EffectiveInstructionSnapshot: c.EffectiveInstructionSnapshot,
+		CreatedAt:                    c.CreatedAt,
+		UpdatedAt:                    c.UpdatedAt,
 	}
 	if c.Referrer != nil {
 		conv.Referrer = c.Referrer
