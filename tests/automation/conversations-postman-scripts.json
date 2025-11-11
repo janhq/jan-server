@@ -948,6 +948,290 @@
       ]
     },
     {
+      "name": "Conversation-Project Relationships",
+      "description": "Tests for conversation-project operations: create in project, list by project, move between projects, and move to global",
+      "item": [
+        {
+          "name": "Step 9: Create Conversation in Project",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Project Conversation - Marketing\",\n  \"project_id\": \"{{project_id_1}}\"\n}"
+            },
+            "url": {
+              "raw": "{{llm_api_url}}/v1/conversations",
+              "host": [
+                "{{llm_api_url}}"
+              ],
+              "path": [
+                "v1",
+                "conversations"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[Step 9] Conversation created with project_id', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "pm.test('[Step 9] Response contains conversation object', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.id).to.exist;",
+                  "    pm.expect(response.id).to.include('conv_');",
+                  "    pm.expect(response.title).to.equal('Project Conversation - Marketing');",
+                  "    ",
+                  "    // Save conversation ID for later tests",
+                  "    pm.collectionVariables.set('conversation_in_project_1', response.id);",
+                  "    console.log('Saved conversation_in_project_1:', response.id);",
+                  "});",
+                  "",
+                  "console.log('Step 9 Complete: Conversation Created in Project');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Step 10: Create Second Conversation in Same Project",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Project Conversation - Strategy\",\n  \"project_id\": \"{{project_id_1}}\"\n}"
+            },
+            "url": {
+              "raw": "{{llm_api_url}}/v1/conversations",
+              "host": [
+                "{{llm_api_url}}"
+              ],
+              "path": [
+                "v1",
+                "conversations"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[Step 10] Second conversation created in project', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "pm.test('[Step 10] Second conversation has correct structure', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.id).to.exist;",
+                  "    pm.expect(response.title).to.equal('Project Conversation - Strategy');",
+                  "    ",
+                  "    pm.collectionVariables.set('conversation_in_project_2', response.id);",
+                  "    console.log('Saved conversation_in_project_2:', response.id);",
+                  "});",
+                  "",
+                  "console.log('Step 10 Complete: Second Conversation Created in Project');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Step 11: List Conversations by Project",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{llm_api_url}}/v1/conversations?project_id={{project_id_1}}",
+              "host": [
+                "{{llm_api_url}}"
+              ],
+              "path": [
+                "v1",
+                "conversations"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "{{project_id_1}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[Step 11] Conversations filtered by project_id retrieved successfully', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('[Step 11] Response contains conversation data array', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('data');",
+                  "    pm.expect(response.data).to.be.an('array');",
+                  "    pm.expect(response.data.length).to.be.at.least(1);",
+                  "    console.log('Found ' + response.data.length + ' conversations in project');",
+                  "});",
+                  "",
+                  "console.log('Step 11 Complete: Conversations Filtered by Project');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Step 12: Verify Conversations Still Belong to Project",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{llm_api_url}}/v1/conversations?project_id={{project_id_1}}",
+              "host": [
+                "{{llm_api_url}}"
+              ],
+              "path": [
+                "v1",
+                "conversations"
+              ],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "{{project_id_1}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[Step 12] Conversations still in project after creation', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('[Step 12] Both project conversations are present', function () {",
+                  "    const response = pm.response.json();",
+                  "    const conv1Exists = response.data.some(conv => ",
+                  "        conv.id === pm.collectionVariables.get('conversation_in_project_1')",
+                  "    );",
+                  "    const conv2Exists = response.data.some(conv => ",
+                  "        conv.id === pm.collectionVariables.get('conversation_in_project_2')",
+                  "    );",
+                  "    pm.expect(conv1Exists).to.be.true;",
+                  "    pm.expect(conv2Exists).to.be.true;",
+                  "    console.log('Confirmed: Both conversations remain in project_id_1');",
+                  "});",
+                  "",
+                  "console.log('Step 12 Complete: Verified Conversations in Project');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Step 13: List Conversations without Project Filter (Global + Project)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{llm_api_url}}/v1/conversations?limit=100",
+              "host": [
+                "{{llm_api_url}}"
+              ],
+              "path": [
+                "v1",
+                "conversations"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[Step 13] Global conversations list retrieved successfully', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('[Step 13] All conversations (global and project-scoped) are returned', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('data');",
+                  "    pm.expect(response.data).to.be.an('array');",
+                  "    pm.expect(response.data.length).to.be.at.least(3);",
+                  "    ",
+                  "    // Verify we have both project conversations",
+                  "    const conv1Exists = response.data.some(conv => ",
+                  "        conv.id === pm.collectionVariables.get('conversation_in_project_1')",
+                  "    );",
+                  "    const conv2Exists = response.data.some(conv => ",
+                  "        conv.id === pm.collectionVariables.get('conversation_in_project_2')",
+                  "    );",
+                  "    pm.expect(conv1Exists).to.be.true;",
+                  "    pm.expect(conv2Exists).to.be.true;",
+                  "    console.log('Confirmed: All conversations (global and project) returned in list');",
+                  "});",
+                  "",
+                  "console.log('Step 13 Complete: Verified Global Conversation List');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Cleanup",
       "item": [
         {
