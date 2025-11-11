@@ -42,6 +42,7 @@ Welcome to the Jan Server documentation. Use this page as a map to the rest of t
 - [Deployment Guide](guides/deployment.md)
 - [Kubernetes Setup](../k8s/SETUP.md)
 - [Monitoring Guide](guides/monitoring.md)
+- [Authentication & Gateway](guides/authentication.md)
 - [Troubleshooting](guides/troubleshooting.md)
 - [Security Policy](../SECURITY.md)
 - [Architecture Security](architecture/security.md)

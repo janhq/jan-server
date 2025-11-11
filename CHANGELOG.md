@@ -77,7 +77,7 @@ This release represents a **complete architectural overhaul** from a Kubernetes-
   - `make monitor-up` - With monitoring stack
 
 #### 🔐 Authentication Enhancements
-- **Guest authentication** - Quick access via `/auth/guest` endpoint
+- **Guest authentication** - Quick access via `/llm/auth/guest-login` endpoint
 - **Keycloak OIDC integration** - Full OAuth/OIDC support
 - **Simplified token management** - Streamlined authentication flow
 
@@ -162,7 +162,7 @@ This release represents a **complete architectural overhaul** from a Kubernetes-
 - **New endpoints**:
   - `/v1/chat/completions` - OpenAI-compatible chat endpoint
   - `/v1/mcp` - MCP tools endpoint
-  - `/auth/guest` - Guest authentication
+- `/llm/auth/guest-login` - Guest authentication
   - `/api/media/*` - Media API routes
   - `/api/responses/*` - Response API routes
 

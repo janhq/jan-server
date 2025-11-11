@@ -39,6 +39,7 @@ type Conversation struct {
 	Object         string                    `json:"object"` // Always "conversation" for OpenAI compatibility
 	Title          *string                   `json:"title,omitempty"`
 	UserID         uint                      `json:"-"`
+	ProjectID      *uint                     `json:"-"` // Optional project grouping
 	Status         ConversationStatus        `json:"status"`
 	Items          []Item                    `json:"items,omitempty"`           // Legacy: items without branch (defaults to MAIN)
 	Branches       map[string][]Item         `json:"branches,omitempty"`        // Branched items organized by branch name
@@ -47,8 +48,13 @@ type Conversation struct {
 	Metadata       map[string]string         `json:"metadata,omitempty"`
 	Referrer       *string                   `json:"referrer,omitempty"`
 	IsPrivate      bool                      `json:"is_private"`
-	CreatedAt      time.Time                 `json:"created_at"` // Unix timestamp for OpenAI compatibility
-	UpdatedAt      time.Time                 `json:"updated_at"` // Unix timestamp for OpenAI compatibility
+
+	// Project instruction inheritance
+	InstructionVersion           int     `json:"instruction_version"`                      // Version of project instruction when conversation was created
+	EffectiveInstructionSnapshot *string `json:"effective_instruction_snapshot,omitempty"` // Snapshot of merged instruction for reproducibility
+
+	CreatedAt time.Time `json:"created_at"` // Unix timestamp for OpenAI compatibility
+	UpdatedAt time.Time `json:"updated_at"` // Unix timestamp for OpenAI compatibility
 }
 
 // BranchMetadata contains information about a conversation branch
@@ -128,18 +134,21 @@ func NewConversation(publicID string, userID uint, title *string, metadata map[s
 	}
 
 	conv := &Conversation{
-		PublicID:       publicID,
-		Object:         "conversation",
-		Title:          title,
-		UserID:         userID,
-		Status:         ConversationStatusActive,
-		ActiveBranch:   BranchMain,
-		Branches:       make(map[string][]Item),
-		BranchMetadata: make(map[string]BranchMetadata),
-		Metadata:       metadata,
-		IsPrivate:      false,
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		PublicID:                     publicID,
+		Object:                       "conversation",
+		Title:                        title,
+		UserID:                       userID,
+		ProjectID:                    nil,
+		Status:                       ConversationStatusActive,
+		ActiveBranch:                 BranchMain,
+		Branches:                     make(map[string][]Item),
+		BranchMetadata:               make(map[string]BranchMetadata),
+		Metadata:                     metadata,
+		IsPrivate:                    false,
+		InstructionVersion:           1,
+		EffectiveInstructionSnapshot: nil,
+		CreatedAt:                    now,
+		UpdatedAt:                    now,
 	}
 
 	// Initialize MAIN branch metadata

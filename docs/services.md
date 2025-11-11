@@ -10,7 +10,7 @@ Jan Server ships four core services plus shared infrastructure. Use this documen
 | **MCP Tools** | Model Context Protocol tools (web search, scraping, file search, python exec) | 8091 | `services/mcp-tools` | [api/mcp-tools/README.md](api/mcp-tools/README.md), [services/mcp-tools/README.md](../services/mcp-tools/README.md) |
 
 ## Infrastructure Components
-- **Kong Gateway (8000)**: exposes public APIs, enforces rate limits, and bridges clients to services.
+- **Kong Gateway (8000)**: exposes public APIs, enforces rate limits, validates Keycloak JWTs/API keys (custom plugin), and proxies `/llm/auth/guest-login` for guest tokens.
 - **Keycloak (8085)**: handles OAuth2/OIDC flows; see `keycloak/`.
 - **PostgreSQL**: `api-db` (LLM/Response/Media data) and `keycloak-db` (Keycloak state).
 - **vLLM (8101)**: inference backend reachable from llm-api.

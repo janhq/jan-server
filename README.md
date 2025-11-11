@@ -43,7 +43,7 @@ Jan Server is an enterprise-grade LLM API platform that provides:
 -  **Media API** with S3 storage, `jan_*` ID system, and presigned URLs
 -  **MCP tools** (google_search, web scraping, code execution via SandboxFusion)
 -  **Conversation & message management** with PostgreSQL persistence
--  **Guest & user authentication** via Keycloak OIDC
+-  **Guest & user authentication** via Keycloak OIDC enforced by the Kong gateway (JWT + custom API key plugin); request guest tokens from `POST /llm/auth/guest-login`
 -  **API gateway routing** via Kong (v3.5)
 -  **Distributed tracing** with Jaeger and OpenTelemetry
 -  **Metrics & dashboards** with Prometheus + Grafana
@@ -200,11 +200,13 @@ See [Development Guide](docs/guides/development.md) for details.
 
 ### 1. Authentication
 
+Kong (`http://localhost:8000`) fronts all `/llm/*` services and enforces Keycloak-issued JWTs or the custom API key plugin (`X-API-Key: sk_*`). Acquire temporary guest tokens at `POST /llm/auth/guest-login`, then include `Authorization: Bearer <token>` (or `X-API-Key`) on subsequent requests.
+
 ```bash
 # Get guest token (no registration required)
-curl -X POST http://localhost:8000/auth/guest
+curl -X POST http://localhost:8000/llm/auth/guest-login
 
-# Response:
+# Sample response:
 # {
 #   "access_token": "eyJhbGc...",
 #   "token_type": "Bearer",

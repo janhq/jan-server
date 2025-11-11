@@ -95,11 +95,13 @@ Once running, you can access:
 
 ## Your First API Call
 
-### 1. Get a Guest Token
+### 1. Get a Guest Token via Kong
 
 ```bash
-curl -X POST http://localhost:8000/auth/guest
+curl -X POST http://localhost:8000/llm/auth/guest-login
 ```
+
+All traffic to `http://localhost:8000` flows through the Kong gateway, which validates Keycloak-issued JWTs or API keys (use `Authorization: Bearer <token>` or `X-API-Key: sk_*` headers).
 
 Response:
 ```json
@@ -267,7 +269,7 @@ make db-console
 ### API returns 401 Unauthorized
 
 - Check token hasn't expired (default: 5 minutes)
-- Get new guest token: `curl -X POST http://localhost:8000/auth/guest`
+- Get new guest token: `curl -X POST http://localhost:8000/llm/auth/guest-login`
 - Check `Authorization: Bearer <token>` header is set
 
 ## What's Next?

@@ -170,7 +170,7 @@ docker volume rm <volume-name>
 **Solutions**:
 ```bash
 # Get a guest token
-curl -X POST http://localhost:8000/auth/guest
+curl -X POST http://localhost:8000/llm/auth/guest-login
 
 # Use token in requests
 curl -H "Authorization: Bearer <token>" \
@@ -264,7 +264,7 @@ docker restart keycloak
 **Solutions**:
 ```bash
 # Get new token
-curl -X POST http://localhost:8000/auth/guest
+curl -X POST http://localhost:8000/llm/auth/guest-login
 
 # Check token expiration
 jwt decode <token>

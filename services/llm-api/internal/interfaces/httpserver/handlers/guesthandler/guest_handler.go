@@ -40,7 +40,7 @@ func NewUpgradeHandler(kc *keycloak.Client, logger zerolog.Logger) *UpgradeHandl
 	return &UpgradeHandler{kc: kc, logger: logger}
 }
 
-// CreateGuest handles POST /auth/guest requests.
+// CreateGuest handles POST /auth/guest-login requests.
 func (h *GuestHandler) CreateGuest(c *gin.Context) {
 	creds, err := h.kc.CreateGuest(c.Request.Context())
 	if err != nil {

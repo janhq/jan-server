@@ -5,11 +5,13 @@ All examples assume `make up-full` is running locally so that Kong Gateway is av
 ## Prerequisites
 1. Create `.env` from `.env.template` and run `make setup`.
 2. Start the stack: `make up-full`.
-3. Grab a guest token:
+3. Grab a guest token through the Kong gateway:
    ```bash
-   curl -s -X POST http://localhost:8000/auth/guest | jq -r .access_token
+   curl -s -X POST http://localhost:8000/llm/auth/guest-login | jq -r .access_token
    ```
    Save the token as `ACCESS_TOKEN`.
+
+All `/v1/*` requests are routed through Kong, which validates Keycloak JWTs or the custom API key plugin (`X-API-Key: sk_*`) before forwarding to the LLM API.
 
 ## 1. Basic Chat Completion (cURL)
 ```bash

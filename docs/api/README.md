@@ -85,11 +85,11 @@ Model Context Protocol tools for web search, scraping, and code execution.
 
 ### Authentication
 
-All LLM API endpoints require authentication:
+All LLM API endpoints require authentication enforced by the Kong gateway (`http://localhost:8000`). Kong validates Keycloak-issued JWTs via the `jwt` plugin or API keys via the `keycloak-apikey` plugin, and it injects `X-Auth-Method` to indicate the active credential. Acquire a guest token through `/llm/auth/guest-login` and include `Authorization: Bearer <token>` or send `X-API-Key: sk_*` on each request.
 
 ```bash
-# Get guest token
-curl -X POST http://localhost:8000/auth/guest
+# Request a guest token
+curl -X POST http://localhost:8000/llm/auth/guest-login
 
 # Response
 {
@@ -98,7 +98,7 @@ curl -X POST http://localhost:8000/auth/guest
   "expires_in": 300
 }
 
-# Use in requests
+# Use the token
 curl -H "Authorization: Bearer <access_token>" \
   http://localhost:8000/v1/models
 ```

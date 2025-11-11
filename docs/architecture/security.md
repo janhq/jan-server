@@ -2,14 +2,15 @@
 
 ## Identity and Access
 - **OAuth2/OIDC** via Keycloak (`keycloak/` Dockerfile).
+- **Kong gateway** (`http://localhost:8000`) protects every `/llm/*` route using the built-in `jwt` plugin (validating Keycloak tokens) plus the custom `keycloak-apikey` plugin (`X-API-Key: sk_*` -> `POST /auth/validate-api-key`).
 - **Clients** obtain tokens using:
-  - Guest endpoint (`POST /auth/guest`) for local testing.
-  - OAuth2 code flow (Keycloak realm `jan`) for real users.
+  - Guest endpoint (`POST /llm/auth/guest-login` via Kong) for quick local access; the LLM API coordinates with Keycloak.
+  - OAuth2 (code/password/device) flows against the `jan` realm in Keycloak for registered users.
 - **Services** validate tokens with:
   - `AUTH_ENABLED=true`
   - `AUTH_ISSUER`, `AUTH_AUDIENCE`, `AUTH_JWKS_URL`
-- **Service auth**: Media API, Response API, and MCP Tools enforce Keycloak-issued JWTs via `AUTH_*` settings.
-- **Kong plugins**: apply rate limiting, request size limits, and header sanitization at the edge.
+- **Service auth**: Media API, Response API, and MCP Tools enforce Keycloak-issued JWTs via `AUTH_*` settings and inherit Kong headers when needed.
+- **Kong plugins**: besides jwt/apikey, Kong applies rate limiting, request size limits, and header sanitization at the edge to keep unauthenticated traffic out.
 
 ## Network Boundaries
 - **Public**: Kong (8000) and, optionally, Keycloak admin (8085) when protected.

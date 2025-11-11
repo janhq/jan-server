@@ -10,11 +10,11 @@ The LLM API is the core service for language model completions and conversation 
 - **Docker**: http://llm-api:8080
 
 ### Authentication
-All endpoints require a Bearer token. Get one via guest authentication:
+All endpoints require authentication enforced by the Kong gateway (`http://localhost:8000`). Kong validates JWTs emitted by Keycloak and also accepts API keys with the `X-API-Key` header, injecting `X-Auth-Method` so downstream services know whether JWT or API key auth was used. Request temporary guest tokens through `/llm/auth/guest-login` and include `Authorization: Bearer <token>` (or `X-API-Key: sk_*`) on every protected endpoint.
 
 ```bash
 # Get guest token
-curl -X POST http://localhost:8000/auth/guest
+curl -X POST http://localhost:8000/llm/auth/guest-login
 
 # Response:
 {

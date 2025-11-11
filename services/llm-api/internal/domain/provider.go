@@ -7,6 +7,7 @@ import (
 	"jan-server/services/llm-api/internal/domain/apikey"
 	"jan-server/services/llm-api/internal/domain/conversation"
 	"jan-server/services/llm-api/internal/domain/model"
+	"jan-server/services/llm-api/internal/domain/project"
 	"jan-server/services/llm-api/internal/domain/user"
 )
 
@@ -14,6 +15,9 @@ import (
 var ServiceProvider = wire.NewSet(
 	// Conversation domain
 	conversation.NewConversationService,
+
+	// Project domain
+	project.NewProjectService,
 
 	// Model domain
 	model.NewProviderModelService,
