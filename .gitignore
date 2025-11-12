@@ -94,7 +94,7 @@ out/
 .idea/golangProjectSettings.xml
 .idea/goLibraries.xml
 go.work
-go.sum
+
 
 .idea/goprojector.xml
 .idea/go.imports.xml

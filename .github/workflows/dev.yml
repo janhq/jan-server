@@ -1,0 +1,91 @@
+name: CI - Microservices
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "services/llm-api/**"
+      - "services/mcp-tools/**"
+      - "services/media-api/**"
+      - "services/response-api/**"
+      - .github/workflows/dev.yml
+      - .github/workflows/template-docker.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "services/llm-api/**"
+      - "services/mcp-tools/**"
+      - "services/media-api/**"
+      - "services/response-api/**"
+      - .github/workflows/dev.yml
+      - .github/workflows/template-docker.yml
+
+jobs:
+  build-llm-api:
+    if: |
+      contains(github.event.head_commit.modified, 'services/llm-api/') ||
+      contains(github.event.head_commit.added, 'services/llm-api/') ||
+      github.event_name == 'pull_request'
+    uses: ./.github/workflows/template-docker.yml
+    secrets: inherit
+    with:
+      runs-on: ubuntu-24-04-docker
+      docker-file: services/llm-api/Dockerfile
+      context: services/llm-api
+      registry-url: registry.menlo.ai
+      tags: registry.menlo.ai/jan-server/llm-api:dev-${{ github.sha }}
+      is_push: ${{ github.event_name == 'push' }}
+      build-args: |
+        VERSION_TAG=dev-${{ github.sha }}
+
+  build-mcp-tools:
+    if: |
+      contains(github.event.head_commit.modified, 'services/mcp-tools/') ||
+      contains(github.event.head_commit.added, 'services/mcp-tools/') ||
+      github.event_name == 'pull_request'
+    uses: ./.github/workflows/template-docker.yml
+    secrets: inherit
+    with:
+      runs-on: ubuntu-24-04-docker
+      docker-file: services/mcp-tools/Dockerfile
+      context: services/mcp-tools
+      registry-url: registry.menlo.ai
+      tags: registry.menlo.ai/jan-server/mcp-tools:dev-${{ github.sha }}
+      is_push: ${{ github.event_name == 'push' }}
+      build-args: |
+        VERSION_TAG=dev-${{ github.sha }}
+
+  build-media-api:
+    if: |
+      contains(github.event.head_commit.modified, 'services/media-api/') ||
+      contains(github.event.head_commit.added, 'services/media-api/') ||
+      github.event_name == 'pull_request'
+    uses: ./.github/workflows/template-docker.yml
+    secrets: inherit
+    with:
+      runs-on: ubuntu-24-04-docker
+      docker-file: services/media-api/Dockerfile
+      context: services/media-api
+      registry-url: registry.menlo.ai
+      tags: registry.menlo.ai/jan-server/media-api:dev-${{ github.sha }}
+      is_push: ${{ github.event_name == 'push' }}
+      build-args: |
+        VERSION_TAG=dev-${{ github.sha }}
+
+  build-response-api:
+    if: |
+      contains(github.event.head_commit.modified, 'services/response-api/') ||
+      contains(github.event.head_commit.added, 'services/response-api/') ||
+      github.event_name == 'pull_request'
+    uses: ./.github/workflows/template-docker.yml
+    secrets: inherit
+    with:
+      runs-on: ubuntu-24-04-docker
+      docker-file: services/response-api/Dockerfile
+      context: services/response-api
+      registry-url: registry.menlo.ai
+      tags: registry.menlo.ai/jan-server/response-api:dev-${{ github.sha }}
+      is_push: ${{ github.event_name == 'push' }}
+      build-args: |
+        VERSION_TAG=dev-${{ github.sha }}
