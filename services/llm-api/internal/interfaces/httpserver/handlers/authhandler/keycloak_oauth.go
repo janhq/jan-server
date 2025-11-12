@@ -24,6 +24,7 @@ type KeycloakOAuthHandler struct {
 	clientID        string
 	clientSecret    string
 	redirectURI     string
+	cookieDomain    string // Domain for cookies (extracted from redirectURI)
 }
 
 // NewKeycloakOAuthHandler creates a new Keycloak OAuth handler
@@ -34,12 +35,28 @@ func NewKeycloakOAuthHandler(
 	clientSecret string,
 	redirectURI string,
 ) *KeycloakOAuthHandler {
+	// Extract cookie domain from redirect URI
+	cookieDomain := ""
+	if parsedURL, err := url.Parse(redirectURI); err == nil {
+		host := parsedURL.Hostname()
+		// For production domains like api-gateway-dev.jan.ai, use .jan.ai
+		// For localhost, leave empty (defaults to current host)
+		if host != "localhost" && host != "127.0.0.1" {
+			// Extract root domain (e.g., jan.ai from api-gateway-dev.jan.ai)
+			parts := strings.Split(host, ".")
+			if len(parts) >= 2 {
+				cookieDomain = "." + strings.Join(parts[len(parts)-2:], ".")
+			}
+		}
+	}
+
 	return &KeycloakOAuthHandler{
 		keycloakBaseURL: strings.TrimSuffix(keycloakBaseURL, "/"),
 		realm:           realm,
 		clientID:        clientID,
 		clientSecret:    clientSecret,
 		redirectURI:     redirectURI,
+		cookieDomain:    cookieDomain,
 	}
 }
 
@@ -106,6 +123,7 @@ func (h *KeycloakOAuthHandler) InitiateLogin(c *gin.Context) {
 		Value:    state,
 		MaxAge:   600,
 		Path:     "/",
+		Domain:   h.cookieDomain,
 		Secure:   true,
 		HttpOnly: true,
 		SameSite: http.SameSiteNoneMode,
@@ -119,6 +137,7 @@ func (h *KeycloakOAuthHandler) InitiateLogin(c *gin.Context) {
 			Value:    redirectURL,
 			MaxAge:   600,
 			Path:     "/",
+			Domain:   h.cookieDomain,
 			Secure:   true,
 			HttpOnly: true,
 			SameSite: http.SameSiteNoneMode,
@@ -209,6 +228,7 @@ func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
 		Value:    "",
 		MaxAge:   -1,
 		Path:     "/",
+		Domain:   h.cookieDomain,
 		Secure:   true,
 		HttpOnly: true,
 		SameSite: http.SameSiteNoneMode,
@@ -231,6 +251,7 @@ func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
 			Value:    "",
 			MaxAge:   -1,
 			Path:     "/",
+			Domain:   h.cookieDomain,
 			Secure:   true,
 			HttpOnly: true,
 			SameSite: http.SameSiteNoneMode,
@@ -244,6 +265,7 @@ func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
 		Value:    tokenResp.AccessToken,
 		MaxAge:   tokenResp.ExpiresIn,
 		Path:     "/",
+		Domain:   h.cookieDomain,
 		Secure:   true,
 		HttpOnly: true,
 		SameSite: http.SameSiteNoneMode,
@@ -255,6 +277,7 @@ func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
 		Value:    tokenResp.RefreshToken,
 		MaxAge:   tokenResp.RefreshExpiresIn,
 		Path:     "/",
+		Domain:   h.cookieDomain,
 		Secure:   true,
 		HttpOnly: true,
 		SameSite: http.SameSiteNoneMode,
@@ -267,14 +290,34 @@ func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
 			Value:    tokenResp.IDToken,
 			MaxAge:   tokenResp.ExpiresIn,
 			Path:     "/",
+			Domain:   h.cookieDomain,
 			Secure:   true,
 			HttpOnly: true,
 			SameSite: http.SameSiteNoneMode,
 		})
 	}
 
-	// If there's a redirect URL, redirect to client's page
+	// If there's a redirect URL, redirect to client's page with tokens
 	if postLoginRedirect != "" {
+		// Parse the redirect URL to append tokens
+		redirectURL, err := url.Parse(postLoginRedirect)
+		if err == nil {
+			// Use hash fragment for security (tokens won't be sent to server in subsequent requests)
+			// Frontend can extract tokens from window.location.hash
+			fragment := fmt.Sprintf("access_token=%s&refresh_token=%s&expires_in=%d&token_type=%s",
+				url.QueryEscape(tokenResp.AccessToken),
+				url.QueryEscape(tokenResp.RefreshToken),
+				tokenResp.ExpiresIn,
+				url.QueryEscape(tokenResp.TokenType),
+			)
+			if tokenResp.IDToken != "" {
+				fragment += fmt.Sprintf("&id_token=%s", url.QueryEscape(tokenResp.IDToken))
+			}
+			redirectURL.Fragment = fragment
+			c.Redirect(http.StatusFound, redirectURL.String())
+			return
+		}
+		// Fallback if URL parsing fails
 		c.Redirect(http.StatusFound, postLoginRedirect)
 		return
 	}
