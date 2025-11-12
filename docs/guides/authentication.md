@@ -35,8 +35,10 @@ Client
 ## 3. Guest Tokens
 
 - **Endpoint**: `POST /llm/auth/guest-login` exposed through Kong (`/llm/auth/guest-login` route). This endpoint creates a temporary Keycloak user and returns `access_token`, `refresh_token`, and metadata. Guest tokens are meant for quick local testing; they honor rate limits and expire around 5 minutes.
+- **Temporary Email**: Guest users are automatically assigned a temporary email in the format `guest-{uuid}@temp.jan.ai` to satisfy Keycloak's email requirements. This temporary email is replaced with the real email when the guest account is upgraded via `POST /auth/upgrade`.
 - **Usage**: Include `Authorization: Bearer <token>` on `/v1/*` calls or sent via Kong using `curl -X POST http://localhost:8000/llm/auth/guest-login`. Kong forwards the request to `llm-api` and enforces the auth plugin (JWT may succeed immediately after issuance).
-- **Refresh**: Call `/llm/auth/refresh-token` or rely on Kong’s JWT verification for new tokens in production flows.
+- **Upgrade**: Call `POST /auth/upgrade` with the guest token to convert to a permanent account. The upgrade endpoint overwrites the temporary email with a real email and marks it as verified, and changes the `guest` attribute from `true` to `false`.
+- **Refresh**: Call `/llm/auth/refresh-token` or rely on Kong's JWT verification for new tokens in production flows.
 
 ## 4. API Key Lifecycle
 
@@ -56,7 +58,7 @@ Client
 
 - **JWKS**: The Kong `jwt` plugin fetches the Keycloak JWKS manually (no dynamic JWKS refresh). Rotate Keycloak signing keys via a manual Kong restart or redeploy the gateway.
 - **Admin API**: Credentials (JWT secrets) live only in the Kong Admin API and are never committed to Git. The gateway does not create consumers dynamically in DB-less mode, which keeps configuration declarative (`kong.yml`).
-- **Guest users**: Each guest login request creates a temporary Keycloak user flagged for easy cleanup. Upgrade and refresh flows use the same `jan` realm policies as regular users.
+- **Guest users**: Each guest login request creates a temporary Keycloak user with a temporary email (`guest-{uuid}@temp.jan.ai`) and the `guest` attribute set to `true`. These users can be upgraded to permanent accounts via `/auth/upgrade`, which replaces the temporary email with a real one and toggles the `guest` flag to `false`. Upgrade and refresh flows use the same `jan` realm policies as regular users.
 
 ## 6. Environment & Deployment Guidance
 

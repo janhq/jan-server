@@ -103,7 +103,7 @@
               "mode": "raw",
               "raw": "{\n  \"source\": {\n    \"type\": \"data_url\",\n    \"data_url\": \"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAuMBg6W7NcgAAAAASUVORK5CYII=\"\n  },\n  \"user_id\": \"{{guest_user_id}}\",\n  \"filename\": \"semaglutide.png\"\n}"
             },
-            "url": "{{media_api_url}}/v1/media",
+            "url": "{{kong_url}}/media/v1/media",
             "description": "Upload a tiny PNG via data URL and capture jan_id + presigned URL."
           },
           "event": [
@@ -149,7 +149,7 @@
               "mode": "raw",
               "raw": "{\n  \"source\": {\n    \"type\": \"remote_url\",\n    \"url\": \"https://httpbin.org/image/png\"\n  },\n  \"user_id\": \"{{guest_user_id}}\",\n  \"filename\": \"semaglutide-remote.png\"\n}"
             },
-            "url": "{{media_api_url}}/v1/media",
+            "url": "{{kong_url}}/media/v1/media",
             "description": "Fetch an external image via remote_url ingestion."
           },
           "event": [
@@ -193,7 +193,7 @@
               "mode": "raw",
               "raw": "{\n  \"payload\": {\n    \"hero_image\": \"{{media_placeholder}}\"\n  }\n}"
             },
-            "url": "{{media_api_url}}/v1/media/resolve",
+            "url": "{{kong_url}}/media/v1/media/resolve",
             "description": "Swap jan_* placeholder for a signed download URL."
           },
           "event": [
@@ -244,7 +244,7 @@
               "mode": "raw",
               "raw": "{\n  \"mime_type\": \"image/png\",\n  \"user_id\": \"{{guest_user_id}}\"\n}"
             },
-            "url": "{{media_api_url}}/v1/media/prepare-upload",
+            "url": "{{kong_url}}/media/v1/media/prepare-upload",
             "description": "Reserve a jan_id and obtain a presigned upload URL."
           },
           "event": [
@@ -330,7 +330,7 @@
               "mode": "raw",
               "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/list\",\n  \"params\": {},\n  \"id\": 1\n}"
             },
-            "url": "{{mcp_tools_url}}",
+            "url": "{{kong_url}}/mcp",
             "description": "Verify MCP tool discovery via Kong."
           },
           "event": [
@@ -371,7 +371,7 @@
               "mode": "raw",
               "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"input\": \"Research the economic impact of semaglutide on global healthcare systems.\\nDo:\\n- Include specific figures, trends, statistics, and measurable outcomes.\\n- Prioritize reliable, up-to-date sources: peer-reviewed research, health organizations (e.g., WHO, CDC), regulatory agencies, or pharmaceutical earnings reports.\\n- Include inline citations and return all source metadata.\\n\\nBe analytical, avoid generalities, and ensure that each section supports data-backed reasoning that could inform healthcare policy or financial modeling.\",\n  \"stream\": false,\n  \"metadata\": {\n    \"suite\": \"gateway-e2e\",\n    \"media_reference\": \"{{media_id}}\"\n  },\n  \"tool_choice\": {\n    \"type\": \"auto\"\n  },\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"google_search\",\n        \"description\": \"Search the public web for authoritative results\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"q\": {\n              \"type\": \"string\",\n              \"description\": \"query\"\n            },\n            \"num\": {\n              \"type\": \"integer\",\n              \"description\": \"number of results\"\n            }\n          },\n          \"required\": [\n            \"q\"\n          ]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"scrape\",\n        \"description\": \"Scrape the contents of a URL\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"url\": {\n              \"type\": \"string\"\n            },\n            \"include_markdown\": {\n              \"type\": \"boolean\"\n            }\n          },\n          \"required\": [\n            \"url\"\n          ]\n        }\n      }\n    }\n  ]\n}"
             },
-            "url": "{{response_api_url}}/v1/responses",
+            "url": "{{kong_url}}/responses/v1/responses",
             "description": "Run the complex semaglutide prompt with tool orchestration."
           },
           "event": [
@@ -405,7 +405,7 @@
                 "value": "Bearer {{guest_access_token}}"
               }
             ],
-            "url": "{{response_api_url}}/v1/responses/{{response_id}}",
+            "url": "{{kong_url}}/responses/v1/responses/{{response_id}}",
             "description": "Confirm the response completed successfully."
           },
           "event": [
@@ -435,19 +435,7 @@
     },
     {
       "key": "kong_url",
-      "value": "http://localhost:8000/llm"
-    },
-    {
-      "key": "media_api_url",
-      "value": "http://localhost:8000/media"
-    },
-    {
-      "key": "response_api_url",
-      "value": "http://localhost:8000/responses"
-    },
-    {
-      "key": "mcp_tools_url",
-      "value": "http://localhost:8000/mcp"
+      "value": "http://localhost:8000"
     },
     {
       "key": "media_service_key",

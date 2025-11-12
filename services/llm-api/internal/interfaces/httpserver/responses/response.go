@@ -152,14 +152,17 @@ func BuildCursorPage[T any](
 }
 
 func NewCookieWithSecurity(name string, value string, expires time.Time) *http.Cookie {
+	// For cross-origin requests (e.g., frontend at different domain), we need SameSite=None with Secure
+	// This is required for both dev and production when the frontend is on a different origin
 	if config.IsDev() {
 		return &http.Cookie{
 			Name:     name,
 			Value:    value,
 			Expires:  expires,
-			HttpOnly: false,
-			Secure:   false,
+			HttpOnly: true,
+			Secure:   true,
 			Path:     "/",
+			SameSite: http.SameSiteNoneMode,
 		}
 	}
 	return &http.Cookie{
@@ -169,6 +172,6 @@ func NewCookieWithSecurity(name string, value string, expires time.Time) *http.C
 		HttpOnly: true,
 		Secure:   true,
 		Path:     "/",
-		SameSite: http.SameSiteStrictMode,
+		SameSite: http.SameSiteNoneMode,
 	}
 }
