@@ -31,8 +31,8 @@ services:
     depends_on:
       api-db:
         condition: service_healthy
-      keycloak:
-        condition: service_healthy
+      # keycloak:
+      #   condition: service_healthy
       # vllm-jan-gpu:
       #   condition: service_healthy
     volumes:
@@ -74,8 +74,8 @@ services:
     depends_on:
       api-db:
         condition: service_healthy
-      keycloak:
-        condition: service_healthy
+      # keycloak:
+      #   condition: service_healthy
     volumes:
       - ../services/media-api/config:/app/config:ro
     healthcheck:

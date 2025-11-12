@@ -520,7 +520,6 @@ test-mcp-integration:
 	@$(NEWMAN) run $(NEWMAN_MCP_COLLECTION) \
 		--env-var "kong_url=http://localhost:8000" \
 		--env-var "mcp_tools_url=http://localhost:8000/mcp" \
-		--env-var "searxng_url=http://localhost:8086" \
 		--verbose \
 		--reporters cli
 	@echo " MCP integration tests passed"

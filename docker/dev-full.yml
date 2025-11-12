@@ -55,21 +55,21 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-debug}
 
   # MCP Services - add host.docker.internal
-  redis-searxng:
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+  # redis-searxng:
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
 
-  searxng:
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+  # searxng:
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
 
   vector-store:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  sandboxfusion:
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+  # sandboxfusion:
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
 
   mcp-tools:
     extra_hosts:

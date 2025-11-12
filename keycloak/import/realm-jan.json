@@ -1,14 +1,17 @@
 {
   "realm": "jan",
   "enabled": true,
-  "registrationAllowed": false,
+  "registrationAllowed": true,
   "rememberMe": true,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": false,
   "verifyEmail": false,
-  "registrationEmailAsUsername": false,
+  "registrationEmailAsUsername": true,
   "requiredActions": [],
+  "attributes": {
+    "tokenExchangeEnabled": "true"
+  },
   "clients": [
     {
       "clientId": "backend",
@@ -21,9 +24,11 @@
       "directAccessGrantsEnabled": false,
       "standardFlowEnabled": false,
       "fullScopeAllowed": false,
+      "authorizationServicesEnabled": true,
       "attributes": {
         "access.token.lifespan": "300",
-        "oauth2.device.authorization.grant.enabled": "true"
+        "oauth2.device.authorization.grant.enabled": "true",
+        "token.exchange.grant.enabled": "true"
       }
     },
     {
@@ -36,6 +41,7 @@
       "standardFlowEnabled": true,
       "serviceAccountsEnabled": false,
       "implicitFlowEnabled": false,
+      "authorizationServicesEnabled": false,
       "redirectUris": [
         "http://localhost:8000/auth/callback",
         "http://localhost:8000/auth/google/callback",
@@ -66,7 +72,8 @@
       "attributes": {
         "oauth2.device.authorization.grant.enabled": "true",
         "access.token.lifespan": "3600",
-        "refresh.token.lifespan": "2592000"
+        "refresh.token.lifespan": "2592000",
+        "token.exchange.grant.enabled": "true"
       },
       "protocolMappers": [
         {
