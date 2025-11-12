@@ -184,9 +184,21 @@ func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
 
 	// Validate state
 	storedState, err := c.Cookie("oauth_state")
-	if err != nil || storedState != state {
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Invalid state parameter",
+			"error":          "Invalid state parameter",
+			"error_detail":   "oauth_state cookie not found",
+			"cookie_error":   err.Error(),
+			"received_state": state,
+		})
+		return
+	}
+	if storedState != state {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":          "Invalid state parameter",
+			"error_detail":   "state mismatch",
+			"stored_state":   storedState,
+			"received_state": state,
 		})
 		return
 	}
@@ -225,7 +237,49 @@ func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
 		})
 	}
 
-	// Return tokens
+	// Set tokens as HTTP-only cookies for security
+	// Access token cookie
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "access_token",
+		Value:    tokenResp.AccessToken,
+		MaxAge:   tokenResp.ExpiresIn,
+		Path:     "/",
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteNoneMode,
+	})
+
+	// Refresh token cookie
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    tokenResp.RefreshToken,
+		MaxAge:   tokenResp.RefreshExpiresIn,
+		Path:     "/",
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteNoneMode,
+	})
+
+	// ID token cookie (if present)
+	if tokenResp.IDToken != "" {
+		http.SetCookie(c.Writer, &http.Cookie{
+			Name:     "id_token",
+			Value:    tokenResp.IDToken,
+			MaxAge:   tokenResp.ExpiresIn,
+			Path:     "/",
+			Secure:   true,
+			HttpOnly: true,
+			SameSite: http.SameSiteNoneMode,
+		})
+	}
+
+	// If there's a redirect URL, redirect to client's page
+	if postLoginRedirect != "" {
+		c.Redirect(http.StatusFound, postLoginRedirect)
+		return
+	}
+
+	// Default: return JSON response for backward compatibility
 	response := LoginResponse{
 		AccessToken:  tokenResp.AccessToken,
 		RefreshToken: tokenResp.RefreshToken,
@@ -233,16 +287,6 @@ func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
 		TokenType:    tokenResp.TokenType,
 		IDToken:      tokenResp.IDToken,
 	}
-
-	// If there's a redirect URL, return it along with tokens
-	if postLoginRedirect != "" {
-		c.JSON(http.StatusOK, gin.H{
-			"tokens":       response,
-			"redirect_url": postLoginRedirect,
-		})
-		return
-	}
-
 	c.JSON(http.StatusOK, response)
 }
 
