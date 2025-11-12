@@ -6,19 +6,9 @@
   },
   "variable": [
     {
-      "key": "response_api_url",
-      "value": "http://localhost:8082",
-      "description": "Response API base URL (use http://localhost:8082 for local, http://response-api:8082 for docker)"
-    },
-    {
       "key": "kong_url",
-      "value": "http://localhost:8080",
-      "description": "LLM API base URL (use http://localhost:8080 for local, http://llm-api:8080 for docker)"
-    },
-    {
-      "key": "mcp_tools_url",
-      "value": "http://localhost:8091",
-      "description": "MCP Tools base URL (use http://localhost:8091 for local, http://mcp-tools:8091 for docker)"
+      "value": "http://localhost:8000",
+      "description": "Kong Gateway base URL"
     },
     {
       "key": "guest_access_token",
@@ -131,7 +121,7 @@
               "value": "Bearer {{guest_access_token}}"
             }
           ],
-          "url": "{{response_api_url}}/healthz"
+          "url": "{{kong_url}}/responses/healthz"
           },
           "event": [
             {
@@ -239,7 +229,7 @@
               "mode": "raw",
               "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"What is 2+2?\",\n  \"stream\": false\n}"
             },
-            "url": "{{response_api_url}}/v1/responses"
+            "url": "{{kong_url}}/responses/v1/responses"
           },
           "event": [
             {
@@ -276,7 +266,7 @@
                 "value": "Bearer {{guest_access_token}}"
               }
             ],
-            "url": "{{response_api_url}}/v1/responses/{{response_id}}"
+            "url": "{{kong_url}}/responses/v1/responses/{{response_id}}"
           },
           "event": [
             {
@@ -317,7 +307,7 @@
               "mode": "raw",
               "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Search for the latest news about OpenAI and summarize the top 3 results\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"google_search\",\n        \"description\": \"Search the web using Google\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"q\": {\n              \"type\": \"string\",\n              \"description\": \"Search query\"\n            },\n            \"num\": {\n              \"type\": \"integer\",\n              \"description\": \"Number of results\"\n            }\n          },\n          \"required\": [\"q\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
             },
-            "url": "{{response_api_url}}/v1/responses"
+            "url": "{{kong_url}}/responses/v1/responses"
           },
           "event": [
             {
@@ -369,7 +359,7 @@
               "mode": "raw",
               "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Search for the official OpenAI website, then scrape the homepage and tell me what's their main product\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"google_search\",\n        \"description\": \"Search the web\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\"q\": {\"type\": \"string\"}},\n          \"required\": [\"q\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"scrape\",\n        \"description\": \"Scrape webpage content\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"url\": {\"type\": \"string\", \"description\": \"URL to scrape\"}\n          },\n          \"required\": [\"url\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
             },
-            "url": "{{response_api_url}}/v1/responses"
+            "url": "{{kong_url}}/responses/v1/responses"
           },
           "event": [
             {
@@ -415,7 +405,7 @@
               "mode": "raw",
               "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Index this document: OpenAI released GPT-4 in March 2023. It's a large multimodal model.\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"file_search_index\",\n        \"description\": \"Index text for search\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"document_id\": {\"type\": \"string\"},\n            \"text\": {\"type\": \"string\"},\n            \"metadata\": {\"type\": \"object\"}\n          },\n          \"required\": [\"document_id\", \"text\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
             },
-            "url": "{{response_api_url}}/v1/responses"
+            "url": "{{kong_url}}/responses/v1/responses"
           },
           "event": [
             {
@@ -449,7 +439,7 @@
               "mode": "raw",
               "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"When was GPT-4 released? Search my indexed documents.\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"file_search_query\",\n        \"description\": \"Query indexed documents\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"query\": {\"type\": \"string\"},\n            \"top_k\": {\"type\": \"integer\"}\n          },\n          \"required\": [\"query\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
             },
-            "url": "{{response_api_url}}/v1/responses"
+            "url": "{{kong_url}}/responses/v1/responses"
           },
           "event": [
             {
@@ -493,7 +483,7 @@
               "mode": "raw",
               "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"My name is Alice and I live in Paris\",\n  \"stream\": false\n}"
             },
-            "url": "{{response_api_url}}/v1/responses"
+            "url": "{{kong_url}}/responses/v1/responses"
           },
           "event": [
             {
@@ -532,7 +522,7 @@
               "mode": "raw",
               "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"What's my name and where do I live?\",\n  \"previous_response_id\": \"{{response_id}}\",\n  \"stream\": false\n}"
             },
-            "url": "{{response_api_url}}/v1/responses"
+            "url": "{{kong_url}}/responses/v1/responses"
           },
           "event": [
             {
@@ -564,7 +554,7 @@
                 "value": "Bearer {{guest_access_token}}"
               }
             ],
-            "url": "{{response_api_url}}/v1/responses/{{response_id}}/input_items"
+            "url": "{{kong_url}}/responses/v1/responses/{{response_id}}/input_items"
           },
           "event": [
             {
@@ -605,7 +595,7 @@
               "mode": "raw",
               "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Use the invalid_tool\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"invalid_tool_that_does_not_exist\",\n        \"description\": \"Non-existent tool\",\n        \"parameters\": {\"type\": \"object\", \"properties\": {}}\n      }\n    }\n  ],\n  \"stream\": false\n}"
             },
-            "url": "{{response_api_url}}/v1/responses"
+            "url": "{{kong_url}}/responses/v1/responses"
           },
           "event": [
             {
@@ -640,7 +630,7 @@
               "mode": "raw",
               "raw": "{\n  \"input\": \"Test without model\",\n  \"stream\": false\n}"
             },
-            "url": "{{response_api_url}}/v1/responses"
+            "url": "{{kong_url}}/responses/v1/responses"
           },
           "event": [
             {
@@ -666,7 +656,7 @@
                 "value": "Bearer {{guest_access_token}}"
               }
             ],
-            "url": "{{response_api_url}}/v1/responses/{{response_id}}/cancel"
+            "url": "{{kong_url}}/responses/v1/responses/{{response_id}}/cancel"
           },
           "event": [
             {
@@ -705,7 +695,7 @@
               "mode": "raw",
               "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Search for recent AI news, scrape the top result, and execute Python code to count how many times 'AI' appears in the content\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"google_search\",\n        \"description\": \"Search the web\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\"q\": {\"type\": \"string\"}},\n          \"required\": [\"q\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"scrape\",\n        \"description\": \"Scrape webpage\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\"url\": {\"type\": \"string\"}},\n          \"required\": [\"url\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"python_exec\",\n        \"description\": \"Execute Python code\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"code\": {\"type\": \"string\"},\n            \"language\": {\"type\": \"string\"}\n          },\n          \"required\": [\"code\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
             },
-            "url": "{{response_api_url}}/v1/responses"
+            "url": "{{kong_url}}/responses/v1/responses"
           },
           "event": [
             {

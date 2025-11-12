@@ -100,12 +100,29 @@ func (h *KeycloakOAuthHandler) InitiateLogin(c *gin.Context) {
 	}
 
 	// Store state in session/cookie for validation later
-	c.SetCookie("oauth_state", state, 600, "/", "", false, true)
+	// Use SameSite=None with Secure for cross-origin requests
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "oauth_state",
+		Value:    state,
+		MaxAge:   600,
+		Path:     "/",
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteNoneMode,
+	})
 
 	// Store redirect URL if provided
 	redirectURL := c.Query("redirect_url")
 	if redirectURL != "" {
-		c.SetCookie("post_login_redirect", redirectURL, 600, "/", "", false, true)
+		http.SetCookie(c.Writer, &http.Cookie{
+			Name:     "post_login_redirect",
+			Value:    redirectURL,
+			MaxAge:   600,
+			Path:     "/",
+			Secure:   true,
+			HttpOnly: true,
+			SameSite: http.SameSiteNoneMode,
+		})
 	}
 
 	// Build authorization URL
@@ -175,7 +192,15 @@ func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
 	}
 
 	// Clear state cookie
-	c.SetCookie("oauth_state", "", -1, "/", "", false, true)
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "oauth_state",
+		Value:    "",
+		MaxAge:   -1,
+		Path:     "/",
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteNoneMode,
+	})
 
 	// Exchange code for tokens
 	tokenResp, err := h.exchangeCodeForTokens(code)
@@ -189,7 +214,15 @@ func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
 	// Get post-login redirect URL
 	postLoginRedirect, _ := c.Cookie("post_login_redirect")
 	if postLoginRedirect != "" {
-		c.SetCookie("post_login_redirect", "", -1, "/", "", false, true)
+		http.SetCookie(c.Writer, &http.Cookie{
+			Name:     "post_login_redirect",
+			Value:    "",
+			MaxAge:   -1,
+			Path:     "/",
+			Secure:   true,
+			HttpOnly: true,
+			SameSite: http.SameSiteNoneMode,
+		})
 	}
 
 	// Return tokens
