@@ -42,6 +42,7 @@ services/mcp-tools/
 │       └── routes/   # MCP route handlers
 └── utils/            # Utilities
     └── mcp/          # MCP helper functions
+
 ```
 
 ## Available Tools

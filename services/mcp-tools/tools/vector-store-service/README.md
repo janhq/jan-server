@@ -20,4 +20,5 @@ go run .
 ```bash
 docker build -t vector-store-service .
 docker run -p 3015:3015 vector-store-service
+
 ```

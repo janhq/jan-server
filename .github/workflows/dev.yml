@@ -22,11 +22,35 @@ on:
       - .github/workflows/template-docker.yml
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      llm-api: ${{ steps.filter.outputs.llm-api }}
+      mcp-tools: ${{ steps.filter.outputs.mcp-tools }}
+      media-api: ${{ steps.filter.outputs.media-api }}
+      response-api: ${{ steps.filter.outputs.response-api }}
+      vector-store: ${{ steps.filter.outputs.vector-store }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            llm-api:
+              - 'services/llm-api/**'
+            mcp-tools:
+              - 'services/mcp-tools/**'
+              - '!services/mcp-tools/tools/vector-store-service/**'
+            media-api:
+              - 'services/media-api/**'
+            response-api:
+              - 'services/response-api/**'
+            vector-store:
+              - 'services/mcp-tools/tools/vector-store-service/**'
+
   build-llm-api:
-    if: |
-      contains(github.event.head_commit.modified, 'services/llm-api/') ||
-      contains(github.event.head_commit.added, 'services/llm-api/') ||
-      github.event_name == 'pull_request'
+    needs: changes
+    if: needs.changes.outputs.llm-api == 'true'
     uses: ./.github/workflows/template-docker.yml
     secrets: inherit
     with:
@@ -40,10 +64,8 @@ jobs:
         VERSION_TAG=dev-${{ github.sha }}
 
   build-mcp-tools:
-    if: |
-      contains(github.event.head_commit.modified, 'services/mcp-tools/') ||
-      contains(github.event.head_commit.added, 'services/mcp-tools/') ||
-      github.event_name == 'pull_request'
+    needs: changes
+    if: needs.changes.outputs.mcp-tools == 'true'
     uses: ./.github/workflows/template-docker.yml
     secrets: inherit
     with:
@@ -57,10 +79,8 @@ jobs:
         VERSION_TAG=dev-${{ github.sha }}
 
   build-media-api:
-    if: |
-      contains(github.event.head_commit.modified, 'services/media-api/') ||
-      contains(github.event.head_commit.added, 'services/media-api/') ||
-      github.event_name == 'pull_request'
+    needs: changes
+    if: needs.changes.outputs.media-api == 'true'
     uses: ./.github/workflows/template-docker.yml
     secrets: inherit
     with:
@@ -74,10 +94,8 @@ jobs:
         VERSION_TAG=dev-${{ github.sha }}
 
   build-response-api:
-    if: |
-      contains(github.event.head_commit.modified, 'services/response-api/') ||
-      contains(github.event.head_commit.added, 'services/response-api/') ||
-      github.event_name == 'pull_request'
+    needs: changes
+    if: needs.changes.outputs.response-api == 'true'
     uses: ./.github/workflows/template-docker.yml
     secrets: inherit
     with:
@@ -86,6 +104,21 @@ jobs:
       context: services/response-api
       registry-url: registry.menlo.ai
       tags: registry.menlo.ai/jan-server/response-api:dev-${{ github.sha }}
+      is_push: ${{ github.event_name == 'push' }}
+      build-args: |
+        VERSION_TAG=dev-${{ github.sha }}
+
+  build-vector-store:
+    needs: changes
+    if: needs.changes.outputs.vector-store == 'true'
+    uses: ./.github/workflows/template-docker.yml
+    secrets: inherit
+    with:
+      runs-on: ubuntu-24-04-docker
+      docker-file: services/mcp-tools/tools/vector-store-service/Dockerfile
+      context: services/mcp-tools/tools/vector-store-service
+      registry-url: registry.menlo.ai
+      tags: registry.menlo.ai/jan-server/vector-store-service:dev-${{ github.sha }}
       is_push: ${{ github.event_name == 'push' }}
       build-args: |
         VERSION_TAG=dev-${{ github.sha }}

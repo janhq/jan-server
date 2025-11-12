@@ -18,6 +18,7 @@
 ### Method 1: Direct Upload via API (Server-Proxied)
 
 Client uploads an image directly through the media-api (via data URL or remote URL) and receives:
+
 - `jan_id` - Persistent identifier for the media
 - `presigned_url` - Short-lived URL for immediate access (default 5 min TTL)
 

@@ -28,6 +28,7 @@ curl http://localhost:8082/healthz
 curl -X POST http://localhost:8082/v1/responses \
   -H "Content-Type: application/json" \
   -d '{"model":"gpt-4o-mini","input":"ping"}'
+
 ```
 
 Useful targets:
