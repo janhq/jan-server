@@ -43,6 +43,7 @@
 # ============================================================================================================
 
 COMPOSE = docker compose
+COMPOSE_DEV_FULL = docker compose -f docker-compose.yml -f docker-compose.dev-full.yml
 MONITOR_COMPOSE = docker compose -f docker/observability.yml
 NEWMAN = newman
 NEWMAN_AUTH_COLLECTION = tests/automation/auth-postman-scripts.json
@@ -581,7 +582,7 @@ dev-full:
 	@echo "  2. Run it manually on host for debugging"
 	@echo "  3. Kong will automatically route to host.docker.internal"
 	@echo ""
-	$(COMPOSE) --profile full up -d
+	$(COMPOSE_DEV_FULL) --profile full up -d
 	@echo ""
 	@echo " Development full stack started!"
 	@echo ""
@@ -618,12 +619,12 @@ endif
 
 dev-full-stop:
 	@echo "Stopping dev-full services..."
-	$(COMPOSE) --profile full stop
+	$(COMPOSE_DEV_FULL) --profile full stop
 	@echo " Dev-full services stopped"
 
 dev-full-down:
 	@echo "Stopping and removing dev-full containers..."
-	$(COMPOSE) --profile full down
+	$(COMPOSE_DEV_FULL) --profile full down
 	@echo " Dev-full containers removed"
 
 # ============================================================================================================

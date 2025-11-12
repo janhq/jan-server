@@ -752,6 +752,69 @@ type APIKeyUserInfo struct {
 	Roles     []string `json:"roles"`
 }
 
+// KeycloakUser represents a user in Keycloak
+type KeycloakUser struct {
+	ID        string   `json:"id"`
+	Username  string   `json:"username"`
+	Email     string   `json:"email"`
+	FirstName string   `json:"firstName"`
+	LastName  string   `json:"lastName"`
+	Enabled   bool     `json:"enabled"`
+	Roles     []string `json:"roles,omitempty"`
+}
+
+// GetUserBySubject retrieves a user from Keycloak by their subject (user ID)
+func (c *Client) GetUserBySubject(ctx context.Context, subject string) (*KeycloakUser, error) {
+	if strings.TrimSpace(subject) == "" {
+		return nil, errors.New("subject required")
+	}
+
+	serviceToken, err := c.serviceAccountToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get service token: %w", err)
+	}
+
+	adminToken := c.adminAccessToken(ctx, serviceToken.AccessToken)
+
+	// Get user by ID (subject is the Keycloak user ID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.adminEndpoint(fmt.Sprintf("/users/%s", url.PathEscape(subject))), nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 404 {
+		return nil, errors.New("user not found in keycloak")
+	}
+
+	if resp.StatusCode >= 300 {
+		payload, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("get user failed: %s", strings.TrimSpace(string(payload)))
+	}
+
+	var rawUser map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&rawUser); err != nil {
+		return nil, fmt.Errorf("decode user: %w", err)
+	}
+
+	user := &KeycloakUser{
+		ID:        getString(rawUser, "id"),
+		Username:  getString(rawUser, "username"),
+		Email:     getString(rawUser, "email"),
+		FirstName: getString(rawUser, "firstName"),
+		LastName:  getString(rawUser, "lastName"),
+		Enabled:   getBool(rawUser, "enabled"),
+	}
+
+	return user, nil
+}
+
 // ValidateAPIKeyHash validates an API key hash and returns user information
 func (c *Client) ValidateAPIKeyHash(ctx context.Context, keyHash string) (*APIKeyUserInfo, error) {
 	serviceToken, err := c.serviceAccountToken(ctx)
@@ -829,4 +892,13 @@ func getString(m map[string]any, key string) string {
 		}
 	}
 	return ""
+}
+
+func getBool(m map[string]any, key string) bool {
+	if v, ok := m[key]; ok {
+		if b, ok := v.(bool); ok {
+			return b
+		}
+	}
+	return false
 }

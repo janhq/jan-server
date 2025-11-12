@@ -43,6 +43,28 @@ func (repo *UserGormRepository) FindByIssuerAndSubject(ctx context.Context, issu
 	return entity.EtoD(), nil
 }
 
+func (repo *UserGormRepository) FindByID(ctx context.Context, id uint) (*user.User, error) {
+	var entity dbschema.User
+	err := repo.db.WithContext(ctx).
+		Where("id = ?", id).
+		First(&entity).
+		Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, platformerrors.NewError(
+			ctx,
+			platformerrors.LayerRepository,
+			platformerrors.ErrorTypeDatabaseError,
+			"failed to find user by ID",
+			err,
+			"a9d3f8e4-21c7-4f5b-9a2e-6d8f9e1a2b3c",
+		)
+	}
+	return entity.EtoD(), nil
+}
+
 func (repo *UserGormRepository) Upsert(ctx context.Context, usr *user.User) (*user.User, error) {
 	// Prepare schema model from domain user
 	schemaUser := dbschema.NewSchemaUser(usr)

@@ -68,6 +68,17 @@ func (r *Repository) CountActiveByUser(ctx context.Context, userID uint) (int64,
 	return count, nil
 }
 
+func (r *Repository) FindByHash(ctx context.Context, hash string) (*apikey.APIKey, error) {
+	var model dbschema.APIKey
+	if err := r.db.WithContext(ctx).Where("hash = ?", hash).First(&model).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, platformerrors.AsError(ctx, platformerrors.LayerRepository, err, "failed to fetch api key by hash")
+	}
+	return model.EtoD(), nil
+}
+
 func (r *Repository) MarkRevoked(ctx context.Context, id string, revokedAt time.Time) error {
 	updateErr := r.db.WithContext(ctx).Model(&dbschema.APIKey{}).
 		Where("id = ?", id).

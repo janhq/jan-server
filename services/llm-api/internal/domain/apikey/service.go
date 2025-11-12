@@ -26,6 +26,7 @@ var ErrNotFound = errors.New("api key not found")
 // Service orchestrates API key lifecycle operations.
 type Service struct {
 	repo       Repository
+	userRepo   user.Repository
 	keycloak   *keycloak.Client
 	logger     zerolog.Logger
 	defaultTTL time.Duration
@@ -43,9 +44,10 @@ type Config struct {
 }
 
 // NewService constructs an API key service.
-func NewService(repo Repository, keycloakClient *keycloak.Client, cfg Config, logger zerolog.Logger) *Service {
+func NewService(repo Repository, userRepo user.Repository, keycloakClient *keycloak.Client, cfg Config, logger zerolog.Logger) *Service {
 	return &Service{
 		repo:       repo,
+		userRepo:   userRepo,
 		keycloak:   keycloakClient,
 		logger:     logger.With().Str("component", "api-key-service").Logger(),
 		defaultTTL: cfg.DefaultTTL,
@@ -169,22 +171,108 @@ func (s *Service) RevokeKey(ctx context.Context, usr *user.User, keyID string) e
 	return nil
 }
 
-// ValidateAPIKey validates an API key and returns user information
+// ValidateAPIKey validates an API key using a hybrid approach:
+// 1. Fast database lookup to find the API key and user
+// 2. Verify key hasn't expired or been revoked
+// 3. Double-check user status in Keycloak (enabled, not deleted)
+// 4. Return user info if all checks pass
 func (s *Service) ValidateAPIKey(ctx context.Context, apiKey string) (*keycloak.APIKeyUserInfo, error) {
-	// Hash the API key
+	// Step 1: Fast database lookup
 	keyHash := hashKey(apiKey)
 
-	// Validate via Keycloak
-	if s.keycloak == nil {
-		return nil, errors.New("keycloak client not configured")
-	}
-
-	userInfo, err := s.keycloak.ValidateAPIKeyHash(ctx, keyHash)
+	key, err := s.repo.FindByHash(ctx, keyHash)
 	if err != nil {
-		return nil, fmt.Errorf("validate api key: %w", err)
+		return nil, fmt.Errorf("find api key: %w", err)
+	}
+	if key == nil {
+		s.logger.Debug().Str("key_hash_prefix", keyHash[:8]+"...").Msg("api key not found in database")
+		return nil, errors.New("invalid api key")
 	}
 
-	return userInfo, nil
+	// Step 2: Check if revoked or expired (fast database checks)
+	if key.RevokedAt != nil {
+		s.logger.Debug().
+			Str("key_id", key.ID).
+			Time("revoked_at", *key.RevokedAt).
+			Msg("api key has been revoked")
+		return nil, errors.New("api key revoked")
+	}
+
+	if time.Now().After(key.ExpiresAt) {
+		s.logger.Debug().
+			Str("key_id", key.ID).
+			Time("expired_at", key.ExpiresAt).
+			Msg("api key has expired")
+		return nil, errors.New("api key expired")
+	}
+
+	// Step 3: Load user from database
+	usr, err := s.userRepo.FindByID(ctx, key.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("find user: %w", err)
+	}
+	if usr == nil {
+		s.logger.Warn().
+			Uint("user_id", key.UserID).
+			Str("key_id", key.ID).
+			Msg("api key references non-existent user")
+		return nil, errors.New("user not found")
+	}
+
+	// Step 4: Double-check user status in Keycloak
+	// This ensures the user is still enabled and exists in Keycloak
+	if s.keycloak != nil && usr.Subject != "" {
+		keycloakUser, err := s.keycloak.GetUserBySubject(ctx, usr.Subject)
+		if err != nil {
+			s.logger.Error().
+				Err(err).
+				Str("subject", usr.Subject).
+				Str("key_id", key.ID).
+				Msg("failed to verify user in keycloak")
+			return nil, fmt.Errorf("verify user status: %w", err)
+		}
+
+		// Verify user is enabled in Keycloak
+		if !keycloakUser.Enabled {
+			s.logger.Warn().
+				Str("subject", usr.Subject).
+				Str("username", *usr.Username).
+				Str("key_id", key.ID).
+				Msg("user is disabled in keycloak")
+			return nil, errors.New("user account is disabled")
+		}
+
+		// Step 5: All checks passed - return user info with Keycloak roles
+		s.logger.Debug().
+			Str("key_id", key.ID).
+			Str("user_id", fmt.Sprintf("%d", usr.ID)).
+			Str("username", *usr.Username).
+			Msg("api key validated successfully")
+
+		return &keycloak.APIKeyUserInfo{
+			UserID:    fmt.Sprintf("%d", usr.ID),
+			Subject:   usr.Subject,
+			Username:  ptrToString(usr.Username),
+			Email:     ptrToString(usr.Email),
+			FirstName: keycloakUser.FirstName,
+			LastName:  keycloakUser.LastName,
+			Roles:     keycloakUser.Roles,
+		}, nil
+	}
+
+	// If Keycloak is not configured or user has no subject, return basic user info
+	s.logger.Debug().
+		Str("key_id", key.ID).
+		Str("user_id", fmt.Sprintf("%d", usr.ID)).
+		Msg("api key validated successfully (no keycloak verification)")
+
+	return &keycloak.APIKeyUserInfo{
+		UserID:   fmt.Sprintf("%d", usr.ID),
+		Subject:  usr.Subject,
+		Username: ptrToString(usr.Username),
+		Email:    ptrToString(usr.Email),
+		Roles:    []string{},
+	}, nil
 }
 
 func (s *Service) generateKeySecret() (string, error) {
@@ -203,4 +291,11 @@ func (s *Service) generateKeySecret() (string, error) {
 func hashKey(key string) string {
 	sum := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(sum[:])
+}
+
+func ptrToString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

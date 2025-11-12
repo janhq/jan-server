@@ -35,6 +35,7 @@ type Identity struct {
 // Repository defines storage operations for users.
 type Repository interface {
 	FindByIssuerAndSubject(ctx context.Context, issuer, subject string) (*User, error)
+	FindByID(ctx context.Context, id uint) (*User, error)
 	Upsert(ctx context.Context, user *User) (*User, error)
 }
 

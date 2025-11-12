@@ -95,8 +95,6 @@ upstreams:
     targets:
       - target: host.docker.internal:8082
         weight: 100
-      - target: host.docker.internal:8082
-        weight: 50
     healthchecks:
       active:
         type: http
@@ -111,10 +109,8 @@ upstreams:
   - name: mcp-tools-upstream
     algorithm: round-robin
     targets:
-      - target: mcp-tools:8091
-        weight: 100
       - target: host.docker.internal:8091
-        weight: 50
+        weight: 100
     healthchecks:
       active:
         type: http
@@ -154,7 +150,7 @@ services:
           - name: keycloak-apikey
             tags: [llm, api, apikey]
             config:
-              validation_url: "http://llm-api:8080/auth/validate-api-key"
+              validation_url: "http://host.docker.internal:8080/auth/validate-api-key"
               validation_timeout: 5000
               hide_credentials: true
               run_on_preflight: false
@@ -193,7 +189,7 @@ services:
           - name: keycloak-apikey
             tags: [llm, api, apikey]
             config:
-              validation_url: "http://llm-api:8080/auth/validate-api-key"
+              validation_url: "http://host.docker.internal:8080/auth/validate-api-key"
               validation_timeout: 5000
               hide_credentials: true
               run_on_preflight: false
@@ -258,7 +254,7 @@ services:
           - name: keycloak-apikey
             tags: [media, apikey]
             config:
-              validation_url: "http://llm-api:8080/auth/validate-api-key"
+              validation_url: "http://host.docker.internal:8080/auth/validate-api-key"
               validation_timeout: 5000
               hide_credentials: true
               run_on_preflight: false
@@ -330,7 +326,7 @@ services:
           - name: keycloak-apikey
             tags: [response, apikey]
             config:
-              validation_url: "http://llm-api:8080/auth/validate-api-key"
+              validation_url: "http://host.docker.internal:8080/auth/validate-api-key"
               validation_timeout: 5000
               hide_credentials: true
               run_on_preflight: false
@@ -379,7 +375,7 @@ services:
           - name: keycloak-apikey
             tags: [mcp, apikey]
             config:
-              validation_url: "http://llm-api:8080/auth/validate-api-key"
+              validation_url: "http://host.docker.internal:8080/auth/validate-api-key"
               validation_timeout: 5000
               hide_credentials: true
               run_on_preflight: false
@@ -427,7 +423,7 @@ services:
           - name: keycloak-apikey
             tags: [mcp, health, apikey]
             config:
-              validation_url: "http://llm-api:8080/auth/validate-api-key"
+              validation_url: "http://host.docker.internal:8080/auth/validate-api-key"
               validation_timeout: 5000
               hide_credentials: true
               run_on_preflight: false

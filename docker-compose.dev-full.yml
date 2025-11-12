@@ -1,0 +1,11 @@
+# Docker Compose override for dev-full mode
+# When running services natively on host, Kong needs to route to host.docker.internal
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev-full.yml up -d
+
+services:
+  kong:
+    environment:
+      KONG_DECLARATIVE_CONFIG: /kong/kong-dev-full.yml
+    volumes:
+      - ./kong/kong-dev-full.yml:/kong/kong-dev-full.yml:ro
+      - ./kong/plugins/keycloak-apikey:/opt/kong-plugins/kong/plugins/keycloak-apikey:ro
