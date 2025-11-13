@@ -34,20 +34,21 @@ const (
 // ===============================================
 
 type Conversation struct {
-	ID             uint                      `json:"-"`
-	PublicID       string                    `json:"id"`     // OpenAI-compatible string ID like "conv_abc123"
-	Object         string                    `json:"object"` // Always "conversation" for OpenAI compatibility
-	Title          *string                   `json:"title,omitempty"`
-	UserID         uint                      `json:"-"`
-	ProjectID      *uint                     `json:"-"` // Optional project grouping
-	Status         ConversationStatus        `json:"status"`
-	Items          []Item                    `json:"items,omitempty"`           // Legacy: items without branch (defaults to MAIN)
-	Branches       map[string][]Item         `json:"branches,omitempty"`        // Branched items organized by branch name
-	ActiveBranch   string                    `json:"active_branch,omitempty"`   // Currently active branch (default: "MAIN")
-	BranchMetadata map[string]BranchMetadata `json:"branch_metadata,omitempty"` // Metadata about each branch
-	Metadata       map[string]string         `json:"metadata,omitempty"`
-	Referrer       *string                   `json:"referrer,omitempty"`
-	IsPrivate      bool                      `json:"is_private"`
+	ID              uint                      `json:"-"`
+	PublicID        string                    `json:"id"`     // OpenAI-compatible string ID like "conv_abc123"
+	Object          string                    `json:"object"` // Always "conversation" for OpenAI compatibility
+	Title           *string                   `json:"title,omitempty"`
+	UserID          uint                      `json:"-"`
+	ProjectID       *uint                     `json:"-"` // Optional project grouping
+	ProjectPublicID *string                   `json:"-"` // Public ID of the project
+	Status          ConversationStatus        `json:"status"`
+	Items           []Item                    `json:"items,omitempty"`           // Legacy: items without branch (defaults to MAIN)
+	Branches        map[string][]Item         `json:"branches,omitempty"`        // Branched items organized by branch name
+	ActiveBranch    string                    `json:"active_branch,omitempty"`   // Currently active branch (default: "MAIN")
+	BranchMetadata  map[string]BranchMetadata `json:"branch_metadata,omitempty"` // Metadata about each branch
+	Metadata        map[string]string         `json:"metadata,omitempty"`
+	Referrer        *string                   `json:"referrer,omitempty"`
+	IsPrivate       bool                      `json:"is_private"`
 
 	// Project instruction inheritance
 	InstructionVersion           int     `json:"instruction_version"`                      // Version of project instruction when conversation was created

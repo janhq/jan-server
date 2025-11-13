@@ -19,17 +19,18 @@ func init() {
 // Conversation represents the database schema for conversations
 type Conversation struct {
 	BaseModel
-	PublicID     string                          `gorm:"type:varchar(50);uniqueIndex;not null"`
-	Object       string                          `gorm:"type:varchar(50);not null;default:'conversation'"`
-	Title        *string                         `gorm:"type:varchar(256)"`
-	UserID       uint                            `gorm:"index:idx_conversation_user_referrer;index:idx_conversation_user_status;not null"`
-	User         User                            `gorm:"foreignKey:UserID"`
-	ProjectID    *uint                           `gorm:"index:idx_conversations_project_updated_at"` // Optional project grouping
-	Status       conversation.ConversationStatus `gorm:"type:varchar(20);index:idx_conversation_user_status;not null;default:'active'"`
-	ActiveBranch string                          `gorm:"type:varchar(50);not null;default:'MAIN'"` // Currently active branch
-	Referrer     *string                         `gorm:"type:varchar(100);index:idx_conversation_user_referrer"`
-	Metadata     JSONMap                         `gorm:"type:jsonb"`
-	IsPrivate    *bool                           `gorm:"default:false"`
+	PublicID        string                          `gorm:"type:varchar(50);uniqueIndex;not null"`
+	Object          string                          `gorm:"type:varchar(50);not null;default:'conversation'"`
+	Title           *string                         `gorm:"type:varchar(256)"`
+	UserID          uint                            `gorm:"index:idx_conversation_user_referrer;index:idx_conversation_user_status;not null"`
+	User            User                            `gorm:"foreignKey:UserID"`
+	ProjectID       *uint                           `gorm:"index:idx_conversations_project_updated_at"`                 // Optional project grouping
+	ProjectPublicID *string                         `gorm:"type:varchar(64);index:idx_conversations_project_public_id"` // Public ID of the project
+	Status          conversation.ConversationStatus `gorm:"type:varchar(20);index:idx_conversation_user_status;not null;default:'active'"`
+	ActiveBranch    string                          `gorm:"type:varchar(50);not null;default:'MAIN'"` // Currently active branch
+	Referrer        *string                         `gorm:"type:varchar(100);index:idx_conversation_user_referrer"`
+	Metadata        JSONMap                         `gorm:"type:jsonb"`
+	IsPrivate       *bool                           `gorm:"default:false"`
 
 	// Project instruction inheritance
 	InstructionVersion           int     `gorm:"not null;default:1"` // Version of project instruction when conversation was created
@@ -152,6 +153,7 @@ func NewSchemaConversation(c *conversation.Conversation) *Conversation {
 		Title:                        c.Title,
 		UserID:                       c.UserID,
 		ProjectID:                    c.ProjectID,
+		ProjectPublicID:              c.ProjectPublicID,
 		Status:                       c.Status,
 		ActiveBranch:                 c.ActiveBranch,
 		Referrer:                     c.Referrer,
@@ -206,6 +208,7 @@ func (c *Conversation) EtoD() *conversation.Conversation {
 		Title:                        c.Title,
 		UserID:                       c.UserID,
 		ProjectID:                    c.ProjectID,
+		ProjectPublicID:              c.ProjectPublicID,
 		Status:                       c.Status,
 		ActiveBranch:                 c.ActiveBranch,
 		Branches:                     make(map[string][]conversation.Item),

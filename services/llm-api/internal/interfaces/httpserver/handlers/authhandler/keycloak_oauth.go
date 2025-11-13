@@ -23,6 +23,7 @@ import (
 type AuthRequest struct {
 	State        string
 	CodeVerifier string
+	RedirectURL  string
 	CreatedAt    time.Time
 }
 
@@ -172,26 +173,28 @@ func (h *KeycloakOAuthHandler) InitiateLogin(c *gin.Context) {
 
 	codeChallenge := generateCodeChallenge(codeVerifier)
 
-	// Store state and code_verifier for later validation in callback
+	// Get redirect URL from query parameter
+	redirectURL := c.Query("redirect_url")
+	if redirectURL == "" {
+		// Default redirect URL if not provided
+		redirectURL = "https://chat-dev.jan.ai/auth/keycloak/callback"
+	}
+
+	// Store state, code_verifier, and redirect_url for later validation in callback
 	authRequests.Store(state, &AuthRequest{
 		State:        state,
 		CodeVerifier: codeVerifier,
+		RedirectURL:  redirectURL,
 		CreatedAt:    time.Now(),
 	})
 
 	// Build authorization URL with PKCE using public URL (browser-accessible)
 	authURL := fmt.Sprintf("%s/realms/%s/protocol/openid-connect/auth",
 		h.keycloakPublicURL, h.realm)
-	// Get redirect URL from query parameter
-	redirectURL := c.Query("redirect_url")
-	if redirectURL == "" {
-		// Default redirect URL if not provided
-		redirectURL = "http://localhost:3000/auth/callback"
-	}
 
 	params := url.Values{}
 	params.Add("client_id", h.clientID)
-	params.Add("redirect_uri", "https://api-gateway-dev.jan.ai/auth/callback")
+	params.Add("redirect_uri", h.redirectURI)
 	params.Add("response_type", "code")
 	params.Add("scope", "openid profile email")
 	params.Add("state", state)
@@ -275,13 +278,11 @@ func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
 		return
 	}
 
-	// Get redirect URL from query parameter
-	redirectURL := c.Query("redirect_url")
+	// Use the redirect URL that was stored during InitiateLogin
+	redirectURL := authRequest.RedirectURL
 	if redirectURL == "" {
-		// Default redirect URL if not provided
 		redirectURL = "https://chat-dev.jan.ai/auth/keycloak/callback"
 	}
-	redirectURL = "https://chat-dev.jan.ai/auth/keycloak/callback"
 
 	// Parse the redirect URL to append tokens in fragment
 	parsedURL, err := url.Parse(redirectURL)

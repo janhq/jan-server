@@ -12,6 +12,7 @@ type ConversationResponse struct {
 	CreatedAt int64             `json:"created_at"`
 	Metadata  map[string]string `json:"metadata,omitempty"`
 	Referrer  *string           `json:"referrer,omitempty"`
+	ProjectID *string           `json:"project_id,omitempty"`
 }
 
 // ConversationListResponse represents a paginated list of conversations
@@ -42,14 +43,16 @@ type ItemListResponse struct {
 
 // NewConversationResponse creates a response from a domain conversation
 func NewConversationResponse(conv *conversation.Conversation) *ConversationResponse {
-	return &ConversationResponse{
+	response := &ConversationResponse{
 		ID:        conv.PublicID,
 		Object:    "conversation",
 		Title:     conv.Title,
 		CreatedAt: conv.CreatedAt.Unix(),
 		Metadata:  conv.Metadata,
 		Referrer:  conv.Referrer,
+		ProjectID: conv.ProjectPublicID,
 	}
+	return response
 }
 
 // NewConversationListResponse creates a conversation list response

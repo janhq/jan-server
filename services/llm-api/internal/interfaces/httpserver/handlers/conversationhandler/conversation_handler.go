@@ -66,6 +66,7 @@ func (h *ConversationHandler) CreateConversation(
 
 	// Resolve project_id if provided
 	var projectID *uint
+	var projectPublicID *string
 	if req.ProjectID != nil && *req.ProjectID != "" {
 		// Verify project exists and user has access
 		proj, err := h.projectService.GetProjectByPublicIDAndUserID(ctx, *req.ProjectID, userID)
@@ -73,15 +74,17 @@ func (h *ConversationHandler) CreateConversation(
 			return nil, platformerrors.AsError(ctx, platformerrors.LayerHandler, err, "invalid or inaccessible project_id")
 		}
 		projectID = &proj.ID
+		projectPublicID = &proj.PublicID
 	}
 
 	// Create conversation
 	input := conversation.CreateConversationInput{
-		UserID:    userID,
-		Title:     req.Title, // Use title from request
-		Metadata:  req.Metadata,
-		Referrer:  req.Referrer,
-		ProjectID: projectID,
+		UserID:          userID,
+		Title:           req.Title, // Use title from request
+		Metadata:        req.Metadata,
+		Referrer:        req.Referrer,
+		ProjectID:       projectID,
+		ProjectPublicID: projectPublicID,
 	}
 
 	conv, err := h.conversationService.CreateConversationWithInput(ctx, input)
