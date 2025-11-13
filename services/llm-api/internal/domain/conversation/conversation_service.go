@@ -110,10 +110,11 @@ func (s *ConversationService) FindConversationsByFilter(ctx context.Context, fil
 
 // CreateConversationInput represents the input for creating a conversation
 type CreateConversationInput struct {
-	UserID   uint
-	Title    *string
-	Metadata map[string]string
-	Referrer *string
+	UserID    uint
+	Title     *string
+	Metadata  map[string]string
+	Referrer  *string
+	ProjectID *uint
 }
 
 // UpdateConversationInput represents the input for updating a conversation
@@ -132,7 +133,7 @@ func (s *ConversationService) CreateConversationWithInput(ctx context.Context, i
 	}
 
 	// Create conversation entity
-	conversation := NewConversation(publicID, input.UserID, input.Title, input.Metadata)
+	conversation := NewConversationWithProject(publicID, input.UserID, input.Title, input.Metadata, input.ProjectID)
 	conversation.Referrer = input.Referrer // optional metadata
 
 	// Use core function to create conversation

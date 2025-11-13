@@ -74,10 +74,11 @@ type BranchMetadata struct {
 // ===============================================
 
 type ConversationFilter struct {
-	ID       *uint
-	PublicID *string
-	UserID   *uint
-	Referrer *string
+	ID        *uint
+	PublicID  *string
+	UserID    *uint
+	ProjectID *uint
+	Referrer  *string
 }
 
 type ConversationRepository interface {
@@ -126,6 +127,11 @@ type ConversationRepository interface {
 
 // NewConversation creates a new conversation with the given parameters
 func NewConversation(publicID string, userID uint, title *string, metadata map[string]string) *Conversation {
+	return NewConversationWithProject(publicID, userID, title, metadata, nil)
+}
+
+// NewConversationWithProject creates a new conversation with project association
+func NewConversationWithProject(publicID string, userID uint, title *string, metadata map[string]string, projectID *uint) *Conversation {
 	now := time.Now()
 
 	// Initialize metadata if nil
@@ -138,7 +144,7 @@ func NewConversation(publicID string, userID uint, title *string, metadata map[s
 		Object:                       "conversation",
 		Title:                        title,
 		UserID:                       userID,
-		ProjectID:                    nil,
+		ProjectID:                    projectID,
 		Status:                       ConversationStatusActive,
 		ActiveBranch:                 BranchMain,
 		Branches:                     make(map[string][]Item),

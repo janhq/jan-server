@@ -4,10 +4,11 @@ import "jan-server/services/llm-api/internal/domain/conversation"
 
 // CreateConversationRequest represents the request to create a conversation
 type CreateConversationRequest struct {
-	Title    *string             `json:"title,omitempty"`
-	Items    []conversation.Item `json:"items,omitempty"`
-	Metadata map[string]string   `json:"metadata,omitempty"`
-	Referrer *string             `json:"referrer,omitempty"`
+	Title     *string             `json:"title,omitempty"`
+	Items     []conversation.Item `json:"items,omitempty"`
+	Metadata  map[string]string   `json:"metadata,omitempty"`
+	Referrer  *string             `json:"referrer,omitempty"`
+	ProjectID *string             `json:"project_id,omitempty"`
 }
 
 // UpdateConversationRequest represents the request to update a conversation

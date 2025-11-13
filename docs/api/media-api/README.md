@@ -193,6 +193,32 @@ curl -H "Authorization: Bearer <token>" \
 }
 ```
 
+### Get Presigned URL
+
+**GET** `/v1/media/{id}/presign`
+
+Get a temporary signed URL for downloading media by jan_id. This is the dedicated endpoint for obtaining presigned URLs without additional metadata.
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+  http://localhost:8285/v1/media/jan_01hqr8v9k2x3f4g5h6j7k8m9n0/presign
+```
+
+**Response:**
+```json
+{
+  "id": "jan_01hqr8v9k2x3f4g5h6j7k8m9n0",
+  "url": "https://s3.menlo.ai/platform-dev/images/jan_...?X-Amz-Signature=...",
+  "expires_in": 300
+}
+```
+
+**Use Cases:**
+- Get download URL after client-side upload via `prepare-upload`
+- Refresh expired presigned URLs
+- Obtain direct S3 access for large file downloads
+- Integration with external services requiring temporary URLs
+
 ### Health Check
 
 **GET** `/healthz`
@@ -282,17 +308,17 @@ Client ← Media API (jan_id + presigned_url)
 
 ### 2. Client-Side Direct Upload
 ```
-Media API → Client (presigned_url)
+Client → Media API (prepare-upload request)
     ↓
-Client → S3 (direct upload)
+Media API → Client (presigned_url + jan_id)
     ↓
-Client ← S3 (confirmed)
+Client → S3 (direct upload using presigned_url)
     ↓
-Client → Media API (confirm/associate)
+Client ← S3 (upload confirmed)
     ↓
-Media API ← Database (updated)
+Client → Media API GET /v1/media/{jan_id}/presign
     ↓
-Client ← Media API (jan_id)
+Client ← Media API (download presigned_url)
 ```
 
 ## Error Handling

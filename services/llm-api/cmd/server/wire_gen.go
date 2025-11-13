@@ -27,11 +27,11 @@ import (
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/authhandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/chathandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/conversationhandler"
-	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/guesthandler"
+	guestauth "jan-server/services/llm-api/internal/interfaces/httpserver/handlers/guesthandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/modelhandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/projecthandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/auth"
-	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1"
+	v1 "jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/admin"
 	model3 "jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/admin/model"
 	provider2 "jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/admin/provider"
@@ -40,9 +40,7 @@ import (
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/llm/projects"
 	model2 "jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/model"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/model/provider"
-)
 
-import (
 	_ "net/http/pprof"
 )
 
@@ -76,15 +74,15 @@ func CreateApplication() (*Application, error) {
 	providerHandler := modelhandler.NewProviderHandler(providerService, providerModelService, inferenceProvider)
 	conversationRepository := conversationrepo.NewConversationGormRepository(database)
 	conversationService := conversation.NewConversationService(conversationRepository)
-	conversationHandler := conversationhandler.NewConversationHandler(conversationService)
+	projectRepository := projectrepo.NewProjectGormRepository(db)
+	projectService := project.NewProjectService(projectRepository)
+	conversationHandler := conversationhandler.NewConversationHandler(conversationService, projectService)
 	client := infrastructure.ProvideKeycloakClient(config, zerologLogger)
 	resolver := infrastructure.ProvideMediaResolver(config, zerologLogger, client)
 	chatHandler := chathandler.NewChatHandler(inferenceProvider, providerHandler, conversationHandler, conversationService, resolver)
 	chatCompletionRoute := chat.NewChatCompletionRoute(chatHandler, authHandler)
 	chatRoute := chat.NewChatRoute(chatCompletionRoute)
 	conversationRoute := conversation2.NewConversationRoute(conversationHandler, authHandler)
-	projectRepository := projectrepo.NewProjectGormRepository(db)
-	projectService := project.NewProjectService(projectRepository)
 	projectHandler := projecthandler.NewProjectHandler(projectService)
 	projectRoute := projects.NewProjectRoute(projectHandler, authHandler)
 	providerModelHandler := modelhandler.NewProviderModelHandler(providerModelService, providerService, modelCatalogService)

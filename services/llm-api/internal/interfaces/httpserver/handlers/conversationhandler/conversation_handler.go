@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"jan-server/services/llm-api/internal/domain/conversation"
+	"jan-server/services/llm-api/internal/domain/project"
 	"jan-server/services/llm-api/internal/domain/query"
 	authhandler "jan-server/services/llm-api/internal/interfaces/httpserver/handlers/authhandler"
 	conversationrequests "jan-server/services/llm-api/internal/interfaces/httpserver/requests/conversation"
@@ -27,15 +28,18 @@ const (
 // ConversationHandler handles conversation-related HTTP requests
 type ConversationHandler struct {
 	conversationService *conversation.ConversationService
+	projectService      *project.ProjectService
 	itemValidator       *conversation.ItemValidator
 }
 
 // NewConversationHandler creates a new conversation handler
 func NewConversationHandler(
 	conversationService *conversation.ConversationService,
+	projectService *project.ProjectService,
 ) *ConversationHandler {
 	return &ConversationHandler{
 		conversationService: conversationService,
+		projectService:      projectService,
 		itemValidator:       conversation.NewItemValidator(conversation.DefaultItemValidationConfig()),
 	}
 }
@@ -60,12 +64,24 @@ func (h *ConversationHandler) CreateConversation(
 		}
 	}
 
+	// Resolve project_id if provided
+	var projectID *uint
+	if req.ProjectID != nil && *req.ProjectID != "" {
+		// Verify project exists and user has access
+		proj, err := h.projectService.GetProjectByPublicIDAndUserID(ctx, *req.ProjectID, userID)
+		if err != nil {
+			return nil, platformerrors.AsError(ctx, platformerrors.LayerHandler, err, "invalid or inaccessible project_id")
+		}
+		projectID = &proj.ID
+	}
+
 	// Create conversation
 	input := conversation.CreateConversationInput{
-		UserID:   userID,
-		Title:    req.Title, // Use title from request
-		Metadata: req.Metadata,
-		Referrer: req.Referrer,
+		UserID:    userID,
+		Title:     req.Title, // Use title from request
+		Metadata:  req.Metadata,
+		Referrer:  req.Referrer,
+		ProjectID: projectID,
 	}
 
 	conv, err := h.conversationService.CreateConversationWithInput(ctx, input)
