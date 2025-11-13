@@ -281,7 +281,6 @@ func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
 	// Use the redirect URL that was stored during InitiateLogin
 	redirectURL := authRequest.RedirectURL
 	if redirectURL == "" {
-		// Fallback to default if somehow not stored
 		redirectURL = "https://chat-dev.jan.ai/auth/keycloak/callback"
 	}
 
