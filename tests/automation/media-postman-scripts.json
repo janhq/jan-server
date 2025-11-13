@@ -536,6 +536,72 @@
       "response": []
     },
     {
+      "name": "Get Presigned URL (Dedicated Endpoint)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{media_access_token}}"
+          },
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}"
+          }
+        ],
+        "url": {
+          "raw": "{{kong_url}}/media/v1/media/{{latest_media_id}}/presign",
+          "host": [
+            "{{kong_url}}/media"
+          ],
+          "path": [
+            "v1",
+            "media",
+            "{{latest_media_id}}",
+            "presign"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('presign successful', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var data = pm.response.json();",
+              "",
+              "pm.test('response contains media id', function () {",
+              "    pm.expect(data).to.have.property('id');",
+              "    pm.expect(data.id).to.equal(pm.collectionVariables.get('latest_media_id'));",
+              "});",
+              "",
+              "pm.test('response contains presigned URL', function () {",
+              "    pm.expect(data).to.have.property('url');",
+              "    pm.expect(data.url).to.be.a('string');",
+              "    pm.expect(data.url).to.match(/https?:\\/\\//);",
+              "});",
+              "",
+              "pm.test('response contains expires_in', function () {",
+              "    pm.expect(data).to.have.property('expires_in');",
+              "    pm.expect(data.expires_in).to.be.a('number');",
+              "    pm.expect(data.expires_in).to.be.above(0);",
+              "});",
+              "",
+              "// Store the presigned URL for potential downstream use",
+              "if (data.url) {",
+              "    pm.collectionVariables.set('latest_presigned_url', data.url);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
       "name": "Get Nonexistent Media (404 Test)",
       "request": {
         "method": "GET",

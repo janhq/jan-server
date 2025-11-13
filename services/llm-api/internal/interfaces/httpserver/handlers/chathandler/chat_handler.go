@@ -522,21 +522,55 @@ func (h *ChatHandler) itemToMessage(item conversation.Item) *openai.ChatCompleti
 		Role: h.itemRoleToOpenAI(role),
 	}
 
-	// Extract content from item
+	// Extract content from item - handle both text and multimodal content
 	if len(item.Content) > 0 {
-		// For simplicity, concatenate all text content parts
-		var contentParts []string
+		hasMultiModal := false
+		var textParts []string
+		var multiContent []openai.ChatMessagePart
+
 		for _, content := range item.Content {
+			// Handle text content
 			if content.Text != nil && content.Text.Text != "" {
-				contentParts = append(contentParts, content.Text.Text)
+				textParts = append(textParts, content.Text.Text)
+				multiContent = append(multiContent, openai.ChatMessagePart{
+					Type: openai.ChatMessagePartTypeText,
+					Text: content.Text.Text,
+				})
 			} else if content.InputText != nil {
-				contentParts = append(contentParts, *content.InputText)
+				textParts = append(textParts, *content.InputText)
+				multiContent = append(multiContent, openai.ChatMessagePart{
+					Type: openai.ChatMessagePartTypeText,
+					Text: *content.InputText,
+				})
 			} else if content.OutputText != nil {
-				contentParts = append(contentParts, content.OutputText.Text)
+				textParts = append(textParts, content.OutputText.Text)
+				multiContent = append(multiContent, openai.ChatMessagePart{
+					Type: openai.ChatMessagePartTypeText,
+					Text: content.OutputText.Text,
+				})
+			}
+
+			// Handle image content
+			if content.Image != nil && content.Image.URL != "" {
+				hasMultiModal = true
+				imageURL := &openai.ChatMessageImageURL{
+					URL: content.Image.URL,
+				}
+				if content.Image.Detail != "" {
+					imageURL.Detail = openai.ImageURLDetail(content.Image.Detail)
+				}
+				multiContent = append(multiContent, openai.ChatMessagePart{
+					Type:     openai.ChatMessagePartTypeImageURL,
+					ImageURL: imageURL,
+				})
 			}
 		}
-		if len(contentParts) > 0 {
-			msg.Content = contentParts[0] // OpenAI typically uses single string content
+
+		// Use multimodal format if there are images, otherwise use simple string content
+		if hasMultiModal && len(multiContent) > 0 {
+			msg.MultiContent = multiContent
+		} else if len(textParts) > 0 {
+			msg.Content = textParts[0] // OpenAI typically uses single string content for text-only
 		}
 	}
 
@@ -611,7 +645,7 @@ func (h *ChatHandler) buildInputConversationItem(
 	}
 
 	item.Content = h.filterReasoningContent(item.Content, storeReasoning)
-	if len(item.Content) == 0 && msg.Content == "" && msg.FunctionCall == nil && len(msg.ToolCalls) == 0 {
+	if len(item.Content) == 0 && msg.Content == "" && len(msg.MultiContent) == 0 && msg.FunctionCall == nil && len(msg.ToolCalls) == 0 {
 		return nil
 	}
 
@@ -639,7 +673,7 @@ func (h *ChatHandler) buildAssistantConversationItem(
 		item.Content[0].FinishReason = &finishReason
 	}
 
-	if len(item.Content) == 0 && choice.Message.Content == "" && choice.Message.FunctionCall == nil && len(choice.Message.ToolCalls) == 0 {
+	if len(item.Content) == 0 && choice.Message.Content == "" && len(choice.Message.MultiContent) == 0 && choice.Message.FunctionCall == nil && len(choice.Message.ToolCalls) == 0 {
 		return nil
 	}
 
@@ -678,6 +712,7 @@ func (h *ChatHandler) messageToItem(msg openai.ChatCompletionMessage) conversati
 
 	contents := make([]conversation.Content, 0, 4)
 
+	// Handle simple string content
 	if msg.Content != "" {
 		switch role {
 		case conversation.ItemRoleUser:
@@ -692,6 +727,40 @@ func (h *ChatHandler) messageToItem(msg openai.ChatCompletionMessage) conversati
 			contents = append(contents, toolContent)
 		default:
 			contents = append(contents, conversation.NewTextContent(msg.Content))
+		}
+	}
+
+	// Handle multimodal content (text + images)
+	if len(msg.MultiContent) > 0 {
+		for _, part := range msg.MultiContent {
+			switch part.Type {
+			case openai.ChatMessagePartTypeText:
+				if part.Text != "" {
+					switch role {
+					case conversation.ItemRoleUser:
+						contents = append(contents, conversation.NewInputTextContent(part.Text))
+					case conversation.ItemRoleTool:
+						toolContent := conversation.Content{
+							Type: "tool_result",
+							Text: &conversation.Text{
+								Text: part.Text,
+							},
+						}
+						contents = append(contents, toolContent)
+					default:
+						contents = append(contents, conversation.NewTextContent(part.Text))
+					}
+				}
+			case openai.ChatMessagePartTypeImageURL:
+				if part.ImageURL != nil && part.ImageURL.URL != "" {
+					imageContent := conversation.NewImageContent(
+						part.ImageURL.URL,
+						"", // fileID - could be extracted from jan_* URLs if needed
+						string(part.ImageURL.Detail),
+					)
+					contents = append(contents, imageContent)
+				}
+			}
 		}
 	}
 

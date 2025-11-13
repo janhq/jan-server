@@ -142,16 +142,7 @@ func (h *TokenHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	// Set new refresh token as cookie if we got a new one
-	if tokens.RefreshToken != "" {
-		expiresAt := time.Now().Add(time.Duration(tokens.ExpiresIn) * time.Second)
-		http.SetCookie(c.Writer, responses.NewCookieWithSecurity(
-			RefreshTokenCookieName,
-			tokens.RefreshToken,
-			expiresAt,
-		))
-	}
-
+	// Return tokens in JSON response (token-based authentication, not cookies)
 	c.JSON(http.StatusOK, AccessTokenResponse{
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,

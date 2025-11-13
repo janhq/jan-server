@@ -25,6 +25,7 @@ type Config struct {
 
 	// Keycloak / Auth
 	KeycloakBaseURL     string        `env:"KEYCLOAK_BASE_URL,notEmpty"`
+	KeycloakPublicURL   string        `env:"KEYCLOAK_PUBLIC_URL"` // Browser-accessible URL (defaults to KeycloakBaseURL)
 	KeycloakRealm       string        `env:"KEYCLOAK_REALM" envDefault:"jan"`
 	BackendClientID     string        `env:"BACKEND_CLIENT_ID,notEmpty"`
 	BackendClientSecret string        `env:"BACKEND_CLIENT_SECRET,notEmpty"`
@@ -101,6 +102,11 @@ func Load() (*Config, error) {
 	cfg.JanProviderConfigSet = strings.TrimSpace(cfg.JanProviderConfigSet)
 	if cfg.JanProviderConfigSet == "" {
 		cfg.JanProviderConfigSet = "default"
+	}
+
+	// Default KeycloakPublicURL to KeycloakBaseURL if not set
+	if cfg.KeycloakPublicURL == "" {
+		cfg.KeycloakPublicURL = cfg.KeycloakBaseURL
 	}
 
 	if cfg.JanProviderConfigsEnabled {

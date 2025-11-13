@@ -10,6 +10,11 @@ services:
       HTTP_PORT: ${HTTP_PORT:-8080}
       DB_DSN: ${DB_DSN:-postgres://jan_user:jan_password@api-db:5432/jan_llm_api?sslmode=disable}
       KEYCLOAK_BASE_URL: ${KEYCLOAK_BASE_URL:-http://keycloak:8085}
+      KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL:-}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-jan}
+      BACKEND_CLIENT_ID: ${BACKEND_CLIENT_ID:-backend}
+      TARGET_CLIENT_ID: ${TARGET_CLIENT_ID:-jan-client}
+      OAUTH_REDIRECT_URI: ${OAUTH_REDIRECT_URI:-http://localhost:8000/auth/callback}
       JWKS_URL: ${JWKS_URL:-http://keycloak:8085/realms/jan/protocol/openid-connect/certs}
       ISSUER: ${ISSUER:-http://keycloak:8085/realms/jan}
       AUDIENCE: ${AUDIENCE:-account}

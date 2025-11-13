@@ -2,7 +2,6 @@ package guestauth
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -50,19 +49,7 @@ func (h *GuestHandler) CreateGuest(c *gin.Context) {
 		return
 	}
 
-	// Set refresh token as an HTTP-only cookie
-	if creds.Tokens.RefreshToken != "" {
-		// Calculate cookie expiration based on token expires_in (in seconds)
-		expiresAt := time.Now().Add(time.Duration(creds.Tokens.ExpiresIn) * time.Second)
-
-		// Set the cookie with security settings
-		http.SetCookie(c.Writer, responses.NewCookieWithSecurity(
-			RefreshTokenCookieName,
-			creds.Tokens.RefreshToken,
-			expiresAt,
-		))
-	}
-
+	// Return tokens in JSON response (token-based authentication, not cookies)
 	c.JSON(http.StatusCreated, gin.H{
 		"user_id":       creds.UserID,
 		"username":      creds.Username,

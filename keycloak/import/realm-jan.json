@@ -73,7 +73,8 @@
         "oauth2.device.authorization.grant.enabled": "true",
         "access.token.lifespan": "3600",
         "refresh.token.lifespan": "2592000",
-        "token.exchange.grant.enabled": "true"
+        "token.exchange.grant.enabled": "true",
+        "pkce.code.challenge.method": "S256"
       },
       "protocolMappers": [
         {

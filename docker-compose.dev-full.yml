@@ -3,6 +3,16 @@
 # Usage: docker compose -f docker-compose.yml -f docker-compose.dev-full.yml up -d
 
 services:
+  llm-api:
+    environment:
+      # Use Docker-internal hostname for server-to-server communication
+      KEYCLOAK_BASE_URL: http://keycloak:8085
+      # Use localhost for browser redirects (public-facing)
+      KEYCLOAK_PUBLIC_URL: http://localhost:8085
+      ISSUER: http://localhost:8085/realms/jan
+      # JWKS_URL uses Docker-internal hostname for token validation
+      JWKS_URL: http://keycloak:8085/realms/jan/protocol/openid-connect/certs
+
   kong:
     environment:
       KONG_DECLARATIVE_CONFIG: /kong/kong-dev-full.yml

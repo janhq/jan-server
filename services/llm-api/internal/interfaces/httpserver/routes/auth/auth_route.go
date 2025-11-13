@@ -41,7 +41,7 @@ func NewAuthRoute(
 func (a *AuthRoute) RegisterRouter(router gin.IRouter, protectedRouter gin.IRouter) {
 	// Public routes - Guest login
 	router.POST("/auth/guest-login", a.CreateGuestLogin)
-	router.GET("/auth/refresh-token", a.RefreshToken)
+	router.POST("/auth/refresh-token", a.RefreshToken)
 	router.GET("/auth/logout", a.Logout)
 
 	// Public routes - Keycloak OAuth2/OIDC (simplified)
@@ -80,11 +80,11 @@ func (a *AuthRoute) CreateGuestLogin(c *gin.Context) {
 // @Tags Authentication API
 // @Accept json
 // @Produce json
-// @Param Authorization header string false "Bearer refresh_token"
+// @Param refresh_token body string false "Refresh token (can also be in Authorization header)"
 // @Success 200 {object} object "New access token and refresh token"
 // @Failure 401 {object} responses.ErrorResponse "Unauthorized - invalid or expired refresh token"
 // @Failure 500 {object} responses.ErrorResponse "Internal server error"
-// @Router /auth/refresh-token [get]
+// @Router /auth/refresh-token [post]
 func (a *AuthRoute) RefreshToken(c *gin.Context) {
 	a.tokenHandler.RefreshToken(c)
 }

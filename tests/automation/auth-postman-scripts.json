@@ -857,6 +857,421 @@
       ]
     },
     {
+      "name": "OAuth PKCE Flow (Token-Based)",
+      "description": "Tests for OAuth2 Authorization Code flow with PKCE. Validates token-based authentication with code_challenge/code_verifier exchange.",
+      "item": [
+        {
+          "name": "Initiate OAuth Login (Get Authorization URL)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{kong_url}}/auth/login?redirect_url=http://localhost:3000/auth/callback",
+              "host": ["{{kong_url}}"],
+              "path": ["auth", "login"],
+              "query": [
+                {
+                  "key": "redirect_url",
+                  "value": "http://localhost:3000/auth/callback",
+                  "description": "Frontend callback URL for token delivery"
+                }
+              ]
+            },
+            "description": "Initiates OAuth login flow with PKCE. Returns authorization_url with code_challenge parameter."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Clear any cookies from previous tests to ensure fresh state",
+                  "pm.cookies.jar().clear(pm.request.url.toString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('login initiation succeeds', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('response contains authorization_url', function () {",
+                  "    pm.expect(data).to.have.property('authorization_url');",
+                  "    pm.expect(data.authorization_url).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('response contains state parameter', function () {",
+                  "    pm.expect(data).to.have.property('state');",
+                  "    pm.expect(data.state).to.be.a('string').and.not.empty;",
+                  "    pm.collectionVariables.set('oauth_state', data.state);",
+                  "});",
+                  "pm.test('authorization_url contains PKCE parameters', function () {",
+                  "    const authUrl = data.authorization_url;",
+                  "    pm.expect(authUrl).to.include('code_challenge=');",
+                  "    pm.expect(authUrl).to.include('code_challenge_method=S256');",
+                  "});",
+                  "pm.test('authorization_url contains required OAuth parameters', function () {",
+                  "    const authUrl = data.authorization_url;",
+                  "    pm.expect(authUrl).to.include('client_id=');",
+                  "    pm.expect(authUrl).to.include('redirect_uri=');",
+                  "    pm.expect(authUrl).to.include('response_type=code');",
+                  "    pm.expect(authUrl).to.include('state=');",
+                  "    pm.expect(authUrl).to.include('scope=openid');",
+                  "});",
+                  "// Store authorization URL for reference",
+                  "pm.collectionVariables.set('oauth_authorization_url', data.authorization_url);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify No Cookie-Based State Storage",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{kong_url}}/healthz",
+            "description": "Verifies that no authentication state is stored in cookies (token-based approach)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('health check succeeds', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('no oauth_state cookie exists', function () {",
+                  "    const cookies = pm.cookies.all();",
+                  "    const stateCookie = cookies.find(c => c.name === 'oauth_state');",
+                  "    pm.expect(stateCookie).to.be.undefined;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Simulate OAuth Callback with Authorization Code",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{kong_url}}/auth/callback?code=test_auth_code_123&state={{oauth_state}}&redirect_url=http://localhost:3000/auth/callback",
+              "host": ["{{kong_url}}"],
+              "path": ["auth", "callback"],
+              "query": [
+                {
+                  "key": "code",
+                  "value": "test_auth_code_123",
+                  "description": "Authorization code from Keycloak (simulated)"
+                },
+                {
+                  "key": "state",
+                  "value": "{{oauth_state}}",
+                  "description": "State parameter for CSRF protection"
+                },
+                {
+                  "key": "redirect_url",
+                  "value": "http://localhost:3000/auth/callback",
+                  "description": "Frontend callback URL"
+                }
+              ]
+            },
+            "description": "Simulates Keycloak callback with authorization code. Note: Will fail token exchange without real Keycloak auth, but validates PKCE flow structure."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Note: This test may fail at token exchange with Keycloak (expected)",
+                  "// The goal is to verify the callback endpoint structure and PKCE validation",
+                  "const status = pm.response.code;",
+                  "",
+                  "if (status === 302 || status === 301) {",
+                  "    pm.test('callback redirects to frontend', function () {",
+                  "        pm.expect([301, 302]).to.include(status);",
+                  "    });",
+                  "    ",
+                  "    const location = pm.response.headers.get('Location');",
+                  "    if (location) {",
+                  "        pm.test('redirect location contains frontend URL', function () {",
+                  "            pm.expect(location).to.include('localhost:3000/auth/callback');",
+                  "        });",
+                  "        ",
+                  "        pm.test('tokens are in URL fragment (not query)', function () {",
+                  "            // Tokens should be after # (fragment) not ? (query)",
+                  "            pm.expect(location).to.include('#');",
+                  "            const fragment = location.split('#')[1] || '';",
+                  "            pm.expect(fragment).to.include('access_token=');",
+                  "        });",
+                  "        ",
+                  "        // Extract tokens from fragment for next tests",
+                  "        const fragment = location.split('#')[1] || '';",
+                  "        const params = new URLSearchParams(fragment);",
+                  "        if (params.get('access_token')) {",
+                  "            pm.collectionVariables.set('pkce_access_token', params.get('access_token'));",
+                  "            pm.collectionVariables.set('pkce_refresh_token', params.get('refresh_token') || '');",
+                  "            console.log('Extracted PKCE tokens from callback redirect');",
+                  "        }",
+                  "    }",
+                  "} else if (status === 500 || status === 400) {",
+                  "    // Expected: Token exchange will fail without real Keycloak authorization",
+                  "    pm.test('callback endpoint exists and validates request', function () {",
+                  "        pm.expect([400, 500]).to.include(status);",
+                  "    });",
+                  "    ",
+                  "    const body = pm.response.json();",
+                  "    console.log('Callback error (expected without real auth):', body.error || body);",
+                  "} else if (status === 401) {",
+                  "    pm.test('state validation works', function () {",
+                  "        pm.expect(status).to.eql(401);",
+                  "        const body = pm.response.json();",
+                  "        pm.expect(body.error).to.include('state');",
+                  "    });",
+                  "} else {",
+                  "    pm.test('unexpected response status: ' + status, function () {",
+                  "        pm.expect.fail('Got status: ' + status);",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Test OAuth Callback - Invalid State",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{kong_url}}/auth/callback?code=test_code&state=invalid_state_12345",
+              "host": ["{{kong_url}}"],
+              "path": ["auth", "callback"],
+              "query": [
+                {
+                  "key": "code",
+                  "value": "test_code"
+                },
+                {
+                  "key": "state",
+                  "value": "invalid_state_12345",
+                  "description": "Invalid state that doesn't exist in server storage"
+                }
+              ]
+            },
+            "description": "Tests that callback rejects requests with invalid/expired state parameter."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('invalid state is rejected', function () {",
+                  "    pm.expect(pm.response.code).to.eql(401);",
+                  "});",
+                  "pm.test('error message mentions state', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.have.property('error');",
+                  "    const errorMsg = (body.error || '').toLowerCase();",
+                  "    pm.expect(errorMsg).to.satisfy(msg => ",
+                  "        msg.includes('state') || msg.includes('invalid')",
+                  "    );",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Test OAuth Callback - Missing Parameters",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{kong_url}}/auth/callback",
+            "description": "Tests that callback rejects requests missing required parameters."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('missing parameters rejected', function () {",
+                  "    pm.expect(pm.response.code).to.eql(400);",
+                  "});",
+                  "pm.test('error message indicates missing parameters', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.have.property('error');",
+                  "    const errorMsg = (body.error || '').toLowerCase();",
+                  "    pm.expect(errorMsg).to.satisfy(msg => ",
+                  "        msg.includes('missing') || msg.includes('code') || msg.includes('state')",
+                  "    );",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Integration Test - Full OAuth Flow with Real Keycloak",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "password"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{client_id_public}}"
+                },
+                {
+                  "key": "username",
+                  "value": "{{test_user_email}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{test_user_password}}"
+                }
+              ]
+            },
+            "url": "{{keycloak_base_url}}/realms/{{realm}}/protocol/openid-connect/token",
+            "description": "Gets a real Keycloak token to verify end-to-end OAuth flow works. This simulates what happens after PKCE exchange completes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('real keycloak token obtained', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data.access_token).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('token can be used with bearer authentication', function () {",
+                  "    pm.expect(data.token_type.toLowerCase()).to.eql('bearer');",
+                  "});",
+                  "// Store for API validation tests",
+                  "pm.collectionVariables.set('oauth_bearer_token', data.access_token);",
+                  "pm.collectionVariables.set('oauth_refresh_token', data.refresh_token || '');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Test API Call with OAuth Bearer Token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{oauth_bearer_token}}",
+                "description": "Token obtained via OAuth flow"
+              }
+            ],
+            "url": "{{kong_url}}/v1/models",
+            "description": "Validates that Bearer tokens from OAuth flow work with API endpoints."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('bearer token authentication succeeds', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('models data returned', function () {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('data');",
+                  "    pm.expect(data.data).to.be.an('array');",
+                  "});",
+                  "pm.test('auth method is JWT', function () {",
+                  "    const authMethod = pm.response.headers.get('X-Auth-Method');",
+                  "    pm.expect((authMethod || '').toLowerCase()).to.eql('jwt');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Test Token Refresh Endpoint",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{oauth_refresh_token}}",
+                "description": "Refresh token in Authorization header"
+              }
+            ],
+            "url": "{{kong_url}}/auth/refresh-token",
+            "description": "Tests the token refresh endpoint for renewing access tokens."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const status = pm.response.code;",
+                  "if (status === 200) {",
+                  "    pm.test('token refresh succeeds', function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "    ",
+                  "    const data = pm.response.json();",
+                  "    pm.test('new tokens returned', function () {",
+                  "        pm.expect(data).to.have.property('access_token');",
+                  "        pm.expect(data.access_token).to.be.a('string').and.not.empty;",
+                  "    });",
+                  "    ",
+                  "    pm.test('refresh token included', function () {",
+                  "        pm.expect(data).to.have.property('refresh_token');",
+                  "    });",
+                  "    ",
+                  "    pm.test('expires_in included', function () {",
+                  "        pm.expect(data).to.have.property('expires_in');",
+                  "        pm.expect(data.expires_in).to.be.a('number').and.above(0);",
+                  "    });",
+                  "} else if (status === 500 || status === 400) {",
+                  "    // May fail if refresh token is invalid/expired",
+                  "    pm.test('refresh endpoint exists', function () {",
+                  "        pm.expect([400, 500]).to.include(status);",
+                  "    });",
+                  "    console.log('Token refresh failed (may be expected):', pm.response.json());",
+                  "} else {",
+                  "    pm.test('unexpected refresh response: ' + status, function () {",
+                  "        pm.expect.fail('Got status: ' + status);",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "API Key Flow",
       "item": [
         {

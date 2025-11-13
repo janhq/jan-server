@@ -21,5 +21,6 @@ func (r *Routes) Register(router gin.IRouter) {
 	group.POST("/media", r.handlers.Media.Ingest)
 	group.POST("/media/prepare-upload", r.handlers.Media.PrepareUpload)
 	group.POST("/media/resolve", r.handlers.Media.Resolve)
+	group.GET("/media/:id/presign", r.handlers.Media.GetPresignedURL)
 	group.GET("/media/:id", r.handlers.Media.Proxy)
 }

@@ -191,9 +191,56 @@
                     }
                 }
             }
+        },
+        "/v1/media/{id}/presign": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Returns a temporary signed URL for downloading media by jan_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "media"
+                ],
+                "summary": "Get presigned download URL",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Media ID (jan_xxx)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "handlers.JSONPayload": {
+            "type": "object"
+        },
         "handlers.ingestResponse": {
             "type": "object",
             "properties": {
@@ -215,27 +262,13 @@
             }
         },
         "handlers.resolveRequest": {
-            "type": "object",
-            "required": [
-                "payload"
-            ],
-            "properties": {
-                "payload": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                }
-            }
+            "type": "object"
         },
         "handlers.resolveResponse": {
             "type": "object",
             "properties": {
                 "payload": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
+                    "$ref": "#/definitions/handlers.JSONPayload"
                 }
             }
         },

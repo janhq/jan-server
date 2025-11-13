@@ -143,6 +143,33 @@ func (h *MediaHandler) PrepareUpload(c *gin.Context) {
 	c.JSON(http.StatusOK, prep)
 }
 
+// GetPresignedURL godoc
+// @Summary      Get presigned download URL
+// @Description  Returns a temporary signed URL for downloading media by jan_id.
+// @Tags         media
+// @Produce      json
+// @Param        id   path      string  true  "Media ID (jan_xxx)"
+// @Success      200  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]string
+// @Security     ApiKeyAuth
+// @Router       /v1/media/{id}/presign [get]
+func (h *MediaHandler) GetPresignedURL(c *gin.Context) {
+	id := c.Param("id")
+
+	url, err := h.service.Presign(c.Request.Context(), id)
+	if err != nil {
+		h.log.Error().Err(err).Str("id", id).Msg("presign failed")
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"id":         id,
+		"url":        url,
+		"expires_in": int(h.cfg.S3PresignTTL.Seconds()),
+	})
+}
+
 // Proxy godoc
 // @Summary      Stream media bytes
 // @Description  Streams the object through the media API without exposing storage URLs.

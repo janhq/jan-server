@@ -1,5 +1,7 @@
 basePath: /
 definitions:
+  handlers.JSONPayload:
+    type: object
   handlers.ingestResponse:
     properties:
       bytes:
@@ -14,20 +16,11 @@ definitions:
         type: string
     type: object
   handlers.resolveRequest:
-    properties:
-      payload:
-        items:
-          type: integer
-        type: array
-    required:
-    - payload
     type: object
   handlers.resolveResponse:
     properties:
       payload:
-        items:
-          type: integer
-        type: array
+        $ref: '#/definitions/handlers.JSONPayload'
     type: object
   media.IngestRequest:
     properties:
@@ -132,6 +125,34 @@ paths:
       security:
       - ApiKeyAuth: []
       summary: Stream media bytes
+      tags:
+      - media
+  /v1/media/{id}/presign:
+    get:
+      description: Returns a temporary signed URL for downloading media by jan_id.
+      parameters:
+      - description: Media ID (jan_xxx)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Get presigned download URL
       tags:
       - media
   /v1/media/prepare-upload:

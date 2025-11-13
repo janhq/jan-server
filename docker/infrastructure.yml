@@ -68,15 +68,27 @@ services:
       KC_HTTP_PORT: ${KEYCLOAK_HTTP_PORT:-8085}
       KC_HOSTNAME_URL: http://localhost:8085
       KC_HOSTNAME_ADMIN_URL: http://localhost:8085
+      KC_HOSTNAME_STRICT: "false"
       KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HOSTNAME_STRICT_BACKCHANNEL: "false"
+      KC_PROXY: "edge"
       KC_HEALTH_ENABLED: "true"
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_SPI_LOGIN_PROTOCOL_OPENID_CONNECT_LEGACY_LOGOUT_REDIRECT_URI: "true"
+      KC_HTTP_RELATIVE_PATH: /
+      QUARKUS_HTTP_CORS: "true"
+      QUARKUS_HTTP_CORS_ORIGINS: "http://localhost:3000,http://localhost:3001,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:8000"
+      QUARKUS_HTTP_CORS_METHODS: "GET,POST,PUT,DELETE,OPTIONS"
+      QUARKUS_HTTP_CORS_HEADERS: "accept,authorization,content-type,x-requested-with"
     command:
       - start
       - --import-realm
       - --hostname-strict=false
+      - --hostname-strict-backchannel=false
       - --http-enabled=true
+      - --proxy=edge
+      - --spi-login-protocol-openid-connect-suppress-logout-confirmation-screen=true
     depends_on:
       keycloak-db:
         condition: service_healthy

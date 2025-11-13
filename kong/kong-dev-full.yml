@@ -270,7 +270,7 @@ services:
             config:
               origins: ["http://localhost", "http://localhost:3000", "http://localhost:3001", "http://127.0.0.1"]
               methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-              headers: ["Authorization", "Content-Type", "X-API-Key", "Idempotency-Key", "X-Request-Id"]
+              headers: ["Authorization", "Content-Type", "X-API-Key", "X-Media-Service-Key", "Idempotency-Key", "X-Request-Id"]
               exposed_headers: ["X-Request-Id", "X-Gateway-Auth"]
               credentials: true
               max_age: 3600

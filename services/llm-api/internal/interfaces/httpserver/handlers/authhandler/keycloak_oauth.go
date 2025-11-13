@@ -3,6 +3,7 @@ package authhandler
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -17,50 +19,93 @@ import (
 	"jan-server/services/llm-api/internal/config"
 )
 
+// AuthRequest stores PKCE parameters for an authorization request
+type AuthRequest struct {
+	State        string
+	CodeVerifier string
+	CreatedAt    time.Time
+}
+
+// authRequestStore stores pending authorization requests with TTL cleanup
+var (
+	authRequests  = &sync.Map{}
+	authStoreOnce sync.Once
+)
+
+// startAuthRequestCleanup starts a goroutine to clean up expired auth requests
+func startAuthRequestCleanup() {
+	authStoreOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(1 * time.Minute)
+			defer ticker.Stop()
+			for range ticker.C {
+				now := time.Now()
+				authRequests.Range(func(key, value interface{}) bool {
+					if req, ok := value.(*AuthRequest); ok {
+						if now.Sub(req.CreatedAt) > 10*time.Minute {
+							authRequests.Delete(key)
+						}
+					}
+					return true
+				})
+			}
+		}()
+	})
+}
+
+// generateCodeVerifier generates a cryptographically secure code verifier for PKCE
+func generateCodeVerifier() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// generateCodeChallenge generates a code challenge from a verifier using SHA256
+func generateCodeChallenge(verifier string) string {
+	hash := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(hash[:])
+}
+
 // KeycloakOAuthHandler handles Keycloak OAuth2/OIDC flow
 type KeycloakOAuthHandler struct {
-	keycloakBaseURL string
-	realm           string
-	clientID        string
-	clientSecret    string
-	redirectURI     string
-	cookieDomain    string // Domain for cookies (extracted from redirectURI)
+	keycloakBaseURL   string // Server-to-server URL (e.g., http://keycloak:8085)
+	keycloakPublicURL string // Browser-accessible URL (e.g., http://localhost:8085)
+	realm             string
+	clientID          string
+	clientSecret      string
+	redirectURI       string
 }
 
 // NewKeycloakOAuthHandler creates a new Keycloak OAuth handler
 func NewKeycloakOAuthHandler(
 	keycloakBaseURL string,
+	keycloakPublicURL string,
 	realm string,
 	clientID string,
 	clientSecret string,
 	redirectURI string,
 ) *KeycloakOAuthHandler {
-	// Extract cookie domain from redirect URI
-	cookieDomain := ""
-	if parsedURL, err := url.Parse(redirectURI); err == nil {
-		host := parsedURL.Hostname()
-		// For production domains like api-gateway-dev.jan.ai, use .jan.ai
-		// For localhost, leave empty (defaults to current host)
-		if host != "localhost" && host != "127.0.0.1" {
-			// Extract root domain (e.g., jan.ai from api-gateway-dev.jan.ai)
-			parts := strings.Split(host, ".")
-			if len(parts) >= 2 {
-				cookieDomain = "." + strings.Join(parts[len(parts)-2:], ".")
-			}
-		}
+	// Start background cleanup of expired auth requests
+	startAuthRequestCleanup()
+
+	// Default publicURL to baseURL if not provided
+	if keycloakPublicURL == "" {
+		keycloakPublicURL = keycloakBaseURL
 	}
 
-	return &KeycloakOAuthHandler{
-		keycloakBaseURL: strings.TrimSuffix(keycloakBaseURL, "/"),
-		realm:           realm,
-		clientID:        clientID,
-		clientSecret:    clientSecret,
-		redirectURI:     redirectURI,
-		cookieDomain:    cookieDomain,
+	handler := &KeycloakOAuthHandler{
+		keycloakBaseURL:   strings.TrimSuffix(keycloakBaseURL, "/"),
+		keycloakPublicURL: strings.TrimSuffix(keycloakPublicURL, "/"),
+		realm:             realm,
+		clientID:          clientID,
+		clientSecret:      clientSecret,
+		redirectURI:       redirectURI,
 	}
-}
 
-// KeycloakLoginRequest represents the login request
+	return handler
+} // KeycloakLoginRequest represents the login request
 type KeycloakLoginRequest struct {
 	RedirectURL string `json:"redirect_url" form:"redirect_url"`
 }
@@ -98,13 +143,13 @@ func generateState() (string, error) {
 
 // InitiateLogin godoc
 // @Summary Initiate Keycloak OAuth2 login
-// @Description Redirects the user to Keycloak's authorization endpoint to authenticate. Returns the authorization URL for frontend redirection.
+// @Description Redirects the user to Keycloak's authorization endpoint to authenticate. Returns the authorization URL for frontend redirection with PKCE.
 // @Tags Authentication API
 // @Accept json
 // @Produce json
 // @Param redirect_url query string false "URL to redirect after successful login"
 // @Success 200 {object} object{authorization_url=string,state=string} "Authorization URL and state parameter"
-// @Failure 500 {object} object{error=string} "Failed to generate state"
+// @Failure 500 {object} object{error=string} "Failed to generate state or PKCE parameters"
 // @Router /auth/keycloak/login [get]
 func (h *KeycloakOAuthHandler) InitiateLogin(c *gin.Context) {
 	// Generate state for CSRF protection
@@ -116,37 +161,27 @@ func (h *KeycloakOAuthHandler) InitiateLogin(c *gin.Context) {
 		return
 	}
 
-	// Store state in session/cookie for validation later
-	// Use SameSite=None with Secure for cross-origin requests
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     "oauth_state",
-		Value:    state,
-		MaxAge:   600,
-		Path:     "/",
-		Domain:   h.cookieDomain,
-		Secure:   true,
-		HttpOnly: true,
-		SameSite: http.SameSiteNoneMode,
-	})
-
-	// Store redirect URL if provided
-	redirectURL := c.Query("redirect_url")
-	if redirectURL != "" {
-		http.SetCookie(c.Writer, &http.Cookie{
-			Name:     "post_login_redirect",
-			Value:    redirectURL,
-			MaxAge:   600,
-			Path:     "/",
-			Domain:   h.cookieDomain,
-			Secure:   true,
-			HttpOnly: true,
-			SameSite: http.SameSiteNoneMode,
+	// Generate PKCE parameters
+	codeVerifier, err := generateCodeVerifier()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to generate code verifier",
 		})
+		return
 	}
 
-	// Build authorization URL
+	codeChallenge := generateCodeChallenge(codeVerifier)
+
+	// Store state and code_verifier for later validation in callback
+	authRequests.Store(state, &AuthRequest{
+		State:        state,
+		CodeVerifier: codeVerifier,
+		CreatedAt:    time.Now(),
+	})
+
+	// Build authorization URL with PKCE using public URL (browser-accessible)
 	authURL := fmt.Sprintf("%s/realms/%s/protocol/openid-connect/auth",
-		h.keycloakBaseURL, h.realm)
+		h.keycloakPublicURL, h.realm)
 
 	params := url.Values{}
 	params.Add("client_id", h.clientID)
@@ -154,6 +189,8 @@ func (h *KeycloakOAuthHandler) InitiateLogin(c *gin.Context) {
 	params.Add("response_type", "code")
 	params.Add("scope", "openid profile email")
 	params.Add("state", state)
+	params.Add("code_challenge", codeChallenge)
+	params.Add("code_challenge_method", "S256")
 
 	fullAuthURL := fmt.Sprintf("%s?%s", authURL, params.Encode())
 
@@ -166,15 +203,16 @@ func (h *KeycloakOAuthHandler) InitiateLogin(c *gin.Context) {
 
 // HandleCallback godoc
 // @Summary Handle Keycloak OAuth2 callback
-// @Description Handles the OAuth2 callback from Keycloak, exchanges authorization code for tokens
+// @Description Handles the OAuth2 callback from Keycloak, exchanges authorization code for tokens using PKCE
 // @Tags Authentication API
 // @Accept json
 // @Produce json
 // @Param code query string true "Authorization code from Keycloak"
 // @Param state query string true "State parameter for CSRF protection"
+// @Param redirect_url query string false "Frontend URL to redirect after successful authentication"
 // @Param error query string false "Error from Keycloak (if authentication failed)"
 // @Param error_description query string false "Error description from Keycloak"
-// @Success 200 {object} LoginResponse "JWT tokens"
+// @Success 302 "Redirects to frontend URL with tokens in URL fragment"
 // @Failure 400 {object} object{error=string} "Missing code or state, or Keycloak error"
 // @Failure 401 {object} object{error=string} "Invalid state parameter"
 // @Failure 500 {object} object{error=string} "Failed to exchange code for tokens"
@@ -201,41 +239,29 @@ func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
 		return
 	}
 
-	// Validate state
-	storedState, err := c.Cookie("oauth_state")
-	if err != nil {
+	// Validate state and retrieve code_verifier from storage
+	authRequestVal, ok := authRequests.Load(state)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":          "Invalid state parameter",
-			"error_detail":   "oauth_state cookie not found",
-			"cookie_error":   err.Error(),
-			"received_state": state,
-		})
-		return
-	}
-	if storedState != state {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":          "Invalid state parameter",
-			"error_detail":   "state mismatch",
-			"stored_state":   storedState,
-			"received_state": state,
+			"error":        "Invalid state parameter",
+			"error_detail": "state not found or expired",
 		})
 		return
 	}
 
-	// Clear state cookie
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     "oauth_state",
-		Value:    "",
-		MaxAge:   -1,
-		Path:     "/",
-		Domain:   h.cookieDomain,
-		Secure:   true,
-		HttpOnly: true,
-		SameSite: http.SameSiteNoneMode,
-	})
+	authRequest, ok := authRequestVal.(*AuthRequest)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Invalid auth request data",
+		})
+		return
+	}
 
-	// Exchange code for tokens
-	tokenResp, err := h.exchangeCodeForTokens(code)
+	// Remove used state from storage
+	authRequests.Delete(state)
+
+	// Exchange code for tokens using PKCE
+	tokenResp, err := h.exchangeCodeForTokens(code, authRequest.CodeVerifier)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("Failed to exchange code for tokens: %v", err),
@@ -243,98 +269,42 @@ func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
 		return
 	}
 
-	// Get post-login redirect URL
-	postLoginRedirect, _ := c.Cookie("post_login_redirect")
-	if postLoginRedirect != "" {
-		http.SetCookie(c.Writer, &http.Cookie{
-			Name:     "post_login_redirect",
-			Value:    "",
-			MaxAge:   -1,
-			Path:     "/",
-			Domain:   h.cookieDomain,
-			Secure:   true,
-			HttpOnly: true,
-			SameSite: http.SameSiteNoneMode,
-		})
+	// Get redirect URL from query parameter
+	redirectURL := c.Query("redirect_url")
+	if redirectURL == "" {
+		// Default redirect URL if not provided
+		redirectURL = "http://localhost:3000/auth/callback"
 	}
 
-	// Set tokens as HTTP-only cookies for security
-	// Access token cookie
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     "access_token",
-		Value:    tokenResp.AccessToken,
-		MaxAge:   tokenResp.ExpiresIn,
-		Path:     "/",
-		Domain:   h.cookieDomain,
-		Secure:   true,
-		HttpOnly: true,
-		SameSite: http.SameSiteNoneMode,
-	})
-
-	// Refresh token cookie
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     "refresh_token",
-		Value:    tokenResp.RefreshToken,
-		MaxAge:   tokenResp.RefreshExpiresIn,
-		Path:     "/",
-		Domain:   h.cookieDomain,
-		Secure:   true,
-		HttpOnly: true,
-		SameSite: http.SameSiteNoneMode,
-	})
-
-	// ID token cookie (if present)
-	if tokenResp.IDToken != "" {
-		http.SetCookie(c.Writer, &http.Cookie{
-			Name:     "id_token",
-			Value:    tokenResp.IDToken,
-			MaxAge:   tokenResp.ExpiresIn,
-			Path:     "/",
-			Domain:   h.cookieDomain,
-			Secure:   true,
-			HttpOnly: true,
-			SameSite: http.SameSiteNoneMode,
+	// Parse the redirect URL to append tokens in fragment
+	parsedURL, err := url.Parse(redirectURL)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Invalid redirect URL",
 		})
-	}
-
-	// If there's a redirect URL, redirect to client's page with tokens
-	if postLoginRedirect != "" {
-		// Parse the redirect URL to append tokens
-		redirectURL, err := url.Parse(postLoginRedirect)
-		if err == nil {
-			// Use hash fragment for security (tokens won't be sent to server in subsequent requests)
-			// Frontend can extract tokens from window.location.hash
-			fragment := fmt.Sprintf("access_token=%s&refresh_token=%s&expires_in=%d&token_type=%s",
-				url.QueryEscape(tokenResp.AccessToken),
-				url.QueryEscape(tokenResp.RefreshToken),
-				tokenResp.ExpiresIn,
-				url.QueryEscape(tokenResp.TokenType),
-			)
-			if tokenResp.IDToken != "" {
-				fragment += fmt.Sprintf("&id_token=%s", url.QueryEscape(tokenResp.IDToken))
-			}
-			redirectURL.Fragment = fragment
-			c.Redirect(http.StatusFound, redirectURL.String())
-			return
-		}
-		// Fallback if URL parsing fails
-		c.Redirect(http.StatusFound, postLoginRedirect)
 		return
 	}
 
-	// Default: return JSON response for backward compatibility
-	response := LoginResponse{
-		AccessToken:  tokenResp.AccessToken,
-		RefreshToken: tokenResp.RefreshToken,
-		ExpiresIn:    tokenResp.ExpiresIn,
-		TokenType:    tokenResp.TokenType,
-		IDToken:      tokenResp.IDToken,
+	// Build token fragment for frontend extraction
+	fragment := fmt.Sprintf("access_token=%s&refresh_token=%s&expires_in=%d&token_type=%s",
+		url.QueryEscape(tokenResp.AccessToken),
+		url.QueryEscape(tokenResp.RefreshToken),
+		tokenResp.ExpiresIn,
+		url.QueryEscape(tokenResp.TokenType),
+	)
+
+	if tokenResp.IDToken != "" {
+		fragment += fmt.Sprintf("&id_token=%s", url.QueryEscape(tokenResp.IDToken))
 	}
-	c.JSON(http.StatusOK, response)
+
+	parsedURL.Fragment = fragment
+
+	// Redirect to frontend with tokens in URL fragment
+	c.Redirect(http.StatusFound, parsedURL.String())
 }
 
-// exchangeCodeForTokens exchanges authorization code for access and refresh tokens
-func (h *KeycloakOAuthHandler) exchangeCodeForTokens(code string) (*KeycloakTokenResponse, error) {
+// exchangeCodeForTokens exchanges authorization code for access and refresh tokens using PKCE
+func (h *KeycloakOAuthHandler) exchangeCodeForTokens(code string, codeVerifier string) (*KeycloakTokenResponse, error) {
 	tokenURL := fmt.Sprintf("%s/realms/%s/protocol/openid-connect/token",
 		h.keycloakBaseURL, h.realm)
 
@@ -343,6 +313,7 @@ func (h *KeycloakOAuthHandler) exchangeCodeForTokens(code string) (*KeycloakToke
 	data.Set("code", code)
 	data.Set("redirect_uri", h.redirectURI)
 	data.Set("client_id", h.clientID)
+	data.Set("code_verifier", codeVerifier) // PKCE parameter
 	if h.clientSecret != "" {
 		data.Set("client_secret", h.clientSecret)
 	}
@@ -385,6 +356,7 @@ func (h *KeycloakOAuthHandler) exchangeCodeForTokens(code string) (*KeycloakToke
 func ProvideKeycloakOAuthHandler(cfg *config.Config) *KeycloakOAuthHandler {
 	return NewKeycloakOAuthHandler(
 		cfg.KeycloakBaseURL,
+		cfg.KeycloakPublicURL,
 		cfg.KeycloakRealm,
 		cfg.TargetClientID,
 		cfg.BackendClientSecret,
