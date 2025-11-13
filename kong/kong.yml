@@ -150,6 +150,22 @@ services:
               exposed_headers: ["X-Request-Id"]
               credentials: false
               max_age: 3600
+      - name: llm-api-swagger
+        paths:
+          - ~/api/swagger.*
+        strip_path: false
+        path_handling: v0
+        tags: [llm, swagger, public]
+        plugins:
+          - name: cors
+            tags: [llm, swagger, cors]
+            config:
+              origins: ["*"]
+              methods: ["GET", "OPTIONS"]
+              headers: ["Content-Type", "Accept"]
+              exposed_headers: ["X-Request-Id"]
+              credentials: false
+              max_age: 3600
 
   - name: media-api-svc
     url: http://media-api:8285

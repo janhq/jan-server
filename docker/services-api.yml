@@ -109,10 +109,10 @@ services:
     depends_on:
       api-db:
         condition: service_healthy
-      llm-api:
-        condition: service_healthy
-      mcp-tools:
-        condition: service_started
+      # llm-api:
+      #   condition: service_healthy
+      # mcp-tools:
+      #   condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:${RESPONSE_API_PORT:-8082}/healthz"]
       interval: 10s

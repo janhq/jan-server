@@ -60,13 +60,23 @@ MEDIA_API_KEY ?= changeme-media-key
 # SECTION 1: SETUP & ENVIRONMENT
 # ============================================================================================================
 
-.PHONY: setup check-deps install-deps
+.PHONY: setup check-deps install-deps ensure-docker-env
 
 setup:
 ifeq ($(OS),Windows_NT)
 	@powershell -ExecutionPolicy Bypass -File scripts/setup.ps1
 else
 	@bash scripts/setup.sh
+endif
+
+# Ensure docker/.env exists by copying from root .env
+ensure-docker-env:
+ifeq ($(OS),Windows_NT)
+	@if not exist docker mkdir docker >nul 2>&1
+	@copy .env docker\.env >nul 2>&1
+else
+	@mkdir -p docker
+	@cp .env docker/.env
 endif
 
 check-deps:
@@ -322,7 +332,7 @@ logs-vllm:
 
 .PHONY: up-full down-full restart-full logs stop down down-clean dev-full dev-full-down dev-full-stop
 
-up-full:
+up-full: ensure-docker-env ## Start full stack (all services in Docker)
 	@echo "Starting full stack..."
 	$(COMPOSE) --profile full up -d
 	@echo " Full stack started"
@@ -573,7 +583,7 @@ endif
 
 .PHONY: dev-full dev-full-stop dev-full-down
 
-dev-full:
+dev-full: ensure-docker-env ## Start development full stack with host.docker.internal support
 	@echo "Starting development full stack with host.docker.internal support..."
 	@echo ""
 	@echo "This mode allows you to:"
