@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 
 	"jan-server/services/llm-api/internal/config"
 )
@@ -227,10 +228,19 @@ func (h *KeycloakOAuthHandler) InitiateLogin(c *gin.Context) {
 // @Failure 500 {object} object{error=string} "Failed to exchange code for tokens"
 // @Router /auth/keycloak/callback [get]
 func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
+	log.Info().
+		Str("path", c.Request.URL.Path).
+		Str("query", c.Request.URL.RawQuery).
+		Msg("OAuth callback received")
+
 	// Check for errors from Keycloak first
 	keycloakError := c.Query("error")
 	if keycloakError != "" {
 		errorDescription := c.Query("error_description")
+		log.Error().
+			Str("error", keycloakError).
+			Str("error_description", errorDescription).
+			Msg("Keycloak returned error in callback")
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":             keycloakError,
 			"error_description": errorDescription,
@@ -241,7 +251,15 @@ func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
 	code := c.Query("code")
 	state := c.Query("state")
 
+	log.Info().
+		Bool("has_code", code != "").
+		Bool("has_state", state != "").
+		Str("session_state", c.Query("session_state")).
+		Str("iss", c.Query("iss")).
+		Msg("OAuth callback parameters")
+
 	if code == "" || state == "" {
+		log.Error().Msg("Missing code or state parameter in callback")
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Missing code or state parameter",
 		})
@@ -251,6 +269,9 @@ func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
 	// Validate state and retrieve code_verifier from storage
 	authRequestVal, ok := authRequests.Load(state)
 	if !ok {
+		log.Error().
+			Str("state", state).
+			Msg("Invalid state parameter - not found or expired")
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error":        "Invalid state parameter",
 			"error_detail": "state not found or expired",
@@ -260,23 +281,49 @@ func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
 
 	authRequest, ok := authRequestVal.(*AuthRequest)
 	if !ok {
+		log.Error().Msg("Invalid auth request data structure")
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Invalid auth request data",
 		})
 		return
 	}
 
+	log.Info().
+		Str("redirect_url", authRequest.RedirectURL).
+		Time("created_at", authRequest.CreatedAt).
+		Msg("Auth request validated successfully")
+
 	// Remove used state from storage
 	authRequests.Delete(state)
 
 	// Exchange code for tokens using PKCE
+	log.Info().Msg("Exchanging authorization code for tokens")
 	tokenResp, err := h.exchangeCodeForTokens(code, authRequest.CodeVerifier)
 	if err != nil {
+		log.Error().
+			Err(err).
+			Msg("Failed to exchange code for tokens")
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("Failed to exchange code for tokens: %v", err),
 		})
 		return
 	}
+
+	log.Info().
+		Int("expires_in", tokenResp.ExpiresIn).
+		Str("token_type", tokenResp.TokenType).
+		Bool("has_id_token", tokenResp.IDToken != "").
+		Bool("has_refresh_token", tokenResp.RefreshToken != "").
+		Str("scope", tokenResp.Scope).
+		Msg("Token exchange successful")
+
+	log.Info().
+		Int("expires_in", tokenResp.ExpiresIn).
+		Str("token_type", tokenResp.TokenType).
+		Bool("has_id_token", tokenResp.IDToken != "").
+		Bool("has_refresh_token", tokenResp.RefreshToken != "").
+		Str("scope", tokenResp.Scope).
+		Msg("Token exchange successful")
 
 	// Use the redirect URL that was stored during InitiateLogin
 	redirectURL := authRequest.RedirectURL
@@ -284,9 +331,17 @@ func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
 		redirectURL = "https://chat-dev.jan.ai/auth/keycloak/callback"
 	}
 
+	log.Info().
+		Str("redirect_url", redirectURL).
+		Msg("Preparing redirect to frontend")
+
 	// Parse the redirect URL to append tokens in fragment
 	parsedURL, err := url.Parse(redirectURL)
 	if err != nil {
+		log.Error().
+			Err(err).
+			Str("redirect_url", redirectURL).
+			Msg("Invalid redirect URL")
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Invalid redirect URL",
 		})
@@ -307,6 +362,10 @@ func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
 
 	parsedURL.Fragment = fragment
 
+	log.Info().
+		Str("final_redirect_url", parsedURL.String()).
+		Msg("Redirecting to frontend with tokens")
+
 	// Redirect to frontend with tokens in URL fragment
 	c.Redirect(http.StatusFound, parsedURL.String())
 }
@@ -315,6 +374,13 @@ func (h *KeycloakOAuthHandler) HandleCallback(c *gin.Context) {
 func (h *KeycloakOAuthHandler) exchangeCodeForTokens(code string, codeVerifier string) (*KeycloakTokenResponse, error) {
 	tokenURL := fmt.Sprintf("%s/realms/%s/protocol/openid-connect/token",
 		h.keycloakBaseURL, h.realm)
+
+	log.Info().
+		Str("token_url", tokenURL).
+		Str("client_id", h.clientID).
+		Bool("has_client_secret", h.clientSecret != "").
+		Str("redirect_uri", h.redirectURI).
+		Msg("Preparing token exchange request")
 
 	data := url.Values{}
 	data.Set("grant_type", "authorization_code")
@@ -331,6 +397,7 @@ func (h *KeycloakOAuthHandler) exchangeCodeForTokens(code string, codeVerifier s
 
 	req, err := http.NewRequestWithContext(ctx, "POST", tokenURL, strings.NewReader(data.Encode()))
 	if err != nil {
+		log.Error().Err(err).Msg("Failed to create token exchange request")
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
@@ -339,23 +406,47 @@ func (h *KeycloakOAuthHandler) exchangeCodeForTokens(code string, codeVerifier s
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Error().Err(err).Msg("Token exchange HTTP request failed")
 		return nil, fmt.Errorf("failed to exchange code: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		log.Error().Err(err).Msg("Failed to read token response body")
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
+	log.Info().
+		Int("status_code", resp.StatusCode).
+		Str("content_type", resp.Header.Get("Content-Type")).
+		Int("body_length", len(body)).
+		Msg("Token exchange response received")
+
 	if resp.StatusCode != http.StatusOK {
+		log.Error().
+			Int("status_code", resp.StatusCode).
+			Str("response_body", string(body)).
+			Msg("Token exchange failed")
 		return nil, fmt.Errorf("token exchange failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var tokenResp KeycloakTokenResponse
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
+		log.Error().
+			Err(err).
+			Str("response_body", string(body)).
+			Msg("Failed to parse token response JSON")
 		return nil, fmt.Errorf("failed to parse token response: %w", err)
 	}
+
+	log.Info().
+		Str("token_type", tokenResp.TokenType).
+		Int("expires_in", tokenResp.ExpiresIn).
+		Bool("has_refresh_token", tokenResp.RefreshToken != "").
+		Bool("has_id_token", tokenResp.IDToken != "").
+		Str("scope", tokenResp.Scope).
+		Msg("Token response parsed successfully")
 
 	return &tokenResp, nil
 }
