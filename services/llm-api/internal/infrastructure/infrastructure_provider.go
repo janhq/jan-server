@@ -69,7 +69,7 @@ func ProvideKeycloakValidator(cfg *config.Config, log zerolog.Logger) (*auth.Key
 
 // ProvideDatabase provides a database connection
 func ProvideDatabase(cfg *config.Config, log zerolog.Logger) (*gorm.DB, error) {
-	db, err := database.NewDB(cfg.DatabaseURL)
+	db, err := database.NewDB(cfg.GetDatabaseWriteDSN())
 	if err != nil {
 		return nil, err
 	}

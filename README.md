@@ -200,6 +200,67 @@ docker compose stop llm-api
 
 See [Development Guide](docs/guides/development.md) and [Dev-Full Mode](docs/guides/dev-full-mode.md) for details.
 
+## CLI Tool
+
+Jan Server includes a unified CLI tool for configuration management, service operations, and development tasks.
+
+### Quick Install
+
+```bash
+# Install globally (recommended)
+make cli-install
+
+# Add to PATH as instructed, then run from anywhere
+jan-cli --version
+jan-cli config validate
+jan-cli service list
+```
+
+### Quick Usage (Without Installation)
+
+Use the wrapper scripts from the project root:
+
+```bash
+# Linux/macOS/WSL
+./jan-cli.sh config validate
+./jan-cli.sh service list
+./jan-cli.sh dev setup
+
+# Windows PowerShell
+.\jan-cli.ps1 config validate
+.\jan-cli.ps1 service list
+.\jan-cli.ps1 dev setup
+```
+
+The wrapper scripts automatically build the CLI if needed.
+
+### Available Commands
+
+**Configuration Management:**
+```bash
+jan-cli config validate              # Validate configuration
+jan-cli config export --format env   # Export as environment variables
+jan-cli config show llm-api          # Show service configuration
+jan-cli config k8s-values --env prod # Generate Kubernetes values
+```
+
+**Service Operations:**
+```bash
+jan-cli service list                 # List all services
+jan-cli service logs llm-api         # Show service logs
+jan-cli service status               # Check service health
+```
+
+**Development Tools:**
+```bash
+jan-cli dev setup                    # Setup development environment
+jan-cli dev scaffold my-service      # Create new service from template
+```
+
+**Documentation:** 
+- Complete guide: [docs/configuration/JAN-CLI.md](docs/configuration/JAN-CLI.md)
+- Command reference: [cmd/jan-cli/README.md](cmd/jan-cli/README.md)
+
 ## API Examples
 
 ### 1. Authentication

@@ -1,0 +1,124 @@
+# Jan Server Default Configuration
+# Generated from pkg/config/types.go
+# DO NOT EDIT MANUALLY - this file is auto-generated
+#
+# To customize, create environment-specific overrides in:
+#   - config/environments/development.yaml
+#   - config/environments/staging.yaml
+#   - config/environments/production.yaml
+
+meta:
+  version: 1.0.0
+  environment: development
+infrastructure:
+  database:
+    postgres:
+      host: api-db
+      port: 5432
+      user: jan_user
+      database: jan_llm_api
+      ssl_mode: disable
+      max_connections: 100
+      max_idle_conns: 5
+      max_open_conns: 15
+      conn_max_lifetime: 30m0s
+  auth:
+    keycloak:
+      base_url: http://keycloak:8085
+      public_url: ""
+      realm: jan
+      http_port: 8085
+      admin_user: admin
+      admin_realm: master
+      admin_client_id: admin-cli
+      backend_client_id: backend
+      target_client_id: jan-client
+      oauth_redirect_uri: http://localhost:8000/auth/callback
+      jwks_url: ""
+      oidc_discovery_url: ""
+      issuer: http://localhost:8085/realms/jan
+      audience: jan-client
+      refresh_jwks_interval: 5m0s
+      auth_clock_skew: 1m0s
+      guest_role: guest
+      features:
+        - token-exchange
+        - preview
+  gateway:
+    kong:
+      http_port: 8000
+      admin_port: 8001
+      admin_url: http://kong:8001
+      log_level: info
+services:
+  llm_api:
+    http_port: 8080
+    metrics_port: 9091
+    log_level: info
+    log_format: json
+    auto_migrate: true
+    provider_config_file: config/providers.yml
+    provider_config_set: default
+    provider_configs_enabled: true
+    api_key:
+      prefix: sk_live
+      default_ttl: 2160h0m0s
+      max_ttl: 2160h0m0s
+      max_per_user: 5
+    model_provider_secret: jan-model-provider-secret-2024
+    model_sync_enabled: true
+    model_sync_interval_minutes: 60
+    media_resolve_url: http://kong:8000/media/v1/media/resolve
+    media_resolve_timeout: 5s
+  mcp_tools:
+    http_port: 8091
+    log_level: info
+    log_format: json
+    search_engine: serper
+    searxng_url: http://searxng:8080
+    vector_store_url: http://vector-store:3015
+    sandbox_fusion_url: http://sandboxfusion:8080
+    sandbox_require_approval: true
+    mcp_config_file: configs/mcp-providers.yml
+  media_api:
+    http_port: 8285
+    log_level: info
+    max_upload_bytes: 20971520
+    retention_days: 30
+    proxy_download: true
+    remote_fetch_timeout: 15s
+    s3:
+      endpoint: https://s3.menlo.ai
+      public_endpoint: ""
+      region: us-west-2
+      bucket: platform-dev
+      use_path_style: true
+      presign_ttl: 5m0s
+  response_api:
+    http_port: 8082
+    log_level: info
+    llm_api_url: http://llm-api:8080
+    mcp_tools_url: http://mcp-tools:8091
+    max_tool_depth: 8
+    tool_timeout: 45s
+inference:
+  vllm:
+    enabled: true
+    port: 8001
+    model: Qwen/Qwen2.5-0.5B-Instruct
+    served_name: qwen2.5-0.5b-instruct
+    gpu_utilization: 0.66
+monitoring:
+  otel:
+    enabled: false
+    service_name: llm-api
+    endpoint: http://otel-collector:4318
+    http_port: 4318
+    grpc_port: 4317
+  prometheus:
+    port: 9090
+  grafana:
+    port: 3001
+    admin_user: admin
+  jaeger:
+    ui_port: 16686

@@ -153,70 +153,145 @@ make test-teardown
 
 ## Configuration
 
-### Environment Files
+Jan Server uses a **centralized, type-safe configuration system** that combines YAML defaults with environment variable overrides.
+
+### Quick Configuration Guide
+
+```bash
+# Validate configuration
+jan-cli config validate
+
+# View effective configuration
+jan-cli config export
+
+# Show specific service config
+jan-cli config show llm-api
+
+# Check for configuration drift (CI/CD)
+make config-drift-check
+```
+
+See [Configuration System Documentation](../configuration/README.md) for complete details.
+
+### Configuration Loading Order
+
+Configuration is loaded with this precedence (highest to lowest):
+
+1. **Environment Variables** (highest priority)
+2. **Environment-specific YAML** (`config/production.yaml`, etc.)
+3. **Base YAML Defaults** (`config/defaults.yaml`)
+
+### Common Configuration Tasks
+
+#### Using Configuration in Code
+
+```go
+import "jan-server/pkg/config"
+
+func main() {
+    // Load configuration
+    cfg, err := config.Load()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Get service-specific config
+    serviceCfg, _ := cfg.GetServiceConfig("llm-api")
+
+    // Use typed configuration
+    server := &http.Server{
+        Addr:         fmt.Sprintf(":%d", serviceCfg.HTTP.Port),
+        ReadTimeout:  serviceCfg.HTTP.Timeout,
+        WriteTimeout: serviceCfg.HTTP.Timeout,
+    }
+}
+```
+
+#### Overriding Configuration
+
+Environment-specific YAML files (`config/development.yaml`, `config/production.yaml`):
+
+```yaml
+# config/production.yaml - Override only what's different
+environment: production
+
+services:
+  llm-api:
+    database:
+      max_open_conns: 100
+    observability:
+      enabled: true
+```
+
+Environment variables (highest priority):
+
+```bash
+# Override specific values
+export LLM_API_HTTP_PORT=9090
+export LLM_API_DATABASE_DSN=postgres://user:pass@prod-db:5432/db
+export LLM_API_OBSERVABILITY_ENABLED=true
+```
+
+### Environment Files (Legacy)
+
+Some services still use the traditional `.env` approach during migration:
 
 | File | Purpose |
 |------|---------|
 | `.env.template` | Template with all variables documented |
-| `config/defaults.env` | Default values for all environments |
+| `config/defaults.env` | Default values (being phased out) |
 | `config/development.env` | Local Docker development |
 | `config/testing.env` | Integration test configuration |
-| `config/hybrid.env` | Hybrid development (native services) |
 
-### Switching Environments
+**Note:** New services should use the centralized config system at `pkg/config/`. See [migration guide](../configuration/service-migration-strategy.md).
 
-```bash
-# List available environments
-make env-list
+### Key Configuration Areas
 
-# Switch environment
-make env-switch ENV=development
-make env-switch ENV=testing
-make env-switch ENV=hybrid
+#### Database Configuration
 
-# Validate current environment
-make env-validate
-```
-
-### Key Configuration Variables
-
-#### Database
-```bash
-POSTGRES_USER=jan_user
-POSTGRES_PASSWORD=jan_password
-POSTGRES_DB=jan_llm_api
-DB_DSN=postgres://jan_user:jan_password@localhost:5432/jan_llm_api
+```yaml
+# config/defaults.yaml
+services:
+  llm-api:
+    database:
+      dsn: postgres://jan_user:jan_password@localhost:5432/jan_llm_api
+      max_idle_conns: 10
+      max_open_conns: 30
+      conn_max_lifetime: 30m
 ```
 
 #### Authentication
-```bash
-KEYCLOAK_BASE_URL=http://localhost:8085
-JWKS_URL=http://localhost:8085/realms/jan/protocol/openid-connect/certs
-ISSUER=http://localhost:8090/realms/jan
-AUDIENCE=jan-client
-REFRESH_JWKS_INTERVAL=5m
+
+```yaml
+services:
+  llm-api:
+    auth:
+      enabled: true
+      issuer: http://localhost:8085/realms/jan
+      audience: jan-client
+      jwks_url: http://localhost:8085/realms/jan/protocol/openid-connect/certs
 ```
 
-#### API Services
-```bash
-HTTP_PORT=8080                    # LLM API port
-MCP_TOOLS_HTTP_PORT=8091          # MCP Tools port
-MEDIA_API_PORT=8285               # Media API port
+#### HTTP Configuration
+
+```yaml
+services:
+  llm-api:
+    http:
+      port: 8080
+      timeout: 30s
+      max_body_size: 10485760  # 10 MB
 ```
 
-#### MCP Services
-```bash
-SEARXNG_URL=http://localhost:8086
-VECTOR_STORE_URL=http://localhost:3015
-SANDBOXFUSION_URL=http://localhost:3010
-```
+#### Observability
 
-#### Logging & Observability
-```bash
-LOG_LEVEL=debug                   # debug, info, warn, error
-LOG_FORMAT=console                # console or json
-OTEL_ENABLED=false                # OpenTelemetry tracing
-AUTO_MIGRATE=true                 # Auto-run database migrations
+```yaml
+services:
+  llm-api:
+    observability:
+      enabled: false
+      endpoint: http://localhost:4318
+      service_name: llm-api
 ```
 
 ## Testing
@@ -433,3 +508,4 @@ make docker-prune
 5. Ask in team chat or create an issue
 
 ---
+

@@ -58,7 +58,7 @@ func BuildApplication(ctx context.Context) (*Application, error) {
 
 func newDatabaseConfig(cfg *config.Config) database.Config {
 	return database.Config{
-		DSN:             cfg.DatabaseURL,
+		DSN:             cfg.GetDatabaseWriteDSN(),
 		MaxIdleConns:    cfg.DBMaxIdleConns,
 		MaxOpenConns:    cfg.DBMaxOpenConns,
 		ConnMaxLifetime: cfg.DBConnLifetime,

@@ -10,6 +10,7 @@ Welcome to the Jan Server documentation. Use this page as a map to the rest of t
 | Section | Description | Key Files |
 |---------|-------------|-----------|
 | **Getting Started** | Five minute setup for Docker Compose | [getting-started/README.md](getting-started/README.md) |
+| **Configuration** | Centralized config system with YAML + env vars | [configuration/](configuration/) |
 | **Guides** | Development, deployment, monitoring, IDE, troubleshooting | [guides/](guides/) |
 | **API Reference** | LLM, Response, Media, MCP Tools APIs | [api/README.md](api/README.md) |
 | **Services** | Responsibilities, ports, dependencies | [services.md](services.md) |
@@ -26,6 +27,7 @@ Welcome to the Jan Server documentation. Use this page as a map to the rest of t
 
 ### Developers
 - [Development Guide](guides/development.md)
+- [Configuration System](configuration/)
 - [Testing Guide](guides/testing.md)
 - [Hybrid Mode](guides/hybrid-mode.md)
 - [Service Template](guides/services-template.md)

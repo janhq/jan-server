@@ -15,14 +15,14 @@ import (
 var GormGenerator *gen.Generator
 
 func init() {
-	// Get database URL from environment
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		databaseURL = "postgres://jan_user:jan_password@localhost:5432/jan_llm_api?sslmode=disable"
+	// Get database DSN from environment - fail fast if not set
+	databaseDSN := os.Getenv("DB_POSTGRESQL_WRITE_DSN")
+	if databaseDSN == "" {
+		panic("DB_POSTGRESQL_WRITE_DSN environment variable is required")
 	}
 
 	// Connect directly without table prefix for schema inspection
-	db, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{
+	db, err := gorm.Open(postgres.Open(databaseDSN), &gorm.Config{
 		NamingStrategy: schema.NamingStrategy{
 			SingularTable: false,
 		},

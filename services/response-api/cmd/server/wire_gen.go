@@ -65,7 +65,7 @@ var responseSet = wire.NewSet(responseRepo.NewPostgresRepository, wire.Bind(new(
 
 func newDatabaseConfig(cfg *config.Config) database.Config {
 	return database.Config{
-		DSN:             cfg.DatabaseURL,
+		DSN:             cfg.GetDatabaseWriteDSN(),
 		MaxIdleConns:    cfg.DBMaxIdleConns,
 		MaxOpenConns:    cfg.DBMaxOpenConns,
 		ConnMaxLifetime: cfg.DBConnLifetime,

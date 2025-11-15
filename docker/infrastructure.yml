@@ -27,7 +27,7 @@ services:
       - api-db-data:/var/lib/postgresql
       - ../docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U jan_user"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jan_user}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -59,24 +59,35 @@ services:
     env_file:
       - ${ENV_FILE:-../.env}
     environment:
+      # Database
       KC_DB: postgres
       KC_DB_URL_HOST: keycloak-db
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: keycloak
       KC_DB_URL_DATABASE: keycloak
-      KC_FEATURES: token-exchange,preview,admin-fine-grained-authz
+      
+      # Features (aligned with KEYCLOAK_FEATURES in centralized config)
+      KC_FEATURES: ${KEYCLOAK_FEATURES:-token-exchange,preview,admin-fine-grained-authz}
+      
+      # HTTP Configuration
       KC_HTTP_PORT: ${KEYCLOAK_HTTP_PORT:-8085}
-      KC_HOSTNAME_URL: http://localhost:8085
-      KC_HOSTNAME_ADMIN_URL: http://localhost:8085
+      KC_HOSTNAME_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8085}
+      KC_HOSTNAME_ADMIN_URL: ${KEYCLOAK_ADMIN_URL:-http://localhost:8085}
       KC_HOSTNAME_STRICT: "false"
       KC_HOSTNAME_STRICT_HTTPS: "false"
       KC_HOSTNAME_STRICT_BACKCHANNEL: "false"
       KC_PROXY: "edge"
       KC_HEALTH_ENABLED: "true"
+      KC_HTTP_RELATIVE_PATH: /
+      
+      # Admin Credentials
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      
+      # OpenID Connect
       KC_SPI_LOGIN_PROTOCOL_OPENID_CONNECT_LEGACY_LOGOUT_REDIRECT_URI: "true"
-      KC_HTTP_RELATIVE_PATH: /
+      
+      # CORS Configuration
       QUARKUS_HTTP_CORS: "true"
       QUARKUS_HTTP_CORS_ORIGINS: "http://localhost:3000,http://localhost:3001,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:8000"
       QUARKUS_HTTP_CORS_METHODS: "GET,POST,PUT,DELETE,OPTIONS"
@@ -109,14 +120,23 @@ services:
   kong:
     image: kong:3.5
     restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-../.env}
     environment:
+      # Database Configuration
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /kong/kong.yml
-      KONG_LOG_LEVEL: info
-      KONG_PROXY_LISTEN: 0.0.0.0:8000, 0.0.0.0:8443 ssl
-      KONG_ADMIN_LISTEN: 0.0.0.0:8001, 0.0.0.0:8444 ssl
-      KONG_PLUGINS: bundled,keycloak-apikey
-      KONG_LUA_PACKAGE_PATH: /opt/kong-plugins/?.lua;/opt/kong-plugins/?/init.lua;;
+      
+      # Logging
+      KONG_LOG_LEVEL: ${KONG_LOG_LEVEL:-info}
+      
+      # Proxy Configuration
+      KONG_PROXY_LISTEN: ${KONG_PROXY_LISTEN:-0.0.0.0:8000, 0.0.0.0:8443 ssl}
+      KONG_ADMIN_LISTEN: ${KONG_ADMIN_LISTEN:-0.0.0.0:8001, 0.0.0.0:8444 ssl}
+      
+      # Plugin Configuration
+      KONG_PLUGINS: ${KONG_PLUGINS:-bundled,keycloak-apikey}
+      KONG_LUA_PACKAGE_PATH: ${KONG_LUA_PACKAGE_PATH:-/opt/kong-plugins/?.lua;/opt/kong-plugins/?/init.lua;;}
     volumes:
       - ../kong/kong.yml:/kong/kong.yml:ro
       - ../kong/plugins/keycloak-apikey:/opt/kong-plugins/kong/plugins/keycloak-apikey:ro

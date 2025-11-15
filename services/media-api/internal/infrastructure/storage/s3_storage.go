@@ -35,7 +35,7 @@ func NewS3Storage(ctx context.Context, cfg *config.Config, log zerolog.Logger) (
 		log:    logger,
 	}
 
-	accessKey := strings.TrimSpace(cfg.S3AccessKey)
+	accessKey := strings.TrimSpace(cfg.S3AccessKeyID)
 	secretKey := strings.TrimSpace(cfg.S3SecretKey)
 	if storage.bucket == "" || accessKey == "" || secretKey == "" {
 		logger.Warn().Msg("MEDIA_S3_BUCKET or credentials are not set; media uploads will be disabled until configured")
@@ -56,7 +56,7 @@ func NewS3Storage(ctx context.Context, cfg *config.Config, log zerolog.Logger) (
 
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx,
 		awsconfig.WithRegion(cfg.S3Region),
-		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(cfg.S3AccessKey, cfg.S3SecretKey, "")),
+		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(cfg.S3AccessKeyID, cfg.S3SecretKey, "")),
 		awsconfig.WithEndpointResolverWithOptions(resolver),
 	)
 	if err != nil {

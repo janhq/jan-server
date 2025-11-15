@@ -8,10 +8,6 @@ package main
 
 import (
 	"context"
-	"github.com/google/wire"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
-	logger2 "gorm.io/gorm/logger"
 	"jan-server/services/media-api/internal/config"
 	media2 "jan-server/services/media-api/internal/domain/media"
 	"jan-server/services/media-api/internal/infrastructure/auth"
@@ -20,6 +16,11 @@ import (
 	"jan-server/services/media-api/internal/infrastructure/repository/media"
 	"jan-server/services/media-api/internal/infrastructure/storage"
 	"jan-server/services/media-api/internal/interfaces/httpserver"
+
+	"github.com/google/wire"
+	"github.com/rs/zerolog"
+	"gorm.io/gorm"
+	logger2 "gorm.io/gorm/logger"
 )
 
 // Injectors from wire.go:
@@ -57,7 +58,7 @@ var mediaSet = wire.NewSet(media.NewRepository, wire.Bind(new(media2.Repository)
 
 func newDatabaseConfig(cfg *config.Config) database.Config {
 	return database.Config{
-		DSN:             cfg.DatabaseURL,
+		DSN:             cfg.GetDatabaseWriteDSN(),
 		MaxIdleConns:    cfg.DBMaxIdleConns,
 		MaxOpenConns:    cfg.DBMaxOpenConns,
 		ConnMaxLifetime: cfg.DBConnLifetime,

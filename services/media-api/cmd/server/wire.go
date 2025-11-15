@@ -11,8 +11,8 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 
 	"jan-server/services/media-api/internal/config"
-	"jan-server/services/media-api/internal/infrastructure/auth"
 	domain "jan-server/services/media-api/internal/domain/media"
+	"jan-server/services/media-api/internal/infrastructure/auth"
 	"jan-server/services/media-api/internal/infrastructure/database"
 	"jan-server/services/media-api/internal/infrastructure/logger"
 	repo "jan-server/services/media-api/internal/infrastructure/repository/media"
@@ -45,7 +45,7 @@ func BuildApplication(ctx context.Context) (*Application, error) {
 
 func newDatabaseConfig(cfg *config.Config) database.Config {
 	return database.Config{
-		DSN:             cfg.DatabaseURL,
+		DSN:             cfg.GetDatabaseWriteDSN(),
 		MaxIdleConns:    cfg.DBMaxIdleConns,
 		MaxOpenConns:    cfg.DBMaxOpenConns,
 		ConnMaxLifetime: cfg.DBConnLifetime,

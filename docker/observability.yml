@@ -9,19 +9,23 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.90.1
     restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-../.env}
     volumes:
       - ../monitoring/otel-collector.yaml:/etc/otel-collector.yaml:ro
     command: ["--config=/etc/otel-collector.yaml"]
     ports:
       - "${OTEL_GRPC_PORT:-4317}:4317"
       - "${OTEL_HTTP_PORT:-4318}:4318"
-      - "8889:8889"
+      - "${OTEL_METRICS_PORT:-8889}:8889"
     depends_on:
       - jaeger
 
   prometheus:
     image: prom/prometheus:v2.48.0
     restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-../.env}
     volumes:
       - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
@@ -37,20 +41,24 @@ services:
   jaeger:
     image: jaegertracing/all-in-one:1.51
     restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-../.env}
     environment:
-      COLLECTOR_OTLP_ENABLED: "true"
+      COLLECTOR_OTLP_ENABLED: ${JAEGER_OTLP_ENABLED:-true}
     ports:
       - "${JAEGER_UI_PORT:-16686}:16686"
-      - "14250:14250"
-      - "6831:6831/udp"
+      - "${JAEGER_COLLECTOR_PORT:-14250}:14250"
+      - "${JAEGER_UDP_PORT:-6831}:6831/udp"
 
   grafana:
     image: grafana/grafana:10.2.2
     restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-../.env}
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
-      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_ALLOW_SIGN_UP: ${GRAFANA_ALLOW_SIGNUP:-false}
     volumes:
       - grafana-data:/var/lib/grafana
       - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro

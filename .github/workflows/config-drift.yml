@@ -1,0 +1,61 @@
+name: Config Drift Check
+
+on:
+  pull_request:
+    paths:
+      - 'pkg/config/**'
+      - 'config/schema/**'
+      - 'config/defaults.yaml'
+      - 'cmd/config-generate/**'
+  push:
+    branches:
+      - main
+    paths:
+      - 'pkg/config/**'
+      - 'config/schema/**'
+      - 'config/defaults.yaml'
+      - 'cmd/config-generate/**'
+
+jobs:
+  check-drift:
+    name: Check Configuration Drift
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache: true
+          
+      - name: Install dependencies
+        run: go mod download
+        
+      - name: Generate configuration artifacts
+        run: make config-generate
+        
+      - name: Check for drift
+        run: |
+          if git diff --exit-code config/schema config/defaults.yaml; then
+            echo "✓ No drift detected - generated files match source"
+          else
+            echo "✗ Configuration drift detected!"
+            echo ""
+            echo "Generated files differ from committed versions."
+            echo "Someone manually edited generated files or forgot to run 'make config-generate'."
+            echo ""
+            echo "To fix:"
+            echo "1. Run: make config-generate"
+            echo "2. Commit the changes"
+            echo "3. Never manually edit files in config/schema/ or config/defaults.yaml"
+            echo ""
+            echo "Differences:"
+            git diff config/schema config/defaults.yaml
+            exit 1
+          fi
+          
+      - name: Run config tests
+        run: make config-test

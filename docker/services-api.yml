@@ -7,30 +7,67 @@ services:
     env_file:
       - ${ENV_FILE:-../.env}
     environment:
+      # HTTP Server
       HTTP_PORT: ${HTTP_PORT:-8080}
-      DB_DSN: ${DB_DSN:-postgres://jan_user:jan_password@api-db:5432/jan_llm_api?sslmode=disable}
+      METRICS_PORT: ${METRICS_PORT:-9091}
+      
+      # Database
+      DB_POSTGRESQL_WRITE_DSN: ${DB_POSTGRESQL_WRITE_DSN:-postgres://${POSTGRES_USER:-jan_user}:${POSTGRES_PASSWORD:-jan_password}@${POSTGRES_HOST:-api-db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-jan_llm_api}?sslmode=disable}
+      DB_POSTGRESQL_READ1_DSN: ${DB_POSTGRESQL_READ1_DSN:-}
+      
+      # Keycloak / Auth
       KEYCLOAK_BASE_URL: ${KEYCLOAK_BASE_URL:-http://keycloak:8085}
       KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL:-}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-jan}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KEYCLOAK_ADMIN_REALM: ${KEYCLOAK_ADMIN_REALM:-master}
+      KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID:-admin-cli}
       BACKEND_CLIENT_ID: ${BACKEND_CLIENT_ID:-backend}
+      BACKEND_CLIENT_SECRET: ${BACKEND_CLIENT_SECRET:-}
       TARGET_CLIENT_ID: ${TARGET_CLIENT_ID:-jan-client}
       OAUTH_REDIRECT_URI: ${OAUTH_REDIRECT_URI:-http://localhost:8000/auth/callback}
       JWKS_URL: ${JWKS_URL:-http://keycloak:8085/realms/jan/protocol/openid-connect/certs}
       ISSUER: ${ISSUER:-http://keycloak:8085/realms/jan}
-      AUDIENCE: ${AUDIENCE:-account}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      LOG_FORMAT: ${LOG_FORMAT:-json}
-      AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
-      OTEL_ENABLED: ${OTEL_ENABLED:-false}
-      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-llm-api}
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4317}
-      MEDIA_RESOLVE_URL: ${MEDIA_RESOLVE_URL:-http://kong:8000/media/v1/media/resolve}
-      MEDIA_RESOLVE_TIMEOUT: ${MEDIA_RESOLVE_TIMEOUT:-5s}
-      KONG_ADMIN_URL: ${KONG_ADMIN_URL:-http://kong:8001}
+      AUDIENCE: ${AUDIENCE:-jan-client}
+      JWKS_REFRESH_INTERVAL: ${JWKS_REFRESH_INTERVAL:-5m}
+      AUTH_CLOCK_SKEW: ${AUTH_CLOCK_SKEW:-60s}
+      GUEST_ROLE: ${GUEST_ROLE:-guest}
+      
+      # API Keys
+      API_KEY_PREFIX: ${API_KEY_PREFIX:-sk_live}
       API_KEY_DEFAULT_TTL: ${API_KEY_DEFAULT_TTL:-2160h}
       API_KEY_MAX_TTL: ${API_KEY_MAX_TTL:-2160h}
       API_KEY_MAX_PER_USER: ${API_KEY_MAX_PER_USER:-5}
-      API_KEY_PREFIX: ${API_KEY_PREFIX:-sk_live}
+      
+      # Gateway
+      KONG_ADMIN_URL: ${KONG_ADMIN_URL:-http://kong:8001}
+      
+      # Model Provider
+      MODEL_PROVIDER_SECRET: ${MODEL_PROVIDER_SECRET:-jan-model-provider-secret-2024}
+      JAN_PROVIDER_CONFIGS: ${JAN_PROVIDER_CONFIGS:-true}
+      JAN_PROVIDER_CONFIG_SET: ${JAN_PROVIDER_CONFIG_SET:-default}
+      JAN_PROVIDER_CONFIGS_FILE: ${JAN_PROVIDER_CONFIGS_FILE:-config/providers.yml}
+      
+      # Model Sync
+      MODEL_SYNC_ENABLED: ${MODEL_SYNC_ENABLED:-true}
+      MODEL_SYNC_INTERVAL_MINUTES: ${MODEL_SYNC_INTERVAL_MINUTES:-60}
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      
+      # Features
+      AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
+      
+      # Observability
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-llm-api}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
+      
+      # Media Integration
+      MEDIA_RESOLVE_URL: ${MEDIA_RESOLVE_URL:-http://kong:8000/media/v1/media/resolve}
+      MEDIA_RESOLVE_TIMEOUT: ${MEDIA_RESOLVE_TIMEOUT:-5s}
     ports:
       - "${HTTP_PORT:-8080}:${HTTP_PORT:-8080}"
     depends_on:
@@ -56,23 +93,36 @@ services:
     env_file:
       - ${ENV_FILE:-../.env}
     environment:
+      # HTTP Server (using service-specific port)
       MEDIA_API_PORT: ${MEDIA_API_PORT:-8285}
-      MEDIA_DATABASE_URL: ${MEDIA_DATABASE_URL:-postgres://media:media@api-db:5432/media_api?sslmode=disable}
+      
+      # Database
+      DB_POSTGRESQL_WRITE_DSN: ${MEDIA_DB_POSTGRESQL_WRITE_DSN:-postgres://${MEDIA_DB_USER:-media}:${MEDIA_DB_PASSWORD:-media}@${POSTGRES_HOST:-api-db}:${POSTGRES_PORT:-5432}/${MEDIA_DB_NAME:-media_api}?sslmode=disable}
+      DB_POSTGRESQL_READ1_DSN: ${MEDIA_DB_POSTGRESQL_READ1_DSN:-}
+      
+      # S3 Storage
       MEDIA_S3_ENDPOINT: ${MEDIA_S3_ENDPOINT:-https://s3.menlo.ai}
       MEDIA_S3_PUBLIC_ENDPOINT: ${MEDIA_S3_PUBLIC_ENDPOINT:-}
       MEDIA_S3_REGION: ${MEDIA_S3_REGION:-us-west-2}
       MEDIA_S3_BUCKET: ${MEDIA_S3_BUCKET:-platform-dev}
-      MEDIA_S3_ACCESS_KEY: ${MEDIA_S3_ACCESS_KEY:-XXXXX}
-      MEDIA_S3_SECRET_KEY: ${MEDIA_S3_SECRET_KEY:-YYYY}
+      MEDIA_S3_ACCESS_KEY_ID: ${MEDIA_S3_ACCESS_KEY_ID:-XXXXX}
+      MEDIA_S3_SECRET_ACCESS_KEY: ${MEDIA_S3_SECRET_ACCESS_KEY:-YYYY}
       MEDIA_S3_USE_PATH_STYLE: ${MEDIA_S3_USE_PATH_STYLE:-true}
       MEDIA_S3_PRESIGN_TTL: ${MEDIA_S3_PRESIGN_TTL:-5m}
-      MEDIA_MAX_BYTES: ${MEDIA_MAX_BYTES:-20971520}
+      
+      # Media Configuration
+      MEDIA_MAX_UPLOAD_BYTES: ${MEDIA_MAX_UPLOAD_BYTES:-20971520}
       MEDIA_PROXY_DOWNLOAD: ${MEDIA_PROXY_DOWNLOAD:-true}
       MEDIA_RETENTION_DAYS: ${MEDIA_RETENTION_DAYS:-30}
       MEDIA_REMOTE_FETCH_TIMEOUT: ${MEDIA_REMOTE_FETCH_TIMEOUT:-15s}
+      
+      # Logging
+      MEDIA_LOG_LEVEL: ${MEDIA_LOG_LEVEL:-info}
+      
+      # Authentication
       AUTH_ENABLED: "true"
       AUTH_ISSUER: ${ISSUER:-http://localhost:8085/realms/jan}
-      AUTH_AUDIENCE: ${AUDIENCE:-}
+      AUTH_AUDIENCE: ${AUDIENCE:-jan-client}
       AUTH_JWKS_URL: ${JWKS_URL:-http://keycloak:8085/realms/jan/protocol/openid-connect/certs}
     ports:
       - "${MEDIA_API_PORT:-8285}:${MEDIA_API_PORT:-8285}"
@@ -96,19 +146,33 @@ services:
     env_file:
       - ${ENV_FILE:-../.env}
     environment:
-      HTTP_PORT: ${RESPONSE_API_PORT:-8082}
-      RESPONSE_DATABASE_URL: ${RESPONSE_DATABASE_URL:-postgres://response_api:response_api@api-db:5432/response_api?sslmode=disable}
-      LLM_API_URL: ${LLM_API_URL:-http://llm-api:8080}
-      MCP_TOOLS_URL: ${MCP_TOOLS_URL:-http://mcp-tools:8091}
-      MAX_TOOL_EXECUTION_DEPTH: ${MAX_TOOL_EXECUTION_DEPTH:-8}
-      TOOL_EXECUTION_TIMEOUT: ${TOOL_EXECUTION_TIMEOUT:-45s}
+      # HTTP Server (using service-specific port)
+      RESPONSE_API_PORT: ${RESPONSE_API_PORT:-8082}
+      
+      # Database
+      DB_POSTGRESQL_WRITE_DSN: ${RESPONSE_DB_POSTGRESQL_WRITE_DSN:-postgres://${RESPONSE_DB_USER:-response_api}:${RESPONSE_DB_PASSWORD:-response_api}@${POSTGRES_HOST:-api-db}:${POSTGRES_PORT:-5432}/${RESPONSE_DB_NAME:-response_api}?sslmode=disable}
+      DB_POSTGRESQL_READ1_DSN: ${RESPONSE_DB_POSTGRESQL_READ1_DSN:-}
+      
+      # Service URLs (with prefixes for clarity)
+      RESPONSE_LLM_API_URL: ${RESPONSE_LLM_API_URL:-http://llm-api:8080}
+      RESPONSE_MCP_TOOLS_URL: ${RESPONSE_MCP_TOOLS_URL:-http://mcp-tools:8091}
+      
+      # Tool Execution
+      RESPONSE_MAX_TOOL_DEPTH: ${RESPONSE_MAX_TOOL_DEPTH:-8}
+      RESPONSE_TOOL_TIMEOUT: ${RESPONSE_TOOL_TIMEOUT:-45s}
+      
+      # Logging
+      RESPONSE_LOG_LEVEL: ${RESPONSE_LOG_LEVEL:-info}
+      
+      # Authentication
       AUTH_ENABLED: "true"
       AUTH_ISSUER: ${ISSUER:-http://localhost:8085/realms/jan}
-      AUTH_AUDIENCE: ${AUDIENCE:-account}
+      AUTH_AUDIENCE: ${AUDIENCE:-jan-client}
       AUTH_JWKS_URL: ${JWKS_URL:-http://keycloak:8085/realms/jan/protocol/openid-connect/certs}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      ENABLE_TRACING: ${OTEL_ENABLED:-false}
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4317}
+      
+      # Observability
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
     ports:
       - "${RESPONSE_API_PORT:-8082}:${RESPONSE_API_PORT:-8082}"
     depends_on:

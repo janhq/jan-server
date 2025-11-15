@@ -1,0 +1,158 @@
+# Helm values generated from configuration
+# Environment: development
+# Version: 1.0.0
+
+global:
+    environment: development
+    imagePullPolicy: IfNotPresent
+    labels:
+        app.kubernetes.io/environment: development
+        app.kubernetes.io/name: jan-server
+        app.kubernetes.io/version: 1.0.0
+services:
+    llm-api:
+        enabled: true
+        replicaCount: 2
+        image:
+            repository: jan-llm-api
+            tag: 1.0.0
+        service:
+            type: ClusterIP
+            port: 8080
+            targetPort: 8080
+        resources:
+            limits:
+                cpu: 1000m
+                memory: 1Gi
+            requests:
+                cpu: 500m
+                memory: 512Mi
+        configMap:
+            LOG_FORMAT: json
+            LOG_LEVEL: info
+        secrets:
+            - database-credentials
+            - keycloak-credentials
+        healthChecks:
+            livenessProbe:
+                httpGet:
+                    path: /health
+                    port: 8080
+                initialDelaySeconds: 30
+                periodSeconds: 10
+                timeoutSeconds: 5
+                failureThreshold: 3
+            readinessProbe:
+                httpGet:
+                    path: /health
+                    port: 8080
+                initialDelaySeconds: 10
+                periodSeconds: 5
+                timeoutSeconds: 3
+                failureThreshold: 3
+    mcp-tools:
+        enabled: true
+        replicaCount: 2
+        image:
+            repository: jan-mcp-tools
+            tag: 1.0.0
+        service:
+            type: ClusterIP
+            port: 8091
+            targetPort: 8091
+        resources:
+            limits:
+                cpu: 500m
+                memory: 512Mi
+            requests:
+                cpu: 250m
+                memory: 256Mi
+        configMap:
+            LOG_FORMAT: json
+            LOG_LEVEL: info
+        healthChecks:
+            livenessProbe:
+                httpGet:
+                    path: /health
+                    port: 8091
+                initialDelaySeconds: 20
+                periodSeconds: 10
+                timeoutSeconds: 5
+                failureThreshold: 3
+            readinessProbe:
+                httpGet:
+                    path: /health
+                    port: 8091
+                initialDelaySeconds: 10
+                periodSeconds: 5
+                timeoutSeconds: 3
+                failureThreshold: 3
+    media-api:
+        enabled: true
+        replicaCount: 2
+        image:
+            repository: jan-media-api
+            tag: 1.0.0
+        service:
+            type: ClusterIP
+            port: 8285
+            targetPort: 8285
+        resources:
+            limits:
+                cpu: 500m
+                memory: 512Mi
+            requests:
+                cpu: 250m
+                memory: 256Mi
+    response-api:
+        enabled: true
+        replicaCount: 2
+        image:
+            repository: jan-response-api
+            tag: 1.0.0
+        service:
+            type: ClusterIP
+            port: 8082
+            targetPort: 8082
+        resources:
+            limits:
+                cpu: 500m
+                memory: 512Mi
+            requests:
+                cpu: 250m
+                memory: 256Mi
+infrastructure:
+    database:
+        postgres:
+            enabled: true
+            host: api-db
+            port: 5432
+            database: jan_llm_api
+            user: jan_user
+            passwordSecret: postgres-password
+            sslMode: disable
+            maxConnections: 100
+            resources:
+                limits:
+                    cpu: 2000m
+                    memory: 2Gi
+                requests:
+                    cpu: 1000m
+                    memory: 1Gi
+            persistence:
+                enabled: true
+                size: 10Gi
+    auth:
+        keycloak:
+            enabled: true
+            baseURL: http://localhost:8085
+            adminUser: admin
+            adminRealm: master
+            passwordSecret: keycloak-admin-password
+            resources:
+                limits:
+                    cpu: 1000m
+                    memory: 1Gi
+                requests:
+                    cpu: 500m
+                    memory: 512Mi

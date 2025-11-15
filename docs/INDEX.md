@@ -35,6 +35,12 @@ Development & Contributions
 │   ├── Hybrid Mode (Native + Docker)
 │   ├── Building Services
 │   └── Configuration Management
+├── [Configuration System](configuration/README.md)
+│   ├── Type-Safe YAML + Env Vars
+│   ├── CLI Tools (jan-cli)
+│   ├── K8s Values Generation
+│   ├── Validation & Drift Detection
+│   └── Service Migration Guide
 ├── [Testing Guide](guides/testing.md)
 │   ├── Unit Testing
 │   ├── Integration Testing
@@ -359,3 +365,4 @@ Architecture & System Design
 **Last Updated**: November 10, 2025  
 **Status**: ✅ Production Ready  
 **Next Review**: Q1 2026
+

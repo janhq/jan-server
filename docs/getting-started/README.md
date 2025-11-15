@@ -31,17 +31,27 @@ cd jan-server
 
 ### 2. Configure Environment
 
+Jan Server uses a centralized configuration system with YAML defaults and environment variable overrides.
+
 ```bash
 # Create .env file from template
 make env-create
 # or manually copy
 cp .env.template .env
 
-# Edit .env and set required values:
+# Edit .env for required secrets:
 # - SERPER_API_KEY (get from https://serper.dev)
 # - HF_TOKEN (get from https://huggingface.co/settings/tokens)
-# - Other passwords/secrets as needed
+# - Database passwords (change from defaults)
+# - Keycloak admin password
 ```
+
+**Configuration Details:**
+- **Base defaults:** `config/defaults.yaml` (auto-generated from code)
+- **Environment overrides:** `config/development.yaml`, `config/production.yaml`
+- **Secrets:** Use environment variables (highest priority)
+
+For more details, see [Configuration System](../configuration/README.md).
 
 ### 3. Run Setup
 
