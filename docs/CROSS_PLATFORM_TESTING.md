@@ -239,6 +239,8 @@ if isWindows() {
 
 2. **Execute Permissions**: The `jan-cli.sh` script may need `chmod +x jan-cli.sh` on first use.
 
+3. **GitHub Actions macOS Runners**: Docker is not pre-installed on macOS GitHub Actions runners. The CI workflow automatically installs Docker via Homebrew and Colima (a lightweight Docker runtime for macOS). For local testing, the `jan-cli dev setup` command gracefully skips Docker checks in CI environments when Docker is unavailable.
+
 ## Best Practices for Cross-Platform Development
 
 ### 1. Use jan-cli for Complex Operations

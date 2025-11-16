@@ -42,6 +42,25 @@ jobs:
       - name: Install dependencies
         run: go mod download
         
+      - name: Set up Docker on macOS
+        if: runner.os == 'macOS'
+        run: |
+          echo "Installing Docker on macOS..."
+          # Install Docker using Homebrew
+          brew install docker docker-compose colima
+          
+          # Start Colima (Docker runtime for macOS)
+          colima start --cpu 2 --memory 4
+          
+          # Wait for Docker to be ready
+          echo "Waiting for Docker to be ready..."
+          timeout 60 bash -c 'until docker info &> /dev/null; do sleep 2; done'
+          
+          # Verify Docker is working
+          docker --version
+          docker compose version
+          echo "Docker setup complete on macOS"
+        
       - name: Make jan-cli.sh executable
         run: chmod +x jan-cli.sh
         
@@ -58,9 +77,9 @@ jobs:
       - name: Verify .env file created
         run: |
           if [ -f .env ]; then
-            echo "✓ .env file created successfully"
+            echo ".env file created successfully"
           else
-            echo "✗ .env file not found"
+            echo "ERROR: .env file not found"
             exit 1
           fi
           
@@ -72,9 +91,9 @@ jobs:
       - name: Verify config files generated
         run: |
           if [ -f config/defaults.yaml ] && [ -f config/schema/config.schema.json ]; then
-            echo "✓ Configuration files generated successfully"
+            echo "Configuration files generated successfully"
           else
-            echo "✗ Configuration files not found"
+            echo "ERROR: Configuration files not found"
             exit 1
           fi
           
@@ -98,9 +117,9 @@ jobs:
           echo "Testing config export to JSON..."
           ./jan-cli.sh config export --format json > /tmp/config-test.json
           if [ -s /tmp/config-test.json ]; then
-            echo "✓ JSON export successful"
+            echo "JSON export successful"
           else
-            echo "✗ JSON export failed"
+            echo "ERROR: JSON export failed"
             exit 1
           fi
           
@@ -133,10 +152,10 @@ jobs:
       - name: Verify llm-api binary created
         run: |
           if [ -f services/llm-api/bin/llm-api ]; then
-            echo "✓ LLM API binary created successfully"
+            echo "LLM API binary created successfully"
             ls -lh services/llm-api/bin/llm-api
           else
-            echo "✗ LLM API binary not found"
+            echo "ERROR: LLM API binary not found"
             exit 1
           fi
           
@@ -158,9 +177,9 @@ jobs:
       - name: Verify binaries cleaned
         run: |
           if [ ! -d services/llm-api/bin ] && [ ! -d services/media-api/bin ]; then
-            echo "✓ Build artifacts cleaned successfully"
+            echo "Build artifacts cleaned successfully"
           else
-            echo "⚠ Some build artifacts still exist (may be expected)"
+            echo "WARNING: Some build artifacts still exist (may be expected)"
           fi
           
       - name: Test swagger generation
@@ -171,9 +190,9 @@ jobs:
       - name: Verify swagger files
         run: |
           if [ -f services/llm-api/docs/swagger/swagger.json ]; then
-            echo "✓ Swagger documentation generated"
+            echo "Swagger documentation generated"
           else
-            echo "✗ Swagger documentation not found"
+            echo "ERROR: Swagger documentation not found"
             exit 1
           fi
           
@@ -183,7 +202,7 @@ jobs:
           # Touch a source file to trigger rebuild
           touch cmd/jan-cli/main.go
           ./jan-cli.sh --help
-          echo "✓ Auto-rebuild detection works"
+          echo "Auto-rebuild detection works"
           
       - name: Run cross-platform compatibility tests
         run: |
@@ -191,15 +210,15 @@ jobs:
           
           # Check that wrapper script exists and is executable
           if [ -x jan-cli.sh ]; then
-            echo "✓ jan-cli.sh is executable"
+            echo "jan-cli.sh is executable"
           else
-            echo "✗ jan-cli.sh is not executable"
+            echo "ERROR: jan-cli.sh is not executable"
             exit 1
           fi
           
           # Verify Make targets exist
           make -n setup config-generate build-llm-api clean-build > /dev/null 2>&1
-          echo "✓ All Make targets are defined"
+          echo "All Make targets are defined"
           
           # Check Go version
           go version
@@ -251,9 +270,9 @@ jobs:
       - name: Verify .env file created
         run: |
           if (Test-Path .env) {
-            Write-Host "✓ .env file created successfully"
+            Write-Host "[OK] .env file created successfully"
           } else {
-            Write-Host "✗ .env file not found"
+            Write-Host "[ERROR] .env file not found"
             exit 1
           }
         shell: powershell
@@ -267,9 +286,9 @@ jobs:
       - name: Verify config files generated
         run: |
           if ((Test-Path config\defaults.yaml) -and (Test-Path config\schema\config.schema.json)) {
-            Write-Host "✓ Configuration files generated successfully"
+            Write-Host "[OK] Configuration files generated successfully"
           } else {
-            Write-Host "✗ Configuration files not found"
+            Write-Host "[ERROR] Configuration files not found"
             exit 1
           }
         shell: powershell
@@ -297,9 +316,9 @@ jobs:
           Write-Host "Testing config export to JSON..."
           .\jan-cli.ps1 config export --format json > config-test.json
           if (Test-Path config-test.json) {
-            Write-Host "✓ JSON export successful"
+            Write-Host "[OK] JSON export successful"
           } else {
-            Write-Host "✗ JSON export failed"
+            Write-Host "[ERROR] JSON export failed"
             exit 1
           }
         shell: powershell
@@ -331,10 +350,10 @@ jobs:
       - name: Verify llm-api binary created
         run: |
           if (Test-Path services\llm-api\bin\llm-api.exe) {
-            Write-Host "✓ LLM API binary created successfully"
+            Write-Host "[OK] LLM API binary created successfully"
             Get-Item services\llm-api\bin\llm-api.exe | Format-List
           } else {
-            Write-Host "✗ LLM API binary not found"
+            Write-Host "[ERROR] LLM API binary not found"
             exit 1
           }
         shell: powershell
@@ -360,9 +379,9 @@ jobs:
       - name: Verify binaries cleaned
         run: |
           if ((-not (Test-Path services\llm-api\bin)) -and (-not (Test-Path services\media-api\bin))) {
-            Write-Host "✓ Build artifacts cleaned successfully"
+            Write-Host "[OK] Build artifacts cleaned successfully"
           } else {
-            Write-Host "⚠ Some build artifacts still exist (may be expected)"
+            Write-Host "[WARNING] Some build artifacts still exist (may be expected)"
           }
         shell: powershell
         
@@ -375,9 +394,9 @@ jobs:
       - name: Verify swagger files
         run: |
           if (Test-Path services\llm-api\docs\swagger\swagger.json) {
-            Write-Host "✓ Swagger documentation generated"
+            Write-Host "[OK] Swagger documentation generated"
           } else {
-            Write-Host "✗ Swagger documentation not found"
+            Write-Host "[ERROR] Swagger documentation not found"
             exit 1
           }
         shell: powershell
@@ -388,7 +407,7 @@ jobs:
           # Touch a source file to trigger rebuild
           (Get-Item cmd\jan-cli\main.go).LastWriteTime = Get-Date
           .\jan-cli.ps1 --help
-          Write-Host "✓ Auto-rebuild detection works"
+          Write-Host "[OK] Auto-rebuild detection works"
         shell: powershell
         
       - name: Run cross-platform compatibility tests
@@ -397,9 +416,9 @@ jobs:
           
           # Check that wrapper script exists
           if (Test-Path jan-cli.ps1) {
-            Write-Host "✓ jan-cli.ps1 exists"
+            Write-Host "[OK] jan-cli.ps1 exists"
           } else {
-            Write-Host "✗ jan-cli.ps1 not found"
+            Write-Host "[ERROR] jan-cli.ps1 not found"
             exit 1
           }
           
@@ -440,9 +459,9 @@ jobs:
           echo ""
           
           if [ "${{ needs.test-unix.result }}" == "success" ] && [ "${{ needs.test-windows.result }}" == "success" ]; then
-            echo "✓ All cross-platform tests passed!"
+            echo "All cross-platform tests passed!"
             exit 0
           else
-            echo "✗ Some tests failed. Check the logs above."
+            echo "Some tests failed. Check the logs above."
             exit 1
           fi
