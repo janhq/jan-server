@@ -10,12 +10,15 @@ let fetchPromise: Promise<void> | null = null;
 interface ConversationState {
   conversations: Conversation[];
   loading: boolean;
+  loadingMore: boolean;
+  conversationCursor: string | null;
   // Branch state
   branches: ConversationBranch[];
   activeBranch: string;
   branchesLoading: boolean;
   // Conversation operations
   getConversations: () => Promise<void>;
+  loadMoreConversations: () => Promise<void>;
   getConversation: (conversationId: string) => Promise<Conversation>;
   getUIMessages: (
     conversationId: string,
@@ -66,7 +69,8 @@ interface ConversationState {
 export const useConversations = create<ConversationState>((set, get) => ({
   conversations: [],
   loading: false,
-  // Branch state
+  loadingMore: false,
+  conversationCursor: null,
   branches: [],
   activeBranch: BRANCH.MAIN,
   branchesLoading: false,
@@ -81,7 +85,10 @@ export const useConversations = create<ConversationState>((set, get) => ({
       try {
         set({ loading: true });
         const data = await conversationService.getConversations();
-        set({ conversations: data.data });
+        set({
+          conversations: data.data,
+          conversationCursor: data.has_more ? data.last_id : null,
+        });
       } catch (err) {
         console.error("Error fetching conversations:", err);
       } finally {
@@ -89,6 +96,25 @@ export const useConversations = create<ConversationState>((set, get) => ({
         fetchPromise = null;
       }
     })();
+  },
+  loadMoreConversations: async () => {
+    const { loadingMore, conversationCursor } = get();
+    if (loadingMore || !conversationCursor) {
+      return;
+    }
+    try {
+      set({ loadingMore: true });
+      const data =
+        await conversationService.getConversations(conversationCursor);
+      set((state) => ({
+        conversations: [...state.conversations, ...data.data],
+        conversationCursor: data.has_more ? data.last_id : null,
+      }));
+    } catch (err) {
+      console.error("Error loading more conversations:", err);
+    } finally {
+      set({ loadingMore: false });
+    }
   },
   getConversation: async (conversationId: string) => {
     try {
@@ -187,6 +213,8 @@ export const useConversations = create<ConversationState>((set, get) => ({
     set({
       conversations: [],
       loading: false,
+      loadingMore: false,
+      conversationCursor: null,
       branches: [],
       activeBranch: BRANCH.MAIN,
     });
