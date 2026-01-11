@@ -81,6 +81,7 @@ type CreateParams struct {
 type Service interface {
 	Create(ctx context.Context, params CreateParams) (*Response, error)
 	GetByPublicID(ctx context.Context, publicID string) (*Response, error)
+	GetWithPlanDetails(ctx context.Context, publicID string) (*ResponseWithPlan, error)
 	Cancel(ctx context.Context, publicID string) (*Response, error)
 	ListConversationItems(ctx context.Context, publicID string) ([]ConversationItem, error)
 }
@@ -90,6 +91,12 @@ type ConversationItem struct {
 	Role    string      `json:"role"`
 	Content interface{} `json:"content"`
 	Status  string      `json:"status"`
+}
+
+// ResponseWithPlan combines a response with its execution plan details.
+type ResponseWithPlan struct {
+	Response    *Response   `json:"response"`
+	PlanDetails interface{} `json:"plan,omitempty"` // *plan.Plan with tasks/steps
 }
 
 // StreamObserver receives streaming lifecycle events.

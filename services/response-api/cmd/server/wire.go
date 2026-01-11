@@ -11,6 +11,8 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 
 	"jan-server/services/response-api/internal/config"
+	"jan-server/services/response-api/internal/domain/agent"
+	"jan-server/services/response-api/internal/domain/agent/planners"
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/conversation"
 	"jan-server/services/response-api/internal/domain/llm"
@@ -44,13 +46,16 @@ var responseSet = wire.NewSet(
 	wire.Bind(new(conversation.ItemRepository), new(*conversationrepo.ItemRepository)),
 	newLLMProvider,
 	wire.Bind(new(llm.Provider), new(*llmprovider.Client)),
+	wire.Bind(new(llm.ModelInfoProvider), new(*llmprovider.Client)),
 	newMCPClient,
 	wire.Bind(new(tool.MCPClient), new(*mcp.Client)),
+	wire.Bind(new(planners.MCPClient), new(*mcp.Client)),
 	newOrchestrator,
 	newWebhookService,
 	wire.Bind(new(webhook.Service), new(*webhook.HTTPService)),
-	newResponseService,
 	plan.NewService,
+	newAgentRegistry,
+	newResponseService,
 	artifact.NewService,
 )
 
@@ -110,6 +115,24 @@ func newWebhookService(log zerolog.Logger) *webhook.HTTPService {
 	return webhook.NewHTTPService(log)
 }
 
+func newAgentRegistry(planService plan.Service, mcpClient tool.MCPClient) agent.Registry {
+	registry := agent.NewRegistry()
+
+	// Register the deep research planner
+	deepResearchPlanner := planners.NewDeepResearchPlanner(planService)
+	if err := registry.RegisterPlanner(deepResearchPlanner); err != nil {
+		// Log but don't fail - planner registration is not critical
+		_ = err
+	}
+
+	// Register the deep research executor for tool calls and LLM calls
+	deepResearchExecutor := planners.NewDeepResearchExecutor(mcpClient)
+	_ = registry.RegisterExecutor(plan.ActionTypeToolCall, deepResearchExecutor)
+	_ = registry.RegisterExecutor(plan.ActionTypeLLMCall, deepResearchExecutor)
+
+	return registry
+}
+
 func newResponseService(
 	repo responseDomain.Repository,
 	conversations conversation.Repository,
@@ -119,7 +142,9 @@ func newResponseService(
 	mcpClient tool.MCPClient,
 	modelInfoProvider llm.ModelInfoProvider,
 	webhookService webhook.Service,
+	agentRegistry agent.Registry,
+	planService plan.Service,
 	log zerolog.Logger,
 ) responseDomain.Service {
-	return responseDomain.NewService(repo, conversations, conversationItems, toolRepo, orchestrator, mcpClient, modelInfoProvider, webhookService, log)
+	return responseDomain.NewService(repo, conversations, conversationItems, toolRepo, orchestrator, mcpClient, modelInfoProvider, webhookService, agentRegistry, planService, log)
 }

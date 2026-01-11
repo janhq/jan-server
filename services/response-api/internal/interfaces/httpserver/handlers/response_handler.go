@@ -136,6 +136,25 @@ func (h *ResponseHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, responses.FromDomain(resp))
 }
 
+// GetFull handles GET /v1/responses/:id/full
+// @Summary Get a response with full plan details
+// @Description Returns the response along with its execution plan, tasks, and steps in a single call
+// @Tags Responses
+// @Produce json
+// @Param response_id path string true "Response ID"
+// @Success 200 {object} responses.FullResponsePayload
+// @Failure 404 {object} map[string]string
+// @Router /v1/responses/{response_id}/full [get]
+func (h *ResponseHandler) GetFull(c *gin.Context) {
+	id := c.Param("response_id")
+	rwp, err := h.service.GetWithPlanDetails(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, responses.FromDomainWithPlan(rwp, responses.MapPlanDetailFromInterface))
+}
+
 // Cancel handles POST /v1/responses/:id/cancel
 // @Summary Cancel a response
 // @Tags Responses

@@ -94,6 +94,7 @@ const (
 	TaskTypeTransform    TaskType = "transform"
 	TaskTypeUserInput    TaskType = "user_input"
 	TaskTypeFinalization TaskType = "finalization"
+	TaskTypeExecution    TaskType = "execution"
 )
 
 // String returns the string representation of the task type.

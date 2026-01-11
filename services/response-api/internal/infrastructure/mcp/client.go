@@ -102,7 +102,6 @@ func (c *Client) ListTools(ctx context.Context) ([]tool.MCPTool, error) {
 
 // CallTool triggers a tool execution via JSON-RPC tools/call.
 func (c *Client) CallTool(ctx context.Context, req tool.CallRequest) (*tool.Result, error) {
-	mergedArgs := mergeContextIntoArguments(req.Arguments, req.RequestID, req.ConversationID, req.UserID, req.ToolCallID)
 	rpcID := req.ToolCallID
 	if strings.TrimSpace(rpcID) == "" {
 		rpcID = req.Name
@@ -116,14 +115,23 @@ func (c *Client) CallTool(ctx context.Context, req tool.CallRequest) (*tool.Resu
 		Str("user_id", req.UserID).
 		Msg("Calling MCP tool")
 
+	// Build params with arguments and _meta for context (MCP standard way to pass metadata)
+	params := map[string]interface{}{
+		"name":      req.Name,
+		"arguments": req.Arguments,
+	}
+	
+	// Add context IDs to _meta field (not merged into arguments)
+	meta := buildMetaContext(req.RequestID, req.ConversationID, req.UserID, req.ToolCallID)
+	if len(meta) > 0 {
+		params["_meta"] = meta
+	}
+
 	payload := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"method":  "tools/call",
-		"params": map[string]interface{}{
-			"name":      req.Name,
-			"arguments": mergedArgs,
-		},
-		"id": rpcID,
+		"params":  params,
+		"id":      rpcID,
 	}
 
 	resp, err := c.httpClient.R().
@@ -185,25 +193,21 @@ func (r *rpcError) Error() string {
 	return fmt.Sprintf("mcp error (%d): %s", r.Code, r.Message)
 }
 
-func mergeContextIntoArguments(args map[string]interface{}, requestID, conversationID, userID, toolCallID string) map[string]interface{} {
-	merged := make(map[string]interface{})
-	for k, v := range args {
-		merged[k] = v
+func buildMetaContext(requestID, conversationID, userID, toolCallID string) map[string]interface{} {
+	meta := make(map[string]interface{})
+
+	if strings.TrimSpace(requestID) != "" {
+		meta["request_id"] = requestID
+	}
+	if strings.TrimSpace(conversationID) != "" {
+		meta["conversation_id"] = conversationID
+	}
+	if strings.TrimSpace(userID) != "" {
+		meta["user_id"] = userID
+	}
+	if strings.TrimSpace(toolCallID) != "" {
+		meta["tool_call_id"] = toolCallID
 	}
 
-	setIfAbsent := func(key, val string) {
-		if strings.TrimSpace(val) == "" {
-			return
-		}
-		if _, exists := merged[key]; !exists {
-			merged[key] = val
-		}
-	}
-
-	setIfAbsent("request_id", requestID)
-	setIfAbsent("conversation_id", conversationID)
-	setIfAbsent("user_id", userID)
-	setIfAbsent("tool_call_id", toolCallID)
-
-	return merged
+	return meta
 }

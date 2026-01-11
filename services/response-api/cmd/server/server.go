@@ -12,6 +12,10 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 
 	"jan-server/services/response-api/internal/config"
+	"jan-server/services/response-api/internal/domain/agent"
+	"jan-server/services/response-api/internal/domain/agent/planners"
+	"jan-server/services/response-api/internal/domain/artifact"
+	"jan-server/services/response-api/internal/domain/plan"
 	"jan-server/services/response-api/internal/domain/response"
 	"jan-server/services/response-api/internal/domain/tool"
 	"jan-server/services/response-api/internal/infrastructure/auth"
@@ -28,8 +32,6 @@ import (
 	"jan-server/services/response-api/internal/interfaces/httpserver"
 	"jan-server/services/response-api/internal/webhook"
 	"jan-server/services/response-api/internal/worker"
-	"jan-server/services/response-api/internal/domain/artifact"
-	"jan-server/services/response-api/internal/domain/plan"
 )
 
 // @title Response API
@@ -114,6 +116,16 @@ func main() {
 	// Initialize webhook service
 	webhookService := webhook.NewHTTPService(log)
 
+	// Initialize plan service first (needed for agent registry)
+	planService := plan.NewService(planRepository)
+
+	// Initialize agent registry with planners
+	agentRegistry := agent.NewRegistry()
+	deepResearchPlanner := planners.NewDeepResearchPlanner(planService)
+	if err := agentRegistry.RegisterPlanner(deepResearchPlanner); err != nil {
+		log.Warn().Err(err).Msg("failed to register deep research planner")
+	}
+
 	// Initialize response service with webhook support
 	responseService := response.NewService(
 		responseRepository,
@@ -124,9 +136,10 @@ func main() {
 		mcpClient,
 		llmClient, // Also implements ModelInfoProvider
 		webhookService,
+		agentRegistry,
+		planService,
 		log,
 	)
-	planService := plan.NewService(planRepository)
 	artifactService := artifact.NewService(artifactRepository)
 
 	// Initialize background task infrastructure

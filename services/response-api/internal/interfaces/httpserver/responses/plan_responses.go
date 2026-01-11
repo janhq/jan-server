@@ -156,6 +156,20 @@ func MapPlanDetailToResponse(p *plan.Plan) PlanDetailResponse {
 	return resp
 }
 
+// MapPlanDetailFromInterface converts an interface{} (expected to be *plan.Plan) to PlanDetailResponse.
+// This is used for the full response endpoint where plan details come from the response service.
+func MapPlanDetailFromInterface(p interface{}) *PlanDetailResponse {
+	if p == nil {
+		return nil
+	}
+	planPtr, ok := p.(*plan.Plan)
+	if !ok {
+		return nil
+	}
+	resp := MapPlanDetailToResponse(planPtr)
+	return &resp
+}
+
 // MapPlanProgressToResponse converts a domain plan progress to an API response.
 func MapPlanProgressToResponse(p *plan.PlanProgress) PlanProgressResponse {
 	resp := PlanProgressResponse{

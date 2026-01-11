@@ -15,7 +15,7 @@ type ConversationItem struct {
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 
 	ConversationID    uint                  `gorm:"index:idx_item_conversation_branch;index:idx_item_conversation_sequence;not null"`
-	PublicID          string                `gorm:"type:varchar(50);uniqueIndex;not null"`
+	PublicID          string                `gorm:"type:varchar(50);index:idx_conversation_items_public_id"`
 	Object            string                `gorm:"type:varchar(50);not null;default:'conversation.item'"`
 	Branch            string                `gorm:"type:varchar(50);index:idx_item_conversation_branch;not null;default:'MAIN'"`
 	SequenceNumber    int                   `gorm:"column:sequence;index:idx_item_conversation_sequence;not null"`
