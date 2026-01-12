@@ -20,9 +20,12 @@ const principalContextKey = "principal"
 // AuthMiddleware validates API key headers injected by Kong or JWT bearer tokens issued by Keycloak.
 func AuthMiddleware(validator *authvalidator.KeycloakValidator, apiKeyService *apikey.Service, logger zerolog.Logger, fallbackIssuer string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// First check if Bearer token contains an API key (sk_*)
+		// First check X-API-Key header (used by internal services like response-api)
+		xAPIKeyPrincipal, hasXAPIKey := principalFromXAPIKey(c, apiKeyService, fallbackIssuer, logger)
+
+		// Then check if Bearer token contains an API key (sk_*)
 		bearerAPIKeyPrincipal, hasBearerAPIKey := principalFromBearerAPIKey(c, apiKeyService, fallbackIssuer, logger)
-		
+
 		apiPrincipal, hasAPIKey := principalFromAPIKey(c, fallbackIssuer)
 		jwtPrincipal, hasJWT, jwtErr := principalFromJWT(c, validator)
 
@@ -33,6 +36,9 @@ func AuthMiddleware(validator *authvalidator.KeycloakValidator, apiKeyService *a
 		}
 
 		switch {
+		case hasXAPIKey:
+			// X-API-Key header takes highest precedence (internal service-to-service calls)
+			setPrincipal(c, xAPIKeyPrincipal)
 		case hasBearerAPIKey:
 			// Bearer API key takes precedence (user explicitly sent sk_* in Authorization header)
 			setPrincipal(c, bearerAPIKeyPrincipal)
@@ -189,7 +195,7 @@ func principalFromBearerAPIKey(c *gin.Context, apiKeyService *apikey.Service, fa
 	logger.Info().
 		Str("token_prefix", token[:5]+"...").
 		Msg("API key detected in Authorization header - validating directly")
-	
+
 	// Validate the API key using the service
 	userInfo, err := apiKeyService.ValidateAPIKey(context.Background(), token)
 	if err != nil {
@@ -215,6 +221,46 @@ func principalFromBearerAPIKey(c *gin.Context, apiKeyService *apikey.Service, fa
 		Email:      userInfo.Email,
 		Credentials: map[string]string{
 			"api_key_validation": "direct",
+			"user_id":            userInfo.UserID,
+		},
+	}, true
+}
+
+// principalFromXAPIKey checks if the X-API-Key header contains a valid API key
+// and validates it using the API key service. This is used for internal service-to-service calls.
+func principalFromXAPIKey(c *gin.Context, apiKeyService *apikey.Service, fallbackIssuer string, logger zerolog.Logger) (domain.Principal, bool) {
+	if apiKeyService == nil {
+		return domain.Principal{}, false
+	}
+
+	apiKey := strings.TrimSpace(c.GetHeader("X-API-Key"))
+	if apiKey == "" {
+		return domain.Principal{}, false
+	}
+
+	// Validate the API key using the service
+	userInfo, err := apiKeyService.ValidateAPIKey(context.Background(), apiKey)
+	if err != nil {
+		logger.Warn().
+			Err(err).
+			Msg("X-API-Key validation failed")
+		return domain.Principal{}, false
+	}
+
+	// Create principal from validated API key
+	logger.Debug().
+		Str("user_id", userInfo.UserID).
+		Msg("X-API-Key validated successfully")
+
+	return domain.Principal{
+		ID:         userInfo.UserID,
+		AuthMethod: domain.AuthMethodAPIKey,
+		Subject:    userInfo.Subject,
+		Issuer:     fallbackIssuer,
+		Username:   userInfo.Username,
+		Email:      userInfo.Email,
+		Credentials: map[string]string{
+			"api_key_validation": "x-api-key",
 			"user_id":            userInfo.UserID,
 		},
 	}, true

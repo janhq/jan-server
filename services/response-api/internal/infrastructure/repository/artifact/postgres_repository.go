@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/google/uuid"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
 	domain "jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/infrastructure/database/entities"
+	"jan-server/services/response-api/internal/utils/idgen"
 	"jan-server/services/response-api/internal/utils/platformerrors"
 )
 
@@ -50,7 +50,18 @@ func (r *PostgresRepository) Create(ctx context.Context, artifact *domain.Artifa
 
 	entity := mapArtifactToEntity(artifact, responseID, planID, parentID)
 	if entity.PublicID == "" {
-		entity.PublicID = uuid.New().String()
+		publicID, err := idgen.GenerateSecureID("art", 16)
+		if err != nil {
+			return platformerrors.NewError(
+				ctx,
+				platformerrors.LayerRepository,
+				platformerrors.ErrorTypeInternal,
+				"failed to generate artifact ID",
+				err,
+				"artifact-create-id-001",
+			)
+		}
+		entity.PublicID = publicID
 	}
 
 	if err := r.db.WithContext(ctx).Create(entity).Error; err != nil {
@@ -95,21 +106,21 @@ func (r *PostgresRepository) Update(ctx context.Context, artifact *domain.Artifa
 	entity := mapArtifactToEntity(artifact, responseID, planID, parentID)
 
 	updates := map[string]interface{}{
-		"response_id":       entity.ResponseID,
-		"plan_id":           entity.PlanID,
-		"content_type":      entity.ContentType,
-		"mime_type":         entity.MimeType,
-		"title":             entity.Title,
-		"content":           entity.Content,
-		"storage_path":      entity.StoragePath,
-		"size_bytes":        entity.SizeBytes,
-		"version":           entity.Version,
-		"parent_id":         entity.ParentID,
-		"is_latest":         entity.IsLatest,
-		"retention_policy":  entity.RetentionPolicy,
-		"metadata":          entity.Metadata,
-		"updated_at":        entity.UpdatedAt,
-		"expires_at":        entity.ExpiresAt,
+		"response_id":      entity.ResponseID,
+		"plan_id":          entity.PlanID,
+		"content_type":     entity.ContentType,
+		"mime_type":        entity.MimeType,
+		"title":            entity.Title,
+		"content":          entity.Content,
+		"storage_path":     entity.StoragePath,
+		"size_bytes":       entity.SizeBytes,
+		"version":          entity.Version,
+		"parent_id":        entity.ParentID,
+		"is_latest":        entity.IsLatest,
+		"retention_policy": entity.RetentionPolicy,
+		"metadata":         entity.Metadata,
+		"updated_at":       entity.UpdatedAt,
+		"expires_at":       entity.ExpiresAt,
 	}
 
 	if err := r.db.WithContext(ctx).

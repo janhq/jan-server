@@ -58,9 +58,13 @@ func (v *Validator) Middleware() gin.HandlerFunc {
 			return
 		}
 
-		tokenString := bearerToken(c.GetHeader("Authorization"))
+		// Try X-API-Key first, then fall back to Authorization Bearer
+		tokenString := strings.TrimSpace(c.GetHeader("X-API-Key"))
 		if tokenString == "" {
-			abortUnauthorized(c, "missing bearer token")
+			tokenString = bearerToken(c.GetHeader("Authorization"))
+		}
+		if tokenString == "" {
+			abortUnauthorized(c, "missing API key or bearer token")
 			return
 		}
 

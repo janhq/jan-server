@@ -2,6 +2,8 @@ package mcp
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -59,6 +61,9 @@ func (a *AIOMCP) RegisterTools(server *mcpsdk.Server) {
 
 	// Register code execution (Python/Node.js)
 	a.registerCodeExecute(server)
+
+	// Register package installation
+	a.registerInstallPackages(server)
 
 	// Register utility tools
 	a.registerMarkitdownConvert(server)
@@ -303,8 +308,11 @@ func (a *AIOMCP) registerCodeExecute(server *mcpsdk.Server) {
 			Str("tool", "aio_code_execute").
 			Str("language", input.Language).
 			Int("code_len", len(input.Code)).
+			Str("code_hash", hashString(input.Code)).
 			Str("tool_call_id", callCtx["tool_call_id"]).
 			Str("request_id", callCtx["request_id"]).
+			Str("conversation_id", callCtx["conversation_id"]).
+			Str("user_id", callCtx["user_id"]).
 			Msg("AIO code execute requested")
 
 		// Default to python if not specified
@@ -313,52 +321,102 @@ func (a *AIOMCP) registerCodeExecute(server *mcpsdk.Server) {
 			lang = "python"
 		}
 
-		var output map[string]any
-		var execErr error
+		var (
+			output          map[string]any
+			execErr         error
+			stdout          string
+			stderr          string
+			exitCode        int
+			execStatus      string
+			responsePreview string
+		)
 
 		switch lang {
 		case "python":
-			result, err := a.client.Jupyter().ExecuteCode(ctx, &sdkgo.JupyterExecuteRequest{
-				Code: input.Code,
+			// Use Code.ExecuteCode for unified runtime (same environment as Shell)
+			// This ensures pip-installed packages are available
+			result, err := a.client.Code().ExecuteCode(ctx, &sdkgo.CodeExecuteRequest{
+				Language: sdkgo.LanguagePython,
+				Code:     input.Code,
 			})
 			if err != nil {
 				execErr = err
 			} else {
-				// Parse Jupyter outputs
-				var outputs []string
-				for _, out := range result.Data.Outputs {
-					if out.Text != nil && *out.Text != "" {
-						outputs = append(outputs, *out.Text)
-					}
-				}
-				output = map[string]any{
-					"status":      result.Data.Status,
-					"success":     result.Data.Status == "ok",
-					"outputs":     outputs,
-					"duration_ms": time.Since(startTime).Milliseconds(),
-				}
-			}
-		case "nodejs", "javascript":
-			result, err := a.client.Nodejs().ExecuteCode(ctx, &sdkgo.NodeJsExecuteRequest{
-				Code: input.Code,
-			})
-			if err != nil {
-				execErr = err
-			} else {
-				var stdout, stderr string
+				responsePreview = marshalForLog(result, 800)
 				if result.Data.Stdout != nil {
 					stdout = *result.Data.Stdout
 				}
 				if result.Data.Stderr != nil {
 					stderr = *result.Data.Stderr
 				}
+				if result.Data.ExitCode != nil {
+					exitCode = *result.Data.ExitCode
+				}
+				execStatus = result.Data.Status
 				output = map[string]any{
-					"status":      result.Data.Status,
-					"success":     result.Data.Status == "ok",
+					"status":      execStatus,
+					"success":     execStatus == "ok",
 					"stdout":      stdout,
 					"stderr":      stderr,
-					"exit_code":   result.Data.ExitCode,
+					"exit_code":   exitCode,
 					"duration_ms": time.Since(startTime).Milliseconds(),
+				}
+				if execStatus != "ok" {
+					// Include stderr in error message for Python
+					errMsg := fmt.Sprintf("code execution status: %s", execStatus)
+					if stderr != "" {
+						if len(stderr) > 500 {
+							stderr = stderr[:500] + "..."
+						}
+						errMsg = fmt.Sprintf("%s\nstderr: %s", errMsg, stderr)
+					}
+					if exitCode != 0 {
+						errMsg = fmt.Sprintf("%s (exit code: %d)", errMsg, exitCode)
+					}
+					execErr = fmt.Errorf("%s", errMsg)
+				}
+			}
+		case "nodejs", "javascript":
+			// Use Code.ExecuteCode for unified runtime (same environment as Shell)
+			result, err := a.client.Code().ExecuteCode(ctx, &sdkgo.CodeExecuteRequest{
+				Language: sdkgo.LanguageJavascript,
+				Code:     input.Code,
+			})
+			if err != nil {
+				execErr = err
+			} else {
+				responsePreview = marshalForLog(result, 800)
+				if result.Data.Stdout != nil {
+					stdout = *result.Data.Stdout
+				}
+				if result.Data.Stderr != nil {
+					stderr = *result.Data.Stderr
+				}
+				if result.Data.ExitCode != nil {
+					exitCode = *result.Data.ExitCode
+				}
+				execStatus = result.Data.Status
+				output = map[string]any{
+					"status":      execStatus,
+					"success":     execStatus == "ok",
+					"stdout":      stdout,
+					"stderr":      stderr,
+					"exit_code":   exitCode,
+					"duration_ms": time.Since(startTime).Milliseconds(),
+				}
+				if execStatus != "ok" {
+					// Include stderr in error message for Node.js
+					errMsg := fmt.Sprintf("code execution status: %s", execStatus)
+					if stderr != "" {
+						if len(stderr) > 500 {
+							stderr = stderr[:500] + "..."
+						}
+						errMsg = fmt.Sprintf("%s\nstderr: %s", errMsg, stderr)
+					}
+					if exitCode != 0 {
+						errMsg = fmt.Sprintf("%s (exit code: %d)", errMsg, exitCode)
+					}
+					execErr = fmt.Errorf("%s", errMsg)
 				}
 			}
 		default:
@@ -366,21 +424,202 @@ func (a *AIOMCP) registerCodeExecute(server *mcpsdk.Server) {
 		}
 
 		duration := time.Since(startTime)
-		status := "success"
+		metricsStatus := "success"
 		if execErr != nil {
-			status = "error"
+			metricsStatus = "error"
 		}
-		metrics.RecordToolCall("aio_code_execute", "aio-sandbox", status, duration.Seconds())
+		metrics.RecordToolCall("aio_code_execute", "aio-sandbox", metricsStatus, duration.Seconds())
 
 		if execErr != nil {
-			log.Error().Err(execErr).Str("tool", "aio_code_execute").Msg("Code execution failed")
+			log.Error().
+				Err(execErr).
+				Str("tool", "aio_code_execute").
+				Str("language", lang).
+				Str("exec_status", execStatus).
+				Str("metrics_status", metricsStatus).
+				Int("exit_code", exitCode).
+				Str("code_hash", hashString(input.Code)).
+				Int("code_len", len(input.Code)).
+				Int("stdout_len", len(stdout)).
+				Int("stderr_len", len(stderr)).
+				Str("stderr_preview", truncateString(stderr, 200)).
+				Str("response_preview", responsePreview).
+				Str("tool_call_id", callCtx["tool_call_id"]).
+				Str("request_id", callCtx["request_id"]).
+				Str("conversation_id", callCtx["conversation_id"]).
+				Str("user_id", callCtx["user_id"]).
+				Msg("Code execution failed")
 			return nil, nil, fmt.Errorf("code execution failed: %w", execErr)
 		}
+
+		log.Info().
+			Str("tool", "aio_code_execute").
+			Str("language", lang).
+			Str("exec_status", execStatus).
+			Str("metrics_status", metricsStatus).
+			Int("exit_code", exitCode).
+			Int("stdout_len", len(stdout)).
+			Int("stderr_len", len(stderr)).
+			Int64("duration_ms", duration.Milliseconds()).
+			Str("tool_call_id", callCtx["tool_call_id"]).
+			Str("request_id", callCtx["request_id"]).
+			Str("conversation_id", callCtx["conversation_id"]).
+			Str("user_id", callCtx["user_id"]).
+			Msg("AIO code execute completed")
 
 		outputJSON, _ := json.Marshal(output)
 		return &mcpsdk.CallToolResult{
 			Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: string(outputJSON)}},
 		}, nil, nil
+	})
+}
+
+// --- Package Installation ---
+
+type InstallPackagesArgs struct {
+	Packages []string `json:"packages"`
+}
+
+func (a *AIOMCP) registerInstallPackages(server *mcpsdk.Server) {
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
+		Name:        "aio_install_packages",
+		Description: "Install Python packages using pip in the AIO Sandbox. Use this before running code that requires external libraries.",
+	}, func(ctx context.Context, req *mcpsdk.CallToolRequest, input InstallPackagesArgs) (*mcpsdk.CallToolResult, map[string]any, error) {
+		startTime := time.Now()
+		callCtx := extractAllContext(req)
+
+		if len(input.Packages) == 0 {
+			return nil, nil, fmt.Errorf("no packages specified")
+		}
+
+		// Build pip install command
+		packagesStr := ""
+		for i, pkg := range input.Packages {
+			if i > 0 {
+				packagesStr += " "
+			}
+			packagesStr += pkg
+		}
+		command := fmt.Sprintf("pip install --quiet --disable-pip-version-check %s", packagesStr)
+
+		log.Info().
+			Str("tool", "aio_install_packages").
+			Strs("packages", input.Packages).
+			Str("command", command).
+			Str("tool_call_id", callCtx["tool_call_id"]).
+			Str("request_id", callCtx["request_id"]).
+			Msg("AIO install packages requested")
+
+		var (
+			status         = "success"
+			execErr        error
+			pipOutput      string
+			exitCode       int
+			responsePreview string
+		)
+
+		packagesJSON, _ := json.Marshal(input.Packages)
+		installCode := fmt.Sprintf(
+			"import subprocess, sys\npkgs = %s\nproc = subprocess.run([sys.executable, '-m', 'pip', 'install', '--quiet', '--disable-pip-version-check', *pkgs], capture_output=True, text=True)\nprint(proc.stdout)\nprint(proc.stderr, file=sys.stderr)\nif proc.returncode != 0:\n    raise RuntimeError(f\"pip install failed with exit code {proc.returncode}\")\n",
+			string(packagesJSON),
+		)
+
+		codeResult, err := a.client.Code().ExecuteCode(ctx, &sdkgo.CodeExecuteRequest{
+			Language: sdkgo.LanguagePython,
+			Code:     installCode,
+		})
+		if err != nil {
+			execErr = err
+		} else {
+			responsePreview = marshalForLog(codeResult, 800)
+			if codeResult.Data.Stdout != nil {
+				pipOutput = *codeResult.Data.Stdout
+			}
+			if codeResult.Data.Stderr != nil {
+				if pipOutput != "" {
+					pipOutput += "\n"
+				}
+				pipOutput += *codeResult.Data.Stderr
+			}
+			if codeResult.Data.ExitCode != nil {
+				exitCode = *codeResult.Data.ExitCode
+			}
+			if codeResult.Data.Status != "ok" {
+				execErr = fmt.Errorf("code execution status: %s", codeResult.Data.Status)
+			}
+		}
+
+		if execErr != nil {
+			log.Warn().
+				Err(execErr).
+				Strs("packages", input.Packages).
+				Str("response_preview", responsePreview).
+				Msg("Code-based package install failed; falling back to shell")
+
+			result, err := a.client.Shell().ExecCommand(ctx, &sdkgo.ShellExecRequest{
+				Command: command,
+			})
+			if err != nil {
+				status = "error"
+				execErr = err
+			} else if result.Data.ExitCode != nil && *result.Data.ExitCode != 0 {
+				status = "error"
+				execErr = fmt.Errorf("pip install failed with exit code %d: %s", *result.Data.ExitCode, result.Data.Output)
+			} else {
+				execErr = nil
+			}
+			if result.Data.Output != nil {
+				pipOutput = *result.Data.Output
+			}
+			if result.Data.ExitCode != nil {
+				exitCode = *result.Data.ExitCode
+			}
+		}
+
+		duration := time.Since(startTime)
+
+		metrics.RecordToolCall("aio_install_packages", "aio-sandbox", status, duration.Seconds())
+
+		if execErr != nil {
+			log.Error().Err(execErr).
+				Strs("packages", input.Packages).
+				Str("tool", "aio_install_packages").
+				Msg("Package installation failed")
+
+			output := map[string]any{
+				"status":             "error",
+				"success":            false,
+				"packages_requested": input.Packages,
+				"pip_output":         pipOutput,
+				"exit_code":          exitCode,
+				"duration_ms":        duration.Milliseconds(),
+				"error":              execErr.Error(),
+			}
+			outputJSON, _ := json.Marshal(output)
+			return &mcpsdk.CallToolResult{
+				Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: string(outputJSON)}},
+				IsError: true,
+			}, output, nil
+		}
+
+		log.Info().
+			Strs("packages", input.Packages).
+			Int64("duration_ms", duration.Milliseconds()).
+			Msg("Packages installed successfully")
+
+		output := map[string]any{
+			"status":             "success",
+			"success":            true,
+			"packages_installed": input.Packages,
+			"pip_output":         pipOutput,
+			"exit_code":          exitCode,
+			"duration_ms":        duration.Milliseconds(),
+		}
+
+		outputJSON, _ := json.Marshal(output)
+		return &mcpsdk.CallToolResult{
+			Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: string(outputJSON)}},
+		}, output, nil
 	})
 }
 
@@ -431,4 +670,20 @@ func truncateString(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+func hashString(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
+}
+
+func marshalForLog(v any, maxLen int) string {
+	if v == nil {
+		return ""
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return truncateString(string(raw), maxLen)
 }

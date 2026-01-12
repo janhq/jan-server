@@ -10,6 +10,7 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/rs/zerolog/log"
 
+	"jan-server/services/response-api/internal/domain/llm"
 	"jan-server/services/response-api/internal/domain/tool"
 )
 
@@ -25,6 +26,19 @@ func NewClient(baseURL string) *Client {
 			SetBaseURL(baseURL).
 			SetHeader("Content-Type", "application/json"),
 	}
+}
+
+// setAuthHeader adds X-API-Key header to the request if a token is available in context.
+func setAuthHeader(ctx context.Context, req *resty.Request) {
+	token := strings.TrimSpace(llm.AuthTokenFromContext(ctx))
+	if token == "" {
+		return
+	}
+	if strings.HasPrefix(strings.ToLower(token), "bearer ") {
+		req.SetHeader("Authorization", token)
+		return
+	}
+	req.SetHeader("X-API-Key", token)
 }
 
 // parseSSEorJSON extracts JSON from SSE format or returns body as-is if already JSON.
@@ -65,10 +79,14 @@ func (c *Client) ListTools(ctx context.Context) ([]tool.MCPTool, error) {
 		"id":      1,
 	}
 
-	resp, err := c.httpClient.R().
+	req := c.httpClient.R().
 		SetContext(ctx).
-		SetBody(payload).
-		Post("/v1/mcp")
+		SetBody(payload)
+
+	// Forward auth token from context to MCP service
+	setAuthHeader(ctx, req)
+
+	resp, err := req.Post("/v1/mcp")
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +138,7 @@ func (c *Client) CallTool(ctx context.Context, req tool.CallRequest) (*tool.Resu
 		"name":      req.Name,
 		"arguments": req.Arguments,
 	}
-	
+
 	// Add context IDs to _meta field (not merged into arguments)
 	meta := buildMetaContext(req.RequestID, req.ConversationID, req.UserID, req.ToolCallID)
 	if len(meta) > 0 {
@@ -134,10 +152,14 @@ func (c *Client) CallTool(ctx context.Context, req tool.CallRequest) (*tool.Resu
 		"id":      rpcID,
 	}
 
-	resp, err := c.httpClient.R().
+	httpReq := c.httpClient.R().
 		SetContext(ctx).
-		SetBody(payload).
-		Post("/v1/mcp")
+		SetBody(payload)
+
+	// Forward auth token from context to MCP service
+	setAuthHeader(ctx, httpReq)
+
+	resp, err := httpReq.Post("/v1/mcp")
 	if err != nil {
 		return nil, err
 	}

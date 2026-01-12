@@ -163,7 +163,7 @@ func (o *Orchestrator) Execute(params ExecuteParams) (*ExecuteResult, error) {
 
 			callRequest := CallRequest{
 				Name:           parsedCall.Name,
-				Arguments:      parsedCall.Arguments,
+				Arguments:      normalizeCodeArguments(parsedCall.Name, parsedCall.Arguments),
 				ToolCallID:     parsedCall.ID,
 				RequestID:      params.RequestID,
 				ConversationID: params.ConversationID,

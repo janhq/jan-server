@@ -178,6 +178,14 @@ func mapToEntity(resp *domain.Response) (*entities.Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshal error: %w", err)
 	}
+	artifacts, err := marshalJSON(resp.Artifacts)
+	if err != nil {
+		return nil, fmt.Errorf("marshal artifacts: %w", err)
+	}
+	citations, err := marshalJSON(resp.Citations)
+	if err != nil {
+		return nil, fmt.Errorf("marshal citations: %w", err)
+	}
 
 	return &entities.Response{
 		PublicID:           resp.PublicID,
@@ -194,6 +202,8 @@ func mapToEntity(resp *domain.Response) (*entities.Response, error) {
 		Metadata:           metadata,
 		Usage:              usage,
 		Error:              errJSON,
+		Artifacts:          artifacts,
+		Citations:          citations,
 		ConversationID:     resp.ConversationID,
 		PreviousResponseID: resp.PreviousResponseID,
 		Object:             resp.Object,
@@ -250,6 +260,18 @@ func mapFromEntity(entity *entities.Response, resp *domain.Response) error {
 		var errDetails domain.ErrorDetails
 		if err := json.Unmarshal(entity.Error, &errDetails); err == nil {
 			resp.Error = &errDetails
+		}
+	}
+	// Unmarshal artifacts from entity
+	if len(entity.Artifacts) > 0 && string(entity.Artifacts) != "null" && string(entity.Artifacts) != "[]" {
+		if err := json.Unmarshal(entity.Artifacts, &resp.Artifacts); err != nil {
+			return fmt.Errorf("unmarshal artifacts: %w", err)
+		}
+	}
+	// Unmarshal citations from entity
+	if len(entity.Citations) > 0 && string(entity.Citations) != "null" && string(entity.Citations) != "[]" {
+		if err := json.Unmarshal(entity.Citations, &resp.Citations); err != nil {
+			return fmt.Errorf("unmarshal citations: %w", err)
 		}
 	}
 

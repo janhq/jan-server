@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/google/uuid"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
 	domain "jan-server/services/response-api/internal/domain/plan"
 	"jan-server/services/response-api/internal/domain/status"
 	"jan-server/services/response-api/internal/infrastructure/database/entities"
+	"jan-server/services/response-api/internal/utils/idgen"
 	"jan-server/services/response-api/internal/utils/platformerrors"
 )
 
@@ -62,7 +62,18 @@ func (r *PostgresRepository) Create(ctx context.Context, plan *domain.Plan) erro
 	}
 
 	if entity.PublicID == "" {
-		entity.PublicID = uuid.New().String()
+		publicID, err := idgen.GenerateSecureID("plan", 16)
+		if err != nil {
+			return platformerrors.NewError(
+				ctx,
+				platformerrors.LayerRepository,
+				platformerrors.ErrorTypeInternal,
+				"failed to generate plan ID",
+				err,
+				"plan-create-id-001",
+			)
+		}
+		entity.PublicID = publicID
 	}
 
 	if err := r.db.WithContext(ctx).Create(entity).Error; err != nil {
@@ -117,19 +128,19 @@ func (r *PostgresRepository) Update(ctx context.Context, plan *domain.Plan) erro
 	}
 
 	updates := map[string]interface{}{
-		"response_id":      entity.ResponseID,
-		"status":           entity.Status,
-		"progress":         entity.Progress,
-		"agent_type":       entity.AgentType,
-		"planning_config":  entity.PlanningConfig,
-		"estimated_steps":  entity.EstimatedSteps,
-		"completed_steps":  entity.CompletedSteps,
-		"current_task_id":  entity.CurrentTaskID,
+		"response_id":       entity.ResponseID,
+		"status":            entity.Status,
+		"progress":          entity.Progress,
+		"agent_type":        entity.AgentType,
+		"planning_config":   entity.PlanningConfig,
+		"estimated_steps":   entity.EstimatedSteps,
+		"completed_steps":   entity.CompletedSteps,
+		"current_task_id":   entity.CurrentTaskID,
 		"final_artifact_id": entity.FinalArtifactID,
-		"user_selection":   entity.UserSelection,
-		"error_message":    entity.ErrorMessage,
-		"updated_at":       entity.UpdatedAt,
-		"completed_at":     entity.CompletedAt,
+		"user_selection":    entity.UserSelection,
+		"error_message":     entity.ErrorMessage,
+		"updated_at":        entity.UpdatedAt,
+		"completed_at":      entity.CompletedAt,
 	}
 
 	if err := r.db.WithContext(ctx).
@@ -328,7 +339,18 @@ func (r *PostgresRepository) CreateTask(ctx context.Context, task *domain.Task) 
 
 	entity := mapTaskToEntity(task, plan.ID)
 	if entity.PublicID == "" {
-		entity.PublicID = uuid.New().String()
+		publicID, err := idgen.GenerateSecureID("task", 16)
+		if err != nil {
+			return platformerrors.NewError(
+				ctx,
+				platformerrors.LayerRepository,
+				platformerrors.ErrorTypeInternal,
+				"failed to generate task ID",
+				err,
+				"task-create-id-001",
+			)
+		}
+		entity.PublicID = publicID
 	}
 
 	if err := r.db.WithContext(ctx).Create(entity).Error; err != nil {
@@ -466,7 +488,18 @@ func (r *PostgresRepository) CreateStep(ctx context.Context, step *domain.Step) 
 
 	entity := mapStepToEntity(step, task.ID)
 	if entity.PublicID == "" {
-		entity.PublicID = uuid.New().String()
+		publicID, err := idgen.GenerateSecureID("step", 16)
+		if err != nil {
+			return platformerrors.NewError(
+				ctx,
+				platformerrors.LayerRepository,
+				platformerrors.ErrorTypeInternal,
+				"failed to generate step ID",
+				err,
+				"step-create-id-001",
+			)
+		}
+		entity.PublicID = publicID
 	}
 
 	if err := r.db.WithContext(ctx).Create(entity).Error; err != nil {
@@ -611,9 +644,21 @@ func (r *PostgresRepository) CreateStepDetail(ctx context.Context, detail *domai
 		)
 	}
 
+	publicID, err := idgen.GenerateSecureID("dtl", 16)
+	if err != nil {
+		return platformerrors.NewError(
+			ctx,
+			platformerrors.LayerRepository,
+			platformerrors.ErrorTypeInternal,
+			"failed to generate step detail ID",
+			err,
+			"detail-create-id-001",
+		)
+	}
+
 	metadata, _ := marshalJSON(detail.Metadata)
 	entity := &entities.PlanStepDetail{
-		PublicID:   uuid.New().String(),
+		PublicID:   publicID,
 		StepID:     step.ID,
 		DetailType: string(detail.DetailType),
 		ToolCallID: detail.ToolCallID,
@@ -803,21 +848,21 @@ func mapPlanToEntity(plan *domain.Plan, responseID uint, currentTaskID, finalArt
 	}
 
 	return &entities.Plan{
-		PublicID:       plan.ID,
-		ResponseID:     responseID,
-		Status:         string(plan.Status),
-		Progress:       plan.Progress,
-		AgentType:      string(plan.AgentType),
-		PlanningConfig: datatypes.JSON(config),
-		EstimatedSteps: plan.EstimatedSteps,
-		CompletedSteps: plan.CompletedSteps,
-		CurrentTaskID:  currentTaskID,
+		PublicID:        plan.ID,
+		ResponseID:      responseID,
+		Status:          string(plan.Status),
+		Progress:        plan.Progress,
+		AgentType:       string(plan.AgentType),
+		PlanningConfig:  datatypes.JSON(config),
+		EstimatedSteps:  plan.EstimatedSteps,
+		CompletedSteps:  plan.CompletedSteps,
+		CurrentTaskID:   currentTaskID,
 		FinalArtifactID: finalArtifactID,
-		UserSelection:  userSelection,
-		ErrorMessage:   plan.ErrorMessage,
-		CreatedAt:      plan.CreatedAt,
-		UpdatedAt:      plan.UpdatedAt,
-		CompletedAt:    plan.CompletedAt,
+		UserSelection:   userSelection,
+		ErrorMessage:    plan.ErrorMessage,
+		CreatedAt:       plan.CreatedAt,
+		UpdatedAt:       plan.UpdatedAt,
+		CompletedAt:     plan.CompletedAt,
 	}, nil
 }
 
@@ -998,6 +1043,8 @@ func mapTaskFromEntity(entity *entities.PlanTask, planID string) *domain.Task {
 }
 
 func mapStepToEntity(step *domain.Step, taskID uint) *entities.PlanStep {
+	plannedParams, _ := marshalJSON(step.PlannedParams)
+	actualParams, _ := marshalJSON(step.ActualParams)
 	inputParams, _ := marshalJSON(step.InputParams)
 	outputData, _ := marshalJSON(step.OutputData)
 
@@ -1013,7 +1060,9 @@ func mapStepToEntity(step *domain.Step, taskID uint) *entities.PlanStep {
 		Sequence:      step.Sequence,
 		Action:        string(step.Action),
 		Status:        string(step.Status),
-		InputParams:   inputParams,
+		PlannedParams: plannedParams,
+		ActualParams:  actualParams,
+		InputParams:   inputParams, // Deprecated, kept for compatibility
 		OutputData:    outputData,
 		RetryCount:    step.RetryCount,
 		MaxRetries:    step.MaxRetries,
@@ -1027,19 +1076,21 @@ func mapStepToEntity(step *domain.Step, taskID uint) *entities.PlanStep {
 
 func mapStepFromEntity(entity *entities.PlanStep, taskID string) *domain.Step {
 	step := &domain.Step{
-		ID:           entity.PublicID,
-		TaskID:       taskID,
-		Sequence:     entity.Sequence,
-		Action:       domain.ActionType(entity.Action),
-		Status:       status.Status(entity.Status),
-		InputParams:  json.RawMessage(entity.InputParams),
-		OutputData:   json.RawMessage(entity.OutputData),
-		RetryCount:   entity.RetryCount,
-		MaxRetries:   entity.MaxRetries,
-		ErrorMessage: entity.ErrorMessage,
-		DurationMs:   entity.DurationMs,
-		StartedAt:    entity.StartedAt,
-		CompletedAt:  entity.CompletedAt,
+		ID:            entity.PublicID,
+		TaskID:        taskID,
+		Sequence:      entity.Sequence,
+		Action:        domain.ActionType(entity.Action),
+		Status:        status.Status(entity.Status),
+		PlannedParams: json.RawMessage(entity.PlannedParams),
+		ActualParams:  json.RawMessage(entity.ActualParams),
+		InputParams:   json.RawMessage(entity.InputParams), // Deprecated
+		OutputData:    json.RawMessage(entity.OutputData),
+		RetryCount:    entity.RetryCount,
+		MaxRetries:    entity.MaxRetries,
+		ErrorMessage:  entity.ErrorMessage,
+		DurationMs:    entity.DurationMs,
+		StartedAt:     entity.StartedAt,
+		CompletedAt:   entity.CompletedAt,
 	}
 
 	if entity.ErrorSeverity != nil {

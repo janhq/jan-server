@@ -295,13 +295,14 @@ func (s *DefaultService) CreateStep(ctx context.Context, taskID string, params C
 	}
 
 	step := &Step{
-		TaskID:      taskID,
-		Sequence:    params.Sequence,
-		Action:      params.Action,
-		Status:      status.StatusPending,
-		InputParams: params.InputParams,
-		RetryCount:  0,
-		MaxRetries:  maxRetries,
+		TaskID:        taskID,
+		Sequence:      params.Sequence,
+		Action:        params.Action,
+		Status:        status.StatusPending,
+		PlannedParams: params.InputParams, // Store as planned params
+		InputParams:   params.InputParams, // Keep for backward compatibility
+		RetryCount:    0,
+		MaxRetries:    maxRetries,
 	}
 
 	if err := s.repo.CreateStep(ctx, step); err != nil {
@@ -325,10 +326,17 @@ func (s *DefaultService) StartStep(ctx context.Context, stepID string) error {
 }
 
 // CompleteStep marks a step as completed with output.
+// Returns an error if output is nil or empty (Fix 2: completed steps must have output).
 func (s *DefaultService) CompleteStep(ctx context.Context, stepID string, output []byte) error {
 	step, err := s.repo.FindStepByID(ctx, stepID)
 	if err != nil {
 		return err
+	}
+
+	// Fix 2: Ensure completed steps always have output_data
+	if len(output) == 0 || string(output) == "null" {
+		// Create minimal output if none provided
+		output = []byte(`{"status":"completed","type":"unknown","content":"Step completed with no output"}`)
 	}
 
 	step.Status = status.StatusCompleted

@@ -29,6 +29,8 @@ type Response struct {
 	Metadata           datatypes.JSON `gorm:"type:jsonb"`
 	Usage              datatypes.JSON `gorm:"type:jsonb"`
 	Error              datatypes.JSON `gorm:"type:jsonb"`
+	Artifacts          datatypes.JSON `gorm:"type:jsonb;default:'[]'"` // Array of MediaArtifact (uploaded to media-api)
+	Citations          datatypes.JSON `gorm:"type:jsonb;default:'[]'"` // Array of Citation (from search/research steps)
 	ConversationID     *uint
 	Conversation       *Conversation
 	PreviousResponseID *string `gorm:"size:64"`

@@ -80,7 +80,9 @@ type StepResponse struct {
 	Error         *string         `json:"error,omitempty"`
 	ErrorSeverity *string         `json:"error_severity,omitempty"`
 	DurationMs    *int64          `json:"duration_ms,omitempty"`
-	InputParams   json.RawMessage `json:"input_params,omitempty"`
+	PlannedParams json.RawMessage `json:"planned_params,omitempty"` // Original planned parameters
+	ActualParams  json.RawMessage `json:"actual_params,omitempty"`  // Actual execution parameters
+	InputParams   json.RawMessage `json:"input_params,omitempty"`   // Deprecated: use PlannedParams
 	OutputData    json.RawMessage `json:"output_data,omitempty"`
 	StartedAt     *int64          `json:"started_at,omitempty"`
 	CompletedAt   *int64          `json:"completed_at,omitempty"`
@@ -226,18 +228,20 @@ func MapTaskToResponse(t *plan.Task) TaskResponse {
 // MapStepToResponse converts a domain step to an API response.
 func MapStepToResponse(s *plan.Step) StepResponse {
 	resp := StepResponse{
-		ID:          s.ID,
-		Object:      "plan_step",
-		TaskID:      s.TaskID,
-		Sequence:    s.Sequence,
-		Action:      string(s.Action),
-		Status:      string(s.Status),
-		RetryCount:  s.RetryCount,
-		MaxRetries:  s.MaxRetries,
-		Error:       s.ErrorMessage,
-		DurationMs:  s.DurationMs,
-		InputParams: s.InputParams,
-		OutputData:  s.OutputData,
+		ID:            s.ID,
+		Object:        "plan_step",
+		TaskID:        s.TaskID,
+		Sequence:      s.Sequence,
+		Action:        string(s.Action),
+		Status:        string(s.Status),
+		RetryCount:    s.RetryCount,
+		MaxRetries:    s.MaxRetries,
+		Error:         s.ErrorMessage,
+		DurationMs:    s.DurationMs,
+		PlannedParams: s.PlannedParams,
+		ActualParams:  s.ActualParams,
+		InputParams:   s.InputParams, // Deprecated, kept for compatibility
+		OutputData:    s.OutputData,
 	}
 
 	if s.ErrorSeverity != "" {
