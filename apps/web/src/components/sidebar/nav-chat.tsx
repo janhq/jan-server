@@ -1,5 +1,5 @@
-import { MoreHorizontal, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { MoreHorizontal, Trash2, Loader2 } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 
 import {
@@ -37,6 +37,13 @@ export function NavChats({ startIndex = 3 }: { startIndex?: number }) {
   const navigate = useNavigate();
   const params = useParams({ strict: false }) as { conversationId?: string };
   const allConversations = useConversations((state) => state.conversations);
+  const conversationCursor = useConversations(
+    (state) => state.conversationCursor,
+  );
+  const loadingMore = useConversations((state) => state.loadingMore);
+  const loadMoreConversations = useConversations(
+    (state) => state.loadMoreConversations,
+  );
   const deleteConversation = useConversations(
     (state) => state.deleteConversation,
   );
@@ -46,6 +53,8 @@ export function NavChats({ startIndex = 3 }: { startIndex?: number }) {
   const updateConversation = useConversations(
     (state) => state.updateConversation,
   );
+
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const sessions = useChatSessions((state) => state.sessions);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteAllDialogOpen, setDeleteAllDialogOpen] = useState(false);
@@ -58,6 +67,50 @@ export function NavChats({ startIndex = 3 }: { startIndex?: number }) {
   const conversations = allConversations.filter(
     (conversation) => !conversation.project_id,
   );
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const scrollContainer = sentinel.closest(
+      '[data-sidebar="content"]',
+    ) as HTMLElement | null;
+
+    const checkAndLoadMore = () => {
+      if (!conversationCursor || loadingMore) return;
+      if (scrollContainer) {
+        const containerRect = scrollContainer.getBoundingClientRect();
+        const sentinelRect = sentinel.getBoundingClientRect();
+        if (sentinelRect.top < containerRect.bottom + 100) {
+          loadMoreConversations();
+        }
+      }
+    };
+
+    checkAndLoadMore();
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry.isIntersecting && conversationCursor && !loadingMore) {
+          loadMoreConversations();
+        }
+      },
+      {
+        root: scrollContainer,
+        threshold: 0.1,
+        rootMargin: "100px",
+      },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [
+    conversationCursor,
+    loadingMore,
+    loadMoreConversations,
+    conversations.length,
+  ]);
 
   const handleDeleteClick = (item: Conversation) => {
     setItemToDelete(item);
@@ -176,6 +229,12 @@ export function NavChats({ startIndex = 3 }: { startIndex?: number }) {
               index={startIndex + 1 + idx}
             />
           ))}
+          <div ref={sentinelRef} className="h-1" />
+          {loadingMore && (
+            <div className="flex items-center justify-center py-2">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            </div>
+          )}
         </SidebarMenu>
       </SidebarGroup>
 

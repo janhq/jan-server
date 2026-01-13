@@ -98,11 +98,14 @@ export function ThreadPageContent({
   );
 
   const getUIMessages = useConversations((state) => state.getUIMessages);
+  const loadMoreItems = useConversations((state) => state.loadMoreItems);
+  const itemsCursor = useConversations((state) => state.itemsCursor);
   const createItems = useConversations((state) => state.createItems);
-  const fetchingMessagesRef = useRef(false);
   const moveConversationToTop = useConversations(
     (state) => state.moveConversationToTop,
   );
+  const [loadingMoreItems, setLoadingMoreItems] = useState(false);
+  const fetchingMessagesRef = useRef(false);
   const getSessionData = useChatSessions((state) => state.getSessionData);
 
   const chatSessionId =
@@ -269,10 +272,10 @@ export function ThreadPageContent({
           } else if (conversationId && !isPrivateChat && !hadToolCalls) {
             // Build ID mapping without updating state to avoid scroll jump
             getUIMessages(conversationId)
-              .then((backendMessages) => {
+              .then((result) => {
                 buildIdMapping(
                   getCurrentMessages(),
-                  backendMessages,
+                  result.messages,
                   sessionData.idMap,
                 );
               })
@@ -320,10 +323,10 @@ export function ThreadPageContent({
         setTimeout(() => regenerate(), 0);
 
         getUIMessages(conversationId, response.branch)
-          .then((branchMessages) => {
+          .then((result) => {
             buildIdMapping(
               truncatedMessages,
-              branchMessages,
+              result.messages,
               sessionData.idMap,
             );
           })
@@ -668,14 +671,14 @@ export function ThreadPageContent({
       // Clear messages first, then fetch (like ChatGPT)
       setMessages([]);
       getUIMessages(conversationId)
-        .then((uiMessages) => {
+        .then((result) => {
           // Double-check session state hasn't changed during async fetch
           const currentSession =
             useChatSessions.getState().sessions[chatSessionId];
           if (currentSession?.isStreaming) {
             return; // Don't overwrite if streaming started
           }
-          if (!initialMessageSentRef.current) setMessages(uiMessages);
+          if (!initialMessageSentRef.current) setMessages(result.messages);
         })
         .catch((error) => {
           if (error instanceof ApiError && error.status === 404) {
@@ -698,6 +701,74 @@ export function ThreadPageContent({
     }
   }, [status, messages]);
 
+  const topSentinelRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLElement | null>(null);
+
+  const handleLoadMoreItems = useCallback(async () => {
+    if (!conversationId || isPrivateChat || loadingMoreItems || !itemsCursor) {
+      return;
+    }
+    const scrollContainer = scrollContainerRef.current;
+    const previousScrollHeight = scrollContainer?.scrollHeight ?? 0;
+
+    setLoadingMoreItems(true);
+    try {
+      const result = await loadMoreItems(conversationId);
+      if (result.messages.length > 0) {
+        setMessages((prev) => [...result.messages, ...prev]);
+        requestAnimationFrame(() => {
+          if (scrollContainer) {
+            const newScrollHeight = scrollContainer.scrollHeight;
+            scrollContainer.scrollTop = newScrollHeight - previousScrollHeight;
+          }
+        });
+      }
+    } finally {
+      setLoadingMoreItems(false);
+    }
+  }, [
+    conversationId,
+    isPrivateChat,
+    loadingMoreItems,
+    itemsCursor,
+    loadMoreItems,
+    setMessages,
+  ]);
+
+  useEffect(() => {
+    if (!conversationId || isPrivateChat) return;
+
+    const sentinel = topSentinelRef.current;
+    if (!sentinel) return;
+
+    let scrollContainer: HTMLElement | null = sentinel.parentElement;
+    while (scrollContainer) {
+      const overflow = getComputedStyle(scrollContainer).overflow;
+      if (overflow === "auto" || overflow === "scroll") {
+        break;
+      }
+      scrollContainer = scrollContainer.parentElement;
+    }
+    scrollContainerRef.current = scrollContainer;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry.isIntersecting) {
+          handleLoadMoreItems();
+        }
+      },
+      {
+        root: scrollContainer,
+        threshold: 0.1,
+        rootMargin: "100px",
+      },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [conversationId, isPrivateChat, handleLoadMoreItems]);
+
   return (
     <>
       <AppSidebar />
@@ -716,6 +787,14 @@ export function ThreadPageContent({
               stiffness={SCROLL_ANIMATION.STIFFNESS}
             >
               <ConversationContent className="max-w-3xl mx-auto">
+                {conversationId && !isPrivateChat && (
+                  <div ref={topSentinelRef} className="h-1" />
+                )}
+                {loadingMoreItems && (
+                  <div className="flex justify-center py-4">
+                    <Loader className="animate-spin" />
+                  </div>
+                )}
                 {messages.map((message, messageIndex) => (
                   <MessageItem
                     key={message.id}

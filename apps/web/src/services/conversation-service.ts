@@ -4,9 +4,15 @@ import { QUERY_ORDER, QUERY_LIMIT } from "@/constants";
 declare const JAN_API_BASE_URL: string;
 
 export const conversationService = {
-  getConversations: async (): Promise<ConversationsResponse> => {
+  getConversations: async (after?: string): Promise<ConversationsResponse> => {
+    const params = new URLSearchParams({
+      limit: String(QUERY_LIMIT.CONVERSATIONS),
+    });
+    if (after) {
+      params.set("after", after);
+    }
     return fetchJsonWithAuth<ConversationsResponse>(
-      `${JAN_API_BASE_URL}v1/conversations`,
+      `${JAN_API_BASE_URL}v1/conversations?${params}`,
     );
   },
 
@@ -59,13 +65,17 @@ export const conversationService = {
   getItems: async (
     conversationId: string,
     branch?: string,
+    after?: string,
   ): Promise<ConversationItemsResponse> => {
     const params = new URLSearchParams({
       limit: String(QUERY_LIMIT.ITEMS),
-      order: QUERY_ORDER.ASC,
+      order: QUERY_ORDER.DESC,
     });
     if (branch) {
       params.set("branch", branch);
+    }
+    if (after) {
+      params.set("after", after);
     }
     return fetchJsonWithAuth<ConversationItemsResponse>(
       `${JAN_API_BASE_URL}v1/conversations/${conversationId}/items?${params}`,
