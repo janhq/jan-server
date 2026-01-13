@@ -86,6 +86,46 @@ Provide the fixed code:`, language, "```"+language+"\n", code, "```", errorMsg)
 	return fixedCode, nil
 }
 
+// Generate generates content based on a prompt using the LLM.
+func (cf *CodeFixer) Generate(ctx context.Context, prompt string) (string, error) {
+	return cf.GenerateWithModel(ctx, prompt, "")
+}
+
+// GenerateWithModel generates content based on a prompt using the specified model.
+// If model is empty, uses the default model configured in CodeFixer.
+func (cf *CodeFixer) GenerateWithModel(ctx context.Context, prompt string, model string) (string, error) {
+	if prompt == "" {
+		return "", fmt.Errorf("empty prompt provided")
+	}
+
+	useModel := cf.model
+	if model != "" {
+		useModel = model
+	}
+
+	req := ChatCompletionRequest{
+		Model: useModel,
+		Messages: []ChatMessage{
+			{Role: "user", Content: prompt},
+		},
+		Temperature: floatPtr(0.7), // Moderate temperature for balanced creativity
+		MaxTokens:   intPtr(4096),
+		Stream:      false,
+	}
+
+	resp, err := cf.provider.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("LLM call failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("LLM returned no choices")
+	}
+
+	content := resp.Choices[0].Message.GetContentAsString()
+	return content, nil
+}
+
 // extractCodeFromResponse extracts code from an LLM response that may contain markdown.
 func extractCodeFromResponse(response string, language string) string {
 	if response == "" {

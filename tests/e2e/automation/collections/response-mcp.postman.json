@@ -1,0 +1,762 @@
+{
+  "info": {
+    "name": "jan-server response-mcp",
+    "description": "E2E tests for MCP tools integration with Response API (google_search, scrape, AIO tools)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "1. Authentication & Setup",
+      "item": [
+        {
+          "name": "Request Guest Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{kong_url}}/auth/guest-login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const guestData = pm.response.json();",
+                  "pm.test('Guest token issued', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(guestData).to.have.property('access_token');",
+                  "  pm.collectionVariables.set('guest_access_token', guestData.access_token);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Available Models",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/v1/models"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json();",
+                  "pm.test('Models available', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(payload.data).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "pm.collectionVariables.set('default_model_id', payload.data[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify MCP Tools Available",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/list\",\n  \"params\": {},\n  \"id\": 1\n}"
+            },
+            "url": "{{mcp_tools_url}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('MCP service responding', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404, 502, 503]);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  if (data.result && data.result.tools) {",
+                  "    const toolNames = data.result.tools.map(t => t.name);",
+                  "    pm.test('google_search tool exists', function () {",
+                  "      pm.expect(toolNames).to.include('google_search');",
+                  "    });",
+                  "    pm.test('scrape tool exists', function () {",
+                  "      pm.expect(toolNames).to.include('scrape');",
+                  "    });",
+                  "    pm.test('aio_shell_exec tool exists', function () {",
+                  "      pm.expect(toolNames).to.include('aio_shell_exec');",
+                  "    });",
+                  "    pm.test('aio_code_execute tool exists', function () {",
+                  "      pm.expect(toolNames).to.include('aio_code_execute');",
+                  "    });",
+                  "    console.log('Available MCP tools: ' + toolNames.join(', '));",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Google Search Tool",
+      "item": [
+        {
+          "name": "Simple Search Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Search for information about 'Example Domain' website\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"google_search\",\n        \"description\": \"Search the web using Google\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"q\": {\n              \"type\": \"string\",\n              \"description\": \"Search query\"\n            },\n            \"domain_allow_list\": {\n              \"type\": \"array\",\n              \"items\": {\"type\": \"string\"},\n              \"description\": \"Restrict results to these domains\"\n            }\n          },\n          \"required\": [\"q\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Search request accepted', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response).to.have.property('id');",
+                  "  pm.collectionVariables.set('search_response_id', response.id);",
+                  "});",
+                  "pm.test('Response has output or is pending', function () {",
+                  "  pm.expect(response.status).to.be.oneOf(['completed', 'pending', 'in_progress']);",
+                  "});",
+                  "if (response.status === 'completed') {",
+                  "  pm.test('Search results returned', function () {",
+                  "    pm.expect(response.output).to.exist;",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search with Domain Filter",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Search for Example Domain but only from example.com\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"google_search\",\n        \"description\": \"Search the web using Google\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"q\": {\n              \"type\": \"string\",\n              \"description\": \"Search query\"\n            },\n            \"domain_allow_list\": {\n              \"type\": \"array\",\n              \"items\": {\"type\": \"string\"},\n              \"description\": \"Restrict results to these domains\"\n            }\n          },\n          \"required\": [\"q\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Filtered search works', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response.status).to.be.oneOf(['completed', 'pending', 'in_progress']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search Multiple Topics",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Search for 'Model Context Protocol' and give me a summary of what it is\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"google_search\",\n        \"description\": \"Search the web using Google\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"q\": {\n              \"type\": \"string\",\n              \"description\": \"Search query\"\n            }\n          },\n          \"required\": [\"q\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Multi-topic search executed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "if (response.status === 'completed') {",
+                  "  pm.test('Response contains summary', function () {",
+                  "    const outputStr = JSON.stringify(response.output).toLowerCase();",
+                  "    pm.expect(outputStr).to.satisfy(text => text.includes('protocol') || text.includes('mcp'));",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Scrape Tool",
+      "item": [
+        {
+          "name": "Scrape Example.com",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Scrape the content from https://example.com and tell me what it says\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"scrape\",\n        \"description\": \"Scrape and extract content from a web page\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"url\": {\n              \"type\": \"string\",\n              \"description\": \"URL to scrape\"\n            },\n            \"includeMarkdown\": {\n              \"type\": \"boolean\",\n              \"description\": \"Include markdown formatting\"\n            }\n          },\n          \"required\": [\"url\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Scrape request successful', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.collectionVariables.set('scrape_response_id', response.id);",
+                  "});",
+                  "if (response.status === 'completed') {",
+                  "  pm.test('Scraped content available', function () {",
+                  "    const outputStr = JSON.stringify(response.output).toLowerCase();",
+                  "    pm.expect(outputStr).to.satisfy(text => text.includes('example') || text.includes('domain'));",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Scrape with Selector",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Extract the main heading from https://example.com\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"scrape\",\n        \"description\": \"Scrape and extract content from a web page\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"url\": {\n              \"type\": \"string\",\n              \"description\": \"URL to scrape\"\n            },\n            \"includeMarkdown\": {\n              \"type\": \"boolean\",\n              \"description\": \"Include markdown formatting\"\n            }\n          },\n          \"required\": [\"url\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Selective scrape works', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. AIO Tools",
+      "item": [
+        {
+          "name": "Shell Exec - List Directory",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"List the files in the /tmp directory\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_shell_exec\",\n        \"description\": \"Execute shell commands in AIO Sandbox\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"command\": {\n              \"type\": \"string\",\n              \"description\": \"Shell command to execute\"\n            }\n          },\n          \"required\": [\"command\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('AIO shell command executed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.collectionVariables.set('aio_response_id', response.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Code Execute - Python",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Calculate the sum of numbers 1 to 10 using Python\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_code_execute\",\n        \"description\": \"Execute Python or Node.js code in AIO Sandbox\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"code\": {\n              \"type\": \"string\",\n              \"description\": \"Code to execute\"\n            },\n            \"language\": {\n              \"type\": \"string\",\n              \"description\": \"Language (python or nodejs)\",\n              \"enum\": [\"python\", \"nodejs\"]\n            }\n          },\n          \"required\": [\"code\", \"language\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Python code executed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "File Write and Read",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Write 'AIO Test Content' to /tmp/aio-test.txt and then read it back\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_file_write\",\n        \"description\": \"Write content to a file in AIO Sandbox\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"path\": {\n              \"type\": \"string\",\n              \"description\": \"File path\"\n            },\n            \"content\": {\n              \"type\": \"string\",\n              \"description\": \"Content to write\"\n            }\n          },\n          \"required\": [\"path\", \"content\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_file_read\",\n        \"description\": \"Read content from a file in AIO Sandbox\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"path\": {\n              \"type\": \"string\",\n              \"description\": \"File path\"\n            }\n          },\n          \"required\": [\"path\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('File write and read executed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Combined Workflows",
+      "item": [
+        {
+          "name": "Search and Scrape",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Search for 'Example Domain' and then scrape the first result URL to get its content\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"google_search\",\n        \"description\": \"Search the web using Google\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"q\": {\n              \"type\": \"string\",\n              \"description\": \"Search query\"\n            }\n          },\n          \"required\": [\"q\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"scrape\",\n        \"description\": \"Scrape and extract content from a web page\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"url\": {\n              \"type\": \"string\",\n              \"description\": \"URL to scrape\"\n            },\n            \"includeMarkdown\": {\n              \"type\": \"boolean\",\n              \"description\": \"Include markdown formatting\"\n            }\n          },\n          \"required\": [\"url\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Combined workflow executed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.collectionVariables.set('combined_response_id', response.id);",
+                  "});",
+                  "if (response.status === 'completed') {",
+                  "  pm.test('Workflow completed successfully', function () {",
+                  "    pm.expect(response.output).to.exist;",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search, Scrape, and AIO Code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"1. Search for 'Example Domain', 2. Scrape example.com, 3. Calculate fibonacci(10) using Python and tell me all results\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"google_search\",\n        \"description\": \"Search the web using Google\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"q\": {\"type\": \"string\", \"description\": \"Search query\"}\n          },\n          \"required\": [\"q\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"scrape\",\n        \"description\": \"Scrape and extract content from a web page\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"url\": {\"type\": \"string\", \"description\": \"URL to scrape\"},\n            \"includeMarkdown\": {\"type\": \"boolean\", \"description\": \"Include markdown formatting\"}\n          },\n          \"required\": [\"url\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_code_execute\",\n        \"description\": \"Execute Python or Node.js code in AIO Sandbox\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"code\": {\"type\": \"string\", \"description\": \"Code to execute\"},\n            \"language\": {\"type\": \"string\", \"description\": \"Language (python or nodejs)\", \"enum\": [\"python\", \"nodejs\"]}\n          },\n          \"required\": [\"code\", \"language\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Search, scrape, and AIO workflow completed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "if (response.status === 'completed') {",
+                  "  pm.test('All tools executed', function () {",
+                  "    const outputStr = JSON.stringify(response.output);",
+                  "    pm.expect(outputStr.length).to.be.greaterThan(50);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Response Status Checks",
+      "item": [
+        {
+          "name": "Check Search Response",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/responses/{{search_response_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Response retrieved', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response.status).to.be.oneOf(['completed', 'failed', 'in_progress']);",
+                  "});",
+                  "if (response.status === 'completed') {",
+                  "  pm.test('Has search output', function () {",
+                  "    pm.expect(response.output).to.exist;",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Full Response with Plan",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/responses/{{combined_response_id}}/full"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Full response with plan retrieved', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Response includes plan if agent was used', function () {",
+                  "  if (response.plan) {",
+                  "    pm.expect(response.plan).to.have.property('id');",
+                  "    pm.expect(response.plan.tasks).to.be.an('array');",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. Error Handling",
+      "item": [
+        {
+          "name": "Invalid Tool Name",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Use a tool that doesn't exist\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"nonexistent_tool\",\n        \"description\": \"This tool does not exist\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {}\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Request accepted despite invalid tool', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Missing Required Parameter",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Search without providing a query\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"google_search\",\n        \"description\": \"Search the web using Google\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"q\": {\n              \"type\": \"string\",\n              \"description\": \"Search query\"\n            }\n          },\n          \"required\": [\"q\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Request handled', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid URL for Scraping",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Scrape an invalid URL: htp://invalid-url-here\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"scrape\",\n        \"description\": \"Scrape and extract content from a web page\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"url\": {\n              \"type\": \"string\",\n              \"description\": \"URL to scrape\"\n            },\n            \"includeMarkdown\": {\n              \"type\": \"boolean\",\n              \"description\": \"Include markdown formatting\"\n            }\n          },\n          \"required\": [\"url\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Invalid URL handled gracefully', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "if (response.status === 'completed' || response.status === 'failed') {",
+                  "  pm.test('Response indicates error or provides fallback', function () {",
+                  "    pm.expect(response).to.exist;",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "kong_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "mcp_tools_url",
+      "value": "http://localhost:8091/v1/mcp"
+    },
+    {
+      "key": "guest_access_token",
+      "value": ""
+    },
+    {
+      "key": "default_model_id",
+      "value": ""
+    },
+    {
+      "key": "search_response_id",
+      "value": ""
+    },
+    {
+      "key": "scrape_response_id",
+      "value": ""
+    },
+    {
+      "key": "aio_response_id",
+      "value": ""
+    },
+    {
+      "key": "combined_response_id",
+      "value": ""
+    }
+  ]
+}

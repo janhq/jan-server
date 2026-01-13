@@ -362,7 +362,7 @@ services:
             config:
               validation_url: "http://llm-api:8080/auth/validate-api-key"
               validation_timeout: 5000
-              hide_credentials: true
+              hide_credentials: false
               run_on_preflight: false
           - name: rate-limiting
             tags: [response, rate]

@@ -84,25 +84,33 @@ type CitationPayload struct {
 
 // ResponsePayload is returned to clients.
 type ResponsePayload struct {
-	ID                 string                 `json:"id"`
-	Object             string                 `json:"object"`
-	Created            int64                  `json:"created"`
-	CreatedAt          int64                  `json:"created_at"` // Same as Created, for compatibility
-	Model              string                 `json:"model"`
-	Status             string                 `json:"status"`
-	Input              interface{}            `json:"input"`
-	Output             interface{}            `json:"output,omitempty"`
-	Usage              interface{}            `json:"usage,omitempty"`
-	Metadata           map[string]interface{} `json:"metadata,omitempty"`
-	ConversationID     *string                `json:"conversation_id,omitempty"`
-	PreviousResponseID *string                `json:"previous_response_id,omitempty"`
-	SystemPrompt       *string                `json:"system_prompt,omitempty"`
-	Stream             bool                   `json:"stream"`
-	Background         bool                   `json:"background"`
-	Store              bool                   `json:"store"`
-	Error              interface{}            `json:"error,omitempty"`
-	Artifacts          []ArtifactPayload      `json:"artifacts,omitempty"`
-	Citations          []CitationPayload      `json:"citations,omitempty"`
+	ID                 string                    `json:"id"`
+	Object             string                    `json:"object"`
+	Created            int64                     `json:"created"`
+	CreatedAt          int64                     `json:"created_at"` // Same as Created, for compatibility
+	Model              string                    `json:"model"`
+	Status             string                    `json:"status"`
+	Input              interface{}               `json:"input"`
+	Output             interface{}               `json:"output,omitempty"`
+	Usage              interface{}               `json:"usage,omitempty"`
+	Metadata           map[string]interface{}    `json:"metadata,omitempty"`
+	ConversationID     *string                   `json:"conversation_id,omitempty"`
+	PreviousResponseID *string                   `json:"previous_response_id,omitempty"`
+	SystemPrompt       *string                   `json:"system_prompt,omitempty"`
+	Stream             bool                      `json:"stream"`
+	Background         bool                      `json:"background"`
+	Store              bool                      `json:"store"`
+	Error              interface{}               `json:"error,omitempty"`
+	Artifacts          []ArtifactPayload         `json:"artifacts,omitempty"`
+	Citations          []CitationPayload         `json:"citations,omitempty"`
+	Data               []ConversationItemPayload `json:"data,omitempty"` // All conversation items when data=true
+}
+
+// ConversationItemPayload represents a conversation item in the response.
+type ConversationItemPayload struct {
+	Role    string      `json:"role"`
+	Content interface{} `json:"content"`
+	Status  string      `json:"status,omitempty"`
 }
 
 // FromDomain maps the domain response to DTO.

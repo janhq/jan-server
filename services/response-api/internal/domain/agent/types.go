@@ -9,6 +9,29 @@ import (
 	"jan-server/services/response-api/internal/domain/status"
 )
 
+type contextKey string
+
+const conversationIDKey contextKey = "agent-conversation-id"
+
+// ContextWithConversationID stores a conversation ID in context for downstream LLM calls.
+func ContextWithConversationID(ctx context.Context, conversationID string) context.Context {
+	if ctx == nil || conversationID == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, conversationIDKey, conversationID)
+}
+
+// ConversationIDFromContext extracts the conversation ID from context.
+func ConversationIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if convID, ok := ctx.Value(conversationIDKey).(string); ok {
+		return convID
+	}
+	return ""
+}
+
 // Planner defines the interface for agents that can create execution plans.
 type Planner interface {
 	// Name returns the unique identifier for this agent.
@@ -79,10 +102,11 @@ type PlanResult struct {
 
 // ExecutionInput contains input data for step execution.
 type ExecutionInput struct {
-	StepParams     json.RawMessage        `json:"step_params"`
-	PreviousOutput json.RawMessage        `json:"previous_output,omitempty"`
-	PlanContext    *PlanContext           `json:"plan_context,omitempty"`
-	Metadata       map[string]interface{} `json:"metadata,omitempty"`
+	StepParams         json.RawMessage        `json:"step_params"`
+	PreviousOutput     json.RawMessage        `json:"previous_output,omitempty"`
+	AccumulatedOutputs []json.RawMessage      `json:"accumulated_outputs,omitempty"` // Outputs from all previous completed tasks
+	PlanContext        *PlanContext           `json:"plan_context,omitempty"`
+	Metadata           map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // PlanContext provides context about the current plan execution.
@@ -91,7 +115,9 @@ type PlanContext struct {
 	TaskID         string         `json:"task_id"`
 	ConversationID string         `json:"conversation_id"`
 	ResponseID     string         `json:"response_id"`
+	UserID         string         `json:"user_id,omitempty"`
 	AgentType      plan.AgentType `json:"agent_type"`
+	Model          string         `json:"model,omitempty"`
 	ArtifactIDs    []string       `json:"artifact_ids,omitempty"`
 }
 

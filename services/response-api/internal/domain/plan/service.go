@@ -2,6 +2,7 @@ package plan
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"jan-server/services/response-api/internal/domain/status"
@@ -46,6 +47,7 @@ type Service interface {
 // CreateParams contains parameters for creating a new plan.
 type CreateParams struct {
 	ResponseID     string
+	Model          string
 	AgentType      AgentType
 	Config         *PlanConfig
 	EstimatedSteps int
@@ -86,6 +88,7 @@ func (s *DefaultService) Create(ctx context.Context, params CreateParams) (*Plan
 
 	plan := &Plan{
 		ResponseID:     params.ResponseID,
+		Model:          params.Model,
 		Status:         status.StatusPending,
 		Progress:       0,
 		AgentType:      params.AgentType,
@@ -156,7 +159,12 @@ func (s *DefaultService) SetUserSelection(ctx context.Context, id string, select
 		return err
 	}
 
-	plan.UserSelection = &selection
+	selectionBytes, err := json.Marshal(selection)
+	if err != nil {
+		return err
+	}
+	selectionJSON := string(selectionBytes)
+	plan.UserSelection = &selectionJSON
 	plan.UpdatedAt = time.Now().UTC()
 
 	return s.repo.Update(ctx, plan)

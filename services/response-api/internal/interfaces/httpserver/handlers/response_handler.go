@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -14,21 +16,24 @@ import (
 	"jan-server/services/response-api/internal/domain/llm"
 	"jan-server/services/response-api/internal/domain/response"
 	"jan-server/services/response-api/internal/domain/tool"
+	"jan-server/services/response-api/internal/infrastructure/apikey"
 	"jan-server/services/response-api/internal/interfaces/httpserver/requests"
 	"jan-server/services/response-api/internal/interfaces/httpserver/responses"
 )
 
 // ResponseHandler exposes HTTP entrypoints for the Responses API.
 type ResponseHandler struct {
-	service response.Service
-	log     zerolog.Logger
+	service        response.Service
+	apiKeyProvider apikey.Provider
+	log            zerolog.Logger
 }
 
 // NewResponseHandler constructs the handler.
-func NewResponseHandler(service response.Service, log zerolog.Logger) *ResponseHandler {
+func NewResponseHandler(service response.Service, apiKeyProvider apikey.Provider, log zerolog.Logger) *ResponseHandler {
 	return &ResponseHandler{
-		service: service,
-		log:     log.With().Str("handler", "response").Logger(),
+		service:        service,
+		apiKeyProvider: apiKeyProvider,
+		log:            log.With().Str("handler", "response").Logger(),
 	}
 }
 
@@ -72,14 +77,77 @@ func (h *ResponseHandler) Create(c *gin.Context) {
 		return
 	}
 
-	// Extract API key for background tasks (supports both X-API-Key and Authorization)
-	apiKey := strings.TrimSpace(c.GetHeader("X-API-Key"))
-	if apiKey == "" {
-		apiKey = strings.TrimSpace(c.GetHeader("Authorization"))
+	// Extract bearer token from Authorization header for generating temporary API key
+	// The Authorization header should contain "Bearer <JWT>" from Kong
+	authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
+	var bearerToken string
+	if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+		bearerToken = strings.TrimSpace(authHeader[7:]) // Extract JWT after "Bearer "
+	} else if authHeader != "" && !strings.HasPrefix(authHeader, "sk_") {
+		// If no "Bearer " prefix but has value and not an API key, use as-is
+		bearerToken = authHeader
 	}
+
+	// Check for X-API-Key header (user-provided API key)
+	userAPIKey := strings.TrimSpace(c.GetHeader("X-API-Key"))
+
+	// Generate temporary API key for service-to-service calls
+	// This ensures downstream services (mcp-tools, llm-api) only receive API key auth
+	var apiKey string
+	var tempKeyID string
+
+	if userAPIKey != "" {
+		// User provided their own API key, use it directly
+		apiKey = userAPIKey
+		h.log.Debug().Msg("Using user-provided API key")
+	} else if h.apiKeyProvider != nil && bearerToken != "" {
+		// Generate temporary API key using the user's JWT
+		tempKey, err := h.apiKeyProvider.CreateTemporaryKey(c.Request.Context(), bearerToken, time.Hour)
+		if err != nil {
+			h.log.Error().Err(err).Msg("Failed to create temporary API key")
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "failed to authenticate: " + err.Error()})
+			return
+		}
+		apiKey = tempKey.Key
+		tempKeyID = tempKey.ID
+		h.log.Debug().
+			Str("key_id", tempKey.ID).
+			Msg("Created temporary API key for request")
+
+		// Schedule cleanup of temporary key after request completes
+		defer h.cleanupTempKey(context.Background(), bearerToken, tempKeyID)
+	} else {
+		h.log.Error().
+			Bool("has_auth_header", authHeader != "").
+			Bool("has_bearer_token", bearerToken != "").
+			Bool("has_api_key_provider", h.apiKeyProvider != nil).
+			Msg("No valid authentication provided")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		return
+	}
+
 	var apiKeyPtr *string
 	if apiKey != "" {
 		apiKeyPtr = &apiKey
+	}
+
+	metadata := req.Metadata
+	if req.ToolChoice != nil {
+		if metadata == nil {
+			metadata = map[string]interface{}{}
+		}
+		toolName := req.ToolChoice.Function.Name
+		if toolName == "" {
+			toolName = req.ToolChoice.Tool
+		}
+		if _, ok := metadata["agent_type"]; !ok && toolName == "generate_slide" {
+			metadata["agent_type"] = "slide_generator"
+		}
+		if req.ToolChoice.Options != nil {
+			if _, ok := metadata["options"]; !ok {
+				metadata["options"] = req.ToolChoice.Options
+			}
+		}
 	}
 
 	params := response.CreateParams{
@@ -98,7 +166,7 @@ func (h *ResponseHandler) Create(c *gin.Context) {
 		Tools:              mapTools(req.Tools),
 		PreviousResponseID: req.PreviousResponseID,
 		ConversationID:     req.Conversation,
-		Metadata:           req.Metadata,
+		Metadata:           metadata,
 	}
 
 	authCtx := llm.ContextWithAuthToken(c.Request.Context(), apiKey)
@@ -271,12 +339,16 @@ func mapToolChoice(choice *requests.ToolChoice) *llm.ToolChoice {
 	if choice == nil {
 		return nil
 	}
+	toolName := choice.Function.Name
+	if toolName == "" {
+		toolName = choice.Tool
+	}
 	return &llm.ToolChoice{
 		Type: choice.Type,
 		Function: struct {
 			Name string `json:"name"`
 		}{
-			Name: choice.Function.Name,
+			Name: toolName,
 		},
 	}
 }
@@ -387,3 +459,20 @@ func normalizeContent(content interface{}) string {
 }
 
 var _ response.StreamObserver = (*sseObserver)(nil)
+
+// cleanupTempKey deletes a temporary API key after request completion.
+func (h *ResponseHandler) cleanupTempKey(ctx context.Context, bearerToken, keyID string) {
+	if h.apiKeyProvider == nil || keyID == "" {
+		return
+	}
+
+	// Use a short timeout for cleanup
+	cleanupCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	if err := h.apiKeyProvider.DeleteKey(cleanupCtx, bearerToken, keyID); err != nil {
+		h.log.Warn().Err(err).Str("key_id", keyID).Msg("Failed to cleanup temporary API key")
+	} else {
+		h.log.Debug().Str("key_id", keyID).Msg("Cleaned up temporary API key")
+	}
+}

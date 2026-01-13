@@ -6,6 +6,7 @@ import (
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/plan"
 	domain "jan-server/services/response-api/internal/domain/response"
+	"jan-server/services/response-api/internal/infrastructure/apikey"
 )
 
 // Provider wires all HTTP handlers for dependency injection.
@@ -16,9 +17,9 @@ type Provider struct {
 }
 
 // NewProvider constructs the handler provider with domain services.
-func NewProvider(responseService domain.Service, log zerolog.Logger) *Provider {
+func NewProvider(responseService domain.Service, apiKeyProvider apikey.Provider, log zerolog.Logger) *Provider {
 	return &Provider{
-		Response: NewResponseHandler(responseService, log),
+		Response: NewResponseHandler(responseService, apiKeyProvider, log),
 	}
 }
 
@@ -27,10 +28,11 @@ func NewProviderWithPlanAndArtifact(
 	responseService domain.Service,
 	planService plan.Service,
 	artifactService artifact.Service,
+	apiKeyProvider apikey.Provider,
 	log zerolog.Logger,
 ) *Provider {
 	return &Provider{
-		Response: NewResponseHandler(responseService, log),
+		Response: NewResponseHandler(responseService, apiKeyProvider, log),
 		Plan:     NewPlanHandler(planService, log),
 		Artifact: NewArtifactHandler(artifactService, log),
 	}

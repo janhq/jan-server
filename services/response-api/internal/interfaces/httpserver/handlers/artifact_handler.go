@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -169,11 +170,16 @@ func (h *ArtifactHandler) Download(c *gin.Context) {
 	}
 
 	if a.HasStoredContent() && a.StoragePath != nil {
-		// For stored content, would need to stream from storage
-		// This is a placeholder - actual implementation would use storage service
+		// StoragePath contains the media-api download URL - redirect to it
+		storagePath := *a.StoragePath
+		if strings.HasPrefix(storagePath, "http://") || strings.HasPrefix(storagePath, "https://") {
+			c.Redirect(http.StatusTemporaryRedirect, storagePath)
+			return
+		}
+		// For non-URL paths, return the path info (legacy behavior)
 		c.JSON(http.StatusNotImplemented, gin.H{
 			"error":        "file download not yet implemented",
-			"storage_path": *a.StoragePath,
+			"storage_path": storagePath,
 		})
 		return
 	}

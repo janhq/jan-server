@@ -31,6 +31,7 @@ type ServiceImpl struct {
 	conversationItems conversation.ItemRepository
 	toolExecutions    ToolExecutionRepository
 	orchestrator      *tool.Orchestrator
+	agentOrchestrator agent.Orchestrator
 	mcpClient         tool.MCPClient
 	mediaClient       *media.Client
 	modelInfoProvider llm.ModelInfoProvider
@@ -47,6 +48,7 @@ func NewService(
 	conversationItems conversation.ItemRepository,
 	toolExecutions ToolExecutionRepository,
 	orchestrator *tool.Orchestrator,
+	agentOrchestrator agent.Orchestrator,
 	mcpClient tool.MCPClient,
 	mediaClient *media.Client,
 	modelInfoProvider llm.ModelInfoProvider,
@@ -61,6 +63,7 @@ func NewService(
 		conversationItems: conversationItems,
 		toolExecutions:    toolExecutions,
 		orchestrator:      orchestrator,
+		agentOrchestrator: agentOrchestrator,
 		mcpClient:         mcpClient,
 		mediaClient:       mediaClient,
 		modelInfoProvider: modelInfoProvider,
@@ -228,6 +231,18 @@ func (s *ServiceImpl) createSync(ctx context.Context, params CreateParams) (*Res
 
 	if err := s.responses.Create(ctx, responseModel); err != nil {
 		return nil, fmt.Errorf("create response: %w", err)
+	}
+
+	agentType := s.extractAgentType(responseModel.Metadata)
+	if agentType != "" && s.agentRegistry != nil && s.planService != nil {
+		if err := s.executeWithPlan(ctx, responseModel, agentType); err != nil {
+			s.log.Warn().Err(err).Str("response_id", responseModel.PublicID).Msg("plan execution failed")
+		}
+		updated, err := s.responses.FindByPublicID(ctx, responseModel.PublicID)
+		if err != nil {
+			return nil, err
+		}
+		return updated, nil
 	}
 
 	baseMessages, err := s.buildBaseMessages(params.SystemPrompt, existingItems)
@@ -566,20 +581,98 @@ func (s *ServiceImpl) fetchAvailableTools(ctx context.Context) ([]llm.ToolDefini
 }
 
 func newConversationItem(conversationID uint, sequence int, msg llm.ChatMessage) conversation.Item {
-	content := normalizeContent(msg.Content)
+	legacyContent := normalizeContent(msg.Content)
 	role := conversation.ItemRole(msg.Role)
 	if role == "" {
 		role = conversation.RoleUser
 	}
+
+	// Build proper Content array for database persistence
+	var content []conversation.Content
+	var itemType conversation.ItemType
+
+	// Handle tool calls (assistant messages with tool calls)
+	if len(msg.ToolCalls) > 0 {
+		itemType = conversation.ItemTypeFunctionCall
+		for _, tc := range msg.ToolCalls {
+			argsStr := string(tc.Function.Arguments)
+			content = append(content, conversation.Content{
+				Type: "function_call",
+				FunctionCall: &conversation.FunctionCall{
+					ID:        tc.ID,
+					Name:      tc.Function.Name,
+					Arguments: argsStr,
+				},
+			})
+		}
+	} else if msg.ToolCallID != nil && *msg.ToolCallID != "" {
+		// Tool result message
+		itemType = conversation.ItemTypeFunctionCallOut
+		textContent := extractTextContent(msg.Content)
+		content = []conversation.Content{
+			{
+				Type: "function_call_output",
+				FunctionCallOut: &conversation.FunctionCallOut{
+					CallID: *msg.ToolCallID,
+					Output: textContent,
+				},
+			},
+		}
+	} else {
+		// Regular message (user/assistant/system)
+		itemType = conversation.ItemTypeMessage
+		textContent := extractTextContent(msg.Content)
+		if textContent != "" {
+			content = []conversation.Content{
+				{
+					Type:       "output_text",
+					OutputText: &conversation.OutputText{Text: textContent},
+				},
+			}
+		}
+	}
+
 	return conversation.Item{
 		ConversationID: conversationID,
+		Type:           itemType,
 		Role:           role,
 		Status:         conversation.ItemStatusCompleted,
-		LegacyContent:  content,
+		LegacyContent:  legacyContent,
+		Content:        content,
 		Sequence:       sequence + 1,
 		SequenceNumber: sequence + 1,
 		CreatedAt:      time.Now(),
 	}
+}
+
+// extractTextContent extracts text from various content formats
+func extractTextContent(content interface{}) string {
+	switch v := content.(type) {
+	case string:
+		return v
+	case map[string]interface{}:
+		if text, ok := v["text"].(string); ok {
+			return text
+		}
+	case map[string]string:
+		if text, ok := v["text"]; ok {
+			return text
+		}
+	case []interface{}:
+		// Handle array of content items
+		var parts []string
+		for _, item := range v {
+			if m, ok := item.(map[string]interface{}); ok {
+				if text, ok := m["text"].(string); ok {
+					parts = append(parts, text)
+				}
+			}
+		}
+		if len(parts) > 0 {
+			return strings.Join(parts, "\n")
+		}
+	}
+	return ""
 }
 
 func contentToLLM(content map[string]interface{}) interface{} {
@@ -1041,6 +1134,21 @@ func (s *ServiceImpl) populateArtifactsAndCitations(ctx context.Context, resp *R
 			s.log.Warn().Err(err).Str("plan_id", *planID).Msg("failed to load plan details for citations")
 		} else if planDetails != nil {
 			resp.Citations = planDetails.ExtractCitations()
+
+			// Extract artifacts from plan and merge with existing
+			planArtifacts := planDetails.ExtractArtifacts()
+			if len(planArtifacts) > 0 {
+				seenArtifacts := make(map[string]bool)
+				for _, a := range resp.Artifacts {
+					seenArtifacts[a.ID] = true
+				}
+				for _, a := range planArtifacts {
+					if !seenArtifacts[a.ID] {
+						resp.Artifacts = append(resp.Artifacts, a)
+						seenArtifacts[a.ID] = true
+					}
+				}
+			}
 		}
 	}
 
@@ -1259,274 +1367,207 @@ func safeString(value *string) string {
 
 // executePlanWithOrchestrator executes a plan using the tool orchestrator while updating plan progress.
 func (s *ServiceImpl) executePlanWithOrchestrator(ctx context.Context, resp *Response, planResult *agent.PlanResult) error {
-	// Load conversation for context
-	conv, err := s.conversations.FindByPublicID(ctx, *resp.ConversationPublicID)
-	if err != nil {
-		return fmt.Errorf("failed to load conversation: %w", err)
-	}
-	conversationID := conv.PublicID
-	requestID := resp.PublicID
-
-	// Load conversation items (history)
-	existingItems, err := s.conversationItems.ListByConversationID(ctx, conv.ID)
-	if err != nil {
-		return fmt.Errorf("failed to load conversation items: %w", err)
-	}
-
-	// Build messages from history and current input
-	baseMessages, err := s.buildBaseMessages(resp.SystemPrompt, existingItems)
-	if err != nil {
-		return fmt.Errorf("build base messages: %w", err)
-	}
-
-	userMessages, convoItems, err := s.convertInputToMessages(conv.ID, len(existingItems), resp.Input)
-	if err != nil {
-		return fmt.Errorf("convert input: %w", err)
-	}
-	messages := append(baseMessages, userMessages...)
-	initialLength := len(messages)
-
-	// Load tool definitions
-	toolDefs, err := s.fetchAvailableTools(ctx)
-	if err != nil {
-		s.log.Warn().Err(err).Msg("Failed to load MCP tools, continuing without tools")
-		toolDefs = []llm.ToolDefinition{}
-	}
-
-	// Update plan status to in_progress
-	if err := s.planService.UpdateStatus(ctx, planResult.Plan.ID, status.StatusInProgress, nil); err != nil {
-		s.log.Warn().Err(err).Msg("failed to update plan status to in_progress")
-	}
-
-	// Start the first task
-	if _, err := s.planService.StartNextTask(ctx, planResult.Plan.ID); err != nil {
-		s.log.Warn().Err(err).Msg("failed to start first task")
-	}
-
-	// Execute orchestration
-	execParams := tool.ExecuteParams{
-		Ctx:             ctx,
-		Model:           resp.Model,
-		Messages:        messages,
-		RequestID:       requestID,
-		ConversationID:  conversationID,
-		UserID:          resp.UserID,
-		ToolDefinitions: toolDefs,
-		StreamObserver:  nil,
-	}
-
-	orchestratorResult, execErr := s.orchestrator.Execute(execParams)
-	if execErr != nil && shouldRetryWithoutTools(execErr) && len(toolDefs) > 0 {
-		execParams.ToolDefinitions = nil
-		orchestratorResult, execErr = s.orchestrator.Execute(execParams)
-	}
-
-	// Extract partial results from depth exceeded error
-	var partialExecutions []tool.Execution
-	if depthErr, ok := execErr.(*tool.DepthExceededError); ok {
-		partialExecutions = depthErr.Executions
-	}
-
-	// Item tracker for linking steps to conversation items
-	var itemTracker *conversationItemTracker
-
-	// Update response and plan status
-	now := time.Now()
-	if execErr != nil {
-		resp.Status = StatusFailed
-		resp.Error = &ErrorDetails{Message: execErr.Error()}
-		resp.CompletedAt = &now
-		resp.UpdatedAt = now
-
-		// Mark plan as failed
-		errMsg := execErr.Error()
-		if err := s.planService.UpdateStatus(ctx, planResult.Plan.ID, status.StatusFailed, &errMsg); err != nil {
-			s.log.Error().Err(err).Msg("failed to update plan status to failed")
-		}
-	} else {
-		resp.Status = StatusCompleted
-		resp.Output = orchestratorResult.FinalMessage.Content
-		resp.Usage = orchestratorResult.Usage
-		resp.CompletedAt = &now
-		resp.UpdatedAt = now
-
-		// Mark plan as completed
-		if err := s.planService.UpdateStatus(ctx, planResult.Plan.ID, status.StatusCompleted, nil); err != nil {
-			s.log.Error().Err(err).Msg("failed to update plan status to completed")
-		}
-
-		// Update plan progress to 100%
-		if err := s.planService.UpdateProgress(ctx, planResult.Plan.ID, planResult.Plan.EstimatedSteps); err != nil {
-			s.log.Error().Err(err).Msg("failed to update plan progress")
-		}
-
-		if err := s.toolExecutions.RecordExecutions(ctx, resp.ID, orchestratorResult.Executions); err != nil {
-			s.log.Error().Err(err).Str("response_id", resp.PublicID).Msg("store tool executions failed")
-		}
-
-		// Convert messages to pointers so BulkCreate can set IDs back
-		newMessages := orchestratorResult.Messages[initialLength:]
-		newItemPtrs := s.convertMessagesToItemPtrs(conv.ID, len(existingItems)+len(convoItems), newMessages)
-
-		// Prepend user input items (converted to pointers)
-		allItemPtrs := make([]*conversation.Item, 0, len(convoItems)+len(newItemPtrs))
-		for i := range convoItems {
-			allItemPtrs = append(allItemPtrs, &convoItems[i])
-		}
-		allItemPtrs = append(allItemPtrs, newItemPtrs...)
-
-		if err := s.conversationItems.BulkCreate(ctx, allItemPtrs); err != nil {
-			s.log.Error().Err(err).Str("response_id", resp.PublicID).Msg("store conversation items failed")
-		}
-
-		// Build tracker for linking steps to conversation items
-		allMessages := append(userMessages, newMessages...)
-		itemTracker = buildItemTracker(allItemPtrs, allMessages)
-	}
-
-	// Complete all tasks in the plan and their steps
-	// Get executions from either successful result or partial error results
-	var executions []tool.Execution
-	if orchestratorResult != nil {
-		executions = orchestratorResult.Executions
-	} else if len(partialExecutions) > 0 {
-		executions = partialExecutions
-	}
-
-	executionIndex := 0
-	llmStepIndex := 0
-	assistantMsgIndex := 0 // Track assistant messages for LLM steps
-	for _, task := range planResult.Tasks {
-		// Complete each step in the task
-		for _, step := range task.Steps {
-			var outputData []byte
-			var stepParams map[string]interface{}
-			_ = json.Unmarshal(step.InputParams, &stepParams)
-
-			// Variables to capture linkage info for StepDetail
-			var currentCallID string
-			var currentExecID uint
-
-			// For tool_call steps, try to match with tool executions in order
-			if step.Action == plan.ActionTypeToolCall && executionIndex < len(executions) {
-				exec := executions[executionIndex]
-				currentCallID = exec.CallID
-				currentExecID = exec.ID
-				statusStr := string(exec.Status)
-				// Check if the result indicates an error
-				if exec.Result != nil && exec.Result.IsError {
-					statusStr = "failed"
-				}
-				outputBytes, _ := json.Marshal(map[string]interface{}{
-					"tool_name":  exec.ToolName,
-					"call_id":    exec.CallID,
-					"status":     statusStr,
-					"result":     exec.Result,
-					"error":      exec.ErrorMessage,
-					"created_at": exec.CreatedAt,
-				})
-				outputData = outputBytes
-				executionIndex++
-			} else if step.Action == plan.ActionTypeLLMCall && orchestratorResult != nil {
-				// For LLM calls, generate step-specific output based on the step's purpose
-				llmOutput := s.generateLLMStepOutput(task, step, stepParams, orchestratorResult, llmStepIndex)
-				if llmOutput != nil {
-					outputData, _ = json.Marshal(llmOutput)
-				}
-				llmStepIndex++
-			}
-
-			// If aio_code_execute was planned but never executed, run it now from the generated code.
-			if step.Action == plan.ActionTypeToolCall && len(outputData) == 0 {
-				toolName, _ := stepParams["tool"].(string)
-				if toolName == "aio_code_execute" {
-					code := extractCodeBlock(extractString(resp.Output))
-					if code == "" && orchestratorResult != nil {
-						code = extractCodeBlock(extractString(orchestratorResult.FinalMessage.Content))
-					}
-					if code != "" {
-						language, _ := stepParams["language"].(string)
-						if strings.TrimSpace(language) == "" {
-							language = "python"
-						}
-						code = agent.NormalizeSandboxFilePaths(code)
-						callReq := tool.CallRequest{
-							Name: toolName,
-							Arguments: map[string]interface{}{
-								"code":     code,
-								"language": language,
-							},
-							RequestID:      requestID,
-							ConversationID: conversationID,
-							UserID:         resp.UserID,
-						}
-						result, err := s.mcpClient.CallTool(ctx, callReq)
-						statusText := "completed"
-						errMsg := ""
-						isFailed := false
-						if err != nil {
-							statusText = "failed"
-							errMsg = err.Error()
-							isFailed = true
-						} else if result != nil && result.IsError {
-							statusText = "failed"
-							errMsg = result.Error
-							isFailed = true
-						}
-						outputBytes, _ := json.Marshal(map[string]interface{}{
-							"tool_name": toolName,
-							"status":    statusText,
-							"result":    result,
-							"error":     errMsg,
-							"is_error":  isFailed,
-							"input": map[string]interface{}{
-								"language": language,
-								"code_len": len(code),
-							},
-						})
-						outputData = outputBytes
-					}
-				}
-			}
-
-			// Complete or fail the step based on output status
-			if isStepOutputIndicatingFailure(outputData) {
-				errMsg := extractErrorFromStepOutput(outputData)
-				if err := s.planService.FailStep(ctx, step.ID, errMsg, status.ErrorSeverityRetryable); err != nil {
-					s.log.Warn().Err(err).Str("step_id", step.ID).Msg("failed to fail step")
-				}
-			} else {
-				if err := s.planService.CompleteStep(ctx, step.ID, outputData); err != nil {
-					s.log.Warn().Err(err).Str("step_id", step.ID).Msg("failed to complete step")
-				}
-			}
-
-			// Create StepDetail records to link step to conversation items
-			if itemTracker != nil {
-				s.createStepDetails(ctx, step, currentCallID, currentExecID, itemTracker, assistantMsgIndex)
-				// Advance assistant message index for LLM steps
-				if step.Action == plan.ActionTypeLLMCall {
-					assistantMsgIndex++
-				}
-			}
-		}
-
-		if err := s.planService.CompleteTask(ctx, task.ID); err != nil {
-			s.log.Warn().Err(err).Str("task_id", task.ID).Msg("failed to complete task")
-		}
-	}
-
-	if err := s.responses.Update(ctx, resp); err != nil {
-		return fmt.Errorf("failed to update response: %w", err)
+	if s.agentOrchestrator == nil {
+		return errors.New("agent orchestrator not configured")
 	}
 
 	s.log.Info().
 		Str("response_id", resp.PublicID).
 		Str("plan_id", planResult.Plan.ID).
-		Str("status", string(resp.Status)).
-		Msg("plan execution completed")
+		Msg("starting plan execution with orchestrator")
 
-	return execErr
+	if err := s.agentOrchestrator.StartPlan(ctx, planResult.Plan.ID); err != nil {
+		return fmt.Errorf("failed to start plan: %w", err)
+	}
+
+	maxIterations := planResult.Plan.EstimatedSteps * 2
+	if maxIterations <= 0 {
+		maxIterations = 50
+	}
+
+	var lastOutput interface{}
+
+	for i := 0; i < maxIterations; i++ {
+		result, err := s.agentOrchestrator.ExecuteNextStep(ctx, planResult.Plan.ID)
+		if err != nil {
+			now := time.Now()
+			resp.Status = StatusFailed
+			resp.Error = &ErrorDetails{Message: err.Error()}
+			resp.CompletedAt = &now
+			resp.UpdatedAt = now
+			if updateErr := s.responses.Update(ctx, resp); updateErr != nil {
+				s.log.Error().Err(updateErr).Msg("failed to update response after step failure")
+			}
+			return err
+		}
+
+		if result != nil && len(result.Output) > 0 {
+			var decoded interface{}
+			if unmarshalErr := json.Unmarshal(result.Output, &decoded); unmarshalErr == nil {
+				lastOutput = decoded
+			} else {
+				lastOutput = string(result.Output)
+			}
+		}
+
+		planStatus, statusErr := s.agentOrchestrator.GetStatus(ctx, planResult.Plan.ID)
+		if statusErr != nil {
+			s.log.Warn().Err(statusErr).Str("plan_id", planResult.Plan.ID).Msg("failed to get plan status")
+			continue
+		}
+
+		switch planStatus.Status {
+		case status.StatusCompleted:
+			now := time.Now()
+			resp.Status = StatusCompleted
+			resp.CompletedAt = &now
+			resp.UpdatedAt = now
+
+			// Generate comprehensive output from plan results
+			finalOutput := s.generatePlanOutput(ctx, planResult.Plan.ID)
+			if finalOutput == "" {
+				// Fallback to last step output if no aggregation
+				if lastOutput != nil {
+					finalOutput = lastOutput
+				} else {
+					finalOutput = "plan completed"
+				}
+			}
+			resp.Output = finalOutput
+			s.populateArtifactsAndCitations(ctx, resp, &planResult.Plan.ID)
+			if err := s.responses.Update(ctx, resp); err != nil {
+				return fmt.Errorf("failed to update response: %w", err)
+			}
+			s.log.Info().
+				Str("response_id", resp.PublicID).
+				Str("plan_id", planResult.Plan.ID).
+				Msg("plan execution completed successfully")
+			return nil
+		case status.StatusFailed:
+			now := time.Now()
+			resp.Status = StatusFailed
+			errMsg := "plan execution failed"
+			if planStatus.LastError != nil {
+				errMsg = *planStatus.LastError
+			}
+			resp.Error = &ErrorDetails{Message: errMsg}
+			resp.CompletedAt = &now
+			resp.UpdatedAt = now
+			if err := s.responses.Update(ctx, resp); err != nil {
+				return fmt.Errorf("failed to update response after failure: %w", err)
+			}
+			return fmt.Errorf("plan failed: %s", errMsg)
+		case status.StatusWaitForUser:
+			resp.Status = Status(status.StatusWaitForUser)
+			resp.UpdatedAt = time.Now()
+			if err := s.responses.Update(ctx, resp); err != nil {
+				return fmt.Errorf("failed to update response while waiting for user: %w", err)
+			}
+			s.log.Info().
+				Str("response_id", resp.PublicID).
+				Str("plan_id", planResult.Plan.ID).
+				Msg("plan paused waiting for user input")
+			return nil
+		}
+	}
+
+	return fmt.Errorf("plan execution exceeded maximum iterations (%d)", maxIterations)
+}
+
+// generatePlanOutput aggregates results from plan execution into a comprehensive output.
+func (s *ServiceImpl) generatePlanOutput(ctx context.Context, planID string) interface{} {
+	// Get plan with all tasks and steps
+	planDetails, err := s.planService.GetPlanWithDetails(ctx, planID)
+	if err != nil {
+		s.log.Error().Err(err).Msg("failed to get plan details for output generation")
+		return ""
+	}
+
+	// Strategy 1: Look for final report generation step
+	for _, task := range planDetails.Tasks {
+		if task.TaskType == plan.TaskTypeGeneration || task.Title == "Report" {
+			for _, step := range task.Steps {
+				if step.Status == status.StatusCompleted && len(step.OutputData) > 0 {
+					var stepOutput map[string]interface{}
+					if err := json.Unmarshal(step.OutputData, &stepOutput); err == nil {
+						if content, ok := stepOutput["content"].(string); ok && content != "" {
+							s.log.Info().Msg("Using final report generation output")
+							return content
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Strategy 2: Aggregate results from all successful steps
+	var results strings.Builder
+	results.WriteString("# Research Analysis\n\n")
+
+	for _, task := range planDetails.Tasks {
+		hasOutput := false
+		for _, step := range task.Steps {
+			if step.Status == status.StatusCompleted && len(step.OutputData) > 0 {
+				hasOutput = true
+				break
+			}
+		}
+
+		if !hasOutput {
+			continue
+		}
+
+		results.WriteString(fmt.Sprintf("## %s\n\n", task.Title))
+
+		for _, step := range task.Steps {
+			if step.Status == status.StatusCompleted && len(step.OutputData) > 0 {
+				var stepOutput map[string]interface{}
+				if err := json.Unmarshal(step.OutputData, &stepOutput); err == nil {
+					// Handle different output types
+					if content, ok := stepOutput["content"].(string); ok {
+						// LLM generated content
+						results.WriteString(content)
+						results.WriteString("\n\n")
+					} else if resultsList, ok := stepOutput["results"].([]interface{}); ok {
+						// Search results
+						for i, r := range resultsList {
+							if i >= 5 {
+								break // Limit to top 5
+							}
+							if result, ok := r.(map[string]interface{}); ok {
+								if title, ok := result["title"].(string); ok {
+									results.WriteString(fmt.Sprintf("- **%s**", title))
+									if snippet, ok := result["snippet"].(string); ok {
+										results.WriteString(fmt.Sprintf(": %s", snippet))
+									}
+									if url, ok := result["url"].(string); ok {
+										results.WriteString(fmt.Sprintf(" ([source](%s))", url))
+									}
+									results.WriteString("\n")
+								}
+							}
+						}
+						results.WriteString("\n")
+					} else if _, ok := stepOutput["code"].(string); ok {
+						// Code execution output
+						results.WriteString("### Code Output\n\n```\n")
+						if output, ok := stepOutput["output"].(string); ok {
+							results.WriteString(output)
+						}
+						results.WriteString("\n```\n\n")
+					}
+				}
+			}
+		}
+	}
+
+	output := results.String()
+	if output == "# Research Analysis\n\n" {
+		// No content was added
+		return ""
+	}
+
+	return output
 }
 
 func extractCodeBlock(content string) string {

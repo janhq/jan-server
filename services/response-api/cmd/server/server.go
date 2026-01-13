@@ -19,12 +19,13 @@ import (
 	"jan-server/services/response-api/internal/domain/plan"
 	"jan-server/services/response-api/internal/domain/response"
 	"jan-server/services/response-api/internal/domain/tool"
+	"jan-server/services/response-api/internal/infrastructure/apikey"
 	"jan-server/services/response-api/internal/infrastructure/auth"
 	"jan-server/services/response-api/internal/infrastructure/database"
 	"jan-server/services/response-api/internal/infrastructure/llmprovider"
 	"jan-server/services/response-api/internal/infrastructure/logger"
-	"jan-server/services/response-api/internal/infrastructure/media"
 	"jan-server/services/response-api/internal/infrastructure/mcp"
+	"jan-server/services/response-api/internal/infrastructure/media"
 	"jan-server/services/response-api/internal/infrastructure/observability"
 	"jan-server/services/response-api/internal/infrastructure/queue"
 	artifactrepo "jan-server/services/response-api/internal/infrastructure/repository/artifact"
@@ -151,10 +152,12 @@ func main() {
 	}
 
 	// Register slide generator executor for artifact creation
-	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService)
+	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient)
 	if err := agentRegistry.RegisterExecutor(plan.ActionTypeArtifactCreate, slideGeneratorExecutor); err != nil {
 		log.Warn().Err(err).Msg("failed to register artifact create executor")
 	}
+
+	agentOrchestrator := agent.NewOrchestrator(agentRegistry, planService)
 
 	// Initialize response service with webhook support
 	responseService := response.NewService(
@@ -163,6 +166,7 @@ func main() {
 		conversationItemRepository,
 		responseRepository,
 		orchestrator,
+		agentOrchestrator,
 		mcpClient,
 		mediaClient,
 		llmClient, // Also implements ModelInfoProvider
@@ -191,7 +195,8 @@ func main() {
 		workerPool.Stop()
 	}()
 
-	httpServer := httpserver.New(cfg, log, responseService, planService, artifactService, authValidator)
+	apiKeyProvider := apikey.NewClient(cfg.LLMAPIURL)
+	httpServer := httpserver.New(cfg, log, responseService, planService, artifactService, apiKeyProvider, authValidator)
 	app := NewApplication(httpServer, log)
 
 	if err := app.Start(ctx); err != nil {

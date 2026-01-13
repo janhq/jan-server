@@ -15,10 +15,12 @@ type ToolDefinition struct {
 
 // ToolChoice allows callers to force or disable tools.
 type ToolChoice struct {
-	Type     string `json:"type"`
+	Type     string                 `json:"type"`
+	Tool     string                 `json:"tool,omitempty"`
+	Options  map[string]interface{} `json:"options,omitempty"`
 	Function struct {
-		Name string `json:"name"`
-	} `json:"function"`
+		Name string `json:"name,omitempty"`
+	} `json:"function,omitempty"`
 }
 
 // CreateResponseRequest models POST /v1/responses input.
@@ -33,6 +35,7 @@ type CreateResponseRequest struct {
 	Stream             *bool                  `json:"stream,omitempty"`
 	Background         *bool                  `json:"background,omitempty"`
 	Store              *bool                  `json:"store,omitempty"`
+	Data               *bool                  `json:"data,omitempty"` // Include all conversation items (tool calls, results) in response
 	PreviousResponseID *string                `json:"previous_response_id,omitempty"`
 	Conversation       *string                `json:"conversation,omitempty"`
 	Metadata           map[string]interface{} `json:"metadata,omitempty"`

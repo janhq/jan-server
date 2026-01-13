@@ -16,6 +16,7 @@ import (
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/plan"
 	domain "jan-server/services/response-api/internal/domain/response"
+	"jan-server/services/response-api/internal/infrastructure/apikey"
 	"jan-server/services/response-api/internal/infrastructure/auth"
 	"jan-server/services/response-api/internal/interfaces/httpserver/handlers"
 	"jan-server/services/response-api/internal/interfaces/httpserver/routes"
@@ -38,6 +39,7 @@ func New(
 	responseService domain.Service,
 	planService plan.Service,
 	artifactService artifact.Service,
+	apiKeyProvider apikey.Provider,
 	authValidator *auth.Validator,
 ) *HTTPServer {
 	if cfg.Environment == "production" {
@@ -49,7 +51,7 @@ func New(
 	engine.Use(gin.Recovery())
 	engine.Use(gin.Logger())
 
-	handlerProvider := handlers.NewProviderWithPlanAndArtifact(responseService, planService, artifactService, log)
+	handlerProvider := handlers.NewProviderWithPlanAndArtifact(responseService, planService, artifactService, apiKeyProvider, log)
 	routeProvider := routes.NewProvider(handlerProvider)
 
 	// Register public routes (health checks, swagger) without authentication

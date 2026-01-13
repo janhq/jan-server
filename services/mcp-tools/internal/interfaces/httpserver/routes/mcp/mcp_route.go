@@ -126,7 +126,10 @@ func NewMCPRoute(
 		mcpServer:       server,
 		httpHandler: mcp.NewStreamableHTTPHandler(func(_ *http.Request) *mcp.Server {
 			return server
-		}, &mcp.StreamableHTTPOptions{Stateless: true}),
+		}, &mcp.StreamableHTTPOptions{
+			Stateless:    true,
+			JSONResponse: true, // Return plain JSON instead of SSE for simpler client parsing
+		}),
 	}
 }
 

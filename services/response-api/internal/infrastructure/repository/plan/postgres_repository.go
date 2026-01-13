@@ -850,6 +850,7 @@ func mapPlanToEntity(plan *domain.Plan, responseID uint, currentTaskID, finalArt
 	return &entities.Plan{
 		PublicID:        plan.ID,
 		ResponseID:      responseID,
+		Model:           plan.Model,
 		Status:          string(plan.Status),
 		Progress:        plan.Progress,
 		AgentType:       string(plan.AgentType),
@@ -869,6 +870,7 @@ func mapPlanToEntity(plan *domain.Plan, responseID uint, currentTaskID, finalArt
 func mapPlanFromEntity(entity *entities.Plan) (*domain.Plan, error) {
 	plan := &domain.Plan{
 		ID:             entity.PublicID,
+		Model:          entity.Model,
 		Status:         status.Status(entity.Status),
 		Progress:       entity.Progress,
 		AgentType:      domain.AgentType(entity.AgentType),

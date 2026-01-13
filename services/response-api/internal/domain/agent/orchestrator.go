@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -136,21 +137,7 @@ func (o *DefaultOrchestrator) ExecuteNextStep(ctx context.Context, planID string
 	}
 
 	// Find current task and step
-	var currentTask *plan.Task
-	var currentStep *plan.Step
-
-	for _, task := range p.Tasks {
-		if task.Status == status.StatusInProgress {
-			currentTask = &task
-			for _, step := range task.Steps {
-				if step.Status == status.StatusPending || step.Status == status.StatusInProgress {
-					currentStep = &step
-					break
-				}
-			}
-			break
-		}
-	}
+	currentTask, currentStep := findCurrentTaskAndStep(p)
 
 	if currentTask == nil {
 		// No active task, try to start next
@@ -162,11 +149,60 @@ func (o *DefaultOrchestrator) ExecuteNextStep(ctx context.Context, planID string
 			// All tasks completed
 			return o.completePlan(ctx, p)
 		}
-		currentTask = nextTask
+		p, err = o.planService.GetPlanWithDetails(ctx, planID)
+		if err != nil {
+			return nil, err
+		}
+		currentTask, currentStep = findCurrentTaskAndStep(p)
 	}
 
 	if currentStep == nil {
-		// No pending steps in current task, complete it and move to next
+		// No pending steps in current task - check if any succeeded
+		completedCount := 0
+		failedCount := 0
+		for _, s := range currentTask.Steps {
+			if s.Status == status.StatusCompleted {
+				completedCount++
+			} else if s.Status == status.StatusFailed {
+				failedCount++
+			}
+		}
+
+		// If NO steps succeeded, fail the task
+		if completedCount == 0 && len(currentTask.Steps) > 0 {
+			errMsg := fmt.Sprintf("all %d steps in task failed", len(currentTask.Steps))
+			if err := o.planService.FailTask(ctx, currentTask.ID, errMsg); err != nil {
+				return nil, err
+			}
+
+			// For critical research tasks, fail the entire plan
+			if currentTask.TaskType == plan.TaskTypeResearch {
+				if err := o.planService.UpdateStatus(ctx, p.ID, status.StatusFailed, &errMsg); err != nil {
+					return nil, err
+				}
+				return &ExecutionResult{
+					Status: status.StatusFailed,
+					Error: &ExecutionError{
+						Code:     "research_task_failed",
+						Message:  errMsg,
+						Severity: status.ErrorSeverityFatal,
+					},
+				}, nil
+			}
+
+			// For non-critical tasks, continue to next task
+			nextTask, err := o.planService.StartNextTask(ctx, planID)
+			if err != nil {
+				return nil, err
+			}
+			if nextTask == nil {
+				// No more tasks - complete with partial results
+				return o.completePlan(ctx, p)
+			}
+			return o.ExecuteNextStep(ctx, planID)
+		}
+
+		// At least one step succeeded - complete task
 		if err := o.planService.CompleteTask(ctx, currentTask.ID); err != nil {
 			return nil, err
 		}
@@ -205,6 +241,26 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 		}
 	}
 
+	// Collect accumulated outputs from all previous completed tasks
+	var accumulatedOutputs []json.RawMessage
+	for _, t := range p.Tasks {
+		// Only include tasks that are completed and come before current task
+		if t.Sequence < task.Sequence && t.Status == status.StatusCompleted {
+			for _, s := range t.Steps {
+				if s.Status == status.StatusCompleted && len(s.OutputData) > 0 {
+					accumulatedOutputs = append(accumulatedOutputs, s.OutputData)
+				}
+			}
+		}
+	}
+
+	// Also include completed steps from current task (before the current step)
+	for _, s := range task.Steps {
+		if s.Sequence < step.Sequence && s.Status == status.StatusCompleted && len(s.OutputData) > 0 {
+			accumulatedOutputs = append(accumulatedOutputs, s.OutputData)
+		}
+	}
+
 	// Preserve planned params before execution
 	// PlannedParams should already be set during step creation, but ensure it's set
 	if len(step.PlannedParams) == 0 && len(step.InputParams) > 0 {
@@ -213,14 +269,16 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 
 	// Prepare input
 	input := ExecutionInput{
-		StepParams:     step.GetEffectiveParams(),
-		PreviousOutput: previousOutput,
+		StepParams:         step.GetEffectiveParams(),
+		PreviousOutput:     previousOutput,
+		AccumulatedOutputs: accumulatedOutputs,
 		PlanContext: &PlanContext{
 			PlanID:         p.ID,
 			TaskID:         task.ID,
-			ConversationID: "", // Would be populated from response
+			ConversationID: "",
 			ResponseID:     p.ResponseID,
 			AgentType:      p.AgentType,
+			Model:          p.Model,
 		},
 	}
 
@@ -362,6 +420,24 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 	return result, nil
 }
 
+func findCurrentTaskAndStep(p *plan.Plan) (*plan.Task, *plan.Step) {
+	var currentTask *plan.Task
+	var currentStep *plan.Step
+	for _, task := range p.Tasks {
+		if task.Status == status.StatusInProgress {
+			currentTask = &task
+			for _, step := range task.Steps {
+				if step.Status == status.StatusPending || step.Status == status.StatusInProgress {
+					currentStep = &step
+					break
+				}
+			}
+			break
+		}
+	}
+	return currentTask, currentStep
+}
+
 // completePlan marks the plan as completed.
 func (o *DefaultOrchestrator) completePlan(ctx context.Context, p *plan.Plan) (*ExecutionResult, error) {
 	if err := o.planService.UpdateStatus(ctx, p.ID, status.StatusCompleted, nil); err != nil {
@@ -461,11 +537,13 @@ func isOutputIndicatingFailure(output []byte) bool {
 		return true
 	}
 
-	// Check for status field indicating failure
+	// Check for status field indicating failure or skipped (non-critical failures)
 	if statusStr, ok := outputMap["status"].(string); ok {
 		if statusStr == "failed" || statusStr == "error" {
 			return true
 		}
+		// Note: "skipped" is NOT treated as failure - it's a valid non-critical outcome
+		// for optional steps like scrape when no URLs are available
 	}
 
 	// Check nested result for is_error

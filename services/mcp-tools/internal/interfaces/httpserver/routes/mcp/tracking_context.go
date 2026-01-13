@@ -12,10 +12,11 @@ type ToolTrackingContextKey struct{}
 
 // ToolTrackingContext holds the tracking information from headers
 type ToolTrackingContext struct {
-	ConversationID string
-	ToolCallID     string
-	AuthToken      string
-	Enabled        bool
+	ConversationID  string
+	ToolCallID      string
+	AuthToken       string
+	Enabled         bool
+	FromResponseAPI bool // True if request comes from response-api (X-JAN-SRC: RESPONSE)
 }
 
 // ExtractToolTracking extracts tracking headers and injects into context
@@ -28,12 +29,21 @@ func ExtractToolTracking() gin.HandlerFunc {
 		conversationID := reqCtx.GetHeader("X-Conversation-ID")
 		toolCallID := reqCtx.GetHeader("X-Tool-Call-ID")
 		authToken := reqCtx.GetHeader("Authorization")
+		janSrc := reqCtx.GetHeader("X-JAN-SRC")
+
+		// Check if request comes from response-api
+		fromResponseAPI := janSrc == "RESPONSE"
+
+		// Disable tracking for requests from response-api
+		// Response-api handles its own conversation tracking internally
+		enabled := conversationID != "" && toolCallID != "" && authToken != "" && !fromResponseAPI
 
 		tracking := ToolTrackingContext{
-			ConversationID: conversationID,
-			ToolCallID:     toolCallID,
-			AuthToken:      authToken,
-			Enabled:        conversationID != "" && toolCallID != "" && authToken != "",
+			ConversationID:  conversationID,
+			ToolCallID:      toolCallID,
+			AuthToken:       authToken,
+			Enabled:         enabled,
+			FromResponseAPI: fromResponseAPI,
 		}
 
 		if tracking.Enabled {
@@ -42,6 +52,10 @@ func ExtractToolTracking() gin.HandlerFunc {
 				Str("call_id", toolCallID).
 				Bool("tracking_enabled", true).
 				Msg("Tool tracking enabled for request")
+		} else if fromResponseAPI {
+			log.Debug().
+				Bool("from_response_api", true).
+				Msg("Tool tracking disabled for response-api request")
 		}
 
 		// Inject tracking context into request context

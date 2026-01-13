@@ -36,7 +36,7 @@ func NewClient(baseURL string) *Client {
 // CreateChatCompletion calls llm-api /v1/chat/completions.
 func (c *Client) CreateChatCompletion(ctx context.Context, req llm.ChatCompletionRequest) (*llm.ChatCompletionResponse, error) {
 	// Convert to API-compatible format with string content
-	apiReq := convertToAPIRequest(req)
+	apiReq := convertToAPIRequest(ctx, req)
 
 	var completion llm.ChatCompletionResponse
 	request := c.httpClient.R().
@@ -100,7 +100,7 @@ var _ llm.Provider = (*Client)(nil)
 
 // convertToAPIRequest converts domain types to API-compatible format.
 // This ensures Content is always a string as expected by LLM API.
-func convertToAPIRequest(req llm.ChatCompletionRequest) map[string]interface{} {
+func convertToAPIRequest(ctx context.Context, req llm.ChatCompletionRequest) map[string]interface{} {
 	// Convert messages with string content
 	messages := make([]map[string]interface{}, len(req.Messages))
 	for i, msg := range req.Messages {
@@ -140,7 +140,11 @@ func convertToAPIRequest(req llm.ChatCompletionRequest) map[string]interface{} {
 	return apiReq
 }
 
+// setAuthHeaders sets authentication headers and X-JAN-SRC to identify requests from response-api.
 func setAuthHeaders(ctx context.Context, setHeader func(string, string)) {
+	// Mark request as coming from response-api so downstream services can skip tracking
+	setHeader("X-JAN-SRC", "RESPONSE")
+
 	token := strings.TrimSpace(llm.AuthTokenFromContext(ctx))
 	if token == "" {
 		return
@@ -149,7 +153,18 @@ func setAuthHeaders(ctx context.Context, setHeader func(string, string)) {
 		setHeader("Authorization", token)
 		return
 	}
+	if looksLikeJWT(token) {
+		setHeader("Authorization", "Bearer "+token)
+		return
+	}
 	setHeader("X-API-Key", token)
+}
+
+func looksLikeJWT(token string) bool {
+	if strings.HasPrefix(token, "sk_") {
+		return false
+	}
+	return strings.Count(token, ".") == 2
 }
 
 // sseStream implements llm.Stream backed by http.Response body with SSE parsing.

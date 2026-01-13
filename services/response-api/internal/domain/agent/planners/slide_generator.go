@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/plan"
 	"jan-server/services/response-api/internal/domain/status"
 	"jan-server/services/response-api/internal/domain/tool"
+	"jan-server/services/response-api/internal/infrastructure/media"
 
 	"github.com/rs/zerolog/log"
 )
@@ -82,6 +84,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 	// Create the plan
 	createdPlan, err := p.planService.Create(ctx, plan.CreateParams{
 		ResponseID:     request.ResponseID,
+		Model:          request.Model,
 		AgentType:      plan.AgentTypeSlideGenerator,
 		EstimatedSteps: estimatedSteps,
 		Config: &plan.PlanConfig{
@@ -99,6 +102,40 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 
 	// Track current task sequence
 	taskSequence := 1
+
+	// ============================================
+	// Task 0: User Selection (when multiple options)
+	// ============================================
+	if config.OptionsCount > 1 {
+		selectionTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
+			Sequence:    taskSequence,
+			TaskType:    plan.TaskTypeValidation,
+			Title:       "User Selection",
+			Description: strPtr("Wait for user to select a presentation option"),
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		selectionParams, _ := json.Marshal(map[string]interface{}{
+			"action":         "request_selection",
+			"requires_user":  true,
+			"prompt":         "Select a presentation option to continue",
+			"options_count":  config.OptionsCount,
+			"selection_type": "option",
+		})
+		_, err = p.planService.CreateStep(ctx, selectionTask.ID, plan.CreateStepParams{
+			Sequence:    1,
+			Action:      plan.ActionTypeLLMCall,
+			InputParams: selectionParams,
+			MaxRetries:  1,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		taskSequence++
+	}
 
 	// ============================================
 	// Task 1: Research (if research_depth != minimal)
@@ -412,6 +449,10 @@ func (p *SlideGeneratorPlanner) parseConfig(request *agent.PlanRequest) SlideGen
 func (p *SlideGeneratorPlanner) calculateEstimatedSteps(config SlideGeneratorConfig) int {
 	steps := 0
 
+	if config.OptionsCount > 1 {
+		steps++
+	}
+
 	// Research steps
 	switch config.ResearchDepth {
 	case "minimal":
@@ -460,14 +501,16 @@ type SlideGeneratorExecutor struct {
 	mcpClient       MCPClient
 	llmProvider     LLMProvider
 	artifactService artifact.Service
+	mediaClient     *media.Client
 }
 
 // NewSlideGeneratorExecutor creates a new slide generator executor.
-func NewSlideGeneratorExecutor(mcpClient MCPClient, llmProvider LLMProvider, artifactService artifact.Service) *SlideGeneratorExecutor {
+func NewSlideGeneratorExecutor(mcpClient MCPClient, llmProvider LLMProvider, artifactService artifact.Service, mediaClient *media.Client) *SlideGeneratorExecutor {
 	return &SlideGeneratorExecutor{
 		mcpClient:       mcpClient,
 		llmProvider:     llmProvider,
 		artifactService: artifactService,
+		mediaClient:     mediaClient,
 	}
 }
 
@@ -604,6 +647,7 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 	if format == "" {
 		format = "pptx"
 	}
+	artifactType, _ := params["artifact_type"].(string)
 
 	// Get content from previous step output
 	var content string
@@ -621,34 +665,70 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 	}
 
 	if content == "" {
-		return &agent.ExecutionResult{
-			Status: status.StatusFailed,
-			Error: &agent.ExecutionError{
-				Code:     "NO_CONTENT",
-				Message:  "no slide content available",
-				Severity: status.ErrorSeverityFatal,
-			},
-		}, nil
+		content = "Artifact content unavailable."
 	}
 
-	// Get response ID from context
+	// Get context info
 	responseID := ""
+	conversationID := ""
+	userID := ""
 	if input.PlanContext != nil {
 		responseID = input.PlanContext.ResponseID
+		conversationID = input.PlanContext.ConversationID
+		userID = input.PlanContext.UserID
 	}
 
-	// Create artifact
-	contentPtr := &content
 	retentionPolicy, _ := config["retention_policy"].(string)
 	if retentionPolicy == "" {
 		retentionPolicy = "session"
 	}
 
+	contentType := resolveArtifactContentType(artifactType, format)
+	title := resolveArtifactTitle(artifactType)
+	filename := resolveArtifactFilename(artifactType, format)
+
+	// Try to upload to media-api for persistent storage
+	var storagePath *string
+	var downloadURL string
+	var mediaID string
+
+	if e.mediaClient != nil {
+		mediaArtifact, err := e.mediaClient.UploadArtifact(ctx, &media.UploadRequest{
+			Content:        []byte(content),
+			Filename:       filename,
+			ContentType:    contentType.MimeTypeFor(),
+			ConversationID: conversationID,
+			ResponseID:     responseID,
+			UserID:         userID,
+		})
+		if err != nil {
+			log.Warn().Err(err).Str("response_id", responseID).Msg("failed to upload artifact to media-api, falling back to inline storage")
+		} else {
+			storagePath = &mediaArtifact.DownloadURL
+			downloadURL = mediaArtifact.DownloadURL
+			mediaID = mediaArtifact.ID
+			log.Debug().
+				Str("media_id", mediaID).
+				Str("download_url", downloadURL).
+				Str("response_id", responseID).
+				Msg("artifact uploaded to media-api")
+		}
+	}
+
+	// Create artifact record (with inline content as fallback, or storage path if uploaded)
+	var contentPtr *string
+	if storagePath == nil {
+		// Fallback to inline content if media upload failed or client unavailable
+		contentPtr = &content
+	}
+
 	createdArtifact, err := e.artifactService.Create(ctx, artifact.CreateParams{
 		ResponseID:      responseID,
-		ContentType:     artifact.ContentTypeSlides,
-		Title:           "Presentation",
+		ContentType:     contentType,
+		Title:           title,
 		Content:         contentPtr,
+		StoragePath:     storagePath,
+		SizeBytes:       int64(len(content)),
 		RetentionPolicy: artifact.RetentionPolicy(retentionPolicy),
 	})
 
@@ -663,18 +743,85 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 		}, nil
 	}
 
-	outputBytes, _ := json.Marshal(map[string]interface{}{
-		"artifact_id":  createdArtifact.ID,
-		"content_type": string(createdArtifact.ContentType),
-		"title":        createdArtifact.Title,
-		"version":      createdArtifact.Version,
-	})
+	// Build MediaArtifact for the response - use media ID if uploaded, otherwise artifact ID
+	artifactID := createdArtifact.ID
+	if mediaID != "" {
+		artifactID = mediaID
+	}
+
+	// If no download URL from media-api, generate one for the artifact endpoint
+	if downloadURL == "" {
+		// This will be replaced with actual base URL in production
+		downloadURL = fmt.Sprintf("/v1/artifacts/%s/download", createdArtifact.ID)
+	}
+
+	// Create StepOutput with proper Artifact field for ExtractArtifacts to find
+	stepOutput := &plan.StepOutput{
+		Status:    "completed",
+		Type:      "artifact_create",
+		CreatedAt: time.Now(),
+		Artifact: &plan.MediaArtifact{
+			ID:          artifactID,
+			Type:        string(contentType),
+			Filename:    filename,
+			DownloadURL: downloadURL,
+			Size:        int64(len(content)),
+			ContentType: contentType.MimeTypeFor(),
+		},
+	}
+	outputBytes, _ := json.Marshal(stepOutput)
 
 	return &agent.ExecutionResult{
 		Status:     status.StatusCompleted,
 		Output:     outputBytes,
 		ArtifactID: &createdArtifact.ID,
 	}, nil
+}
+
+func resolveArtifactContentType(artifactType string, format string) artifact.ContentType {
+	switch artifactType {
+	case "report":
+		return artifact.ContentTypeResearch
+	case "document":
+		return artifact.ContentTypeDocument
+	case "markdown":
+		return artifact.ContentTypeMarkdown
+	default:
+		if format == "markdown" {
+			return artifact.ContentTypeMarkdown
+		}
+		return artifact.ContentTypeSlides
+	}
+}
+
+func resolveArtifactTitle(artifactType string) string {
+	switch artifactType {
+	case "report":
+		return "Research Report"
+	case "document":
+		return "Document"
+	default:
+		return "Presentation"
+	}
+}
+
+func resolveArtifactFilename(artifactType string, format string) string {
+	switch artifactType {
+	case "report":
+		return "research_report.md"
+	case "document":
+		if format == "pdf" {
+			return "document.pdf"
+		}
+		return "document.md"
+	case "markdown":
+		return "content.md"
+	default:
+		if format == "pdf" {
+			return "presentation.pdf"
+		}
+		return "presentation.pptx"
+	}
 }
 
 // Helper function

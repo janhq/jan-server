@@ -29,7 +29,11 @@ func NewClient(baseURL string) *Client {
 }
 
 // setAuthHeader adds X-API-Key header to the request if a token is available in context.
+// Also sets X-JAN-SRC header to identify requests from response-api.
 func setAuthHeader(ctx context.Context, req *resty.Request) {
+	// Mark request as coming from response-api so downstream services can skip tracking
+	req.SetHeader("X-JAN-SRC", "RESPONSE")
+
 	token := strings.TrimSpace(llm.AuthTokenFromContext(ctx))
 	if token == "" {
 		return
@@ -38,36 +42,89 @@ func setAuthHeader(ctx context.Context, req *resty.Request) {
 		req.SetHeader("Authorization", token)
 		return
 	}
+	if looksLikeJWT(token) {
+		req.SetHeader("Authorization", "Bearer "+token)
+		return
+	}
 	req.SetHeader("X-API-Key", token)
 }
 
-// parseSSEorJSON extracts JSON from SSE format or returns body as-is if already JSON.
-// SSE format: "event: message\ndata: {...}\n\n"
-func parseSSEorJSON(body []byte) ([]byte, error) {
-	bodyStr := string(body)
+func looksLikeJWT(token string) bool {
+	if strings.HasPrefix(token, "sk_") {
+		return false
+	}
+	return strings.Count(token, ".") == 2
+}
 
-	// If it starts with '{', it's already JSON
+// parseSSEorJSON extracts JSON from SSE format or returns body as-is if already JSON.
+// Supports multiple SSE formats:
+//   - Plain JSON: {"jsonrpc":...}
+//   - SSE with data prefix: "event: message\ndata: {...}\n\n"
+//   - SSE data-only: "data: {...}\n\n"
+//
+// Returns the first valid JSON object found.
+func parseSSEorJSON(body []byte) ([]byte, error) {
+	if len(body) == 0 {
+		return nil, fmt.Errorf("empty response body")
+	}
+
+	bodyStr := string(body)
 	trimmed := strings.TrimSpace(bodyStr)
-	if strings.HasPrefix(trimmed, "{") {
+
+	// If it starts with '{' or '[', it's already JSON
+	if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
 		return body, nil
 	}
 
-	// Parse SSE format - look for "data: " lines
+	// Parse SSE format - look for "data: " lines and collect all JSON data
+	// Some SSE implementations may have multiple data lines for a single event
 	scanner := bufio.NewScanner(strings.NewReader(bodyStr))
-	var jsonData string
+
+	// Increase scanner buffer for large payloads (e.g., scrape responses)
+	const maxTokenSize = 10 * 1024 * 1024 // 10MB
+	buf := make([]byte, 64*1024)
+	scanner.Buffer(buf, maxTokenSize)
+
+	var jsonData strings.Builder
+	var foundData bool
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.HasPrefix(line, "data: ") {
-			jsonData = strings.TrimPrefix(line, "data: ")
-			break
+			data := strings.TrimPrefix(line, "data: ")
+			if data != "" {
+				jsonData.WriteString(data)
+				foundData = true
+			}
+		} else if strings.HasPrefix(line, "data:") {
+			// Handle "data:" without space
+			data := strings.TrimPrefix(line, "data:")
+			if data != "" {
+				jsonData.WriteString(data)
+				foundData = true
+			}
 		}
 	}
 
-	if jsonData == "" {
-		return nil, fmt.Errorf("no JSON data found in SSE response")
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error scanning SSE response: %w", err)
 	}
 
-	return []byte(jsonData), nil
+	if !foundData {
+		// Log first 500 chars of response for debugging
+		preview := bodyStr
+		if len(preview) > 500 {
+			preview = preview[:500] + "..."
+		}
+		log.Debug().
+			Str("response_preview", preview).
+			Int("response_length", len(bodyStr)).
+			Msg("SSE parsing failed - no data field found")
+
+		return nil, fmt.Errorf("no JSON data found in SSE response (len=%d)", len(bodyStr))
+	}
+
+	return []byte(jsonData.String()), nil
 }
 
 // ListTools fetches the tools via JSON-RPC call tools/list.
@@ -129,7 +186,6 @@ func (c *Client) CallTool(ctx context.Context, req tool.CallRequest) (*tool.Resu
 		Str("tool", req.Name).
 		Str("tool_call_id", req.ToolCallID).
 		Str("request_id", req.RequestID).
-		Str("conversation_id", req.ConversationID).
 		Str("user_id", req.UserID).
 		Msg("Calling MCP tool")
 
@@ -140,7 +196,8 @@ func (c *Client) CallTool(ctx context.Context, req tool.CallRequest) (*tool.Resu
 	}
 
 	// Add context IDs to _meta field (not merged into arguments)
-	meta := buildMetaContext(req.RequestID, req.ConversationID, req.UserID, req.ToolCallID)
+	// Note: conversation_id is NOT included - it's internal to response-api
+	meta := buildMetaContext(req.RequestID, req.UserID, req.ToolCallID)
 	if len(meta) > 0 {
 		params["_meta"] = meta
 	}
@@ -215,15 +272,16 @@ func (r *rpcError) Error() string {
 	return fmt.Sprintf("mcp error (%d): %s", r.Code, r.Message)
 }
 
-func buildMetaContext(requestID, conversationID, userID, toolCallID string) map[string]interface{} {
+// buildMetaContext creates metadata for MCP tool calls.
+// Note: conversation_id is intentionally NOT included as it's internal to response-api.
+// Downstream services should not track or store conversation context from response-api calls.
+func buildMetaContext(requestID, userID, toolCallID string) map[string]interface{} {
 	meta := make(map[string]interface{})
 
 	if strings.TrimSpace(requestID) != "" {
 		meta["request_id"] = requestID
 	}
-	if strings.TrimSpace(conversationID) != "" {
-		meta["conversation_id"] = conversationID
-	}
+	// conversation_id is NOT sent - it's internal to response-api
 	if strings.TrimSpace(userID) != "" {
 		meta["user_id"] = userID
 	}

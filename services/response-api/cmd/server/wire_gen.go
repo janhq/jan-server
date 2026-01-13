@@ -17,12 +17,13 @@ import (
 	plan2 "jan-server/services/response-api/internal/domain/plan"
 	response2 "jan-server/services/response-api/internal/domain/response"
 	"jan-server/services/response-api/internal/domain/tool"
+	"jan-server/services/response-api/internal/infrastructure/apikey"
 	"jan-server/services/response-api/internal/infrastructure/auth"
 	"jan-server/services/response-api/internal/infrastructure/database"
 	"jan-server/services/response-api/internal/infrastructure/llmprovider"
 	"jan-server/services/response-api/internal/infrastructure/logger"
-	"jan-server/services/response-api/internal/infrastructure/media"
 	"jan-server/services/response-api/internal/infrastructure/mcp"
+	"jan-server/services/response-api/internal/infrastructure/media"
 	"jan-server/services/response-api/internal/infrastructure/repository/artifact"
 	"jan-server/services/response-api/internal/infrastructure/repository/conversation"
 	"jan-server/services/response-api/internal/infrastructure/repository/plan"
@@ -62,13 +63,15 @@ func BuildApplication(ctx context.Context) (*Application, error) {
 	service := plan2.NewService(planPostgresRepository)
 	artifactPostgresRepository := artifact.NewPostgresRepository(db)
 	artifactService := artifact2.NewService(artifactPostgresRepository)
-	registry := newAgentRegistry(service, mcpClient, client, artifactService, configConfig)
-	responseService := newResponseService(postgresRepository, repository, itemRepository, postgresRepository, orchestrator, mcpClient, mediaClient, client, httpService, registry, service, zerologLogger)
+	registry := newAgentRegistry(service, mcpClient, client, artifactService, configConfig, mediaClient)
+	orchestrator2 := newAgentOrchestrator(registry, service)
+	responseService := newResponseService(postgresRepository, repository, itemRepository, postgresRepository, orchestrator, orchestrator2, mcpClient, mediaClient, client, httpService, registry, service, zerologLogger)
+	apiKeyProvider := newAPIKeyProvider(configConfig)
 	validator, err := newAuthValidator(ctx, configConfig, zerologLogger)
 	if err != nil {
 		return nil, err
 	}
-	httpServer := httpserver.New(configConfig, zerologLogger, responseService, service, artifactService, validator)
+	httpServer := httpserver.New(configConfig, zerologLogger, responseService, service, artifactService, apiKeyProvider, validator)
 	application := NewApplication(httpServer, zerologLogger)
 	return application, nil
 }
@@ -76,7 +79,7 @@ func BuildApplication(ctx context.Context) (*Application, error) {
 // wire.go:
 
 var responseSet = wire.NewSet(response.NewPostgresRepository, wire.Bind(new(response2.Repository), new(*response.PostgresRepository)), wire.Bind(new(response2.ToolExecutionRepository), new(*response.PostgresRepository)), plan.NewPostgresRepository, wire.Bind(new(plan2.Repository), new(*plan.PostgresRepository)), artifact.NewPostgresRepository, wire.Bind(new(artifact2.Repository), new(*artifact.PostgresRepository)), conversation.NewRepository, wire.Bind(new(conversation2.Repository), new(*conversation.Repository)), conversation.NewItemRepository, wire.Bind(new(conversation2.ItemRepository), new(*conversation.ItemRepository)), newLLMProvider, wire.Bind(new(llm.Provider), new(*llmprovider.Client)), wire.Bind(new(llm.ModelInfoProvider), new(*llmprovider.Client)), newMCPClient, wire.Bind(new(tool.MCPClient), new(*mcp.Client)), wire.Bind(new(planners.MCPClient), new(*mcp.Client)), newMediaClient, newOrchestrator,
-	newWebhookService, wire.Bind(new(webhook.Service), new(*webhook.HTTPService)), plan2.NewService, newAgentRegistry,
+	newAgentOrchestrator, newWebhookService, wire.Bind(new(webhook.Service), new(*webhook.HTTPService)), plan2.NewService, newAgentRegistry,
 	newResponseService, artifact2.NewService,
 )
 
@@ -109,6 +112,10 @@ func newLLMProvider(cfg *config.Config) *llmprovider.Client {
 	return llmprovider.NewClient(cfg.LLMAPIURL)
 }
 
+func newAPIKeyProvider(cfg *config.Config) *apikey.Client {
+	return apikey.NewClient(cfg.LLMAPIURL)
+}
+
 func newMCPClient(cfg *config.Config) *mcp.Client {
 	return mcp.NewClient(cfg.MCPToolsURL)
 }
@@ -121,11 +128,15 @@ func newOrchestrator(cfg *config.Config, provider llm.Provider, mcpClient tool.M
 	return tool.NewOrchestrator(provider, mcpClient, cfg.MaxToolDepth, cfg.ToolTimeout)
 }
 
+func newAgentOrchestrator(registry agent.Registry, planService plan2.Service) agent.Orchestrator {
+	return agent.NewOrchestrator(registry, planService)
+}
+
 func newWebhookService(log zerolog.Logger) *webhook.HTTPService {
 	return webhook.NewHTTPService(log)
 }
 
-func newAgentRegistry(planService plan2.Service, mcpClient tool.MCPClient, llmProvider llm.Provider, artifactService artifact2.Service, cfg *config.Config) agent.Registry {
+func newAgentRegistry(planService plan2.Service, mcpClient tool.MCPClient, llmProvider llm.Provider, artifactService artifact2.Service, cfg *config.Config, mediaClient *media.Client) agent.Registry {
 	registry := agent.NewRegistry()
 
 	deepResearchPlanner := planners.NewDeepResearchPlanner(planService)
@@ -147,7 +158,7 @@ func newAgentRegistry(planService plan2.Service, mcpClient tool.MCPClient, llmPr
 	_ = registry.RegisterExecutor(plan2.ActionTypeLLMCall, deepResearchExecutor)
 
 	// Register the slide generator executor for artifact creation
-	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService)
+	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient)
 	_ = registry.RegisterExecutor(plan2.ActionTypeArtifactCreate, slideGeneratorExecutor)
 
 	return registry
@@ -159,6 +170,7 @@ func newResponseService(
 	conversationItems conversation2.ItemRepository,
 	toolRepo response2.ToolExecutionRepository,
 	orchestrator *tool.Orchestrator,
+	agentOrchestrator agent.Orchestrator,
 	mcpClient tool.MCPClient,
 	mediaClient *media.Client,
 	modelInfoProvider llm.ModelInfoProvider,
@@ -167,5 +179,5 @@ func newResponseService(
 	planService plan2.Service,
 	log zerolog.Logger,
 ) response2.Service {
-	return response2.NewService(repo, conversations, conversationItems, toolRepo, orchestrator, mcpClient, mediaClient, modelInfoProvider, webhookService, agentRegistry, planService, log)
+	return response2.NewService(repo, conversations, conversationItems, toolRepo, orchestrator, agentOrchestrator, mcpClient, mediaClient, modelInfoProvider, webhookService, agentRegistry, planService, log)
 }

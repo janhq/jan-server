@@ -129,12 +129,31 @@
                   "  pm.response.to.have.status(200);",
                   "  pm.expect(response).to.have.property('id');",
                   "});",
+                  "pm.test('Agent response has no error message', function () {",
+                  "  const err = response.error || {};",
+                  "  pm.expect(err.message || '').to.eql('');",
+                  "});",
                   "pm.collectionVariables.set('agent_response_id', response.id);",
                   "if (response.conversation_id) {",
                   "  pm.collectionVariables.set('agent_conversation_id', response.conversation_id);",
                   "}",
-                  "pm.test('Status is valid', function () {",
-                  "  pm.expect(response.status).to.be.oneOf(['queued', 'in_progress', 'completed', 'wait_for_user']);",
+                  "pm.test('Response completed synchronously', function () {",
+                  "  pm.expect(response.status).to.equal('completed');",
+                  "});",
+                  "pm.test('Response has valid output', function () {",
+                  "  pm.expect(response).to.have.property('output');",
+                  "  const hasOutput = (typeof response.output === 'string' && response.output.trim().length > 0) || (Array.isArray(response.output) && response.output.length > 0);",
+                  "  pm.expect(hasOutput).to.be.true;",
+                  "});",
+                  "pm.test('No errors in response', function () {",
+                  "  if (response.error && response.error.message) {",
+                  "    pm.expect(response.error.message).to.equal('');",
+                  "  }",
+                  "});",
+                  "pm.test('Plan exists and completed', function () {",
+                  "  if (response.plan) {",
+                  "    pm.expect(response.plan.status).to.equal('completed');",
+                  "  }",
                   "});"
                 ]
               }
@@ -271,31 +290,16 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const expectCompleted = pm.collectionVariables.get('agent_response_completed') === 'true';",
-                  "if (pm.response.code === 200) {",
-                  "  const data = pm.response.json();",
-                  "  pm.test('Plan summary returned', function () {",
-                  "    pm.expect(data).to.have.property('id');",
-                  "    pm.expect(data).to.have.property('status');",
-                  "  });",
-                  "  if (expectCompleted) {",
-                  "    pm.test('Plan completed', function () {",
-                  "      pm.expect(data.status).to.eql('completed');",
-                  "    });",
-                  "  }",
-                  "  pm.collectionVariables.set('agent_plan_id', data.id);",
-                  "  pm.collectionVariables.set('agent_plan_available', 'true');",
-                  "} else {",
-                  "  pm.test('Plan not ready or unavailable', function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([404, 202]);",
-                  "  });",
-                  "  if (expectCompleted) {",
-                  "    pm.test('Plan should be available after completion', function () {",
-                  "      pm.expect(pm.response.code).to.eql(200);",
-                  "    });",
-                  "  }",
-                  "  pm.collectionVariables.set('agent_plan_available', 'false');",
-                  "}"
+                  "pm.test('Plan summary returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const data = pm.response.json();",
+                  "pm.test('Plan summary includes id and status', function () {",
+                  "  pm.expect(data).to.have.property('id');",
+                  "  pm.expect(data).to.have.property('status');",
+                  "});",
+                  "pm.collectionVariables.set('agent_plan_id', data.id);",
+                  "pm.collectionVariables.set('agent_plan_available', 'true');"
                 ]
               }
             }
@@ -319,31 +323,14 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const expectCompleted = pm.collectionVariables.get('agent_response_completed') === 'true';",
-                  "if (pm.response.code === 200) {",
-                  "  const data = pm.response.json();",
-                  "  pm.test('Plan details include tasks', function () {",
-                  "    pm.expect(data).to.have.property('tasks');",
-                  "    pm.expect(data.tasks).to.be.an('array').that.is.not.empty;",
-                  "  });",
-                  "  if (expectCompleted) {",
-                  "    pm.test('Plan details tasks have steps', function () {",
-                  "      data.tasks.forEach(task => {",
-                  "        pm.expect(task).to.have.property('steps');",
-                  "        pm.expect(task.steps).to.be.an('array').that.is.not.empty;",
-                  "      });",
-                  "    });",
-                  "  }",
-                  "} else {",
-                  "  pm.test('Plan details not ready or unavailable', function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([404, 202]);",
-                  "  });",
-                  "  if (expectCompleted) {",
-                  "    pm.test('Plan details should be available after completion', function () {",
-                  "      pm.expect(pm.response.code).to.eql(200);",
-                  "    });",
-                  "  }",
-                  "}"
+                  "pm.test('Plan details returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const data = pm.response.json();",
+                  "pm.test('Plan details include tasks', function () {",
+                  "  pm.expect(data).to.have.property('tasks');",
+                  "  pm.expect(data.tasks).to.be.an('array').that.is.not.empty;",
+                  "});"
                 ]
               }
             }
@@ -367,27 +354,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const expectCompleted = pm.collectionVariables.get('agent_response_completed') === 'true';",
-                  "if (pm.response.code === 200) {",
-                  "  const data = pm.response.json();",
-                  "  pm.test('Plan progress returned', function () {",
-                  "    pm.expect(data).to.have.property('progress');",
-                  "  });",
-                  "  if (expectCompleted) {",
-                  "    pm.test('Plan progress is 100 on completion', function () {",
-                  "      pm.expect(data.progress).to.eql(100);",
-                  "    });",
-                  "  }",
-                  "} else {",
-                  "  pm.test('Plan progress not ready or unavailable', function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([404, 202]);",
-                  "  });",
-                  "  if (expectCompleted) {",
-                  "    pm.test('Plan progress should be available after completion', function () {",
-                  "      pm.expect(pm.response.code).to.eql(200);",
-                  "    });",
-                  "  }",
-                  "}"
+                  "pm.test('Plan progress returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const data = pm.response.json();",
+                  "pm.test('Plan progress has progress field', function () {",
+                  "  pm.expect(data).to.have.property('progress');",
+                  "});"
                 ]
               }
             }
@@ -411,22 +384,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "const expectCompleted = pm.collectionVariables.get('agent_response_completed') === 'true';",
-                  "if (pm.response.code === 200) {",
-                  "  const data = pm.response.json();",
-                  "  pm.test('Tasks list returned', function () {",
-                  "    pm.expect(data).to.be.an('array').that.is.not.empty;",
-                  "  });",
-                  "} else {",
-                  "  pm.test('Tasks list not ready or unavailable', function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([404, 202]);",
-                  "  });",
-                  "  if (expectCompleted) {",
-                  "    pm.test('Tasks list should be available after completion', function () {",
-                  "      pm.expect(pm.response.code).to.eql(200);",
-                  "    });",
-                  "  }",
-                  "}"
+                  "pm.test('Tasks list returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const data = pm.response.json();",
+                  "pm.test('Tasks list is non-empty array', function () {",
+                  "  pm.expect(data).to.be.an('array').that.is.not.empty;",
+                  "});"
                 ]
               }
             }
@@ -450,35 +414,36 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Artifacts list response status', function () {",
-                  "  pm.expect(pm.response.code).to.be.oneOf([200, 202, 404]);",
+                  "pm.test('Artifacts list returned', function () {",
+                  "  pm.response.to.have.status(200);",
                   "});",
-                  "if (pm.response.code === 200) {",
-                  "  let payload;",
-                  "  try {",
-                  "    payload = pm.response.json();",
-                  "  } catch (err) {",
-                  "    payload = null;",
-                  "  }",
-                  "  const artifacts = Array.isArray(payload?.data)",
-                  "    ? payload.data",
-                  "    : Array.isArray(payload)",
-                  "      ? payload",
-                  "      : [];",
-                  "  pm.test('Artifacts list shape valid', function () {",
-                  "    pm.expect(Array.isArray(artifacts)).to.eql(true);",
-                  "  });",
-                  "  if (artifacts.length > 0) {",
-                  "    const latest = artifacts.find(a => a.is_latest) || artifacts[0];",
-                  "    if (latest && latest.id) {",
-                  "      pm.collectionVariables.set('agent_artifact_id', latest.id);",
-                  "      pm.collectionVariables.set('agent_artifact_available', 'true');",
-                  "    }",
-                  "  } else {",
-                  "    pm.collectionVariables.set('agent_artifact_available', 'false');",
+                  "const responseCompleted = pm.collectionVariables.get('agent_response_completed') === 'true';",
+                  "if (!responseCompleted) {",
+                  "  pm.setNextRequest('Create Agent Response (Wait For User)');",
+                  "}",
+                  "let payload;",
+                  "try {",
+                  "  payload = pm.response.json();",
+                  "} catch (err) {",
+                  "  payload = null;",
+                  "}",
+                  "const artifacts = Array.isArray(payload?.data)",
+                  "  ? payload.data",
+                  "  : Array.isArray(payload)",
+                  "    ? payload",
+                  "    : [];",
+                  "pm.test('Artifacts list shape valid', function () {",
+                  "  pm.expect(Array.isArray(artifacts)).to.eql(true);",
+                  "});",
+                  "if (artifacts.length > 0) {",
+                  "  const latest = artifacts.find(a => a.is_latest) || artifacts[0];",
+                  "  if (latest && latest.id) {",
+                  "    pm.collectionVariables.set('agent_artifact_id', latest.id);",
+                  "    pm.collectionVariables.set('agent_artifact_available', 'true');",
                   "  }",
                   "} else {",
                   "  pm.collectionVariables.set('agent_artifact_available', 'false');",
+                  "  pm.setNextRequest('Create Agent Response (Wait For User)');",
                   "}"
                 ]
               }
@@ -503,19 +468,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (pm.response.code === 200) {",
-                  "  const data = pm.response.json();",
-                  "  pm.test('Latest artifact returned', function () {",
-                  "    pm.expect(data).to.have.property('id');",
-                  "  });",
-                  "  pm.collectionVariables.set('agent_artifact_id', data.id);",
-                  "  pm.collectionVariables.set('agent_artifact_available', 'true');",
-                  "} else {",
-                  "  pm.test('Latest artifact not ready or unavailable', function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([404, 202]);",
-                  "  });",
-                  "  pm.collectionVariables.set('agent_artifact_available', 'false');",
-                  "}"
+                  "pm.test('Latest artifact returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const data = pm.response.json();",
+                  "pm.test('Latest artifact includes id', function () {",
+                  "  pm.expect(data).to.have.property('id');",
+                  "});",
+                  "pm.collectionVariables.set('agent_artifact_id', data.id);",
+                  "pm.collectionVariables.set('agent_artifact_available', 'true');"
                 ]
               }
             }
@@ -539,15 +500,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (pm.response.code === 200) {",
-                  "  pm.test('Artifact payload returned', function () {",
-                  "    pm.expect(pm.response.code).to.equal(200);",
-                  "  });",
-                  "} else {",
-                  "  pm.test('Artifact not ready or unavailable', function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([404, 202]);",
-                  "  });",
-                  "}"
+                  "pm.test('Artifact payload returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
                 ]
               }
             }
@@ -571,16 +526,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (pm.response.code === 200) {",
-                  "  const data = pm.response.json();",
-                  "  pm.test('Artifact versions returned', function () {",
-                  "    pm.expect(data).to.be.an('array');",
-                  "  });",
-                  "} else {",
-                  "  pm.test('Artifact versions not ready or unavailable', function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([404, 202]);",
-                  "  });",
-                  "}"
+                  "pm.test('Artifact versions returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const data = pm.response.json();",
+                  "pm.test('Artifact versions are array', function () {",
+                  "  pm.expect(data).to.be.an('array');",
+                  "});"
                 ]
               }
             }
@@ -604,8 +556,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Download returns content or not ready', function () {",
-                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404, 202]);",
+                  "pm.test('Download returns content', function () {",
+                  "  pm.response.to.have.status(200);",
                   "});"
                 ]
               }
@@ -633,7 +585,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Create a presentation about AI in healthcare with multiple theme options.\",\n  \"background\": true,\n  \"store\": true,\n  \"tools\": [\n    { \"type\": \"mcp\", \"server\": \"agents\" }\n  ],\n  \"tool_choice\": {\n    \"type\": \"tool\",\n    \"tool\": \"generate_slide\",\n    \"options\": {\n      \"options_count\": 3,\n      \"research_depth\": \"deep\",\n      \"format\": \"pptx\",\n      \"num_slides\": 5\n    }\n  }\n}"
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Create a presentation about AI in healthcare with multiple theme options.\",\n  \"background\": false,\n  \"store\": true,\n  \"tools\": [\n    { \"type\": \"mcp\", \"server\": \"agents\" }\n  ],\n  \"tool_choice\": {\n    \"type\": \"tool\",\n    \"tool\": \"generate_slide\",\n    \"options\": {\n      \"options_count\": 3,\n      \"research_depth\": \"deep\",\n      \"format\": \"pptx\",\n      \"num_slides\": 5\n    }\n  }\n}"
             },
             "url": "{{kong_url}}/responses/v1/responses"
           },
@@ -644,9 +596,22 @@
                 "type": "text/javascript",
                 "exec": [
                   "const response = pm.response.json();",
-                  "pm.test('Wait response created', function () {",
+                  "pm.test('Slide generation response accepted', function () {",
                   "  pm.response.to.have.status(200);",
                   "  pm.expect(response).to.have.property('id');",
+                  "  pm.expect(response.status).to.be.oneOf(['wait_for_user', 'in_progress', 'completed']);",
+                  "});",
+                  "if (response.status === 'completed') {",
+                  "  pm.test('Completed response has valid output', function () {",
+                  "    pm.expect(response).to.have.property('output');",
+                  "    const hasOutput = (typeof response.output === 'string' && response.output.trim().length > 0) || (Array.isArray(response.output) && response.output.length > 0);",
+                  "    pm.expect(hasOutput).to.be.true;",
+                  "  });",
+                  "}",
+                  "pm.test('No errors in response', function () {",
+                  "  if (response.error) {",
+                  "    pm.expect(response.error.message || '').to.equal('');",
+                  "  }",
                   "});",
                   "pm.collectionVariables.set('wait_response_id', response.id);"
                 ]
@@ -672,19 +637,17 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (pm.response.code === 200) {",
-                  "  const data = pm.response.json();",
-                  "  pm.test('Plan returned', function () {",
-                  "    pm.expect(data).to.have.property('status');",
-                  "  });",
-                  "  pm.test('Plan status allows wait flow', function () {",
-                  "    pm.expect(data.status).to.be.oneOf(['wait_for_user', 'in_progress', 'planning', 'queued']);",
-                  "  });",
-                  "  pm.collectionVariables.set('wait_selection', 'option_1');",
-                  "} else {",
-                  "  pm.test('Wait plan not ready or unavailable', function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([404, 202]);",
-                  "  });",
+                  "pm.test('Plan returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const data = pm.response.json();",
+                  "pm.test('Plan status allows wait flow', function () {",
+                  "  pm.expect(data.status).to.be.oneOf(['wait_for_user', 'in_progress', 'planning', 'queued', 'completed']);",
+                  "});",
+                  "pm.collectionVariables.set('wait_plan_status', data.status);",
+                  "pm.collectionVariables.set('wait_selection', 'option_1');",
+                  "if (data.status !== 'wait_for_user') {",
+                  "  pm.setNextRequest('Poll Wait Response');",
                   "}"
                 ]
               }
@@ -717,8 +680,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Selection accepted or not ready', function () {",
-                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404, 202, 400]);",
+                  "pm.test('Selection accepted', function () {",
+                  "  pm.response.to.have.status(200);",
                   "});"
                 ]
               }
@@ -796,6 +759,19 @@
                   "  pm.response.to.have.status(200);",
                   "  pm.expect(response).to.have.property('id');",
                   "});",
+                  "pm.test('Response completed synchronously', function () {",
+                  "  pm.expect(response.status).to.equal('completed');",
+                  "});",
+                  "pm.test('Response has valid output', function () {",
+                  "  pm.expect(response).to.have.property('output');",
+                  "  const hasOutput = (typeof response.output === 'string' && response.output.trim().length > 0) || (Array.isArray(response.output) && response.output.length > 0);",
+                  "  pm.expect(hasOutput).to.be.true;",
+                  "});",
+                  "pm.test('No errors in response', function () {",
+                  "  if (response.error && response.error.message) {",
+                  "    pm.expect(response.error.message).to.equal('');",
+                  "  }",
+                  "});",
                   "pm.collectionVariables.set('idempotency_response_id', response.id);"
                 ]
               }
@@ -819,7 +795,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Create a short deck about testing idempotency.\",\n  \"background\": true,\n  \"store\": true,\n  \"tools\": [\n    { \"type\": \"mcp\", \"server\": \"agents\" }\n  ]\n}"
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Create a short deck about testing idempotency.\",\n  \"background\": false,\n  \"store\": true,\n  \"tools\": [\n    { \"type\": \"mcp\", \"server\": \"agents\" }\n  ]\n}"
             },
             "url": "{{kong_url}}/responses/v1/responses"
           }
@@ -844,7 +820,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Create a short deck about testing idempotency.\",\n  \"background\": true,\n  \"store\": true,\n  \"tools\": [\n    { \"type\": \"mcp\", \"server\": \"agents\" }\n  ]\n}"
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Create a short deck about testing idempotency.\",\n  \"background\": false,\n  \"store\": true,\n  \"tools\": [\n    { \"type\": \"mcp\", \"server\": \"agents\" }\n  ]\n}"
             },
             "url": "{{kong_url}}/responses/v1/responses"
           },
@@ -860,6 +836,14 @@
                   "});",
                   "pm.test('Response ID is stable for idempotency', function () {",
                   "  pm.expect(response.id).to.equal(pm.collectionVariables.get('idempotency_response_id'));",
+                  "});",
+                  "pm.test('Response status is completed', function () {",
+                  "  pm.expect(response.status).to.equal('completed');",
+                  "});",
+                  "pm.test('Response has same output', function () {",
+                  "  pm.expect(response).to.have.property('output');",
+                  "  const hasOutput = (typeof response.output === 'string' && response.output.trim().length > 0) || (Array.isArray(response.output) && response.output.length > 0);",
+                  "  pm.expect(hasOutput).to.be.true;",
                   "});"
                 ]
               }

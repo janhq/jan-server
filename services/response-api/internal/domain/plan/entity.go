@@ -12,6 +12,7 @@ import (
 type Plan struct {
 	ID              string        `json:"id"`
 	ResponseID      string        `json:"response_id"`
+	Model           string        `json:"model"` // Model to use for LLM steps
 	Status          status.Status `json:"status"`
 	Progress        float64       `json:"progress"` // 0-100 percentage
 	AgentType       AgentType     `json:"agent_type"`

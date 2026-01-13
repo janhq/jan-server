@@ -17,6 +17,7 @@ type Plan struct {
 	PublicID        string         `gorm:"uniqueIndex;size:64"`
 	ResponseID      uint           `gorm:"index"`
 	Response        *Response      `gorm:"foreignKey:ResponseID"`
+	Model           string         `gorm:"size:128"` // Model for LLM steps
 	Status          string         `gorm:"size:32;index:idx_plan_status"`
 	Progress        float64        `gorm:"default:0"`
 	AgentType       string         `gorm:"size:32;index:idx_agent_type"`

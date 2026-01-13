@@ -31,60 +31,132 @@ func normalizeCodeArguments(toolName string, args map[string]interface{}) map[st
 }
 
 func normalizeSandboxFilePaths(code string) string {
-	replacements := []struct {
+	// Helper type for replacement patterns
+	// Go's regexp doesn't support backreferences, so we create separate patterns for single/double quotes
+	type replacement struct {
 		re *regexp.Regexp
 		fn func([]string) string
-	}{
+	}
+
+	replacements := []replacement{
+		// savefig with double quotes
 		{
-			re: regexp.MustCompile(`(?i)(\bsavefig\s*\(\s*)(['"])([^'"]+)\2`),
+			re: regexp.MustCompile(`(?i)(\bsavefig\s*\(\s*)(")([^"]+)(")`),
 			fn: func(m []string) string {
-				return m[1] + m[2] + rewritePath(m[3]) + m[2]
+				return m[1] + m[2] + rewritePath(m[3]) + m[4]
 			},
 		},
+		// savefig with single quotes
 		{
-			re: regexp.MustCompile(`(?i)(\bto_csv\s*\(\s*)(['"])([^'"]+)\2`),
+			re: regexp.MustCompile(`(?i)(\bsavefig\s*\(\s*)(')([^']+)(')`),
 			fn: func(m []string) string {
-				return m[1] + m[2] + rewritePath(m[3]) + m[2]
+				return m[1] + m[2] + rewritePath(m[3]) + m[4]
 			},
 		},
+		// to_csv with double quotes
 		{
-			re: regexp.MustCompile(`(?i)(\bto_json\s*\(\s*)(['"])([^'"]+)\2`),
+			re: regexp.MustCompile(`(?i)(\bto_csv\s*\(\s*)(")([^"]+)(")`),
 			fn: func(m []string) string {
-				return m[1] + m[2] + rewritePath(m[3]) + m[2]
+				return m[1] + m[2] + rewritePath(m[3]) + m[4]
 			},
 		},
+		// to_csv with single quotes
 		{
-			re: regexp.MustCompile(`(?i)(\bto_excel\s*\(\s*)(['"])([^'"]+)\2`),
+			re: regexp.MustCompile(`(?i)(\bto_csv\s*\(\s*)(')([^']+)(')`),
 			fn: func(m []string) string {
-				return m[1] + m[2] + rewritePath(m[3]) + m[2]
+				return m[1] + m[2] + rewritePath(m[3]) + m[4]
 			},
 		},
+		// to_json with double quotes
 		{
-			re: regexp.MustCompile(`(?i)(\bto_parquet\s*\(\s*)(['"])([^'"]+)\2`),
+			re: regexp.MustCompile(`(?i)(\bto_json\s*\(\s*)(")([^"]+)(")`),
 			fn: func(m []string) string {
-				return m[1] + m[2] + rewritePath(m[3]) + m[2]
+				return m[1] + m[2] + rewritePath(m[3]) + m[4]
 			},
 		},
+		// to_json with single quotes
 		{
-			re: regexp.MustCompile(`(?i)(\bto_pickle\s*\(\s*)(['"])([^'"]+)\2`),
+			re: regexp.MustCompile(`(?i)(\bto_json\s*\(\s*)(')([^']+)(')`),
 			fn: func(m []string) string {
-				return m[1] + m[2] + rewritePath(m[3]) + m[2]
+				return m[1] + m[2] + rewritePath(m[3]) + m[4]
 			},
 		},
+		// to_excel with double quotes
 		{
-			re: regexp.MustCompile(`(?i)(\bto_feather\s*\(\s*)(['"])([^'"]+)\2`),
+			re: regexp.MustCompile(`(?i)(\bto_excel\s*\(\s*)(")([^"]+)(")`),
 			fn: func(m []string) string {
-				return m[1] + m[2] + rewritePath(m[3]) + m[2]
+				return m[1] + m[2] + rewritePath(m[3]) + m[4]
 			},
 		},
+		// to_excel with single quotes
 		{
-			re: regexp.MustCompile(`(?i)(\bopen\s*\(\s*)(['"])([^'"]+)\2(\s*,\s*)(['"])([^'"]*)(['"])`),
+			re: regexp.MustCompile(`(?i)(\bto_excel\s*\(\s*)(')([^']+)(')`),
 			fn: func(m []string) string {
-				mode := m[6]
+				return m[1] + m[2] + rewritePath(m[3]) + m[4]
+			},
+		},
+		// to_parquet with double quotes
+		{
+			re: regexp.MustCompile(`(?i)(\bto_parquet\s*\(\s*)(")([^"]+)(")`),
+			fn: func(m []string) string {
+				return m[1] + m[2] + rewritePath(m[3]) + m[4]
+			},
+		},
+		// to_parquet with single quotes
+		{
+			re: regexp.MustCompile(`(?i)(\bto_parquet\s*\(\s*)(')([^']+)(')`),
+			fn: func(m []string) string {
+				return m[1] + m[2] + rewritePath(m[3]) + m[4]
+			},
+		},
+		// to_pickle with double quotes
+		{
+			re: regexp.MustCompile(`(?i)(\bto_pickle\s*\(\s*)(")([^"]+)(")`),
+			fn: func(m []string) string {
+				return m[1] + m[2] + rewritePath(m[3]) + m[4]
+			},
+		},
+		// to_pickle with single quotes
+		{
+			re: regexp.MustCompile(`(?i)(\bto_pickle\s*\(\s*)(')([^']+)(')`),
+			fn: func(m []string) string {
+				return m[1] + m[2] + rewritePath(m[3]) + m[4]
+			},
+		},
+		// to_feather with double quotes
+		{
+			re: regexp.MustCompile(`(?i)(\bto_feather\s*\(\s*)(")([^"]+)(")`),
+			fn: func(m []string) string {
+				return m[1] + m[2] + rewritePath(m[3]) + m[4]
+			},
+		},
+		// to_feather with single quotes
+		{
+			re: regexp.MustCompile(`(?i)(\bto_feather\s*\(\s*)(')([^']+)(')`),
+			fn: func(m []string) string {
+				return m[1] + m[2] + rewritePath(m[3]) + m[4]
+			},
+		},
+		// open with double quotes for path and mode
+		{
+			re: regexp.MustCompile(`(?i)(\bopen\s*\(\s*)(")([^"]+)(")(\s*,\s*)(")([^"]*)(")`),
+			fn: func(m []string) string {
+				mode := m[7]
 				if !isWriteMode(mode) {
 					return m[0]
 				}
-				return m[1] + m[2] + rewritePath(m[3]) + m[2] + m[4] + m[5] + mode + m[7]
+				return m[1] + m[2] + rewritePath(m[3]) + m[4] + m[5] + m[6] + mode + m[8]
+			},
+		},
+		// open with single quotes for path and mode
+		{
+			re: regexp.MustCompile(`(?i)(\bopen\s*\(\s*)(')([^']+)(')(\s*,\s*)(')([^']*)(')`),
+			fn: func(m []string) string {
+				mode := m[7]
+				if !isWriteMode(mode) {
+					return m[0]
+				}
+				return m[1] + m[2] + rewritePath(m[3]) + m[4] + m[5] + m[6] + mode + m[8]
 			},
 		},
 	}

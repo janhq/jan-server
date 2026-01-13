@@ -237,12 +237,30 @@ func (i *Item) GetContent() map[string]interface{} {
 			if c.OutputText != nil {
 				result["text"] = c.OutputText.Text
 			}
+			if c.FunctionCall != nil {
+				result["id"] = c.FunctionCall.ID
+				result["name"] = c.FunctionCall.Name
+				result["arguments"] = c.FunctionCall.Arguments
+			}
+			if c.FunctionCallOut != nil {
+				result["call_id"] = c.FunctionCallOut.CallID
+				result["output"] = c.FunctionCallOut.Output
+			}
 		} else {
 			items := make([]map[string]interface{}, len(i.Content))
 			for j, c := range i.Content {
 				items[j] = map[string]interface{}{"type": c.Type}
 				if c.TextString != nil {
 					items[j]["text"] = *c.TextString
+				}
+				if c.FunctionCall != nil {
+					items[j]["id"] = c.FunctionCall.ID
+					items[j]["name"] = c.FunctionCall.Name
+					items[j]["arguments"] = c.FunctionCall.Arguments
+				}
+				if c.FunctionCallOut != nil {
+					items[j]["call_id"] = c.FunctionCallOut.CallID
+					items[j]["output"] = c.FunctionCallOut.Output
 				}
 			}
 			result["type"] = "list"

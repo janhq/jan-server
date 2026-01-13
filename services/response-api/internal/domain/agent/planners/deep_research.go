@@ -4,6 +4,7 @@ package planners
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -54,14 +55,15 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	requiresCodeExecution := p.detectCodeExecutionNeed(request)
 
 	// Determine estimated steps based on whether code execution is needed
-	estimatedSteps := 8
+	estimatedSteps := 9
 	if requiresCodeExecution {
-		estimatedSteps = 10 // Add 2 more steps for code execution
+		estimatedSteps = 11 // Add 2 more steps for code execution
 	}
 
 	// Create the plan
 	createdPlan, err := p.planService.Create(ctx, plan.CreateParams{
 		ResponseID:     request.ResponseID,
+		Model:          request.Model,
 		AgentType:      plan.AgentTypeDeepResearch,
 		EstimatedSteps: estimatedSteps,
 		Config: &plan.PlanConfig{
@@ -88,10 +90,17 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		return nil, err
 	}
 
-	// Create research steps
+	// Create research steps with actual user query
+	// Extract the user's question/query from the request
+	userQuery := request.UserMessage
+	if userQuery == "" {
+		userQuery = "research query" // Fallback
+	}
+
 	searchParams1, _ := json.Marshal(map[string]interface{}{
 		"tool":        "google_search",
-		"description": "Primary search query",
+		"q":           userQuery,
+		"description": "Primary search query for main question",
 	})
 	_, err = p.planService.CreateStep(ctx, researchTask.ID, plan.CreateStepParams{
 		Sequence:    1,
@@ -103,8 +112,11 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		return nil, err
 	}
 
+	// For the second search, use a variant/expansion of the original query
+	secondQuery := userQuery + " detailed explanation examples"
 	searchParams2, _ := json.Marshal(map[string]interface{}{
 		"tool":        "google_search",
+		"q":           secondQuery,
 		"description": "Secondary search query for additional context",
 	})
 	_, err = p.planService.CreateStep(ctx, researchTask.ID, plan.CreateStepParams{
@@ -230,6 +242,25 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		return nil, err
 	}
 
+	artifactParams, _ := json.Marshal(map[string]interface{}{
+		"action":        "store_artifact",
+		"description":   "Store report as an artifact",
+		"artifact_type": "report",
+		"config": map[string]interface{}{
+			"format":           "markdown",
+			"retention_policy": "session",
+		},
+	})
+	_, err = p.planService.CreateStep(ctx, reportTask.ID, plan.CreateStepParams{
+		Sequence:    2,
+		Action:      plan.ActionTypeArtifactCreate,
+		InputParams: artifactParams,
+		MaxRetries:  1,
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	// Reload plan with tasks
 	planWithDetails, err := p.planService.GetPlanWithDetails(ctx, createdPlan.ID)
 	if err != nil {
@@ -296,9 +327,11 @@ type MCPClient interface {
 	CallTool(ctx context.Context, req tool.CallRequest) (*tool.Result, error)
 }
 
-// LLMProvider interface for LLM calls to fix code.
+// LLMProvider interface for LLM calls to fix code and generate content.
 type LLMProvider interface {
 	FixCode(ctx context.Context, code string, errorMsg string, language string) (string, error)
+	Generate(ctx context.Context, prompt string) (string, error)
+	GenerateWithModel(ctx context.Context, prompt string, model string) (string, error)
 }
 
 // MaxInstallRetries is the maximum number of package install retry attempts.
@@ -354,56 +387,83 @@ func (e *DeepResearchExecutor) executeToolCallWithRetry(ctx context.Context, ste
 		}, nil
 	}
 
+	// Extract tool name from metadata
 	toolName, _ := params["tool"].(string)
 	if toolName == "" {
-		toolName = "google_search"
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Code:     "missing_tool_name",
+				Message:  "no tool name specified in params",
+				Severity: status.ErrorSeverityFatal,
+			},
+		}, nil
 	}
 
-	// For code execution tools, ensure we have code to execute
-	isCodeExecTool := toolName == "aio_code_execute" || toolName == "aio_shell_exec"
-	if isCodeExecTool {
-		// Priority: currentCode (from retry) > params["code"] > PreviousOutput
-		if currentCode != nil {
-			params["code"] = *currentCode
-		} else if _, hasCode := params["code"].(string); !hasCode {
-			// Try to extract code from previous step's output (LLM code generation step)
-			if code := e.extractCodeFromPreviousOutput(input.PreviousOutput); code != "" {
-				params["code"] = code
-				log.Debug().
-					Str("tool", toolName).
-					Int("code_len", len(code)).
-					Msg("Extracted code from previous step output")
-			}
-		}
+	description, _ := params["description"].(string)
 
-		// Validate we have code
-		if code, ok := params["code"].(string); !ok || code == "" {
-			return &agent.ExecutionResult{
-				Status: status.StatusFailed,
-				Error:  &agent.ExecutionError{Message: "no code provided for execution", Severity: status.ErrorSeverityFatal},
-			}, nil
-		} else {
-			params["code"] = agent.NormalizeSandboxFilePaths(code)
+	// Build actual tool arguments (strip metadata fields)
+	toolArgs, err := e.buildToolArguments(toolName, params, input, description, currentCode)
+	if err != nil {
+		if isNonCriticalTool(toolName) {
+			return buildSkippedToolResult(toolName, err.Error(), "invalid_arguments"), nil
 		}
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Code:     "invalid_tool_arguments",
+				Message:  err.Error(),
+				Severity: status.ErrorSeverityRetryable,
+			},
+		}, nil
 	}
 
 	// Build the CallRequest for MCP client
 	callReq := tool.CallRequest{
 		Name:      toolName,
-		Arguments: params,
+		Arguments: toolArgs, // Clean arguments without metadata
 	}
 	if input.PlanContext != nil {
 		callReq.RequestID = input.PlanContext.ResponseID
 		callReq.ConversationID = input.PlanContext.ConversationID
 	}
 
+	log.Info().
+		Str("tool", toolName).
+		Interface("arguments", toolArgs).
+		Str("step_id", step.ID).
+		Msg("Executing tool call")
+
+	// Check if this is a code execution tool
+	isCodeExecTool := toolName == "aio_code_execute" || toolName == "aio_shell_exec"
+
 	// Execute the tool via MCP client
 	result, err := e.mcpClient.CallTool(ctx, callReq)
 	if err != nil {
+		log.Error().
+			Err(err).
+			Str("tool", toolName).
+			Interface("arguments", toolArgs).
+			Str("step_id", step.ID).
+			Msg("Tool call failed")
+
+		if isNonCriticalTool(toolName) && !isCodeExecTool {
+			return buildSkippedToolResult(toolName, err.Error(), "tool_call_failed"), nil
+		}
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
 			Error:  &agent.ExecutionError{Message: err.Error(), Severity: status.ErrorSeverityRetryable},
 		}, nil
+	}
+
+	log.Info().
+		Str("tool", toolName).
+		Str("step_id", step.ID).
+		Bool("is_error", result.IsError).
+		Msg("Tool call completed")
+
+	if isNonCriticalTool(toolName) && !isCodeExecTool && result != nil && result.IsError {
+		return buildSkippedToolResult(toolName, "tool reported error", "tool_error"), nil
 	}
 
 	// Check for errors in code execution results
@@ -644,6 +704,97 @@ func (e *DeepResearchExecutor) hasErrorInResult(result *tool.Result) bool {
 	return false
 }
 
+// buildAccumulatedContext combines outputs from all previous tasks into a single context string.
+// This ensures LLM calls have full context from research, synthesis, and other preceding steps.
+func (e *DeepResearchExecutor) buildAccumulatedContext(input agent.ExecutionInput) string {
+	var contextParts []string
+
+	// Add accumulated outputs from previous tasks (research results, synthesis, etc.)
+	for _, output := range input.AccumulatedOutputs {
+		if len(output) > 0 {
+			// Try to extract meaningful content from the output
+			extracted := e.extractContextFromOutput(output)
+			if extracted != "" {
+				contextParts = append(contextParts, extracted)
+			}
+		}
+	}
+
+	// Add current task's previous output (if any)
+	if len(input.PreviousOutput) > 0 {
+		extracted := e.extractContextFromOutput(input.PreviousOutput)
+		if extracted != "" {
+			contextParts = append(contextParts, extracted)
+		}
+	}
+
+	if len(contextParts) == 0 {
+		return "[No previous context available]"
+	}
+
+	return strings.Join(contextParts, "\n\n---\n\n")
+}
+
+// extractContextFromOutput extracts meaningful text content from a step output.
+func (e *DeepResearchExecutor) extractContextFromOutput(output json.RawMessage) string {
+	if len(output) == 0 {
+		return ""
+	}
+
+	// Try to parse as structured output
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(output, &parsed); err == nil {
+		// Check for tool result format with "content" array
+		if content, ok := parsed["content"].([]interface{}); ok {
+			var texts []string
+			for _, item := range content {
+				if itemMap, ok := item.(map[string]interface{}); ok {
+					if text, ok := itemMap["text"].(string); ok && text != "" {
+						texts = append(texts, text)
+					}
+				}
+			}
+			if len(texts) > 0 {
+				return strings.Join(texts, "\n")
+			}
+		}
+
+		// Check for LLM response format with "content" string
+		if content, ok := parsed["content"].(string); ok && content != "" {
+			return content
+		}
+
+		// Check for "text" field directly
+		if text, ok := parsed["text"].(string); ok && text != "" {
+			return text
+		}
+
+		// Check for tool output format
+		if toolName, ok := parsed["tool_name"].(string); ok {
+			if content, ok := parsed["content"].([]interface{}); ok {
+				var texts []string
+				for _, item := range content {
+					if itemMap, ok := item.(map[string]interface{}); ok {
+						if text, ok := itemMap["text"].(string); ok {
+							texts = append(texts, text)
+						}
+					}
+				}
+				if len(texts) > 0 {
+					return fmt.Sprintf("[%s result]: %s", toolName, strings.Join(texts, "\n"))
+				}
+			}
+		}
+	}
+
+	// Fallback: return raw output if it's not too long
+	rawStr := string(output)
+	if len(rawStr) > 10000 {
+		return rawStr[:10000] + "... [truncated]"
+	}
+	return rawStr
+}
+
 // extractErrorText extracts the error message from a tool result.
 func (e *DeepResearchExecutor) extractErrorText(result *tool.Result) string {
 	if result == nil || len(result.Content) == 0 {
@@ -739,6 +890,169 @@ func extractCodeBlock(text string) string {
 	return ""
 }
 
+// buildToolArguments constructs proper tool arguments from step params and context.
+func (e *DeepResearchExecutor) buildToolArguments(toolName string, params map[string]interface{}, input agent.ExecutionInput, description string, currentCode *string) (map[string]interface{}, error) {
+	switch toolName {
+	case "google_search":
+		// Priority: params["q"] > params["query"] > description > error
+		query := ""
+		if q, ok := params["q"].(string); ok && q != "" {
+			query = q
+		} else if q, ok := params["query"].(string); ok && q != "" {
+			// Backward compatibility
+			query = q
+		} else if description != "" {
+			query = description
+		}
+
+		if query == "" {
+			return nil, fmt.Errorf("no search query provided")
+		}
+		return map[string]interface{}{
+			"q": query,
+		}, nil
+
+	case "scrape":
+		// Extract URLs from previous search results or params
+		urls := e.extractURLsFromPreviousOutput(input.PreviousOutput)
+		if len(urls) == 0 {
+			// Check if explicitly provided
+			if urlParam, ok := params["url"].(string); ok {
+				urls = []string{urlParam}
+			} else if urlsParam, ok := params["urls"].([]interface{}); ok {
+				for _, u := range urlsParam {
+					if urlStr, ok := u.(string); ok {
+						urls = append(urls, urlStr)
+					}
+				}
+			}
+		}
+		if len(urls) == 0 {
+			// Return error instead of nil to properly fail the step
+			return nil, fmt.Errorf("no URLs available to scrape from previous search results")
+		}
+		// MCP scrape tool expects single url parameter, so use first URL
+		return map[string]interface{}{
+			"url": urls[0],
+		}, nil
+
+	case "aio_code_execute":
+		// Priority: currentCode (from retry) > params["code"] > PreviousOutput
+		var code string
+		if currentCode != nil {
+			code = *currentCode
+		} else if codeParam, ok := params["code"].(string); ok {
+			code = codeParam
+		} else {
+			// Extract code from previous LLM output
+			code = e.extractCodeFromPreviousOutput(input.PreviousOutput)
+		}
+
+		if code == "" {
+			return nil, fmt.Errorf("no code provided for execution")
+		}
+
+		code = agent.NormalizeSandboxFilePaths(code)
+		language, _ := params["language"].(string)
+		if language == "" {
+			language = "python" // Default
+		}
+
+		return map[string]interface{}{
+			"language": language,
+			"code":     code,
+		}, nil
+
+	case "aio_shell_exec":
+		var command string
+		if currentCode != nil {
+			command = *currentCode
+		} else if cmdParam, ok := params["command"].(string); ok {
+			command = cmdParam
+		}
+		if command == "" {
+			return nil, fmt.Errorf("no command provided for shell execution")
+		}
+		return map[string]interface{}{
+			"command": command,
+		}, nil
+
+	default:
+		// Generic tool: remove metadata fields
+		toolArgs := make(map[string]interface{})
+		for k, v := range params {
+			// Exclude known metadata fields
+			if k != "tool" && k != "description" {
+				toolArgs[k] = v
+			}
+		}
+		return toolArgs, nil
+	}
+}
+
+// extractURLsFromPreviousOutput extracts URLs from search results.
+func (e *DeepResearchExecutor) extractURLsFromPreviousOutput(previousOutput json.RawMessage) []string {
+	if len(previousOutput) == 0 {
+		return nil
+	}
+
+	var output map[string]interface{}
+	if err := json.Unmarshal(previousOutput, &output); err != nil {
+		return nil
+	}
+
+	// Extract URLs from search results
+	var urls []string
+	if results, ok := output["results"].([]interface{}); ok {
+		for _, r := range results {
+			if result, ok := r.(map[string]interface{}); ok {
+				// Check both 'source_url' (actual field) and 'url' (backward compatibility)
+				if url, ok := result["source_url"].(string); ok && url != "" {
+					urls = append(urls, url)
+				} else if url, ok := result["url"].(string); ok && url != "" {
+					urls = append(urls, url)
+				}
+			}
+		}
+	}
+
+	// Also check for direct content array with url field
+	if content, ok := output["content"].([]interface{}); ok {
+		for _, c := range content {
+			if item, ok := c.(map[string]interface{}); ok {
+				if url, ok := item["url"].(string); ok && url != "" {
+					urls = append(urls, url)
+				}
+				if text, ok := item["text"].(string); ok && text != "" {
+					var embedded map[string]interface{}
+					if err := json.Unmarshal([]byte(text), &embedded); err == nil {
+						if results, ok := embedded["results"].([]interface{}); ok {
+							for _, r := range results {
+								if result, ok := r.(map[string]interface{}); ok {
+									if url, ok := result["source_url"].(string); ok && url != "" {
+										urls = append(urls, url)
+									} else if url, ok := result["url"].(string); ok && url != "" {
+										urls = append(urls, url)
+									}
+								}
+							}
+						}
+						if citations, ok := embedded["citations"].([]interface{}); ok {
+							for _, citation := range citations {
+								if url, ok := citation.(string); ok && url != "" {
+									urls = append(urls, url)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return urls
+}
+
 // installPackage calls aio_install_packages to install a missing package.
 func (e *DeepResearchExecutor) installPackage(ctx context.Context, packageName string, input agent.ExecutionInput) (*tool.Result, error) {
 	callReq := tool.CallRequest{
@@ -756,12 +1070,142 @@ func (e *DeepResearchExecutor) installPackage(ctx context.Context, packageName s
 }
 
 func (e *DeepResearchExecutor) executeLLMCall(ctx context.Context, step *plan.Step, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
-	// For LLM calls, we defer to the main orchestrator
-	// This is a placeholder that will be filled by the orchestrator
+	var params map[string]interface{}
+	if err := json.Unmarshal(step.InputParams, &params); err != nil {
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error:  &agent.ExecutionError{Message: err.Error(), Severity: status.ErrorSeverityRetryable},
+		}, nil
+	}
+
+	if requiresUser, ok := params["requires_user"].(bool); ok && requiresUser {
+		prompt, _ := params["prompt"].(string)
+		optionsCount := 0
+		if rawCount, ok := params["options_count"].(float64); ok {
+			optionsCount = int(rawCount)
+		}
+
+		options := make([]string, 0, optionsCount)
+		for i := 0; i < optionsCount; i++ {
+			options = append(options, fmt.Sprintf("option_%d", i+1))
+		}
+
+		outputBytes, _ := json.Marshal(map[string]interface{}{
+			"status":        "waiting_for_user",
+			"prompt":        prompt,
+			"options":       options,
+			"options_count": optionsCount,
+		})
+
+		return &agent.ExecutionResult{
+			Status:       status.StatusCompleted,
+			Output:       outputBytes,
+			RequiresUser: true,
+			UserPrompt:   &prompt,
+		}, nil
+	}
+
+	action, _ := params["action"].(string)
+	description, _ := params["description"].(string)
+
+	// Build context from accumulated outputs (all previous tasks) + current task's previous output
+	// This ensures LLM calls have full context from research, synthesis, etc.
+	contextData := e.buildAccumulatedContext(input)
+
+	// Build prompt based on action type and accumulated context
+	var prompt string
+	switch action {
+	case "reasoning":
+		prompt = fmt.Sprintf("Analyze and synthesize the following research findings. %s\n\nPrevious findings: %s",
+			description, contextData)
+	case "generate_code":
+		prompt = fmt.Sprintf("Generate Python code based on the research findings. %s\n\nResearch context: %s\n\nRequirements: Create simple, runnable code using only standard library or commonly available packages. Include comments. The code should directly address the user's request using the data from the research.",
+			description, contextData)
+	case "generate_content":
+		prompt = fmt.Sprintf("Write a comprehensive analysis report. %s\n\nAll research data: %s\n\nFormat: Provide detailed analysis with citations and conclusions.",
+			description, contextData)
+	default:
+		prompt = fmt.Sprintf("%s\n\nContext: %s", description, contextData)
+	}
+
+	// Get model from plan context
+	model := ""
+	if input.PlanContext != nil && input.PlanContext.Model != "" {
+		model = input.PlanContext.Model
+	}
+
+	log.Info().
+		Str("action", action).
+		Str("step_id", step.ID).
+		Str("model", model).
+		Msg("Executing LLM call")
+
+	// Call LLM provider
+	if e.llmProvider == nil {
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Message:  "LLM provider not configured",
+				Severity: status.ErrorSeverityFatal,
+			},
+		}, nil
+	}
+
+	response, err := e.llmProvider.GenerateWithModel(ctx, prompt, model)
+	if err != nil {
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Message:  fmt.Sprintf("LLM generation failed: %v", err),
+				Severity: status.ErrorSeverityRetryable,
+			},
+		}, nil
+	}
+
+	// Build output
+	output := map[string]interface{}{
+		"type":        "llm_response",
+		"action":      action,
+		"description": description,
+		"content":     response,
+	}
+
+	outputBytes, err := json.Marshal(output)
+	if err != nil {
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error:  &agent.ExecutionError{Message: err.Error(), Severity: status.ErrorSeverityRetryable},
+		}, nil
+	}
+
 	return &agent.ExecutionResult{
 		Status: status.StatusCompleted,
-		Output: nil,
+		Output: outputBytes,
 	}, nil
+}
+
+func isNonCriticalTool(toolName string) bool {
+	switch toolName {
+	case "google_search", "scrape":
+		return true
+	default:
+		return false
+	}
+}
+
+func buildSkippedToolResult(toolName string, reason string, statusCode string) *agent.ExecutionResult {
+	output, _ := json.Marshal(map[string]interface{}{
+		"type":    "tool_result",
+		"tool":    toolName,
+		"status":  "skipped",
+		"reason":  reason,
+		"code":    statusCode,
+		"skipped": true,
+	})
+	return &agent.ExecutionResult{
+		Status: status.StatusCompleted,
+		Output: output,
+	}
 }
 
 // CanExecute checks if this executor can handle the given action type.
