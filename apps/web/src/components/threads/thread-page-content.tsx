@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import ChatInput from "@/components/chat-input";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
+import { AppSidebarRight } from "@/components/sidebar/app-sidebar-right";
 import { SidebarInset } from "@/components/sidebar/sidebar";
 import { NavHeader } from "@/components/sidebar/nav-header";
 import { useChat } from "@/hooks/use-chat";
@@ -870,6 +871,7 @@ export function ThreadPageContent({
           </div>
         </div>
       </SidebarInset>
+      <AppSidebarRight />
     </>
   );
 }

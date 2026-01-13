@@ -138,6 +138,15 @@
     padding: 8px 16px !important;
   }
 
+  @keyframes shimmer {
+    0% {
+      background-position: -200% center;
+    }
+    100% {
+      background-position: 200% center;
+    }
+  }
+
   @keyframes hue-rotate {
     from {
       filter: hue-rotate(0deg);
