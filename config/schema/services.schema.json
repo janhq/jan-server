@@ -242,7 +242,7 @@
         },
         "llm_api_url": { "type": "string", "format": "uri" },
         "mcp_tools_url": { "type": "string", "format": "uri" },
-        "max_tool_depth": { "type": "integer", "maximum": 260, "minimum": 1 },
+        "max_tool_depth": { "type": "integer", "maximum": 20, "minimum": 1 },
         "tool_timeout": { "type": "integer" }
       },
       "additionalProperties": false,

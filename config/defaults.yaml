@@ -112,8 +112,7 @@ services:
     log_level: info
     llm_api_url: http://llm-api:8080
     mcp_tools_url: http://mcp-tools:8091
-    media_api_url: http://media-api:8285
-    max_tool_depth: 260
+    max_tool_depth: 8
     tool_timeout: 45s
   memory_tools:
     enabled: false
