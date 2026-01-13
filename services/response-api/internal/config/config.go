@@ -40,7 +40,7 @@ type Config struct {
 	MCPToolsURL string `env:"RESPONSE_MCP_TOOLS_URL" envDefault:"http://localhost:8091"`
 
 	// Tool Execution
-	MaxToolDepth int           `env:"RESPONSE_MAX_TOOL_DEPTH" envDefault:"8"`
+	MaxToolDepth int           `env:"RESPONSE_MAX_TOOL_DEPTH" envDefault:"50"`
 	ToolTimeout  time.Duration `env:"TOOL_EXECUTION_TIMEOUT" envDefault:"300s"`
 
 	// Background Task Processing
@@ -75,7 +75,7 @@ func Load() (*Config, error) {
 	}
 
 	if cfg.MaxToolDepth <= 0 {
-		cfg.MaxToolDepth = 8
+		cfg.MaxToolDepth = 50
 	}
 
 	if cfg.ToolTimeout <= 0 {

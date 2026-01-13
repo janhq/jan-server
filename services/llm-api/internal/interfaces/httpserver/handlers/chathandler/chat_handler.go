@@ -3,7 +3,6 @@ package chathandler
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
@@ -19,13 +18,11 @@ import (
 	"jan-server/services/llm-api/internal/domain/prompt"
 	"jan-server/services/llm-api/internal/domain/usersettings"
 	"jan-server/services/llm-api/internal/infrastructure/inference"
-	"jan-server/services/llm-api/internal/infrastructure/mediaresolver"
 	memclient "jan-server/services/llm-api/internal/infrastructure/memory"
 	"jan-server/services/llm-api/internal/infrastructure/metrics"
 	"jan-server/services/llm-api/internal/infrastructure/observability"
 	conversationHandler "jan-server/services/llm-api/internal/interfaces/httpserver/handlers/conversationhandler"
 	modelHandler "jan-server/services/llm-api/internal/interfaces/httpserver/handlers/modelhandler"
-	"jan-server/services/llm-api/internal/interfaces/httpserver/middlewares"
 	chatrequests "jan-server/services/llm-api/internal/interfaces/httpserver/requests/chat"
 	"jan-server/services/llm-api/internal/utils/httpclients/chat"
 	"jan-server/services/llm-api/internal/utils/idgen"
@@ -52,7 +49,6 @@ type ChatHandler struct {
 	conversationHandler *conversationHandler.ConversationHandler
 	conversationService *conversation.ConversationService
 	projectService      *project.ProjectService
-	mediaResolver       mediaresolver.Resolver
 	promptProcessor     *prompt.ProcessorImpl
 	memoryHandler       *MemoryHandler
 	userSettingsService *usersettings.Service
@@ -65,7 +61,6 @@ func NewChatHandler(
 	conversationHandler *conversationHandler.ConversationHandler,
 	conversationService *conversation.ConversationService,
 	projectService *project.ProjectService,
-	mediaResolver mediaresolver.Resolver,
 	promptProcessor *prompt.ProcessorImpl,
 	memoryHandler *MemoryHandler,
 	userSettingsService *usersettings.Service,
@@ -76,7 +71,6 @@ func NewChatHandler(
 		conversationHandler: conversationHandler,
 		conversationService: conversationService,
 		projectService:      projectService,
-		mediaResolver:       mediaResolver,
 		promptProcessor:     promptProcessor,
 		memoryHandler:       memoryHandler,
 		userSettingsService: userSettingsService,
@@ -191,9 +185,16 @@ func (h *ChatHandler) CreateChatCompletion(
 		return nil, err
 	}
 
+	imageRequested := request.Image != nil && *request.Image
+
+	if imageRequested && request.EnableThinking != nil && !*request.EnableThinking {
+		observability.AddSpanEvent(ctx, "ignoring_enable_thinking_for_image_request")
+		request.EnableThinking = nil
+	}
+
 	// Check if we should use the instruct model instead
 	// This happens when enable_thinking is explicitly false and the model has an instruct model configured
-	if request.EnableThinking != nil && !*request.EnableThinking && selectedProviderModel.InstructModelID != nil {
+	if request.EnableThinking != nil && !*request.EnableThinking && selectedProviderModel.InstructModelID != nil && !imageRequested {
 		instructModel, instructProvider, err := h.providerHandler.GetProviderModelByID(ctx, *selectedProviderModel.InstructModelID)
 		if err == nil && instructModel != nil && instructProvider != nil {
 			observability.AddSpanEvent(ctx, "switching_to_instruct_model",
@@ -225,9 +226,6 @@ func (h *ChatHandler) CreateChatCompletion(
 		}
 	}
 
-	// Resolve jan_* media placeholders (best-effort)
-	request.Messages = h.resolveMediaPlaceholders(ctx, reqCtx, request.Messages)
-
 	// Ensure project instruction is the first system message when available
 	if projectInstruction != "" {
 		request.Messages = prompt.PrependProjectInstruction(request.Messages, projectInstruction)
@@ -252,6 +250,12 @@ func (h *ChatHandler) CreateChatCompletion(
 		if request.DeepResearch != nil && *request.DeepResearch {
 			preferences["deep_research"] = true
 			observability.AddSpanAttributes(ctx, attribute.Bool("chat.deep_research", true))
+		}
+
+		// Pass image flag to prompt orchestration for image generation tools
+		if request.Image != nil && *request.Image {
+			preferences["image"] = true
+			observability.AddSpanAttributes(ctx, attribute.Bool("chat.image", true))
 		}
 
 		var profileSettings *usersettings.ProfileSettings
@@ -539,78 +543,6 @@ func (h *ChatHandler) BuildFallbackResponse(model string) *openai.ChatCompletion
 			},
 		},
 	}
-}
-
-func (h *ChatHandler) resolveMediaPlaceholders(ctx context.Context, reqCtx *gin.Context, messages []openai.ChatCompletionMessage) []openai.ChatCompletionMessage {
-	if h.mediaResolver == nil || len(messages) == 0 {
-		return messages
-	}
-
-	if reqCtx != nil {
-		if authHeader := strings.TrimSpace(reqCtx.GetHeader("Authorization")); authHeader != "" {
-			ctx = mediaresolver.ContextWithAuthorization(ctx, authHeader)
-		}
-		if principal, ok := middlewares.PrincipalFromContext(reqCtx); ok {
-			ctx = mediaresolver.ContextWithPrincipal(ctx, principal)
-		}
-	}
-
-	resolved, changed, err := h.mediaResolver.ResolveMessages(ctx, messages)
-	if err != nil {
-		observability.AddSpanEvent(ctx, "media_resolution_failed", attribute.String("error", err.Error()))
-		// Strip unresolved placeholders to prevent LLM errors like "Non-base64 digit found"
-		return stripUnresolvedMediaPlaceholders(messages)
-	}
-	if changed {
-		observability.AddSpanEvent(ctx, "media_placeholders_resolved")
-		return resolved
-	}
-
-	return messages
-}
-
-// janMediaPlaceholderPattern matches jan_* media placeholders in image URLs
-// Examples: data:image/png;base64,jan_01kcv5bzjd6ehfkk5y0n7vht6b
-var janMediaPlaceholderPattern = regexp.MustCompile(`jan_[A-Za-z0-9]+`)
-
-// stripUnresolvedMediaPlaceholders removes image parts with unresolved jan_* placeholders
-// from messages to prevent LLM errors like "Non-base64 digit found".
-// It keeps text parts and only removes image_url parts with placeholders.
-func stripUnresolvedMediaPlaceholders(messages []openai.ChatCompletionMessage) []openai.ChatCompletionMessage {
-	result := make([]openai.ChatCompletionMessage, 0, len(messages))
-
-	for _, msg := range messages {
-		newMsg := msg
-
-		// Check MultiContent for image parts with placeholders
-		if len(msg.MultiContent) > 0 {
-			filteredParts := make([]openai.ChatMessagePart, 0, len(msg.MultiContent))
-			for _, part := range msg.MultiContent {
-				if part.Type == openai.ChatMessagePartTypeImageURL && part.ImageURL != nil {
-					// Check if URL contains a jan_* placeholder
-					if janMediaPlaceholderPattern.MatchString(part.ImageURL.URL) {
-						continue // Skip this part
-					}
-				}
-				filteredParts = append(filteredParts, part)
-			}
-			newMsg.MultiContent = filteredParts
-
-			// If all parts were stripped, add a placeholder text to avoid empty message
-			if len(filteredParts) == 0 && len(msg.MultiContent) > 0 {
-				newMsg.MultiContent = []openai.ChatMessagePart{
-					{
-						Type: openai.ChatMessagePartTypeText,
-						Text: "[Image could not be loaded]",
-					},
-				}
-			}
-		}
-
-		result = append(result, newMsg)
-	}
-
-	return result
 }
 
 // applyModelDefaultsFromCatalog fills in missing request parameters using defaults from the model catalog.
@@ -1605,7 +1537,7 @@ func (h *ChatHandler) messageToItem(msg openai.ChatCompletionMessage) conversati
 				if part.ImageURL != nil && part.ImageURL.URL != "" {
 					imageContent := conversation.NewImageContent(
 						part.ImageURL.URL,
-						"", // fileID - could be extracted from jan_* URLs if needed
+						"",
 						string(part.ImageURL.Detail),
 					)
 					contents = append(contents, imageContent)

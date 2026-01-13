@@ -47,6 +47,7 @@ type MCPRoute struct {
 	memoryMCP       *MemoryMCP
 	imageMCP        *ImageGenerateMCP
 	imageEditMCP    *ImageEditMCP
+	aioMCP          *AIOMCP
 	llmClient       *llmapi.Client    // LLM-API client for tool call tracking
 	toolConfigCache *toolconfig.Cache // Cache for dynamic tool descriptions
 	mcpServer       *mcp.Server
@@ -60,6 +61,7 @@ func NewMCPRoute(
 	memoryMCP *MemoryMCP,
 	imageMCP *ImageGenerateMCP,
 	imageEditMCP *ImageEditMCP,
+	aioMCP *AIOMCP,
 	llmClient *llmapi.Client,
 	toolConfigCache *toolconfig.Cache,
 ) *MCPRoute {
@@ -98,6 +100,11 @@ func NewMCPRoute(
 		memoryMCP.RegisterTools(server)
 	}
 
+	// Register AIO Sandbox tools
+	if aioMCP != nil {
+		aioMCP.RegisterTools(server)
+	}
+
 	// Register tools from external MCP providers
 	if providerMCP != nil {
 		if err := providerMCP.RegisterTools(server); err != nil {
@@ -113,6 +120,7 @@ func NewMCPRoute(
 		memoryMCP:       memoryMCP,
 		imageMCP:        imageMCP,
 		imageEditMCP:    imageEditMCP,
+		aioMCP:          aioMCP,
 		llmClient:       llmClient,
 		toolConfigCache: toolConfigCache,
 		mcpServer:       server,

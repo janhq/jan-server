@@ -61,6 +61,12 @@ const (
 	ToolKeyFileSearchQuery = "file_search_query"
 	ToolKeyPythonExec      = "python_exec"
 	ToolKeyMemoryRetrieve  = "memory_retrieve"
+
+	// Agent tools
+	ToolKeySlideGenerate  = "slide_generate"
+	ToolKeyDeepResearch   = "deep_research"
+	ToolKeyArtifactCreate = "artifact_create"
+	ToolKeyArtifactUpdate = "artifact_update"
 )
 
 // Categories
@@ -70,4 +76,6 @@ const (
 	CategoryFileSearch    = "file_search"
 	CategoryCodeExecution = "code_execution"
 	CategoryMemory        = "memory"
+	CategoryGeneration    = "generation"
+	CategoryArtifact      = "artifact"
 )

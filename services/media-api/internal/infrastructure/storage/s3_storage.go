@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -21,11 +20,10 @@ var errStorageDisabled = errors.New("media storage backend is not configured; se
 
 // S3Storage handles uploads and downloads to S3-compatible storage.
 type S3Storage struct {
-	bucket    string
-	client    *s3.Client
-	presigner *s3.PresignClient
-	log       zerolog.Logger
-	disabled  bool
+	bucket   string
+	client   *s3.Client
+	log      zerolog.Logger
+	disabled bool
 }
 
 func NewS3Storage(ctx context.Context, cfg *config.Config, log zerolog.Logger) (*S3Storage, error) {
@@ -67,18 +65,7 @@ func NewS3Storage(ctx context.Context, cfg *config.Config, log zerolog.Logger) (
 		o.UsePathStyle = cfg.S3UsePathStyle
 	})
 
-	presignClient := client
-	if cfg.S3PublicEndpoint != "" {
-		presignClient = s3.NewFromConfig(awsCfg, func(o *s3.Options) {
-			o.UsePathStyle = cfg.S3UsePathStyle
-			o.EndpointResolver = s3.EndpointResolverFromURL(cfg.S3PublicEndpoint)
-		})
-	}
-
-	presigner := s3.NewPresignClient(presignClient)
-
 	storage.client = client
-	storage.presigner = presigner
 	return storage, nil
 }
 
@@ -103,36 +90,6 @@ func (s *S3Storage) Upload(ctx context.Context, key string, body io.Reader, size
 		return err
 	}
 	return nil
-}
-
-func (s *S3Storage) PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error) {
-	if err := s.ensureEnabled(); err != nil {
-		return "", err
-	}
-	resp, err := s.presigner.PresignGetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(key),
-	}, s3.WithPresignExpires(ttl))
-	if err != nil {
-		return "", err
-	}
-	return resp.URL, nil
-}
-
-func (s *S3Storage) PresignPut(ctx context.Context, key string, contentType string, ttl time.Duration) (string, error) {
-	if err := s.ensureEnabled(); err != nil {
-		return "", err
-	}
-	input := &s3.PutObjectInput{
-		Bucket:      aws.String(s.bucket),
-		Key:         aws.String(key),
-		ContentType: aws.String(contentType),
-	}
-	resp, err := s.presigner.PresignPutObject(ctx, input, s3.WithPresignExpires(ttl))
-	if err != nil {
-		return "", err
-	}
-	return resp.URL, nil
 }
 
 func (s *S3Storage) Download(ctx context.Context, key string) (io.ReadCloser, string, error) {
@@ -160,9 +117,4 @@ func (s *S3Storage) Health(ctx context.Context) error {
 	}
 	_, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(s.bucket)})
 	return err
-}
-
-// SupportsPresignedUploads returns true for S3 storage.
-func (s *S3Storage) SupportsPresignedUploads() bool {
-	return !s.disabled
 }

@@ -404,6 +404,12 @@ func (s *ShareService) filterItemsForShare(items []conversation.Item, includeIma
 	var result []conversation.Item
 
 	for _, item := range items {
+		// Skip mcp_call items - they're redundant since the tool call info
+		// is already in the assistant message's tool_calls content
+		if item.Type == conversation.ItemTypeMcpCall {
+			continue
+		}
+
 		// Skip system, developer, critic roles
 		if item.Role == nil {
 			continue
@@ -438,6 +444,7 @@ func (s *ShareService) sanitizeItem(item conversation.Item, includeImages bool) 
 		Type:      string(item.Type),
 		Role:      role,
 		Content:   make([]SnapshotContent, 0),
+		CallID:    item.CallID, // For tool role messages to match with tool_calls
 		CreatedAt: item.CreatedAt,
 	}
 
@@ -577,7 +584,29 @@ func (s *ShareService) sanitizeContent(content conversation.Content, includeImag
 		}
 
 	case "mcp_call":
-		// Include MCP call data - mcp_call and tool_call_id are direct fields
+		// Include MCP call data - include tool_calls if present
+		if len(content.ToolCalls) > 0 {
+			toolCalls := make([]ToolCall, 0, len(content.ToolCalls))
+			for _, tc := range content.ToolCalls {
+				toolCall := ToolCall{
+					ID:   tc.ID,
+					Type: tc.Type,
+				}
+				if tc.Function.Name != "" {
+					toolCall.Function = &ToolCallFunction{
+						Name:      tc.Function.Name,
+						Arguments: tc.Function.Arguments,
+					}
+				}
+				toolCalls = append(toolCalls, toolCall)
+			}
+			return &SnapshotContent{
+				Type:       "mcp_call",
+				ToolCalls:  toolCalls,
+				ToolCallID: content.ToolCallID,
+			}
+		}
+		// Fallback to text extraction for legacy format
 		text := extractTextFromContent(content)
 		return &SnapshotContent{
 			Type:        "mcp_call",
@@ -586,7 +615,7 @@ func (s *ShareService) sanitizeContent(content conversation.Content, includeImag
 		}
 
 	case "tool_result":
-		// Include tool result content
+		// Include tool result content with tool_call_id for frontend matching
 		text := extractTextFromContent(content)
 		if text == "" {
 			return nil
@@ -594,6 +623,7 @@ func (s *ShareService) sanitizeContent(content conversation.Content, includeImag
 		return &SnapshotContent{
 			Type:       "tool_result",
 			ToolResult: text,
+			ToolCallID: content.ToolCallID,
 		}
 
 	// Skip sensitive/internal content types

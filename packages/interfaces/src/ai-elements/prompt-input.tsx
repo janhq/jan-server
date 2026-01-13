@@ -1288,7 +1288,9 @@ export const PromptInputTextarea = ({
     }
 
     if (files.length > 0) {
+      // Prevent default paste behavior to avoid pasting any URLs or text
       event.preventDefault();
+      event.stopPropagation();
       attachments.add(files);
     }
   };

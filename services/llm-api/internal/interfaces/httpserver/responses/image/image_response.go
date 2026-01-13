@@ -16,16 +16,13 @@ type ImageGenerationResponse struct {
 // ImageData represents a single generated image.
 // @Description Single generated image data
 type ImageData struct {
-	// URL is the presigned URL to the generated image.
+	// URL is the generated image URL.
 	// Present when response_format="url".
-	URL string `json:"url,omitempty" example:"https://media.jan.ai/images/jan_abc123.png?sig=..."`
+	URL string `json:"url,omitempty" example:"https://media.jan.ai/images/example.png"`
 
 	// B64JSON is the base64-encoded image data.
 	// Present when response_format="b64_json".
 	B64JSON string `json:"b64_json,omitempty"`
-
-	// ID is the Jan media ID (jan_xxxxx) for the stored image.
-	ID string `json:"id,omitempty" example:"jan_abc123"`
 
 	// RevisedPrompt is the revised prompt used for generation, if the provider modified it.
 	RevisedPrompt string `json:"revised_prompt,omitempty"`

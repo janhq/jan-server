@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/rs/zerolog"
 
@@ -100,39 +99,6 @@ func (l *LocalStorage) Upload(ctx context.Context, key string, body io.Reader, s
 	return nil
 }
 
-// PresignGet returns a direct URL to the file (no presigning needed for local storage).
-// If LocalStorageBaseURL is set, it returns a URL, otherwise returns the file path.
-func (l *LocalStorage) PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error) {
-	if err := l.ensureEnabled(); err != nil {
-		return "", err
-	}
-
-	// Check if file exists
-	fullPath := filepath.Join(l.basePath, filepath.FromSlash(key))
-	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		return "", fmt.Errorf("file not found: %s", key)
-	}
-
-	// If base URL is configured, return a URL
-	if l.baseURL != "" {
-		// Normalize the key to use forward slashes for URLs
-		urlKey := filepath.ToSlash(key)
-		return fmt.Sprintf("%s/%s", strings.TrimSuffix(l.baseURL, "/"), urlKey), nil
-	}
-
-	// Otherwise return a file:// URL
-	return fmt.Sprintf("file://%s", fullPath), nil
-}
-
-// PresignPut is not supported for local storage (direct upload only).
-// Returns an error indicating presigned uploads are not available.
-func (l *LocalStorage) PresignPut(ctx context.Context, key string, contentType string, ttl time.Duration) (string, error) {
-	if err := l.ensureEnabled(); err != nil {
-		return "", err
-	}
-	return "", errors.New("presigned PUT not supported for local storage; use direct upload endpoint")
-}
-
 // Download reads a file from the local filesystem.
 func (l *LocalStorage) Download(ctx context.Context, key string) (io.ReadCloser, string, error) {
 	if err := l.ensureEnabled(); err != nil {
@@ -176,11 +142,6 @@ func (l *LocalStorage) Health(ctx context.Context) error {
 	_ = os.Remove(testFile)
 
 	return nil
-}
-
-// SupportsPresignedUploads returns false for local storage.
-func (l *LocalStorage) SupportsPresignedUploads() bool {
-	return false
 }
 
 // detectContentTypeFromPath attempts to determine content type from file extension.

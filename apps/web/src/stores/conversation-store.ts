@@ -7,20 +7,33 @@ import { BRANCH } from "@/constants";
 
 let fetchPromise: Promise<void> | null = null;
 
+export interface ItemsPaginationResult {
+  messages: UIMessage[];
+  cursor: string | null;
+}
+
 interface ConversationState {
   conversations: Conversation[];
   loading: boolean;
+  loadingMore: boolean;
+  conversationCursor: string | null;
   // Branch state
   branches: ConversationBranch[];
   activeBranch: string;
   branchesLoading: boolean;
+  itemsCursor: string | null;
   // Conversation operations
   getConversations: () => Promise<void>;
+  loadMoreConversations: () => Promise<void>;
   getConversation: (conversationId: string) => Promise<Conversation>;
   getUIMessages: (
     conversationId: string,
     branch?: string,
-  ) => Promise<UIMessage[]>;
+  ) => Promise<ItemsPaginationResult>;
+  loadMoreItems: (
+    conversationId: string,
+    branch?: string,
+  ) => Promise<ItemsPaginationResult>;
   createItems: (
     conversationId: string,
     items: CreateItemRequest[],
@@ -66,10 +79,12 @@ interface ConversationState {
 export const useConversations = create<ConversationState>((set, get) => ({
   conversations: [],
   loading: false,
-  // Branch state
+  loadingMore: false,
+  conversationCursor: null,
   branches: [],
   activeBranch: BRANCH.MAIN,
   branchesLoading: false,
+  itemsCursor: null,
   getConversations: async () => {
     if (fetchPromise) {
       return fetchPromise;
@@ -81,7 +96,10 @@ export const useConversations = create<ConversationState>((set, get) => ({
       try {
         set({ loading: true });
         const data = await conversationService.getConversations();
-        set({ conversations: data.data });
+        set({
+          conversations: data.data,
+          conversationCursor: data.has_more ? data.last_id : null,
+        });
       } catch (err) {
         console.error("Error fetching conversations:", err);
       } finally {
@@ -89,6 +107,25 @@ export const useConversations = create<ConversationState>((set, get) => ({
         fetchPromise = null;
       }
     })();
+  },
+  loadMoreConversations: async () => {
+    const { loadingMore, conversationCursor } = get();
+    if (loadingMore || !conversationCursor) {
+      return;
+    }
+    try {
+      set({ loadingMore: true });
+      const data =
+        await conversationService.getConversations(conversationCursor);
+      set((state) => ({
+        conversations: [...state.conversations, ...data.data],
+        conversationCursor: data.has_more ? data.last_id : null,
+      }));
+    } catch (err) {
+      console.error("Error loading more conversations:", err);
+    } finally {
+      set({ loadingMore: false });
+    }
   },
   getConversation: async (conversationId: string) => {
     try {
@@ -103,12 +140,43 @@ export const useConversations = create<ConversationState>((set, get) => ({
   getUIMessages: async (conversationId: string, branch?: string) => {
     try {
       const branchToUse = branch ?? get().activeBranch;
-      const items = (
-        await conversationService.getItems(conversationId, branchToUse)
-      ).data;
-      return convertToUIMessages(items);
+      const response = await conversationService.getItems(
+        conversationId,
+        branchToUse,
+      );
+      const items = [...response.data].reverse();
+      const cursor = response.has_more && items.length > 0 ? items[0].id : null;
+      set({ itemsCursor: cursor });
+      return {
+        messages: convertToUIMessages(items),
+        cursor,
+      };
     } catch (err) {
       console.error("Error fetching conversation items:", err);
+      throw err;
+    }
+  },
+  loadMoreItems: async (conversationId: string, branch?: string) => {
+    const { itemsCursor } = get();
+    if (!itemsCursor) {
+      return { messages: [], cursor: null };
+    }
+    try {
+      const branchToUse = branch ?? get().activeBranch;
+      const response = await conversationService.getItems(
+        conversationId,
+        branchToUse,
+        itemsCursor,
+      );
+      const items = [...response.data].reverse();
+      const cursor = response.has_more && items.length > 0 ? items[0].id : null;
+      set({ itemsCursor: cursor });
+      return {
+        messages: convertToUIMessages(items),
+        cursor,
+      };
+    } catch (err) {
+      console.error("Error loading more items:", err);
       throw err;
     }
   },
@@ -187,8 +255,11 @@ export const useConversations = create<ConversationState>((set, get) => ({
     set({
       conversations: [],
       loading: false,
+      loadingMore: false,
+      conversationCursor: null,
       branches: [],
       activeBranch: BRANCH.MAIN,
+      itemsCursor: null,
     });
     fetchPromise = null;
   },

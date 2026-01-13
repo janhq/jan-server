@@ -23,6 +23,18 @@ providers:
     endpoint: ${VECTOR_STORE_URL}
     type: http
 
+  # AIO Sandbox MCP Hub - All-in-One Agent Sandbox
+  # Provides: browser automation, file operations, shell/terminal, code execution
+  # Note: Primary integration is via direct Go SDK (aio_* tools in aio_mcp.go)
+  # This MCP bridge is optional for compatibility with external MCP clients
+  - name: aio
+    description: AIO Sandbox MCP hub (browser, file, terminal, code execution, markitdown)
+    enabled: ${AIO_MCP_BRIDGE_ENABLED:-false}
+    endpoint: ${AIO_MCP_URL:-http://aio-sandbox:8080/mcp}
+    type: mcp-http
+    proxy_mode: true
+    timeout: 120s
+
   # SandboxFusion MCP placeholder (direct integration handled via python_exec)
   # - name: sandbox-fusion
   #   description: SandboxFusion python interpreter service

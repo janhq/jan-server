@@ -13,6 +13,10 @@ interface Project {
 interface ProjectsResponse {
   object: string;
   data: Project[];
+  first_id: string;
+  last_id: string;
+  has_more: boolean;
+  total: number;
 }
 
 interface CreateProjectRequest {

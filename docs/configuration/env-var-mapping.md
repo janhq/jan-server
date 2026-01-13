@@ -88,28 +88,28 @@ This document maps centralized configuration (`pkg/config/types.go`) environment
 
 ### MCP Tools
 
-| Centralized Env Var            | Type   | Default                     | Current Var                | Status           |
-| ------------------------------ | ------ | --------------------------- | -------------------------- | ---------------- |
-| `MCP_TOOLS_HTTP_PORT`          | int    | `8091`                      | `HTTP_PORT`                | TODO Need prefix |
-| `MCP_TOOLS_LOG_LEVEL`          | string | `info`                      | `LOG_LEVEL`                | TODO Need prefix |
-| `MCP_TOOLS_LOG_FORMAT`         | string | `json`                      | `LOG_FORMAT`               | TODO Need prefix |
-| `MCP_SEARCH_ENGINE`            | string | `serper`                    | `SEARCH_ENGINE`            | TODO Need prefix |
-| `SERPER_ENABLED`               | bool   | `true`                      | `SERPER_ENABLED`           | New              |
-| `SERPER_API_KEY`               | string | (secret)                    | `SERPER_API_KEY`           | OK Aligned       |
-| `EXA_ENABLED`                  | bool   | `false`                     | `EXA_ENABLED`              | New              |
-| `EXA_API_KEY`                  | string | (secret)                    | `EXA_API_KEY`              | New              |
-| `EXA_SEARCH_ENDPOINT`          | string | `https://api.exa.ai/search` | `EXA_SEARCH_ENDPOINT`      | New              |
-| `EXA_TIMEOUT`                  | duration | `15s`                     | `EXA_TIMEOUT`              | New              |
-| `TAVILY_ENABLED`               | bool   | `false`                     | `TAVILY_ENABLED`           | New              |
-| `TAVILY_API_KEY`               | string | (secret)                    | `TAVILY_API_KEY`           | New              |
-| `TAVILY_SEARCH_ENDPOINT`       | string | `https://api.tavily.com/search` | `TAVILY_SEARCH_ENDPOINT` | New            |
-| `TAVILY_TIMEOUT`               | duration | `15s`                    | `TAVILY_TIMEOUT`           | New              |
-| `SEARXNG_URL`                  | string | `http://searxng:8080`       | `SEARXNG_URL`              | OK Aligned       |
-| `SEARXNG_ENABLED`              | bool   | `false`                     | `SEARXNG_ENABLED`          | New              |
-| `VECTOR_STORE_URL`             | string | `http://vector-store:3015`  | `VECTOR_STORE_URL`         | OK Aligned       |
-| `SANDBOXFUSION_URL`            | string | `http://sandboxfusion:8080` | `SANDBOXFUSION_URL`        | OK Aligned       |
-| `MCP_SANDBOX_REQUIRE_APPROVAL` | bool   | `true`                      | `SANDBOX_REQUIRE_APPROVAL` | TODO Need prefix |
-| `MCP_CONFIG_FILE`              | string | `configs/mcp-providers.yml` | `MCP_CONFIG_FILE`          | OK Aligned       |
+| Centralized Env Var            | Type     | Default                         | Current Var                | Status           |
+| ------------------------------ | -------- | ------------------------------- | -------------------------- | ---------------- |
+| `MCP_TOOLS_HTTP_PORT`          | int      | `8091`                          | `HTTP_PORT`                | TODO Need prefix |
+| `MCP_TOOLS_LOG_LEVEL`          | string   | `info`                          | `LOG_LEVEL`                | TODO Need prefix |
+| `MCP_TOOLS_LOG_FORMAT`         | string   | `json`                          | `LOG_FORMAT`               | TODO Need prefix |
+| `MCP_SEARCH_ENGINE`            | string   | `serper`                        | `SEARCH_ENGINE`            | TODO Need prefix |
+| `SERPER_ENABLED`               | bool     | `true`                          | `SERPER_ENABLED`           | New              |
+| `SERPER_API_KEY`               | string   | (secret)                        | `SERPER_API_KEY`           | OK Aligned       |
+| `EXA_ENABLED`                  | bool     | `false`                         | `EXA_ENABLED`              | New              |
+| `EXA_API_KEY`                  | string   | (secret)                        | `EXA_API_KEY`              | New              |
+| `EXA_SEARCH_ENDPOINT`          | string   | `https://api.exa.ai/search`     | `EXA_SEARCH_ENDPOINT`      | New              |
+| `EXA_TIMEOUT`                  | duration | `15s`                           | `EXA_TIMEOUT`              | New              |
+| `TAVILY_ENABLED`               | bool     | `false`                         | `TAVILY_ENABLED`           | New              |
+| `TAVILY_API_KEY`               | string   | (secret)                        | `TAVILY_API_KEY`           | New              |
+| `TAVILY_SEARCH_ENDPOINT`       | string   | `https://api.tavily.com/search` | `TAVILY_SEARCH_ENDPOINT`   | New              |
+| `TAVILY_TIMEOUT`               | duration | `15s`                           | `TAVILY_TIMEOUT`           | New              |
+| `SEARXNG_URL`                  | string   | `http://searxng:8080`           | `SEARXNG_URL`              | OK Aligned       |
+| `SEARXNG_ENABLED`              | bool     | `false`                         | `SEARXNG_ENABLED`          | New              |
+| `VECTOR_STORE_URL`             | string   | `http://vector-store:3015`      | `VECTOR_STORE_URL`         | OK Aligned       |
+| `SANDBOXFUSION_URL`            | string   | `http://sandboxfusion:8080`     | `SANDBOXFUSION_URL`        | OK Aligned       |
+| `MCP_SANDBOX_REQUIRE_APPROVAL` | bool     | `true`                          | `SANDBOX_REQUIRE_APPROVAL` | TODO Need prefix |
+| `MCP_CONFIG_FILE`              | string   | `configs/mcp-providers.yml`     | `MCP_CONFIG_FILE`          | OK Aligned       |
 
 **Migration Notes:**
 
@@ -170,6 +170,8 @@ This document maps centralized configuration (`pkg/config/types.go`) environment
 | `MEDIA_PROXY_DOWNLOAD`       | bool     | `true`                | `PROXY_DOWNLOAD`        | TODO Need prefix        |
 | `MEDIA_REMOTE_FETCH_TIMEOUT` | duration | `15s`                 | `FETCH_TIMEOUT`         | TODO Rename needed      |
 | `MEDIA_S3_ENDPOINT`          | string   | `https://s3.menlo.ai` | `S3_ENDPOINT`           | TODO Need prefix        |
+| `MEDIA_S3_PUBLIC_ENDPOINT`   | string   | (empty)               | `S3_PUBLIC_ENDPOINT`    | TODO Need prefix        |
+| `MEDIA_S3_URL_ENABLED`       | bool     | `false`               | `S3_URL_ENABLED`        | New                     |
 | `MEDIA_S3_REGION`            | string   | `us-west-2`           | `S3_REGION`             | TODO Need prefix        |
 | `MEDIA_S3_BUCKET`            | string   | `platform-dev`        | `S3_BUCKET`             | TODO Need prefix        |
 | `MEDIA_S3_USE_PATH_STYLE`    | bool     | `true`                | `S3_PATH_STYLE`         | TODO Rename needed      |

@@ -55,11 +55,11 @@ type CircuitBreaker struct {
 	cfg CircuitBreakerConfig
 	mu  sync.RWMutex
 
-	state            CircuitState
-	failures         int
-	successes        int
-	lastFailureTime  time.Time
-	halfOpenCalls    int
+	state           CircuitState
+	failures        int
+	successes       int
+	lastFailureTime time.Time
+	halfOpenCalls   int
 }
 
 // NewCircuitBreaker creates a new circuit breaker
@@ -178,11 +178,11 @@ func (cb *CircuitBreaker) GetMetrics() map[string]any {
 	defer cb.mu.RUnlock()
 
 	return map[string]any{
-		"state":              cb.state.String(),
-		"failures":           cb.failures,
-		"successes":          cb.successes,
-		"last_failure_time":  cb.lastFailureTime,
-		"half_open_calls":    cb.halfOpenCalls,
+		"state":             cb.state.String(),
+		"failures":          cb.failures,
+		"successes":         cb.successes,
+		"last_failure_time": cb.lastFailureTime,
+		"half_open_calls":   cb.halfOpenCalls,
 	}
 }
 

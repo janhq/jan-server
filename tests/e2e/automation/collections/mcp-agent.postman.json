@@ -1,0 +1,168 @@
+{
+  "info": {
+    "name": "jan-server mcp-agent",
+    "description": "Validates MCP tool availability and agent-ready tool calls.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "1. MCP Runtime",
+      "item": [
+        {
+          "name": "List MCP Tools",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/list\",\n  \"id\": 1\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json();",
+                  "pm.test('Tools list returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(payload).to.have.property('result');",
+                  "  pm.expect(payload.result.tools).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "pm.test('Required tools present', function () {",
+                  "  const names = payload.result.tools.map(t => t.name);",
+                  "  pm.expect(names).to.include('google_search');",
+                  "  pm.expect(names).to.include('scrape');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Call google_search",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"google_search\",\n    \"arguments\": {\n      \"q\": \"Example Domain\",\n      \"domain_allow_list\": [\"example.com\"]\n    }\n  },\n  \"id\": 2\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rawBody = pm.response.text();",
+                  "let payload = null;",
+                  "try {",
+                  "  payload = JSON.parse(rawBody);",
+                  "} catch (err) {",
+                  "  const lines = rawBody.split('\\n');",
+                  "  for (const line of lines) {",
+                  "    if (line.startsWith('data: ')) {",
+                  "      payload = JSON.parse(line.substring(6));",
+                  "      break;",
+                  "    }",
+                  "  }",
+                  "}",
+                  "pm.test('Search call succeeded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(payload).to.have.property('result');",
+                  "  pm.expect(payload.result).to.have.property('content');",
+                  "});",
+                  "const textBlock = payload.result.content.find(c => c.type === 'text');",
+                  "pm.test('Search returns structured JSON', function () {",
+                  "  pm.expect(textBlock).to.exist;",
+                  "  const structured = JSON.parse(textBlock.text);",
+                  "  pm.expect(structured).to.have.property('results');",
+                  "  pm.expect(structured.results).to.be.an('array').that.is.not.empty;",
+                  "  structured.results.forEach(res => pm.expect(res.source_url).to.include('example.com'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Call scrape",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"scrape\",\n    \"arguments\": {\n      \"url\": \"https://example.com\",\n      \"includeMarkdown\": true\n    }\n  },\n  \"id\": 3\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rawBody = pm.response.text();",
+                  "let payload = null;",
+                  "try {",
+                  "  payload = JSON.parse(rawBody);",
+                  "} catch (err) {",
+                  "  const lines = rawBody.split('\\n');",
+                  "  for (const line of lines) {",
+                  "    if (line.startsWith('data: ')) {",
+                  "      payload = JSON.parse(line.substring(6));",
+                  "      break;",
+                  "    }",
+                  "  }",
+                  "}",
+                  "pm.test('Scrape call succeeded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(payload).to.have.property('result');",
+                  "  pm.expect(payload.result).to.have.property('content');",
+                  "});",
+                  "const textBlock = payload.result.content.find(c => c.type === 'text');",
+                  "pm.test('Scrape returns structured JSON', function () {",
+                  "  pm.expect(textBlock).to.exist;",
+                  "  const structured = JSON.parse(textBlock.text);",
+                  "  pm.expect(structured).to.have.property('source_url');",
+                  "  pm.expect(structured.source_url).to.include('example.com');",
+                  "  pm.expect(structured.text_preview).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

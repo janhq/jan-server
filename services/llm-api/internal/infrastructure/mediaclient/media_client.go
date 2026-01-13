@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/imroc/req/v3"
@@ -36,15 +35,10 @@ type IngestRequest struct {
 
 // IngestResponse is the response from media ingestion.
 type IngestResponse struct {
-	ID           string `json:"id"`            // jan_xxxxx ID
-	Mime         string `json:"mime"`          // MIME type
-	Bytes        int64  `json:"bytes"`         // Size in bytes
-	Deduped      bool   `json:"deduped"`       // Whether content was deduplicated
-	PresignedURL string `json:"presigned_url"` // Presigned URL for immediate access
-}
-
-type PresignResponse struct {
-	URL string `json:"url"`
+	Mime    string `json:"mime"`  // MIME type
+	Bytes   int64  `json:"bytes"` // Size in bytes
+	Deduped bool   `json:"deduped"`
+	URL     string `json:"url"` // Direct media URL
 }
 
 // NewClient creates a new media client.
@@ -66,7 +60,7 @@ func NewClient(cfg *config.Config, log zerolog.Logger) *Client {
 }
 
 // UploadBase64Image uploads a base64-encoded image to media-api.
-// Returns the jan_id and presigned URL.
+// Returns the direct media URL.
 func (c *Client) UploadBase64Image(ctx context.Context, base64Data string, mimeType string, authHeader string) (*IngestResponse, error) {
 	if c == nil {
 		return nil, fmt.Errorf("media client not configured")
@@ -117,50 +111,8 @@ func (c *Client) UploadBase64Image(ctx context.Context, base64Data string, mimeT
 	}
 
 	c.log.Debug().
-		Str("jan_id", result.ID).
+		Str("media_url", result.URL).
 		Msg("[MediaClient] Image uploaded successfully")
 
 	return &result, nil
-}
-
-// GetPresignedURL returns a presigned URL for a media ID.
-func (c *Client) GetPresignedURL(ctx context.Context, mediaID string, authHeader string) (string, error) {
-	if c == nil {
-		return "", fmt.Errorf("media client not configured")
-	}
-	if strings.TrimSpace(mediaID) == "" {
-		return "", fmt.Errorf("media ID is required")
-	}
-
-	base := strings.TrimSuffix(c.cfg.MediaIngestURL, "/")
-	url := fmt.Sprintf("%s/%s/presign", base, mediaID)
-
-	c.log.Debug().Str("media_id", mediaID).Msg("[MediaClient] Requesting presigned URL")
-
-	resp, err := c.client.R().
-		SetContext(ctx).
-		SetHeader("Authorization", authHeader).
-		Get(url)
-	if err != nil {
-		c.log.Error().Err(err).Msg("[MediaClient] Failed to presign media URL")
-		return "", fmt.Errorf("media presign failed: %w", err)
-	}
-
-	if resp.StatusCode >= 400 {
-		c.log.Error().
-			Int("status", resp.StatusCode).
-			Str("body", resp.String()).
-			Msg("[MediaClient] Media API returned error for presign")
-		return "", fmt.Errorf("media presign returned status %d: %s", resp.StatusCode, resp.String())
-	}
-
-	var result PresignResponse
-	if err := json.Unmarshal(resp.Bytes(), &result); err != nil {
-		c.log.Error().Err(err).Str("body", resp.String()).Msg("[MediaClient] Failed to parse presign response")
-		return "", fmt.Errorf("failed to parse media presign response: %w", err)
-	}
-	if strings.TrimSpace(result.URL) == "" {
-		return "", fmt.Errorf("media presign returned empty url")
-	}
-	return result.URL, nil
 }

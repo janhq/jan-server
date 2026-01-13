@@ -6,7 +6,9 @@ let fetchPromise: Promise<void> | null = null;
 interface ProjectsState {
   projects: Project[];
   loading: boolean;
+  projectsCursor: string | null;
   getProjects: () => Promise<void>;
+  loadMoreProjects: () => Promise<Project[]>;
   getProject: (projectId: string) => Promise<Project>;
   createProject: (data: CreateProjectRequest) => Promise<Project>;
   updateProject: (
@@ -20,6 +22,7 @@ interface ProjectsState {
 export const useProjects = create<ProjectsState>((set, get) => ({
   projects: [],
   loading: false,
+  projectsCursor: null,
   getProjects: async () => {
     if (fetchPromise) {
       return fetchPromise;
@@ -31,7 +34,10 @@ export const useProjects = create<ProjectsState>((set, get) => ({
       try {
         set({ loading: true });
         const data = await projectService.getProjects();
-        set({ projects: data.data });
+        set({
+          projects: data.data,
+          projectsCursor: data.has_more ? data.last_id : null,
+        });
       } catch (err) {
         console.error("Error fetching projects:", err);
       } finally {
@@ -39,6 +45,23 @@ export const useProjects = create<ProjectsState>((set, get) => ({
         fetchPromise = null;
       }
     })();
+  },
+  loadMoreProjects: async () => {
+    const { projectsCursor } = get();
+    if (!projectsCursor) {
+      return [];
+    }
+    try {
+      const data = await projectService.loadMoreProjects(projectsCursor);
+      set((state) => ({
+        projects: [...state.projects, ...data.data],
+        projectsCursor: data.has_more ? data.last_id : null,
+      }));
+      return data.data;
+    } catch (err) {
+      console.error("Error loading more projects:", err);
+      throw err;
+    }
   },
   getProject: async (projectId: string) => {
     try {
@@ -90,7 +113,7 @@ export const useProjects = create<ProjectsState>((set, get) => ({
     }
   },
   clearProjects: () => {
-    set({ projects: [], loading: false });
+    set({ projects: [], loading: false, projectsCursor: null });
     fetchPromise = null;
   },
 }));

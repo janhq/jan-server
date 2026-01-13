@@ -1,4 +1,5 @@
 import { fetchJsonWithAuth } from "@/lib/api-client";
+import { QUERY_LIMIT } from "@/constants";
 
 declare const JAN_API_BASE_URL: string;
 
@@ -6,15 +7,30 @@ export const projectService = {
   /**
    * Get all projects
    */
-  getProjects: async (): Promise<ProjectsResponse> => {
+  getProjects: async (
+    limit?: number,
+    after?: string,
+  ): Promise<ProjectsResponse> => {
+    const params = new URLSearchParams();
+    if (limit) {
+      params.set("limit", String(limit));
+    }
+    if (after) {
+      params.set("after", after);
+    }
+    const queryString = params.toString();
     return fetchJsonWithAuth<ProjectsResponse>(
-      `${JAN_API_BASE_URL}v1/projects`,
+      `${JAN_API_BASE_URL}v1/projects${queryString ? `?${queryString}` : ""}`,
     );
   },
 
   /**
    * Get a single project by ID
    */
+  loadMoreProjects: async (after?: string): Promise<ProjectsResponse> => {
+    return projectService.getProjects(QUERY_LIMIT.PROJECTS_PAGINATION, after);
+  },
+
   getProject: async (projectId: string): Promise<Project> => {
     return fetchJsonWithAuth<Project>(
       `${JAN_API_BASE_URL}v1/projects/${projectId}`,

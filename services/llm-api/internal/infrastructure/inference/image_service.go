@@ -57,7 +57,7 @@ type ImageEditRequest struct {
 
 // ImageData represents a single generated image.
 type ImageData struct {
-	// URL is the presigned URL to the generated image (when response_format="url").
+	// URL is the generated image URL (when response_format="url").
 	URL string `json:"url,omitempty"`
 
 	// B64JSON is the base64-encoded image data (when response_format="b64_json").

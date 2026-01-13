@@ -1,0 +1,98 @@
+name: CI - Services Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+.[0-9][0-9]1"
+
+jobs:
+  build-llm-api:
+    uses: ./.github/workflows/_reusable-docker.yml
+    secrets: inherit
+    with:
+      runs-on: ubuntu-24-04-docker
+      docker-file: services/llm-api/Dockerfile
+      context: services/llm-api
+      registry-url: registry.menlo.ai
+      tags: registry.menlo.ai/jan-server/llm-api:prod-${{ github.ref_name }}
+      is_push: true
+      build-args: |
+        VERSION_TAG=${{ github.ref_name }}
+
+  build-mcp-tools:
+    uses: ./.github/workflows/_reusable-docker.yml
+    secrets: inherit
+    with:
+      runs-on: ubuntu-24-04-docker
+      docker-file: services/mcp-tools/Dockerfile
+      context: services/mcp-tools
+      registry-url: registry.menlo.ai
+      tags: registry.menlo.ai/jan-server/mcp-tools:prod-${{ github.ref_name }}
+      is_push: true
+      build-args: |
+        VERSION_TAG=${{ github.ref_name }}
+
+  build-media-api:
+    uses: ./.github/workflows/_reusable-docker.yml
+    secrets: inherit
+    with:
+      runs-on: ubuntu-24-04-docker
+      docker-file: services/media-api/Dockerfile
+      context: services/media-api
+      registry-url: registry.menlo.ai
+      tags: registry.menlo.ai/jan-server/media-api:prod-${{ github.ref_name }}
+      is_push: true
+      build-args: |
+        VERSION_TAG=${{ github.ref_name }}
+
+  build-response-api:
+    uses: ./.github/workflows/_reusable-docker.yml
+    secrets: inherit
+    with:
+      runs-on: ubuntu-24-04-docker
+      docker-file: services/response-api/Dockerfile
+      context: services/response-api
+      registry-url: registry.menlo.ai
+      tags: registry.menlo.ai/jan-server/response-api:prod-${{ github.ref_name }}
+      is_push: true
+      build-args: |
+        VERSION_TAG=${{ github.ref_name }}
+
+  build-memory-tools:
+    uses: ./.github/workflows/_reusable-docker.yml
+    secrets: inherit
+    with:
+      runs-on: ubuntu-24-04-docker
+      docker-file: services/memory-tools/Dockerfile
+      context: services/memory-tools
+      registry-url: registry.menlo.ai
+      tags: registry.menlo.ai/jan-server/memory-tools:prod-${{ github.ref_name }}
+      is_push: true
+      build-args: |
+        VERSION_TAG=${{ github.ref_name }}
+
+  build-vector-store:
+    uses: ./.github/workflows/_reusable-docker.yml
+    secrets: inherit
+    with:
+      runs-on: ubuntu-24-04-docker
+      docker-file: services/mcp-tools/tools/vector-store-service/Dockerfile
+      context: services/mcp-tools/tools/vector-store-service
+      registry-url: registry.menlo.ai
+      tags: registry.menlo.ai/jan-server/vector-store-service:prod-${{ github.ref_name }}
+      is_push: true
+      build-args: |
+        VERSION_TAG=${{ github.ref_name }}
+
+  build-realtime-api:
+    uses: ./.github/workflows/_reusable-docker.yml
+    secrets: inherit
+    with:
+      runs-on: ubuntu-24-04-docker
+      docker-file: services/realtime-api/Dockerfile
+      context: services/realtime-api
+      registry-url: registry.menlo.ai
+      tags: registry.menlo.ai/jan-server/realtime-api:prod-${{ github.ref_name }}
+      is_push: true
+      build-args: |
+        VERSION_TAG=${{ github.ref_name }}

@@ -112,3 +112,20 @@ func FromDomain(r *response.Response) ResponsePayload {
 type ConversationItemsResponse struct {
 	Data []response.ConversationItem `json:"data"`
 }
+
+// FullResponsePayload combines response with plan details in one payload.
+type FullResponsePayload struct {
+	ResponsePayload
+	Plan *PlanDetailResponse `json:"plan,omitempty"`
+}
+
+// FromDomainWithPlan maps the domain response with plan to DTO.
+func FromDomainWithPlan(rwp *response.ResponseWithPlan, planMapper func(interface{}) *PlanDetailResponse) FullResponsePayload {
+	payload := FullResponsePayload{
+		ResponsePayload: FromDomain(rwp.Response),
+	}
+	if rwp.PlanDetails != nil && planMapper != nil {
+		payload.Plan = planMapper(rwp.PlanDetails)
+	}
+	return payload
+}

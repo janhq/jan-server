@@ -55,8 +55,8 @@ func EstimateMessagesTokenCount(messages []ChatMessage) int {
 
 // TrimMessagesResult contains the result of trimming messages.
 type TrimMessagesResult struct {
-	Messages       []ChatMessage
-	TrimmedCount   int
+	Messages        []ChatMessage
+	TrimmedCount    int
 	EstimatedTokens int
 }
 

@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -40,17 +39,6 @@ type ingestResponse struct {
 	URL     string `json:"url"`
 }
 
-type resolveRequest struct {
-	Payload JSONPayload `json:"payload" binding:"required"`
-}
-
-type resolveResponse struct {
-	Payload JSONPayload `json:"payload"`
-}
-
-// JSONPayload is used to document arbitrary JSON blobs in swagger.
-type JSONPayload = json.RawMessage
-
 // Ingest godoc
 // @Summary      Upload media
 // @Description  Accepts data URLs or remote URLs and stores content privately.
@@ -78,7 +66,7 @@ func (h *MediaHandler) Ingest(c *gin.Context) {
 	}
 
 	// Generate direct public URL for embedding in HTML
-	directURL := h.buildDirectURL(obj.ID)
+	directURL := h.buildMediaURL(obj)
 
 	c.JSON(http.StatusOK, ingestResponse{
 		ID:      obj.ID,
@@ -89,110 +77,14 @@ func (h *MediaHandler) Ingest(c *gin.Context) {
 	})
 }
 
-// Resolve godoc
-// @Summary      Resolve jan_* placeholders
-// @Description  Replaces pseudo data URLs with short-lived signed URLs.
-// @Tags         media
-// @Accept       json
-// @Produce      json
-// @Param        request  body      resolveRequest  true  "Payload to resolve"
-// @Success      200      {object}  resolveResponse
-// @Failure      400      {object}  map[string]string
-// @Failure      500      {object}  map[string]string
-// @Security     ApiKeyAuth
-// @Router       /v1/media/resolve [post]
-func (h *MediaHandler) Resolve(c *gin.Context) {
-	var req resolveRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.HandleNewError(c, platformerrors.ErrorTypeValidation, "invalid request body", "2b3c4d5e-6f7a-8b9c-0d1e-2f3a4b5c6d7e")
-		return
-	}
-
-	out, err := h.service.ResolvePayload(c.Request.Context(), json.RawMessage(req.Payload))
-	if err != nil {
-		h.log.Error().Err(err).Msg("resolve failed")
-		responses.HandleError(c, err, "failed to resolve media payload")
-		return
-	}
-
-	c.JSON(http.StatusOK, resolveResponse{Payload: JSONPayload(out)})
-}
-
-// PrepareUpload godoc
-// @Summary      Request presigned upload URL
-// @Description  Generates a presigned upload URL and reserves a jan_id. Client uploads directly to S3 using the URL. Not available for local storage.
-// @Tags         media
-// @Accept       json
-// @Produce      json
-// @Param        request  body      domain.PrepareUploadRequest  true  "Upload preparation request"
-// @Success      200      {object}  domain.UploadPreparation
-// @Failure      400      {object}  map[string]string
-// @Failure      501      {object}  map[string]string
-// @Failure      500      {object}  map[string]string
-// @Security     ApiKeyAuth
-// @Router       /v1/media/prepare-upload [post]
-func (h *MediaHandler) PrepareUpload(c *gin.Context) {
-	// Check if storage backend supports presigned uploads
-	if !h.service.SupportsPresignedUploads() {
-		c.JSON(http.StatusNotImplemented, gin.H{
-			"error":   "presigned uploads not supported",
-			"message": "use POST /v1/media/upload for direct upload with local storage",
-		})
-		return
-	}
-
-	var req domain.PrepareUploadRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.HandleNewError(c, platformerrors.ErrorTypeValidation, "invalid request body", "3c4d5e6f-7a8b-9c0d-1e2f-3a4b5c6d7e8f")
-		return
-	}
-
-	prep, err := h.service.PrepareUpload(c.Request.Context(), req.MimeType, req.UserID)
-	if err != nil {
-		h.log.Error().Err(err).Msg("prepare upload failed")
-		responses.HandleError(c, err, "failed to prepare upload")
-		return
-	}
-
-	c.JSON(http.StatusOK, prep)
-}
-
-// GetPresignedURL godoc
-// @Summary      Get presigned download URL
-// @Description  Returns a temporary signed URL for downloading media by jan_id.
-// @Tags         media
-// @Produce      json
-// @Param        id   path      string  true  "Media ID (jan_xxx)"
-// @Success      200  {object}  map[string]interface{}
-// @Failure      404  {object}  map[string]string
-// @Failure      500  {object}  map[string]string
-// @Security     ApiKeyAuth
-// @Router       /v1/media/{id}/presign [get]
-func (h *MediaHandler) GetPresignedURL(c *gin.Context) {
-	id := c.Param("id")
-
-	url, err := h.service.Presign(c.Request.Context(), id)
-	if err != nil {
-		h.log.Error().Err(err).Str("id", id).Msg("presign failed")
-		responses.HandleError(c, err, "failed to generate presigned URL")
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"id":         id,
-		"url":        url,
-		"expires_in": int(h.cfg.S3PresignTTL.Seconds()),
-	})
-}
-
 // Proxy godoc
 // @Summary      Stream media bytes
-// @Description  Streams the object through the media API without exposing storage URLs. If proxying is disabled, returns a presigned download URL instead.
+// @Description  Streams the object through the media API without exposing storage URLs. If proxying is disabled, returns a direct URL instead.
 // @Tags         media
 // @Produce      json
 // @Produce      octet-stream
 // @Param        id   path      string  true  "Media ID"
-// @Success      200  {object}  map[string]interface{} "Presigned URL response when proxying is disabled; otherwise binary stream"
+// @Success      200  {object}  map[string]interface{} "Direct URL response when proxying is disabled; otherwise binary stream"
 // @Failure      404  {object}  map[string]string
 // @Security     ApiKeyAuth
 // @Router       /v1/media/{id} [get]
@@ -200,13 +92,13 @@ func (h *MediaHandler) Proxy(c *gin.Context) {
 	id := c.Param("id")
 
 	if !h.cfg.ProxyDownload {
-		url, err := h.service.Presign(c.Request.Context(), id)
+		obj, err := h.service.Get(c.Request.Context(), id)
 		if err != nil {
-			h.log.Error().Err(err).Msg("presign failed")
+			h.log.Error().Err(err).Msg("lookup failed")
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"url": url})
+		c.JSON(http.StatusOK, gin.H{"url": h.buildMediaURL(obj)})
 		return
 	}
 
@@ -231,7 +123,7 @@ func (h *MediaHandler) Proxy(c *gin.Context) {
 
 // DirectUpload godoc
 // @Summary      Direct file upload
-// @Description  Accepts multipart file upload for local storage. Alternative to presigned uploads.
+// @Description  Accepts multipart file upload for local storage.
 // @Tags         media
 // @Accept       multipart/form-data
 // @Produce      json
@@ -288,7 +180,7 @@ func (h *MediaHandler) DirectUpload(c *gin.Context) {
 	}
 
 	// Generate direct public URL for embedding in HTML
-	directURL := h.buildDirectURL(obj.ID)
+	directURL := h.buildMediaURL(obj)
 
 	c.JSON(http.StatusOK, ingestResponse{
 		ID:      obj.ID,
@@ -307,7 +199,7 @@ func (h *MediaHandler) DirectUpload(c *gin.Context) {
 // @Produce      image/png
 // @Produce      image/webp
 // @Produce      image/gif
-// @Param        id   path      string  true  "Media ID (jan_xxx)"
+// @Param        id   path      string  true  "Media ID"
 // @Success      200  {file}    binary
 // @Failure      404  {object}  map[string]string
 // @Router       /api/media/{id} [get]
@@ -336,6 +228,18 @@ func (h *MediaHandler) PublicServe(c *gin.Context) {
 }
 
 // buildDirectURL constructs the public URL for direct media access
+func (h *MediaHandler) buildMediaURL(obj *domain.MediaObject) string {
+	if h.cfg.S3URLEnabled && h.cfg.IsS3Storage() {
+		publicEndpoint := strings.TrimSpace(h.cfg.S3PublicEndpoint)
+		if publicEndpoint != "" && strings.TrimSpace(obj.StorageKey) != "" {
+			base := strings.TrimSuffix(publicEndpoint, "/")
+			key := strings.TrimPrefix(strings.TrimSpace(obj.StorageKey), "/")
+			return fmt.Sprintf("%s/%s", base, key)
+		}
+	}
+	return h.buildDirectURL(obj.ID)
+}
+
 func (h *MediaHandler) buildDirectURL(id string) string {
 	publicURL := h.cfg.PublicURL
 	if publicURL == "" {

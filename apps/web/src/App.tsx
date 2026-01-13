@@ -26,7 +26,7 @@ function AppPageContent() {
         <NavHeader />
         <div className="flex flex-1 flex-col items-center justify-center h-full gap-4 px-4 py-10 max-w-3xl w-full mx-auto ">
           <div className="mx-auto flex justify-center items-center h-full w-full rounded-xl">
-            <div className="w-full text-center">
+            <div className="w-full text-center -mt-24">
               {isPrivateChat ? (
                 <>
                   <div className="flex items-center justify-center mb-3">
@@ -137,6 +137,7 @@ function AppPageContent() {
                   </motion.h2>
                 </div>
               )}
+
               <ChatInput initialConversation={true} />
             </div>
           </div>

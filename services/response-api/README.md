@@ -477,3 +477,111 @@ jobs:
 3. Monitor database performance
 4. Check LLM API rate limits
 5. Consider task prioritization (future enhancement)
+
+## Agent Response System
+
+The Response API includes an advanced agent response system for orchestrating multi-step AI workflows like deep research and slide generation.
+
+### Plans and Tasks
+
+When processing complex requests that require multiple steps (e.g., researching a topic, generating slides), the service creates an execution **Plan** consisting of:
+
+- **Tasks**: High-level work units (search, analyze, generate, etc.)
+- **Steps**: Individual operations within each task
+- **Step Details**: Execution records with timing and retry information
+
+### Plan API
+
+| Endpoint                                   | Method | Description                                 |
+| ------------------------------------------ | ------ | ------------------------------------------- |
+| `/v1/responses/:response_id/plan`          | GET    | Get plan for a response                     |
+| `/v1/responses/:response_id/plan/details`  | GET    | Get plan with all tasks and steps           |
+| `/v1/responses/:response_id/plan/progress` | GET    | Get execution progress (percentage, counts) |
+| `/v1/responses/:response_id/plan/cancel`   | POST   | Cancel plan execution                       |
+| `/v1/responses/:response_id/plan/input`    | POST   | Submit user input for waiting plans         |
+| `/v1/responses/:response_id/plan/tasks`    | GET    | List all tasks in a plan                    |
+
+### Plan Statuses
+
+- `pending`: Plan created, not yet started
+- `planning`: Agent is creating execution plan
+- `in_progress`: Tasks being executed
+- `wait_for_user`: Waiting for user input
+- `completed`: All tasks finished successfully
+- `failed`: Execution failed (may be retryable)
+- `cancelled`: Cancelled by user
+- `expired`: Timed out waiting for user input
+
+### Artifacts
+
+Plans can produce **Artifacts** - structured output files like slide decks, research documents, or code files.
+
+| Endpoint                                      | Method | Description                        |
+| --------------------------------------------- | ------ | ---------------------------------- |
+| `/v1/artifacts/:artifact_id`                  | GET    | Get artifact metadata              |
+| `/v1/artifacts/:artifact_id/versions`         | GET    | Get all versions of an artifact    |
+| `/v1/artifacts/:artifact_id/download`         | GET    | Download artifact content          |
+| `/v1/artifacts/:artifact_id`                  | DELETE | Delete artifact                    |
+| `/v1/responses/:response_id/artifacts`        | GET    | Get all artifacts for a response   |
+| `/v1/responses/:response_id/artifacts/latest` | GET    | Get latest artifact for a response |
+
+### Artifact Content Types
+
+- `slides`: Presentation slides (JSON structure)
+- `document`: Research documents, reports
+- `image`: Generated images
+- `code`: Code files
+- `data`: Structured data (CSV, JSON)
+
+### Example: Deep Research Flow
+
+```http
+POST /v1/responses
+Content-Type: application/json
+
+{
+  "model": "gpt-4",
+  "input": "Create a deep research report on renewable energy trends",
+  "background": true,
+  "store": true
+}
+```
+
+The service will:
+
+1. Create a Plan with the `research` agent type
+2. Execute search tasks to gather information
+3. Analyze and synthesize findings
+4. Generate a research document artifact
+5. Store the artifact and update the response
+
+## Observability
+
+### Prometheus Metrics
+
+The service exposes metrics at `/metrics`:
+
+**Plan Metrics:**
+
+- `response_api_plans_total{agent_type, status}` - Total plans by type and status
+- `response_api_plan_duration_seconds{agent_type}` - Plan execution duration
+- `response_api_plan_steps_total{task_type, status}` - Steps by task type and status
+- `response_api_plan_retries_total{step_action}` - Retry attempts by step action
+- `response_api_plans_active{agent_type}` - Currently active plans
+- `response_api_plans_waiting_for_user` - Plans waiting for user input
+
+**Artifact Metrics:**
+
+- `response_api_artifacts_total{content_type}` - Total artifacts by type
+- `response_api_artifact_size_bytes{content_type}` - Artifact sizes
+- `response_api_artifact_versions_total` - Version counts
+- `response_api_artifact_downloads_total{content_type}` - Download counts
+
+### OpenTelemetry Tracing
+
+The service creates spans for:
+
+- Plan lifecycle (`plan.create`, `plan.execute`, `plan.complete`)
+- Task execution (`task.execute`)
+- Step execution (`step.execute`)
+- Artifact operations (`artifact.create`, `artifact.download`)

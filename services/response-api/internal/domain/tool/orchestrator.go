@@ -17,6 +17,23 @@ var (
 	ErrToolDepthExceeded = errors.New("tool orchestration depth exceeded")
 )
 
+// DepthExceededError wraps depth exceeded with partial results.
+type DepthExceededError struct {
+	Executions  []Execution
+	Messages    []llm.ChatMessage
+	LastMessage llm.ChatMessage
+}
+
+// Error implements the error interface.
+func (e *DepthExceededError) Error() string {
+	return ErrToolDepthExceeded.Error()
+}
+
+// Is checks if the error is a depth exceeded error.
+func (e *DepthExceededError) Is(target error) bool {
+	return target == ErrToolDepthExceeded
+}
+
 // Orchestrator coordinates LLM reasoning with MCP tool execution until a final answer is produced.
 type Orchestrator struct {
 	llmProvider     llm.Provider
@@ -179,7 +196,16 @@ func (o *Orchestrator) Execute(params ExecuteParams) (*ExecuteResult, error) {
 		}
 	}
 
-	return nil, ErrToolDepthExceeded
+	// Return partial results with the depth exceeded error
+	var lastMessage llm.ChatMessage
+	if len(messages) > 0 {
+		lastMessage = messages[len(messages)-1]
+	}
+	return nil, &DepthExceededError{
+		Executions:  executions,
+		Messages:    messages,
+		LastMessage: lastMessage,
+	}
 }
 
 func (o *Orchestrator) streamChatCompletion(ctx context.Context, req llm.ChatCompletionRequest, observer StreamObserver) (*llm.ChatCompletionChoice, error) {

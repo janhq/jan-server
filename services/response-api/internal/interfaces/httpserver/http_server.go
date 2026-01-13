@@ -13,6 +13,8 @@ import (
 
 	responseapidocs "jan-server/services/response-api/docs/swagger"
 	"jan-server/services/response-api/internal/config"
+	"jan-server/services/response-api/internal/domain/artifact"
+	"jan-server/services/response-api/internal/domain/plan"
 	domain "jan-server/services/response-api/internal/domain/response"
 	"jan-server/services/response-api/internal/infrastructure/auth"
 	"jan-server/services/response-api/internal/interfaces/httpserver/handlers"
@@ -30,7 +32,14 @@ type HTTPServer struct {
 }
 
 // New constructs the HTTP server with default middleware and routes.
-func New(cfg *config.Config, log zerolog.Logger, responseService domain.Service, authValidator *auth.Validator) *HTTPServer {
+func New(
+	cfg *config.Config,
+	log zerolog.Logger,
+	responseService domain.Service,
+	planService plan.Service,
+	artifactService artifact.Service,
+	authValidator *auth.Validator,
+) *HTTPServer {
 	if cfg.Environment == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -40,7 +49,7 @@ func New(cfg *config.Config, log zerolog.Logger, responseService domain.Service,
 	engine.Use(gin.Recovery())
 	engine.Use(gin.Logger())
 
-	handlerProvider := handlers.NewProvider(responseService, log)
+	handlerProvider := handlers.NewProviderWithPlanAndArtifact(responseService, planService, artifactService, log)
 	routeProvider := routes.NewProvider(handlerProvider)
 
 	// Register public routes (health checks, swagger) without authentication

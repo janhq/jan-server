@@ -4,6 +4,7 @@ import (
 	"github.com/google/wire"
 	"github.com/rs/zerolog/log"
 
+	"jan-server/services/mcp-tools/internal/infrastructure/aio"
 	"jan-server/services/mcp-tools/internal/infrastructure/config"
 	"jan-server/services/mcp-tools/internal/infrastructure/llmapi"
 	sandboxfusionclient "jan-server/services/mcp-tools/internal/infrastructure/sandboxfusion"
@@ -19,6 +20,7 @@ var RoutesProvider = wire.NewSet(
 	ProvideMemoryMCP,
 	ProvideImageGenerateMCP,
 	ProvideImageEditMCP,
+	ProvideAIOMCP,
 	ProvideToolConfigCache,
 	ProvideMCPRoute,
 	ProvideSearchMCPConfig,
@@ -97,6 +99,28 @@ func ProvideToolConfigCache(cfg *config.Config, llmClient *llmapi.Client) *toolc
 	return toolconfig.NewCache(llmClient)
 }
 
+// ProvideAIOMCP creates an AIOMCP handler if configured
+func ProvideAIOMCP(cfg *config.Config) *mcp.AIOMCP {
+	if !cfg.AIOEnabled {
+		log.Info().Msg("AIO Sandbox integration disabled (AIO_ENABLED=false)")
+		return nil
+	}
+	aioClient := aio.NewClient(aio.ClientConfig{
+		BaseURL: cfg.AIOURL,
+		Timeout: cfg.AIOTimeout,
+		Enabled: cfg.AIOEnabled,
+	})
+	if !aioClient.IsEnabled() {
+		log.Warn().Msg("AIO_ENABLED=true but client failed to initialize")
+		return nil
+	}
+	log.Info().
+		Str("aio_url", cfg.AIOURL).
+		Dur("aio_timeout", cfg.AIOTimeout).
+		Msg("AIO Sandbox integration enabled")
+	return mcp.NewAIOMCP(aioClient, true)
+}
+
 // ProvideMCPRoute creates a MCPRoute with all dependencies
 func ProvideMCPRoute(
 	searchMCP *mcp.SearchMCP,
@@ -105,6 +129,7 @@ func ProvideMCPRoute(
 	memoryMCP *mcp.MemoryMCP,
 	imageMCP *mcp.ImageGenerateMCP,
 	imageEditMCP *mcp.ImageEditMCP,
+	aioMCP *mcp.AIOMCP,
 	llmClient *llmapi.Client,
 	toolConfigCache *toolconfig.Cache,
 ) *mcp.MCPRoute {
@@ -112,5 +137,5 @@ func ProvideMCPRoute(
 	if toolConfigCache != nil {
 		searchMCP.SetToolConfigCache(toolConfigCache)
 	}
-	return mcp.NewMCPRoute(searchMCP, providerMCP, sandboxMCP, memoryMCP, imageMCP, imageEditMCP, llmClient, toolConfigCache)
+	return mcp.NewMCPRoute(searchMCP, providerMCP, sandboxMCP, memoryMCP, imageMCP, imageEditMCP, aioMCP, llmClient, toolConfigCache)
 }

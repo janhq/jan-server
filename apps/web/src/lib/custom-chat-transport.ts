@@ -29,7 +29,7 @@ async function passUrlsDirectly(
 
 /**
  * Convert file parts to custom image_url format for the API.
- * The server expects: { type: "image_url", image_url: { url: "data:image/jpeg;jan_MEDIA_ID", detail: "auto" } }
+ * The server expects: { type: "image_url", image_url: { url: "<image url>", detail: "auto" } }
  */
 function convertToImageUrlFormat(messages: CoreMessage[]): CoreMessage[] {
   return messages.map((message) => {
@@ -40,7 +40,7 @@ function convertToImageUrlFormat(messages: CoreMessage[]): CoreMessage[] {
           // Convert image parts to image_url format
           if (part.type === "image" && "image" in part) {
             const imageData = part.image;
-            // If it's a URL string (jan media URL or presigned URL)
+            // If it's a URL string
             if (typeof imageData === "string") {
               return {
                 type: "image_url",
@@ -147,15 +147,18 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   private tools: Record<string, Tool> = {};
   private enabledSearch = false;
   private enableBrowse = false;
+  private enableImageTools = false;
 
   constructor(
     model: LanguageModel,
     enabledSearch?: boolean,
     enableBrowse?: boolean,
+    enableImageTools?: boolean,
   ) {
     this.model = model;
     this.enabledSearch = enabledSearch ?? false;
     this.enableBrowse = enableBrowse ?? false;
+    this.enableImageTools = enableImageTools ?? false;
     this.initializeTools();
   }
 
@@ -169,21 +172,34 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   updateBrowseEnabled(enableBrowse: boolean) {
     this.enableBrowse = enableBrowse;
   }
+  updateImageToolsEnabled(enableImageTools: boolean) {
+    this.enableImageTools = enableImageTools;
+  }
 
   /**
    * Initialize MCP tools and convert them to AI SDK format
+   * Search tools (google_search, scrape) are always included regardless of user toggle
    */
   private async initializeTools() {
     try {
-      const toolsResponse = await mcpService.getTools(
-        [
-          this.enabledSearch ? "search" : null,
-          this.enableBrowse ? "browse" : null,
-        ].filter(Boolean) as string[],
+      // Always include "search" server for google_search and scrape tools
+      // Browser tools are conditional on user preference
+      const servers = this.enableImageTools
+        ? undefined
+        : ([
+            "search", // Always include search tools
+            this.enableBrowse ? "browse" : null,
+          ].filter(Boolean) as string[]);
+      const toolsResponse = await mcpService.getTools(servers);
+      const allowedImageTools = new Set(["generate_image", "edit_image"]);
+      const filteredTools = toolsResponse.data.filter((tool) =>
+        this.enableImageTools
+          ? allowedImageTools.has(tool.name)
+          : !allowedImageTools.has(tool.name),
       );
 
       // Convert MCP tools to AI SDK CoreTool format
-      this.tools = toolsResponse.data.reduce(
+      this.tools = filteredTools.reduce(
         (acc, tool) => {
           acc[tool.name] = {
             description: tool.description,
@@ -223,6 +239,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // Convert image parts to image_url format for the API
     const messagesWithImageUrls = convertToImageUrlFormat(filteredMessages);
 
+    // Always include tools if we have any loaded
+    // Search tools (google_search, scrape) are always sent regardless of user toggle
+    const hasTools = Object.keys(this.tools).length > 0;
     const result = streamText({
       model: this.model,
       messages: messagesWithImageUrls,
@@ -230,11 +249,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       // Pass URLs directly to the model instead of downloading
       // This avoids CORS issues with presigned S3 URLs
       experimental_download: passUrlsDirectly,
-      tools:
-        (this.enabledSearch || this.enableBrowse) &&
-        Object.keys(this.tools).length > 0
-          ? this.tools
-          : undefined,
+      tools: hasTools ? this.tools : undefined,
       toolChoice: "auto",
     });
 

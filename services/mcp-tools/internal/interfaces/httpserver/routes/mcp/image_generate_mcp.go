@@ -47,7 +47,7 @@ func NewImageGenerateMCP(llmAPIBaseURL string, enabled bool) *ImageGenerateMCP {
 		llmAPIBaseURL: strings.TrimRight(llmAPIBaseURL, "/"),
 		enabled:       enabled,
 		httpClient: &http.Client{
-			Timeout: 60 * time.Second,
+			Timeout: 600 * time.Second,
 		},
 	}
 }

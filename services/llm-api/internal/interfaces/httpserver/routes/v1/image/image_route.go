@@ -61,7 +61,7 @@ func (r *ImageRoute) RegisterRouter(router gin.IRouter) {
 // @Description This endpoint is compatible with the OpenAI Images API format.
 // @Description
 // @Description **Response Formats:**
-// @Description - url: Returns presigned URLs to download images (default, recommended)
+// @Description - url: Returns direct URLs to download images (default, recommended)
 // @Description - b64_json: Returns base64-encoded image data
 // @Description
 // @Description **Size Options:**

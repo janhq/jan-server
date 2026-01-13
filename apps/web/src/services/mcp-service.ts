@@ -1,7 +1,7 @@
 import { JanBrowserClient } from "@/lib/jan-browser-client";
 import { StreamableHttpMCPClient } from "@/lib/streamable-mcp-client";
 import { useBrowserConnection } from "@/stores/browser-connection-store";
-import { createJanMediaUrl, uploadMedia } from "./media-upload-service";
+import { uploadMedia } from "./media-upload-service";
 import { CONTENT_TYPE } from "@/constants";
 
 /**
@@ -294,16 +294,10 @@ class MCPService {
                     metadata?.conversationId || "anonymous",
                   );
 
-                  // Convert to Jan media URL format
-                  const janMediaUrl = createJanMediaUrl(
-                    uploadResponse.id,
-                    uploadResponse.mime,
-                  );
-
-                  // Return updated item with Jan media URL
+                  // Return updated item with direct media URL
                   return {
                     ...item,
-                    data: janMediaUrl,
+                    data: uploadResponse.url,
                   };
                 } catch (uploadError) {
                   console.error("Failed to upload MCP image:", uploadError);

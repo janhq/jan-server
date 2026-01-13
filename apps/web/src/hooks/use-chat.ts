@@ -31,6 +31,9 @@ export function useChat(model: LanguageModel, options?: CustomChatOptions) {
     (state) => state.deepResearchEnabled,
   );
   const browserEnabled = useCapabilities((state) => state.browserEnabled);
+  const imageGenerationEnabled = useCapabilities(
+    (state) => state.imageGenerationEnabled,
+  );
 
   const existingSessionTransport = sessionId
     ? useChatSessions.getState().sessions[sessionId]?.transport
@@ -39,7 +42,12 @@ export function useChat(model: LanguageModel, options?: CustomChatOptions) {
   if (!transportRef.current) {
     transportRef.current =
       existingSessionTransport ??
-      new CustomChatTransport(model, searchEnabled || deepResearchEnabled);
+      new CustomChatTransport(
+        model,
+        searchEnabled || deepResearchEnabled,
+        browserEnabled,
+        imageGenerationEnabled,
+      );
   } else if (
     existingSessionTransport &&
     transportRef.current !== existingSessionTransport
@@ -66,6 +74,11 @@ export function useChat(model: LanguageModel, options?: CustomChatOptions) {
       transportRef.current.updateBrowseEnabled(browserEnabled);
     }
   }, [browserEnabled]);
+  useEffect(() => {
+    if (transportRef.current) {
+      transportRef.current.updateImageToolsEnabled(imageGenerationEnabled);
+    }
+  }, [imageGenerationEnabled]);
 
   // Memoize to prevent calling ensureSession (which has side effects) on every render
   const chat = useMemo(() => {

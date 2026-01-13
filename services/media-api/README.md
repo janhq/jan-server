@@ -140,6 +140,7 @@ Populate the repo-level `.env` (via `make env-create`) and tweak the following k
 | `DB_POSTGRESQL_WRITE_DSN`                               | Postgres DSN for metadata.                                                                                         |
 | `MEDIA_S3_ENDPOINT`                                     | S3-compatible endpoint (`https://s3.menlo.ai`).                                                                    |
 | `MEDIA_S3_PUBLIC_ENDPOINT`                              | Optional public endpoint used when returning presigned URLs (e.g., `http://localhost:9000`).                       |
+| `MEDIA_S3_URL_ENABLED`                                  | Return public S3 object URLs in upload responses using `MEDIA_S3_PUBLIC_ENDPOINT` instead of presigned URLs.       |
 | `MEDIA_S3_ACCESS_KEY_ID` / `MEDIA_S3_SECRET_ACCESS_KEY` | Credentials (`XXXXX` / `YYYY`).                                                                                    |
 | `MEDIA_S3_BUCKET`                                       | Target bucket (`platform-dev`).                                                                                    |
 | `MEDIA_MAX_BYTES`                                       | Max upload size (default 20 MB).                                                                                   |
@@ -157,6 +158,10 @@ All env samples already contain the provided Menlo dev bucket configuration.
 ## Quick start
 
 ```bash
+## If you need remote LLMs to fetch images directly, enable public S3 URLs:
+# export MEDIA_S3_URL_ENABLED=true
+# export MEDIA_S3_PUBLIC_ENDPOINT=https://s3.menlo.ai/platform-dev
+
 cd services/media-api
 make run
 curl -H "Authorization: Bearer <token>" \

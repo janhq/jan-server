@@ -13,8 +13,12 @@ import (
 	"gorm.io/gorm"
 	logger2 "gorm.io/gorm/logger"
 	"jan-server/services/response-api/internal/config"
+	"jan-server/services/response-api/internal/domain/agent"
+	"jan-server/services/response-api/internal/domain/agent/planners"
+	artifact2 "jan-server/services/response-api/internal/domain/artifact"
 	conversation2 "jan-server/services/response-api/internal/domain/conversation"
 	"jan-server/services/response-api/internal/domain/llm"
+	plan2 "jan-server/services/response-api/internal/domain/plan"
 	response2 "jan-server/services/response-api/internal/domain/response"
 	"jan-server/services/response-api/internal/domain/tool"
 	"jan-server/services/response-api/internal/infrastructure/auth"
@@ -22,7 +26,9 @@ import (
 	"jan-server/services/response-api/internal/infrastructure/llmprovider"
 	"jan-server/services/response-api/internal/infrastructure/logger"
 	"jan-server/services/response-api/internal/infrastructure/mcp"
+	"jan-server/services/response-api/internal/infrastructure/repository/artifact"
 	"jan-server/services/response-api/internal/infrastructure/repository/conversation"
+	"jan-server/services/response-api/internal/infrastructure/repository/plan"
 	"jan-server/services/response-api/internal/infrastructure/repository/response"
 	"jan-server/services/response-api/internal/interfaces/httpserver"
 	"jan-server/services/response-api/internal/webhook"
@@ -49,20 +55,26 @@ func BuildApplication(ctx context.Context) (*Application, error) {
 	mcpClient := newMCPClient(configConfig)
 	orchestrator := newOrchestrator(configConfig, client, mcpClient)
 	httpService := newWebhookService(zerologLogger)
-	service := newResponseService(postgresRepository, repository, itemRepository, postgresRepository, orchestrator, mcpClient, client, httpService, zerologLogger)
+	planPostgresRepository := plan.NewPostgresRepository(db)
+	service := plan2.NewService(planPostgresRepository)
+	registry := newAgentRegistry(service, mcpClient)
+	responseService := newResponseService(postgresRepository, repository, itemRepository, postgresRepository, orchestrator, mcpClient, client, httpService, registry, service, zerologLogger)
+	artifactPostgresRepository := artifact.NewPostgresRepository(db)
+	artifactService := artifact2.NewService(artifactPostgresRepository)
 	validator, err := newAuthValidator(ctx, configConfig, zerologLogger)
 	if err != nil {
 		return nil, err
 	}
-	httpServer := httpserver.New(configConfig, zerologLogger, service, validator)
+	httpServer := httpserver.New(configConfig, zerologLogger, responseService, service, artifactService, validator)
 	application := NewApplication(httpServer, zerologLogger)
 	return application, nil
 }
 
 // wire.go:
 
-var responseSet = wire.NewSet(response.NewPostgresRepository, wire.Bind(new(response2.Repository), new(*response.PostgresRepository)), wire.Bind(new(response2.ToolExecutionRepository), new(*response.PostgresRepository)), conversation.NewRepository, wire.Bind(new(conversation2.Repository), new(*conversation.Repository)), conversation.NewItemRepository, wire.Bind(new(conversation2.ItemRepository), new(*conversation.ItemRepository)), newLLMProvider, wire.Bind(new(llm.Provider), new(*llmprovider.Client)), newMCPClient, wire.Bind(new(tool.MCPClient), new(*mcp.Client)), newOrchestrator,
-	newWebhookService, wire.Bind(new(webhook.Service), new(*webhook.HTTPService)), newResponseService,
+var responseSet = wire.NewSet(response.NewPostgresRepository, wire.Bind(new(response2.Repository), new(*response.PostgresRepository)), wire.Bind(new(response2.ToolExecutionRepository), new(*response.PostgresRepository)), plan.NewPostgresRepository, wire.Bind(new(plan2.Repository), new(*plan.PostgresRepository)), artifact.NewPostgresRepository, wire.Bind(new(artifact2.Repository), new(*artifact.PostgresRepository)), conversation.NewRepository, wire.Bind(new(conversation2.Repository), new(*conversation.Repository)), conversation.NewItemRepository, wire.Bind(new(conversation2.ItemRepository), new(*conversation.ItemRepository)), newLLMProvider, wire.Bind(new(llm.Provider), new(*llmprovider.Client)), wire.Bind(new(llm.ModelInfoProvider), new(*llmprovider.Client)), newMCPClient, wire.Bind(new(tool.MCPClient), new(*mcp.Client)), wire.Bind(new(planners.MCPClient), new(*mcp.Client)), newOrchestrator,
+	newWebhookService, wire.Bind(new(webhook.Service), new(*webhook.HTTPService)), plan2.NewService, newAgentRegistry,
+	newResponseService, artifact2.NewService,
 )
 
 func newDatabaseConfig(cfg *config.Config) database.Config {
@@ -106,6 +118,22 @@ func newWebhookService(log zerolog.Logger) *webhook.HTTPService {
 	return webhook.NewHTTPService(log)
 }
 
+func newAgentRegistry(planService plan2.Service, mcpClient tool.MCPClient) agent.Registry {
+	registry := agent.NewRegistry()
+
+	deepResearchPlanner := planners.NewDeepResearchPlanner(planService)
+	if err := registry.RegisterPlanner(deepResearchPlanner); err != nil {
+
+		_ = err
+	}
+
+	deepResearchExecutor := planners.NewDeepResearchExecutor(mcpClient)
+	_ = registry.RegisterExecutor(plan2.ActionTypeToolCall, deepResearchExecutor)
+	_ = registry.RegisterExecutor(plan2.ActionTypeLLMCall, deepResearchExecutor)
+
+	return registry
+}
+
 func newResponseService(
 	repo response2.Repository,
 	conversations conversation2.Repository,
@@ -115,7 +143,9 @@ func newResponseService(
 	mcpClient tool.MCPClient,
 	modelInfoProvider llm.ModelInfoProvider,
 	webhookService webhook.Service,
+	agentRegistry agent.Registry,
+	planService plan2.Service,
 	log zerolog.Logger,
 ) response2.Service {
-	return response2.NewService(repo, conversations, conversationItems, toolRepo, orchestrator, mcpClient, modelInfoProvider, webhookService, log)
+	return response2.NewService(repo, conversations, conversationItems, toolRepo, orchestrator, mcpClient, modelInfoProvider, webhookService, agentRegistry, planService, log)
 }

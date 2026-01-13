@@ -2,9 +2,6 @@ package image
 
 // ImageInput represents an image input for edit requests.
 type ImageInput struct {
-	// ID is a Jan media ID (jan_*).
-	ID string `json:"id,omitempty" example:"jan_abc123"`
-
 	// URL is a remote URL to the image.
 	URL string `json:"url,omitempty" example:"https://example.com/image.png"`
 

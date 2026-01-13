@@ -1,0 +1,899 @@
+{
+  "info": {
+    "name": "jan-server response-aio",
+    "description": "Response API tests with AIO Sandbox tools (shell, file, browser, code execution, markitdown)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Request Guest Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{kong_url}}/auth/guest-login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const guestData = pm.response.json();",
+                  "pm.test('Guest token issued', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(guestData).to.have.property('access_token');",
+                  "  pm.collectionVariables.set('guest_access_token', guestData.access_token);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Model & Health Checks",
+      "item": [
+        {
+          "name": "List Available Models",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/v1/models"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json();",
+                  "pm.test('Models available', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(payload.data).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "pm.collectionVariables.set('default_model_id', payload.data[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MCP Tools Available (Check AIO)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/list\",\n  \"params\": {},\n  \"id\": 1\n}"
+            },
+            "url": "{{mcp_tools_url}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('MCP tools available', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404, 502, 503]);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  if (data.result && data.result.tools) {",
+                  "    const toolNames = data.result.tools.map(t => t.name);",
+                  "    pm.test('AIO shell tool exists', function () {",
+                  "      pm.expect(toolNames).to.include('aio_shell_exec');",
+                  "    });",
+                  "    pm.test('AIO file tools exist', function () {",
+                  "      pm.expect(toolNames).to.include('aio_file_read');",
+                  "      pm.expect(toolNames).to.include('aio_file_write');",
+                  "    });",
+                  "    pm.test('AIO code execute exists', function () {",
+                  "      pm.expect(toolNames).to.include('aio_code_execute');",
+                  "    });",
+                  "    console.log('Available AIO tools: ' + toolNames.filter(n => n.startsWith('aio_')).join(', '));",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Response API Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/healthz"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Health check passed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. AIO Shell Execution",
+      "item": [
+        {
+          "name": "Execute Shell Command",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Run a shell command to list the current directory contents and tell me what files exist\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_shell_exec\",\n        \"description\": \"Execute shell commands in AIO Sandbox\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"command\": {\n              \"type\": \"string\",\n              \"description\": \"Shell command to execute\"\n            }\n          },\n          \"required\": [\"command\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Shell command executed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response).to.have.property('id');",
+                  "  pm.collectionVariables.set('response_id', response.id);",
+                  "});",
+                  "pm.test('Response has output', function () {",
+                  "  pm.expect(response.output).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Execute System Info Command",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Use shell to get the system information: hostname, current user, and available disk space\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_shell_exec\",\n        \"description\": \"Execute shell commands in AIO Sandbox\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"command\": {\n              \"type\": \"string\",\n              \"description\": \"Shell command to execute\"\n            }\n          },\n          \"required\": [\"command\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('System info retrieved', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response.output).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. AIO File Operations",
+      "item": [
+        {
+          "name": "Write and Read File",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Write a test file at /tmp/test_jan.txt with content 'Hello from Jan Server AIO test!' and then read it back to confirm\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_file_write\",\n        \"description\": \"Write content to a file\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"path\": {\"type\": \"string\", \"description\": \"File path\"},\n            \"content\": {\"type\": \"string\", \"description\": \"Content to write\"}\n          },\n          \"required\": [\"path\", \"content\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_file_read\",\n        \"description\": \"Read file contents\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"path\": {\"type\": \"string\", \"description\": \"File path\"}\n          },\n          \"required\": [\"path\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('File write/read completed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response.status).to.be.oneOf(['completed', 'in_progress']);",
+                  "});",
+                  "pm.test('Response mentions file content', function () {",
+                  "  const outputText = JSON.stringify(response.output).toLowerCase();",
+                  "  pm.expect(outputText).to.satisfy(function(text) {",
+                  "    return text.includes('hello') || text.includes('jan') || text.includes('test');",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Directory Contents",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"List the files in /tmp directory and tell me what's there\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_file_list\",\n        \"description\": \"List files in a directory\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"path\": {\"type\": \"string\", \"description\": \"Directory path\"}\n          },\n          \"required\": [\"path\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Directory listing completed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Response has output', function () {",
+                  "  pm.expect(response.output).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. AIO Code Execution",
+      "item": [
+        {
+          "name": "Execute Python Code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Write and execute Python code to calculate the first 10 Fibonacci numbers and print them\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_code_execute\",\n        \"description\": \"Execute Python or Node.js code\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"code\": {\"type\": \"string\", \"description\": \"Code to execute\"},\n            \"language\": {\"type\": \"string\", \"description\": \"Language: python or nodejs\"}\n          },\n          \"required\": [\"code\", \"language\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Python code executed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response).to.have.property('id');",
+                  "});",
+                  "pm.test('Response contains Fibonacci results', function () {",
+                  "  const outputText = JSON.stringify(response.output).toLowerCase();",
+                  "  pm.expect(outputText).to.satisfy(function(text) {",
+                  "    return text.includes('1') && (text.includes('fibonacci') || text.includes('8') || text.includes('13'));",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Execute Node.js Code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Write and execute Node.js code to create a simple JSON object with name, version, and timestamp, then print it\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_code_execute\",\n        \"description\": \"Execute Python or Node.js code\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"code\": {\"type\": \"string\", \"description\": \"Code to execute\"},\n            \"language\": {\"type\": \"string\", \"description\": \"Language: python or nodejs\"}\n          },\n          \"required\": [\"code\", \"language\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Node.js code executed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Response has output', function () {",
+                  "  pm.expect(response.output).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Data Analysis with Python",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Write Python code to analyze this data: [10, 25, 33, 45, 67, 89, 12, 34]. Calculate mean, median, min, max, and standard deviation.\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_code_execute\",\n        \"description\": \"Execute Python or Node.js code\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"code\": {\"type\": \"string\", \"description\": \"Code to execute\"},\n            \"language\": {\"type\": \"string\", \"description\": \"Language: python or nodejs\"}\n          },\n          \"required\": [\"code\", \"language\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Data analysis completed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Response contains statistics', function () {",
+                  "  const outputText = JSON.stringify(response.output).toLowerCase();",
+                  "  pm.expect(outputText).to.satisfy(function(text) {",
+                  "    return text.includes('mean') || text.includes('median') || text.includes('average');",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. AIO Browser Info",
+      "item": [
+        {
+          "name": "Get Browser Info",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Get the browser information from AIO Sandbox including CDP URL\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_browser_info\",\n        \"description\": \"Get browser information including CDP URL\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {},\n          \"required\": []\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Browser info retrieved', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Response has output', function () {",
+                  "  pm.expect(response.output).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. AIO Markitdown Conversion",
+      "item": [
+        {
+          "name": "Convert URL to Markdown",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Convert the Wikipedia main page (https://en.wikipedia.org/wiki/Main_Page) to markdown and summarize what you find\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_markitdown_convert\",\n        \"description\": \"Convert URL or document to Markdown\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"url\": {\"type\": \"string\", \"description\": \"URL to convert\"}\n          },\n          \"required\": [\"url\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Markitdown conversion completed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Response has content', function () {",
+                  "  pm.expect(response.output).to.exist;",
+                  "  const outputText = JSON.stringify(response.output).toLowerCase();",
+                  "  pm.expect(outputText.length).to.be.greaterThan(100);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "8. Multi-Tool Workflows",
+      "item": [
+        {
+          "name": "Shell + File Operations Chain",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"1. Create a file /tmp/system_info.txt with the output of 'uname -a' command. 2. Read the file to confirm. 3. List the /tmp directory to verify the file exists.\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_shell_exec\",\n        \"description\": \"Execute shell commands\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"command\": {\"type\": \"string\"}\n          },\n          \"required\": [\"command\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_file_write\",\n        \"description\": \"Write content to a file\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"path\": {\"type\": \"string\"},\n            \"content\": {\"type\": \"string\"}\n          },\n          \"required\": [\"path\", \"content\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_file_read\",\n        \"description\": \"Read file contents\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"path\": {\"type\": \"string\"}\n          },\n          \"required\": [\"path\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_file_list\",\n        \"description\": \"List directory contents\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"path\": {\"type\": \"string\"}\n          },\n          \"required\": [\"path\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Multi-tool workflow completed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response.status).to.equal('completed');",
+                  "});",
+                  "pm.test('Response contains output', function () {",
+                  "  const outputText = JSON.stringify(response.output).toLowerCase();",
+                  "  pm.expect(outputText.length).to.be.greaterThan(50);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Code + File Workflow",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"1. Write Python code to generate a JSON report with current date, random numbers array (5 items), and a summary. 2. Save the output to /tmp/report.json. 3. Read the file to confirm the content.\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_code_execute\",\n        \"description\": \"Execute Python or Node.js code\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"code\": {\"type\": \"string\"},\n            \"language\": {\"type\": \"string\"}\n          },\n          \"required\": [\"code\", \"language\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_file_write\",\n        \"description\": \"Write content to a file\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"path\": {\"type\": \"string\"},\n            \"content\": {\"type\": \"string\"}\n          },\n          \"required\": [\"path\", \"content\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_file_read\",\n        \"description\": \"Read file contents\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"path\": {\"type\": \"string\"}\n          },\n          \"required\": [\"path\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Code + File workflow completed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Response has JSON content', function () {",
+                  "  const outputText = JSON.stringify(response.output).toLowerCase();",
+                  "  pm.expect(outputText).to.satisfy(function(text) {",
+                  "    return text.includes('json') || text.includes('report') || text.includes('date');",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Markitdown + Code Analysis",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"1. Convert https://example.com to markdown. 2. Write Python code to count the number of words in the markdown content and calculate word frequency for the top 5 words.\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_markitdown_convert\",\n        \"description\": \"Convert URL to Markdown\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"url\": {\"type\": \"string\"}\n          },\n          \"required\": [\"url\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_code_execute\",\n        \"description\": \"Execute Python or Node.js code\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"code\": {\"type\": \"string\"},\n            \"language\": {\"type\": \"string\"}\n          },\n          \"required\": [\"code\", \"language\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Markitdown + Code workflow completed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Response has analysis', function () {",
+                  "  pm.expect(response.output).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "9. Background Mode with AIO Tools",
+      "item": [
+        {
+          "name": "Background Shell Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Run a comprehensive system audit: check disk usage, memory info, running processes, and network configuration. Compile all results into a summary.\",\n  \"background\": true,\n  \"store\": true,\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_shell_exec\",\n        \"description\": \"Execute shell commands\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"command\": {\"type\": \"string\"}\n          },\n          \"required\": [\"command\"]\n        }\n      }\n    }\n  ]\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Background task created', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response.status).to.be.oneOf(['queued', 'in_progress']);",
+                  "  pm.collectionVariables.set('background_response_id', response.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Poll Background Task",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/responses/{{background_response_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Task status retrieved', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response.status).to.be.oneOf(['queued', 'in_progress', 'completed', 'failed']);",
+                  "});",
+                  "console.log('Background task status: ' + response.status);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Background Code Analysis Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Write Python code to: 1. Generate 1000 random numbers. 2. Calculate statistical measures (mean, std, percentiles). 3. Create a histogram data structure. 4. Save results to /tmp/stats_analysis.json. 5. Read and verify the file.\",\n  \"background\": true,\n  \"store\": true,\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_code_execute\",\n        \"description\": \"Execute Python code\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"code\": {\"type\": \"string\"},\n            \"language\": {\"type\": \"string\"}\n          },\n          \"required\": [\"code\", \"language\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_file_write\",\n        \"description\": \"Write file\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"path\": {\"type\": \"string\"},\n            \"content\": {\"type\": \"string\"}\n          },\n          \"required\": [\"path\", \"content\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_file_read\",\n        \"description\": \"Read file\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"path\": {\"type\": \"string\"}\n          },\n          \"required\": [\"path\"]\n        }\n      }\n    }\n  ]\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Background analysis task created', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response.status).to.be.oneOf(['queued', 'in_progress']);",
+                  "  pm.collectionVariables.set('background_response_id', response.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "10. AIO vs Legacy Tool Comparison",
+      "item": [
+        {
+          "name": "AIO Code Execute (Replaces python_exec)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Calculate the sum of squares for numbers 1 to 100 using Python\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_code_execute\",\n        \"description\": \"Execute Python code (replaces python_exec)\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"code\": {\"type\": \"string\"},\n            \"language\": {\"type\": \"string\", \"enum\": [\"python\", \"nodejs\"]}\n          },\n          \"required\": [\"code\", \"language\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('AIO code execution works', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Result contains sum of squares', function () {",
+                  "  const outputText = JSON.stringify(response.output);",
+                  "  // Sum of squares 1-100 = 338350",
+                  "  pm.expect(outputText).to.satisfy(function(text) {",
+                  "    return text.includes('338350') || text.includes('sum');",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "All AIO Tools Combined",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Demonstrate all AIO capabilities: 1. Run 'date' in shell, 2. Write result to /tmp/demo.txt, 3. Read the file, 4. List /tmp, 5. Execute Python to print 'AIO Demo Complete'\",\n  \"tools\": [\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_shell_exec\",\n        \"description\": \"Execute shell commands\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\"command\": {\"type\": \"string\"}},\n          \"required\": [\"command\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_file_write\",\n        \"description\": \"Write file\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\"path\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}},\n          \"required\": [\"path\", \"content\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_file_read\",\n        \"description\": \"Read file\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\"path\": {\"type\": \"string\"}},\n          \"required\": [\"path\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_file_list\",\n        \"description\": \"List directory\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\"path\": {\"type\": \"string\"}},\n          \"required\": [\"path\"]\n        }\n      }\n    },\n    {\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"aio_code_execute\",\n        \"description\": \"Execute code\",\n        \"parameters\": {\n          \"type\": \"object\",\n          \"properties\": {\"code\": {\"type\": \"string\"}, \"language\": {\"type\": \"string\"}},\n          \"required\": [\"code\", \"language\"]\n        }\n      }\n    }\n  ],\n  \"stream\": false\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('All AIO tools combined workflow completed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response.status).to.equal('completed');",
+                  "});",
+                  "pm.test('Output contains demo completion', function () {",
+                  "  const outputText = JSON.stringify(response.output).toLowerCase();",
+                  "  pm.expect(outputText).to.satisfy(function(text) {",
+                  "    return text.includes('demo') || text.includes('complete') || text.includes('aio');",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "kong_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "gateway_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "mcp_tools_url",
+      "value": "http://localhost:8091/v1/mcp"
+    },
+    {
+      "key": "guest_access_token",
+      "value": ""
+    },
+    {
+      "key": "default_model_id",
+      "value": ""
+    },
+    {
+      "key": "response_id",
+      "value": ""
+    },
+    {
+      "key": "background_response_id",
+      "value": ""
+    },
+    {
+      "key": "webhook_url",
+      "value": "https://webhook.site/test"
+    }
+  ]
+}

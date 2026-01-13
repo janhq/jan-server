@@ -52,7 +52,7 @@ type RetryableFunc[T any] func() (*T, error)
 // WithRetry executes a function with exponential backoff retry logic
 func WithRetry[T any](ctx context.Context, cfg RetryConfig, operation string, fn RetryableFunc[T]) (*T, error) {
 	var lastErr error
-	
+
 	for attempt := 1; attempt <= cfg.MaxAttempts; attempt++ {
 		result, err := fn()
 		if err == nil {
@@ -84,7 +84,7 @@ func WithRetry[T any](ctx context.Context, cfg RetryConfig, operation string, fn
 
 		// Calculate backoff delay
 		delay := calculateBackoff(attempt, cfg.InitialDelay, cfg.MaxDelay, cfg.BackoffFactor)
-		
+
 		log.Warn().
 			Err(err).
 			Str("operation", operation).
@@ -108,14 +108,14 @@ func WithRetry[T any](ctx context.Context, cfg RetryConfig, operation string, fn
 // calculateBackoff computes exponential backoff delay with jitter
 func calculateBackoff(attempt int, initial, max time.Duration, factor float64) time.Duration {
 	backoff := float64(initial) * math.Pow(factor, float64(attempt-1))
-	
+
 	if backoff > float64(max) {
 		backoff = float64(max)
 	}
-	
+
 	// Add 10% jitter to prevent thundering herd
 	jitter := backoff * 0.1 * (2.0*float64(time.Now().UnixNano()%100)/100.0 - 1.0)
-	
+
 	return time.Duration(backoff + jitter)
 }
 

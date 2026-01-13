@@ -47,7 +47,6 @@ import {
 import { Button } from "@janhq/interfaces/button";
 import { twMerge } from "tailwind-merge";
 import { cn } from "@/lib/utils";
-import { resolveJanMediaUrl } from "@/services/media-upload-service";
 
 export type MessageItemProps = {
   message: UIMessage;
@@ -131,13 +130,13 @@ export const MessageItem = memo(
           // --- Display math: \[...\] surrounded by newlines
           s = s.replace(
             /(^|\n)\\\[\s*\n([\s\S]*?)\n\s*\\\](?=\n|$)/g,
-            (_, pre, inner) => `${pre}$$\n${inner.trim()}\n$$`
+            (_, pre, inner) => `${pre}$$\n${inner.trim()}\n$$`,
           );
 
           // --- Inline math: space \( ... \)
           s = s.replace(
             /(^|[^$\\])\\\((.+?)\\\)(?=[^$\\]|$)/g,
-            (_, pre, inner) => `${pre}$${inner.trim()}$`
+            (_, pre, inner) => `${pre}$${inner.trim()}$`,
           );
 
           // --- Escape $<number> to prevent Markdown from treating it as LaTeX
@@ -158,6 +157,45 @@ export const MessageItem = memo(
       return result;
     };
 
+    // Strip <attached_url>...</attached_url> tags from display text
+    const stripAttachedUrlTags = (text: string): string => {
+      return text
+        .replace(/<attached_url>.*?<\/attached_url>\n?/g, "")
+        .replace(/\n+$/, "")
+        .trim();
+    };
+    // Render user text with code blocks only (no other markdown)
+    const renderUserTextWithCodeBlocks = (text: string) => {
+      const codeBlockRegex = /(```[\s\S]*?```)/g;
+      const parts = text.split(codeBlockRegex);
+
+      return parts.map((part, index) => {
+        // Check if this part is a code block
+        if (part.startsWith("```") && part.endsWith("```")) {
+          // Remove the triple backticks and optional language identifier
+          const codeContent = part
+            .replace(/^```[^\n]*\n?/, "") // Remove opening ``` and language
+            .replace(/\n?```$/, ""); // Remove closing ```
+
+          return (
+            <pre
+              key={index}
+              className="bg-muted rounded-md p-2 overflow-x-auto"
+            >
+              <code>{codeContent}</code>
+            </pre>
+          );
+        } else {
+          // Render plain text (preserve whitespace)
+          return part ? (
+            <span key={index} className="whitespace-pre-wrap">
+              {part}
+            </span>
+          ) : null;
+        }
+      });
+    };
+
     const renderTextPart = (part: { text: string }, partIndex: number) => {
       // Don't render if text is empty
       if (!part.text || part.text.trim() === "") {
@@ -166,23 +204,34 @@ export const MessageItem = memo(
 
       const isLastPart = partIndex === message.parts.length - 1;
 
+      // Strip attached_url tags from user messages for display
+      const displayText =
+        message.role === MESSAGE_ROLE.USER
+          ? stripAttachedUrlTags(part.text)
+          : part.text;
+
+      // Don't render if display text is empty after stripping
+      if (!displayText) {
+        return null;
+      }
+
       return (
         <Message
           key={`${message.id}-${partIndex}`}
           from={message.role}
           className={cn(
             "group",
-            isFirstMessage && message.role === MESSAGE_ROLE.USER && "mt-0!"
+            isFirstMessage && message.role === MESSAGE_ROLE.USER && "mt-0!",
           )}
         >
           <MessageContent
             className={cn(
               "leading-relaxed",
-              message.role === MESSAGE_ROLE.USER && "whitespace-pre-wrap"
+              message.role === MESSAGE_ROLE.USER && "whitespace-pre-wrap",
             )}
           >
             {message.role === MESSAGE_ROLE.USER ? (
-              part.text
+              renderUserTextWithCodeBlocks(displayText)
             ) : (
               <MessageResponse>{normalizeLatex(part.text)}</MessageResponse>
             )}
@@ -194,7 +243,7 @@ export const MessageItem = memo(
                 "gap-0 justify-end transition-opacity",
                 status === CHAT_STATUS.STREAMING
                   ? "opacity-0 pointer-events-none"
-                  : "opacity-0 group-hover:opacity-100"
+                  : "opacity-0 group-hover:opacity-100",
               )}
             >
               {onRegenerate && (
@@ -217,7 +266,7 @@ export const MessageItem = memo(
               className={cn(
                 "mt-1 gap-0 transition-opacity",
                 status === CHAT_STATUS.STREAMING &&
-                  "opacity-0 pointer-events-none"
+                  "opacity-0 pointer-events-none",
               )}
             >
               <MessageAction onClick={() => handleCopy(part.text)} label="Copy">
@@ -240,7 +289,7 @@ export const MessageItem = memo(
 
     const renderFilePart = (
       part: { filename?: string; url?: string; mediaType?: string },
-      partIndex: number
+      partIndex: number,
     ) => {
       const isAssistant = message.role === MESSAGE_ROLE.ASSISTANT;
       const isImage = part.mediaType?.startsWith("image/");
@@ -257,7 +306,7 @@ export const MessageItem = memo(
         >
           <MessageAttachments
             className={cn(
-              isAssistant && "ml-0 mr-auto" // Left-align for assistant
+              isAssistant && "ml-0 mr-auto", // Left-align for assistant
             )}
           >
             <MessageAttachment
@@ -265,7 +314,7 @@ export const MessageItem = memo(
               key={part.filename || "image"}
               className={cn(
                 isAssistant && "size-64", // Bigger for assistant (size-64 = 16rem = 256px vs size-24 = 6rem = 96px)
-                isImage && !isLoading && displayUrl && "cursor-pointer"
+                isImage && !isLoading && displayUrl && "cursor-pointer",
               )}
               onClick={() => {
                 if (isImage && displayUrl && !isLoading) {
@@ -275,7 +324,6 @@ export const MessageItem = memo(
                   });
                 }
               }}
-              resolver={resolveJanMediaUrl}
             />
           </MessageAttachments>
 
@@ -288,7 +336,7 @@ export const MessageItem = memo(
                 className={cn(
                   "gap-0 transition-opacity",
                   status === CHAT_STATUS.STREAMING &&
-                    "opacity-0 pointer-events-none"
+                    "opacity-0 pointer-events-none",
                 )}
               >
                 <MessageAction
@@ -328,7 +376,7 @@ export const MessageItem = memo(
                 "w-full overflow-auto relative",
                 isStreaming
                   ? "max-h-32 opacity-70 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-                  : "h-auto opacity-100"
+                  : "h-auto opacity-100",
               )}
             >
               <ReasoningContent>{part.text}</ReasoningContent>
@@ -376,14 +424,12 @@ export const MessageItem = memo(
               <ToolOutput
                 output={part.output}
                 errorText={"errorText" in part ? part.errorText : undefined}
-                resolver={resolveJanMediaUrl}
               />
             )}
             {part.state === TOOL_STATE.OUTPUT_ERROR && (
               <ToolOutput
                 output={undefined}
                 errorText={"errorText" in part ? part.errorText : undefined}
-                resolver={resolveJanMediaUrl}
               />
             )}
           </ToolContent>
@@ -475,7 +521,7 @@ export const MessageItem = memo(
       prevProps.isLastMessage === nextProps.isLastMessage &&
       prevProps.status === nextProps.status
     );
-  }
+  },
 );
 
 MessageItem.displayName = "MessageItem";

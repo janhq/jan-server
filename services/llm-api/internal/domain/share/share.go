@@ -77,6 +77,7 @@ type SnapshotItem struct {
 	Type      string            `json:"type"`
 	Role      string            `json:"role"`
 	Content   []SnapshotContent `json:"content"`
+	CallID    *string           `json:"call_id,omitempty"` // For tool role messages to match with tool_calls
 	CreatedAt time.Time         `json:"created_at"`
 }
 

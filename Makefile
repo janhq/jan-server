@@ -9,7 +9,7 @@
 # QUICK START
 # ============================================================================================================
 #
-#   make quickstart              - Interactive setup and run (core: infra + API + MCP web search)
+#   make quickstart              - Interactive setup and run (core: infra + API + MCP web search + web app)
 #   make setup                   - Initial project setup (dependencies, networks, .env)
 #   make cli-install             - Install jan-cli tool globally
 #   make build-all               - Build all Docker images (including platform & web)
@@ -430,6 +430,47 @@ restart-mcp:
 logs-mcp:
 	$(COMPOSE) --profile mcp logs -f
 
+# --- AIO Sandbox Services ---
+
+.PHONY: up-aio down-aio restart-aio logs-aio aio-verify
+
+up-aio:
+	@echo "Starting AIO Sandbox..."
+	$(COMPOSE) --profile aio up -d aio-sandbox
+	@echo " AIO Sandbox started"
+	@echo ""
+	@echo "Services:"
+	@echo "  - AIO Sandbox:    http://localhost:$${AIO_HOST_PORT:-8180}"
+	@echo "  - API Docs:       http://localhost:$${AIO_HOST_PORT:-8180}/v1/docs"
+	@echo ""
+	@echo "Test AIO health:"
+	@echo "  curl http://localhost:$${AIO_HOST_PORT:-8180}/v1/docs"
+
+down-aio:
+	$(COMPOSE) --profile aio down
+
+restart-aio:
+	$(COMPOSE) --profile aio restart aio-sandbox
+
+logs-aio:
+	$(COMPOSE) --profile aio logs -f aio-sandbox
+
+aio-verify:
+	@echo "Verifying AIO Sandbox..."
+ifeq ($(OS),Windows_NT)
+	@powershell -Command "try { $$response = Invoke-WebRequest -Uri 'http://localhost:8180/v1/docs' -UseBasicParsing -TimeoutSec 5; if ($$response.StatusCode -eq 200) { Write-Host ' AIO Sandbox is healthy' } } catch { Write-Host ' AIO Sandbox is not responding' }"
+	@echo ""
+	@echo "Testing shell execution..."
+	@powershell -Command "try { $$result = Invoke-RestMethod -Uri 'http://localhost:8180/v1/shell/exec' -Method POST -ContentType 'application/json' -Body '{\"command\": \"echo Hello from AIO Sandbox\"}' -TimeoutSec 10; Write-Host $$result.data.output } catch { Write-Host 'Shell exec failed:' $$_.Exception.Message }"
+else
+	@curl -s http://localhost:$${AIO_HOST_PORT:-8180}/v1/docs > /dev/null 2>&1 && echo " AIO Sandbox is healthy" || echo " AIO Sandbox is not responding"
+	@echo ""
+	@echo "Testing shell execution..."
+	@curl -s -X POST http://localhost:$${AIO_HOST_PORT:-8180}/v1/shell/exec \
+		-H "Content-Type: application/json" \
+		-d '{"command": "echo Hello from AIO Sandbox"}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('output',d.get('message','No output')))" 2>/dev/null || echo "Shell exec failed"
+endif
+
 # --- vLLM Inference Services ---
 
 .PHONY: up-vllm-gpu up-vllm-cpu down-vllm logs-vllm
@@ -698,16 +739,17 @@ COLLECTION_FILES := $(filter-out $(COLLECTIONS_DIR)/memory.postman.json $(COLLEC
 # Base flags without auth (for targets that need custom auth)
 API_TEST_BASE_FLAGS := --env-file tests/e2e/.env \
   --env-var gateway_url=$(GATEWAY_URL) \
+  --env-var media_service_key=$(MEDIA_SERVICE_KEY) \
   --auto-models \
   --timeout-request $(TIMEOUT_MS)
 
 # Full flags with default auth mode
 API_TEST_FLAGS := $(API_TEST_BASE_FLAGS) --auto-auth $(AUTH_MODE) --debug
 
-.PHONY: test-all test-auth test-conversation test-response test-model test-media test-mcp test-user-management test-model-prompts test-image test-dev
+.PHONY: test-all test-auth test-conversation test-response test-response-aio test-response-artifact test-mcp-agent test-model test-media test-mcp test-user-management test-model-prompts test-image test-dev seed-response-artifact
 
 test-all:
-	$(API_TEST) $(COLLECTION_FILES) $(API_TEST_FLAGS)
+	$(API_TEST) $(COLLECTION_FILES) $(API_TEST_FLAGS) --timeout-request 120000
 
 test-auth:
 	$(API_TEST) $(COLLECTIONS_DIR)/auth.postman.json $(API_TEST_FLAGS)
@@ -716,7 +758,20 @@ test-conversation:
 	$(API_TEST) $(COLLECTIONS_DIR)/conversation.postman.json $(API_TEST_FLAGS)
 
 test-response:
-	$(API_TEST) $(COLLECTIONS_DIR)/response.postman.json $(API_TEST_FLAGS)
+	$(API_TEST) $(COLLECTIONS_DIR)/response.postman.json $(API_TEST_FLAGS) --timeout-request 120000
+
+test-response-aio:
+	$(API_TEST) $(COLLECTIONS_DIR)/response-aio.postman.json $(API_TEST_FLAGS) --timeout-request 180000
+
+seed-response-artifact:
+	@echo "Seeding response/artifact test data..."
+	@$(COMPOSE) exec -T api-db psql -U jan_user -d jan_llm_api -v ON_ERROR_STOP=1 < tests/e2e/automation/seeds/response_artifact_seed.sql
+
+test-response-artifact: seed-response-artifact
+	$(API_TEST) $(COLLECTIONS_DIR)/response-artifact.postman.json $(API_TEST_FLAGS)
+
+test-mcp-agent:
+	$(API_TEST) $(COLLECTIONS_DIR)/mcp-agent.postman.json $(API_TEST_FLAGS) --timeout-request 120000
 
 test-model:
 	$(API_TEST) $(COLLECTIONS_DIR)/model.postman.json $(API_TEST_BASE_FLAGS) --auto-auth admin

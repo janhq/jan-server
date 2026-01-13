@@ -29,22 +29,3 @@ type Source struct {
 	DataURL string `json:"data_url"`
 	URL     string `json:"url"`
 }
-
-// ResolveResult contains placeholder replacements.
-type ResolveResult struct {
-	Payload []byte
-}
-
-// UploadPreparation contains presigned upload URL and reserved jan_id.
-type UploadPreparation struct {
-	ID        string `json:"id"`
-	UploadURL string `json:"upload_url"`
-	MimeType  string `json:"mime_type"`
-	ExpiresIn int    `json:"expires_in"` // seconds
-}
-
-// PrepareUploadRequest defines the payload for requesting a presigned upload URL.
-type PrepareUploadRequest struct {
-	MimeType string `json:"mime_type" binding:"required"`
-	UserID   string `json:"user_id"`
-}

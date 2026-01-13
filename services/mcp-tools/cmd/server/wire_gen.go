@@ -13,7 +13,9 @@ import (
 	"jan-server/services/mcp-tools/internal/interfaces/httpserver"
 	"jan-server/services/mcp-tools/internal/interfaces/httpserver/routes"
 	"jan-server/services/mcp-tools/internal/interfaces/httpserver/routes/mcp"
+)
 
+import (
 	_ "jan-server/services/mcp-tools/internal/infrastructure/metrics"
 )
 
@@ -36,9 +38,10 @@ func CreateApplication(ctx context.Context) (*Application, error) {
 	memoryMCP := routes.ProvideMemoryMCP(config)
 	imageGenerateMCP := routes.ProvideImageGenerateMCP(config)
 	imageEditMCP := routes.ProvideImageEditMCP(config)
+	aiomcp := routes.ProvideAIOMCP(config)
 	llmapiClient := infrastructure.ProvideLLMAPIClient(config)
 	cache := routes.ProvideToolConfigCache(config, llmapiClient)
-	mcpRoute := routes.ProvideMCPRoute(searchMCP, providerMCP, sandboxFusionMCP, memoryMCP, imageGenerateMCP, imageEditMCP, llmapiClient, cache)
+	mcpRoute := routes.ProvideMCPRoute(searchMCP, providerMCP, sandboxFusionMCP, memoryMCP, imageGenerateMCP, imageEditMCP, aiomcp, llmapiClient, cache)
 	validator, err := infrastructure.ProvideAuthValidator(ctx, config)
 	if err != nil {
 		return nil, err

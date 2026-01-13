@@ -984,10 +984,21 @@ func (m *ToolInstructionsModule) Apply(ctx context.Context, promptCtx *Context, 
 			builder.WriteString(vars["BrowserToolName"].(string))
 			builder.WriteString("\n")
 		}
-		if vars["HasImageTool"].(bool) {
-			builder.WriteString("- When you need to generate or edit images: use ")
-			builder.WriteString(vars["ImageToolName"].(string))
+		if vars["HasImageGenerateTool"].(bool) {
+			builder.WriteString("- When you need to generate NEW images: use ")
+			builder.WriteString(vars["ImageGenerateToolName"].(string))
 			builder.WriteString("\n")
+		}
+		if vars["HasImageEditTool"].(bool) {
+			builder.WriteString("- When you need to edit EXISTING images: use ")
+			builder.WriteString(vars["ImageEditToolName"].(string))
+			builder.WriteString("\n")
+		}
+		if vars["HasImageTool"].(bool) {
+			builder.WriteString("\nIMAGE OUTPUT FORMATTING:\n")
+			builder.WriteString("- Always wrap generated or edited images in <img> tags, NOT <a> tags\n")
+			builder.WriteString("- Example: <img src=\"image_url\" alt=\"description\" />\n")
+			builder.WriteString("- Do NOT use: <a href=\"image_url\">...</a>\n")
 		}
 
 		toolText = strings.TrimSpace(builder.String())
@@ -1001,17 +1012,20 @@ func (m *ToolInstructionsModule) Apply(ctx context.Context, promptCtx *Context, 
 // buildToolTemplateVars builds template variables for tool instructions
 func buildToolTemplateVars(promptCtx *Context) map[string]any {
 	vars := map[string]any{
-		"Tools":           []map[string]string{},
-		"HasSearchTool":   false,
-		"SearchToolName":  "",
-		"HasCodeTool":     false,
-		"CodeToolName":    "",
-		"HasBrowserTool":  false,
-		"BrowserToolName": "",
-		"HasScrapeTool":   false,
-		"ScrapeToolName":  "",
-		"HasImageTool":    false,
-		"ImageToolName":   "",
+		"Tools":                 []map[string]string{},
+		"HasSearchTool":         false,
+		"SearchToolName":        "",
+		"HasCodeTool":           false,
+		"CodeToolName":          "",
+		"HasBrowserTool":        false,
+		"BrowserToolName":       "",
+		"HasScrapeTool":         false,
+		"ScrapeToolName":        "",
+		"HasImageTool":          false,
+		"HasImageGenerateTool":  false,
+		"ImageGenerateToolName": "",
+		"HasImageEditTool":      false,
+		"ImageEditToolName":     "",
 	}
 
 	if promptCtx == nil || len(promptCtx.Tools) == 0 {
@@ -1100,13 +1114,24 @@ func buildToolTemplateVars(promptCtx *Context) map[string]any {
 			vars["ScrapeToolName"] = toolName
 		}
 
-		// Image tools (generate_image, edit_image, image generation, etc.)
+		// Image generation tools (generate_image)
 		if strings.Contains(toolNameLower, "generate_image") ||
-			strings.Contains(toolNameLower, "image") ||
+			(strings.Contains(toolNameLower, "image") && strings.Contains(toolNameLower, "generat")) ||
 			strings.Contains(toolDescLower, "generate image") ||
 			strings.Contains(toolDescLower, "image generation") {
 			vars["HasImageTool"] = true
-			vars["ImageToolName"] = toolName
+			vars["HasImageGenerateTool"] = true
+			vars["ImageGenerateToolName"] = toolName
+		}
+
+		// Image editing tools (edit_image)
+		if strings.Contains(toolNameLower, "edit_image") ||
+			(strings.Contains(toolNameLower, "image") && strings.Contains(toolNameLower, "edit")) ||
+			strings.Contains(toolDescLower, "edit image") ||
+			strings.Contains(toolDescLower, "image edit") {
+			vars["HasImageTool"] = true
+			vars["HasImageEditTool"] = true
+			vars["ImageEditToolName"] = toolName
 		}
 	}
 
@@ -1403,6 +1428,10 @@ func detectToolUsage(promptCtx *Context, messages []openai.ChatCompletionMessage
 
 	if promptCtx != nil && promptCtx.Preferences != nil {
 		if useTools, ok := promptCtx.Preferences["use_tools"].(bool); ok && useTools {
+			return true
+		}
+		// Check if image generation is requested
+		if image, ok := promptCtx.Preferences["image"].(bool); ok && image {
 			return true
 		}
 	}

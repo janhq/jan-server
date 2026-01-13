@@ -16,7 +16,7 @@ export const usePrivateChat = create<PrivateChatState>()(
     }),
     {
       name: LOCAL_STORAGE_KEY.PRIVATE_CHAT,
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => sessionStorage),
     },
   ),
 );

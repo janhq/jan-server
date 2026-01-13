@@ -599,7 +599,7 @@ const ChatInput = ({
                   >
                     <ImageIcon className="text-primary size-4 group-hover:hidden" />
                     <X className="text-primary size-4 hidden group-hover:block" />
-                    <span className="text-primary">Create Image</span>
+                    <span className="text-primary">Create Images</span>
                   </PromptInputButton>
                 )}
               </PromptInputTools>

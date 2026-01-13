@@ -11,6 +11,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	domainsearch "jan-server/services/mcp-tools/internal/domain/search"
+	"jan-server/services/mcp-tools/internal/infrastructure/aio"
 	"jan-server/services/mcp-tools/internal/infrastructure/auth"
 	"jan-server/services/mcp-tools/internal/infrastructure/config"
 	"jan-server/services/mcp-tools/internal/infrastructure/llmapi"
@@ -196,7 +197,28 @@ func main() {
 		searchMCP.SetToolConfigCache(toolConfigCache)
 	}
 
-	mcpRoute := mcp.NewMCPRoute(searchMCP, providerMCP, sandboxMCP, memoryMCP, imageMCP, imageEditMCP, llmClient, toolConfigCache)
+	// Initialize AIO Sandbox client and MCP handler
+	var aioMCP *mcp.AIOMCP
+	if cfg.AIOEnabled {
+		aioClient := aio.NewClient(aio.ClientConfig{
+			BaseURL: cfg.AIOURL,
+			Timeout: cfg.AIOTimeout,
+			Enabled: cfg.AIOEnabled,
+		})
+		if aioClient.IsEnabled() {
+			aioMCP = mcp.NewAIOMCP(aioClient, true)
+			log.Info().
+				Str("aio_url", cfg.AIOURL).
+				Dur("aio_timeout", cfg.AIOTimeout).
+				Msg("AIO Sandbox integration enabled")
+		} else {
+			log.Warn().Msg("AIO_ENABLED=true but client failed to initialize")
+		}
+	} else {
+		log.Info().Msg("AIO Sandbox integration disabled (AIO_ENABLED=false)")
+	}
+
+	mcpRoute := mcp.NewMCPRoute(searchMCP, providerMCP, sandboxMCP, memoryMCP, imageMCP, imageEditMCP, aioMCP, llmClient, toolConfigCache)
 
 	authValidator, err := auth.NewValidator(ctx, cfg, log.Logger)
 	if err != nil {

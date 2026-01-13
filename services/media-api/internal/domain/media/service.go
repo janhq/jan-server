@@ -5,13 +5,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
-	"regexp"
 	"strings"
 	"time"
 
@@ -32,9 +29,6 @@ var allowedMIMEs = map[string]string{
 	"image/tiff": "tiff",
 }
 
-// Accept jan_* placeholders whether or not a base64 marker is present (some clients emit ;base64, by default)
-var placeholderPattern = regexp.MustCompile(`data:(image/[a-z0-9.+-]+);(?:base64,)?(jan_[A-Za-z0-9]+)`)
-
 // Repository defines persistence operations needed by the service.
 type Repository interface {
 	FindByHash(ctx context.Context, hash string) (*MediaObject, error)
@@ -45,10 +39,7 @@ type Repository interface {
 // Storage defines media storage operations.
 type Storage interface {
 	Upload(ctx context.Context, key string, body io.Reader, size int64, contentType string) error
-	PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error)
-	PresignPut(ctx context.Context, key string, contentType string, ttl time.Duration) (string, error)
 	Download(ctx context.Context, key string) (io.ReadCloser, string, error)
-	SupportsPresignedUploads() bool
 }
 
 // Service orchestrates media ingestion and retrieval.
@@ -126,52 +117,6 @@ func (s *Service) Ingest(ctx context.Context, req IngestRequest) (*MediaObject, 
 	return obj, false, nil
 }
 
-// ResolvePayload replaces jan_* placeholders with presigned URLs.
-func (s *Service) ResolvePayload(ctx context.Context, payload json.RawMessage) (json.RawMessage, error) {
-	text := string(payload)
-	matches := placeholderPattern.FindAllStringSubmatch(text, -1)
-	if len(matches) == 0 {
-		return payload, nil
-	}
-
-	replacements := make(map[string]string)
-	for _, match := range matches {
-		token := match[2]
-		if _, exists := replacements[token]; exists {
-			continue
-		}
-
-		obj, err := s.repo.GetByID(ctx, token)
-		if err != nil {
-			return nil, err
-		}
-		if obj == nil {
-			return nil, fmt.Errorf("unknown media id %s", token)
-		}
-
-		url, err := s.storage.PresignGet(ctx, obj.StorageKey, s.cfg.S3PresignTTL)
-		if err != nil {
-			return nil, err
-		}
-
-		replacements[match[0]] = s.externalizeURL(url)
-	}
-
-	builder := strings.Builder{}
-	builder.Grow(len(text))
-	lastIndex := 0
-	indices := placeholderPattern.FindAllStringIndex(text, -1)
-	for i, match := range matches {
-		start, end := indices[i][0], indices[i][1]
-		builder.WriteString(text[lastIndex:start])
-		builder.WriteString(replacements[match[0]])
-		lastIndex = end
-	}
-	builder.WriteString(text[lastIndex:])
-
-	return json.RawMessage([]byte(builder.String())), nil
-}
-
 // Download fetches object contents for proxying.
 func (s *Service) Download(ctx context.Context, id string) (io.ReadCloser, string, error) {
 	obj, err := s.repo.GetByID(ctx, id)
@@ -191,121 +136,16 @@ func (s *Service) Download(ctx context.Context, id string) (io.ReadCloser, strin
 	return reader, mime, nil
 }
 
-// Presign returns a short-lived URL for the media object.
-func (s *Service) Presign(ctx context.Context, id string) (string, error) {
+// Get returns media metadata.
+func (s *Service) Get(ctx context.Context, id string) (*MediaObject, error) {
 	obj, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if obj == nil {
-		return "", fmt.Errorf("media %s not found", id)
+		return nil, fmt.Errorf("media %s not found", id)
 	}
-	url, err := s.storage.PresignGet(ctx, obj.StorageKey, s.cfg.S3PresignTTL)
-	if err != nil {
-		return "", err
-	}
-	return s.externalizeURL(url), nil
-}
-
-// PrepareUpload generates a presigned upload URL and reserves a jan_id for client-side upload.
-func (s *Service) PrepareUpload(ctx context.Context, mimeType string, userID string) (*UploadPreparation, error) {
-	// Validate MIME type
-	ext, ok := allowedMIMEs[mimeType]
-	if !ok {
-		return nil, fmt.Errorf("unsupported mime type %s", mimeType)
-	}
-
-	// Generate jan_id and storage key
-	id := mediaid.New()
-	key := fmt.Sprintf("images/%s.%s", id, ext)
-
-	// Generate presigned PUT URL
-	uploadURL, err := s.storage.PresignPut(ctx, key, mimeType, s.cfg.S3PresignTTL)
-	if err != nil {
-		return nil, err
-	}
-	uploadURL = s.externalizeURL(uploadURL)
-
-	// Create placeholder record in database (with zero bytes initially)
-	obj := &MediaObject{
-		ID:              id,
-		StorageProvider: "s3",
-		StorageKey:      key,
-		MimeType:        mimeType,
-		Bytes:           0,                             // Will be updated after upload
-		Sha256:          fmt.Sprintf("pending_%s", id), // Placeholder hash to satisfy unique index
-		CreatedBy:       userID,
-		RetentionUntil:  time.Now().Add(time.Duration(s.cfg.RetentionDays) * 24 * time.Hour),
-	}
-
-	if err := s.repo.Create(ctx, obj); err != nil {
-		return nil, err
-	}
-
-	return &UploadPreparation{
-		ID:        id,
-		UploadURL: uploadURL,
-		MimeType:  mimeType,
-		ExpiresIn: int(s.cfg.S3PresignTTL.Seconds()),
-	}, nil
-}
-
-func (s *Service) externalizeURL(raw string) string {
-	publicEndpoint := strings.TrimSpace(s.cfg.S3PublicEndpoint)
-	if publicEndpoint == "" || strings.TrimSpace(raw) == "" {
-		return raw
-	}
-
-	target, err := url.Parse(raw)
-	if err != nil {
-		return raw
-	}
-
-	external, err := url.Parse(publicEndpoint)
-	if err != nil || external.Scheme == "" || external.Host == "" {
-		return raw
-	}
-
-	target.Scheme = external.Scheme
-	target.Host = external.Host
-
-	if path := strings.TrimSpace(external.Path); path != "" && path != "/" {
-		target.Path = joinPublicPath(path, target.Path)
-	}
-
-	return target.String()
-}
-
-// SupportsPresignedUploads returns whether the storage backend supports presigned upload URLs.
-func (s *Service) SupportsPresignedUploads() bool {
-	return s.storage.SupportsPresignedUploads()
-}
-
-func joinPublicPath(basePath, objectPath string) string {
-	base := strings.TrimSuffix(basePath, "/")
-	if base == "" {
-		return ensureLeadingSlash(objectPath)
-	}
-
-	if !strings.HasPrefix(base, "/") {
-		base = "/" + base
-	}
-
-	relative := strings.TrimPrefix(objectPath, "/")
-	if relative == "" {
-		return base
-	}
-	return base + "/" + relative
-}
-
-func ensureLeadingSlash(path string) string {
-	if path == "" {
-		return "/"
-	}
-	if strings.HasPrefix(path, "/") {
-		return path
-	}
-	return "/" + path
+	return obj, nil
 }
 
 func (s *Service) loadBytes(ctx context.Context, source Source) ([]byte, error) {

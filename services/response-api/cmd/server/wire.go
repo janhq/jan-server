@@ -11,8 +11,12 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 
 	"jan-server/services/response-api/internal/config"
+	"jan-server/services/response-api/internal/domain/agent"
+	"jan-server/services/response-api/internal/domain/agent/planners"
+	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/conversation"
 	"jan-server/services/response-api/internal/domain/llm"
+	"jan-server/services/response-api/internal/domain/plan"
 	responseDomain "jan-server/services/response-api/internal/domain/response"
 	"jan-server/services/response-api/internal/domain/tool"
 	"jan-server/services/response-api/internal/infrastructure/auth"
@@ -20,7 +24,9 @@ import (
 	"jan-server/services/response-api/internal/infrastructure/llmprovider"
 	"jan-server/services/response-api/internal/infrastructure/logger"
 	"jan-server/services/response-api/internal/infrastructure/mcp"
+	artifactrepo "jan-server/services/response-api/internal/infrastructure/repository/artifact"
 	conversationrepo "jan-server/services/response-api/internal/infrastructure/repository/conversation"
+	planrepo "jan-server/services/response-api/internal/infrastructure/repository/plan"
 	responseRepo "jan-server/services/response-api/internal/infrastructure/repository/response"
 	"jan-server/services/response-api/internal/interfaces/httpserver"
 	"jan-server/services/response-api/internal/webhook"
@@ -30,18 +36,27 @@ var responseSet = wire.NewSet(
 	responseRepo.NewPostgresRepository,
 	wire.Bind(new(responseDomain.Repository), new(*responseRepo.PostgresRepository)),
 	wire.Bind(new(responseDomain.ToolExecutionRepository), new(*responseRepo.PostgresRepository)),
+	planrepo.NewPostgresRepository,
+	wire.Bind(new(plan.Repository), new(*planrepo.PostgresRepository)),
+	artifactrepo.NewPostgresRepository,
+	wire.Bind(new(artifact.Repository), new(*artifactrepo.PostgresRepository)),
 	conversationrepo.NewRepository,
 	wire.Bind(new(conversation.Repository), new(*conversationrepo.Repository)),
 	conversationrepo.NewItemRepository,
 	wire.Bind(new(conversation.ItemRepository), new(*conversationrepo.ItemRepository)),
 	newLLMProvider,
 	wire.Bind(new(llm.Provider), new(*llmprovider.Client)),
+	wire.Bind(new(llm.ModelInfoProvider), new(*llmprovider.Client)),
 	newMCPClient,
 	wire.Bind(new(tool.MCPClient), new(*mcp.Client)),
+	wire.Bind(new(planners.MCPClient), new(*mcp.Client)),
 	newOrchestrator,
 	newWebhookService,
 	wire.Bind(new(webhook.Service), new(*webhook.HTTPService)),
+	plan.NewService,
+	newAgentRegistry,
 	newResponseService,
+	artifact.NewService,
 )
 
 // BuildApplication demonstrates how to assemble the response service with Wire.
@@ -100,6 +115,24 @@ func newWebhookService(log zerolog.Logger) *webhook.HTTPService {
 	return webhook.NewHTTPService(log)
 }
 
+func newAgentRegistry(planService plan.Service, mcpClient tool.MCPClient) agent.Registry {
+	registry := agent.NewRegistry()
+
+	// Register the deep research planner
+	deepResearchPlanner := planners.NewDeepResearchPlanner(planService)
+	if err := registry.RegisterPlanner(deepResearchPlanner); err != nil {
+		// Log but don't fail - planner registration is not critical
+		_ = err
+	}
+
+	// Register the deep research executor for tool calls and LLM calls
+	deepResearchExecutor := planners.NewDeepResearchExecutor(mcpClient)
+	_ = registry.RegisterExecutor(plan.ActionTypeToolCall, deepResearchExecutor)
+	_ = registry.RegisterExecutor(plan.ActionTypeLLMCall, deepResearchExecutor)
+
+	return registry
+}
+
 func newResponseService(
 	repo responseDomain.Repository,
 	conversations conversation.Repository,
@@ -109,7 +142,9 @@ func newResponseService(
 	mcpClient tool.MCPClient,
 	modelInfoProvider llm.ModelInfoProvider,
 	webhookService webhook.Service,
+	agentRegistry agent.Registry,
+	planService plan.Service,
 	log zerolog.Logger,
 ) responseDomain.Service {
-	return responseDomain.NewService(repo, conversations, conversationItems, toolRepo, orchestrator, mcpClient, modelInfoProvider, webhookService, log)
+	return responseDomain.NewService(repo, conversations, conversationItems, toolRepo, orchestrator, mcpClient, modelInfoProvider, webhookService, agentRegistry, planService, log)
 }

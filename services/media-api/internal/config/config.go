@@ -43,6 +43,7 @@ type Config struct {
 	// S3 Storage Configuration
 	S3Endpoint       string        `env:"MEDIA_S3_ENDPOINT" envDefault:"https://s3.menlo.ai"`
 	S3PublicEndpoint string        `env:"MEDIA_S3_PUBLIC_ENDPOINT"`
+	S3URLEnabled     bool          `env:"MEDIA_S3_URL_ENABLED" envDefault:"false"`
 	S3Region         string        `env:"MEDIA_S3_REGION" envDefault:"us-west-2"`
 	S3Bucket         string        `env:"MEDIA_S3_BUCKET"`
 	S3AccessKeyID    string        `env:"MEDIA_S3_ACCESS_KEY_ID"`     // AWS standard naming

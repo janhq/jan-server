@@ -83,6 +83,11 @@ type Config struct {
 	AuthIssuer  string `env:"AUTH_ISSUER"`
 	Account     string `env:"ACCOUNT"`
 	AuthJWKSURL string `env:"AUTH_JWKS_URL"`
+
+	// AIO Sandbox Configuration
+	AIOEnabled bool          `env:"AIO_ENABLED" envDefault:"false"`
+	AIOURL     string        `env:"AIO_URL" envDefault:"http://aio-sandbox:8080"`
+	AIOTimeout time.Duration `env:"AIO_TIMEOUT" envDefault:"120s"`
 }
 
 // LoadConfig loads configuration from environment variables

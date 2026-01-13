@@ -237,7 +237,7 @@ export const SettingChatInput = ({
                   <div className="flex gap-2 items-center justify-between w-full">
                     <div className="flex gap-2 items-center w-full">
                       <ImageIcon />
-                      <span>Create Image</span>
+                      <span>Create Images</span>
                     </div>
                     <Switch
                       checked={

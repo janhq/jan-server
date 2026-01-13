@@ -22,4 +22,14 @@ func NewRoutes(handlerProvider *handlers.Provider) *Routes {
 func (r *Routes) Register(engine *gin.Engine) {
 	group := engine.Group("/v1")
 	registerResponseRoutes(group, r.handlers.Response)
+
+	// Plan routes (optional - only if handler is provided)
+	if r.handlers.Plan != nil {
+		registerPlanRoutes(group, r.handlers.Plan)
+	}
+
+	// Artifact routes (optional - only if handler is provided)
+	if r.handlers.Artifact != nil {
+		registerArtifactRoutes(group, r.handlers.Artifact)
+	}
 }

@@ -21,7 +21,6 @@ import (
 	"jan-server/services/llm-api/internal/infrastructure/kong"
 	"jan-server/services/llm-api/internal/infrastructure/logger"
 	"jan-server/services/llm-api/internal/infrastructure/mediaclient"
-	"jan-server/services/llm-api/internal/infrastructure/mediaresolver"
 	memclient "jan-server/services/llm-api/internal/infrastructure/memory"
 )
 
@@ -110,11 +109,6 @@ func ProvideTransactionDatabase(db *gorm.DB) *transaction.Database {
 	return transaction.NewDatabase(db)
 }
 
-// ProvideMediaResolver wires the HTTP-based media placeholder resolver.
-func ProvideMediaResolver(cfg *config.Config, log zerolog.Logger, kc *keycloak.Client) mediaresolver.Resolver {
-	return mediaresolver.NewResolver(cfg, log, kc)
-}
-
 // ProvideMediaClient wires the media client for uploading images.
 func ProvideMediaClient(cfg *config.Config, log zerolog.Logger) *mediaclient.Client {
 	return mediaclient.NewClient(cfg, log)
@@ -164,9 +158,6 @@ var InfrastructureProvider = wire.NewSet(
 	inference.NewZImageService,
 	// Bind ZImageService to ImageService interface
 	wire.Bind(new(inference.ImageService), new(*inference.ZImageService)),
-
-	// Media resolver
-	ProvideMediaResolver,
 
 	// Media client for uploading images
 	ProvideMediaClient,

@@ -111,6 +111,11 @@ services:
       MCP_CONFIG_FILE: ${MCP_CONFIG_FILE:-configs/mcp-providers.yml}
       MCP_SANDBOX_REQUIRE_APPROVAL: ${MCP_SANDBOX_REQUIRE_APPROVAL:-true}
       
+      # AIO Sandbox Configuration
+      AIO_ENABLED: ${AIO_ENABLED:-false}
+      AIO_URL: ${AIO_URL:-http://aio-sandbox:8080}
+      AIO_TIMEOUT: ${AIO_TIMEOUT:-120s}
+      
       # Authentication
       AUTH_ENABLED: ${AUTH_ENABLED:-false}
     ports:
@@ -137,5 +142,50 @@ services:
       - default
       - mcp-network
     profiles: ["mcp", "full"]
+
+  # AIO Sandbox - All-in-One Agent Sandbox Environment
+  # Provides: Browser automation, File operations, Shell/Terminal, Code execution, Jupyter
+  # Docs: https://sandbox.agent-infra.com/
+  aio-sandbox:
+    image: ghcr.io/agent-infra/sandbox:latest
+    container_name: aio-sandbox
+    restart: unless-stopped
+    security_opt:
+      - seccomp:unconfined
+    shm_size: "2gb"
+    ports:
+      - "${AIO_HOST_PORT:-8180}:8080"
+    environment:
+      WORKSPACE: ${AIO_WORKSPACE:-/home/gem}
+      TZ: ${TZ:-UTC}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
+      PROXY_SERVER: ${AIO_PROXY_SERVER:-}
+      HOMEPAGE: ${AIO_HOMEPAGE:-}
+      BROWSER_EXTRA_ARGS: ${AIO_BROWSER_EXTRA_ARGS:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Note: Volume mount removed to avoid permission issues on Windows/Mac
+    # For persistent workspace, use a bind mount with correct permissions:
+    #   - ./aio-data:/home/gem:rw
+    # volumes:
+    #   - aio-workspace:/home/gem
+    networks:
+      - mcp-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/v1/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2'
+    profiles: ["aio", "full"]
+
+volumes:
+  aio-workspace:
+    driver: local
 
 # Note: Networks are defined in infrastructure.yml and shared across all compose files

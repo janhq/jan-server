@@ -52,7 +52,7 @@ func ValidateSearchResponse(resp *domainsearch.SearchResponse, minResults int) e
 		// Check for essential fields
 		hasTitle := hasNonEmptyString(result, "title")
 		hasLink := hasNonEmptyString(result, "link")
-		
+
 		if !hasTitle || !hasLink {
 			log.Warn().
 				Int("index", idx).
@@ -102,10 +102,10 @@ func EnrichEmptyResponse(resp *domainsearch.SearchResponse, query string, reason
 	if resp.Organic == nil || len(resp.Organic) == 0 {
 		resp.Organic = []map[string]any{
 			{
-				"title": fmt.Sprintf("No results found for: %s", query),
-				"link":  fmt.Sprintf("https://google.com/search?q=%s", strings.ReplaceAll(query, " ", "+")),
+				"title":   fmt.Sprintf("No results found for: %s", query),
+				"link":    fmt.Sprintf("https://google.com/search?q=%s", strings.ReplaceAll(query, " ", "+")),
 				"snippet": fmt.Sprintf("The search returned no results. Reason: %s. Try refining your query or checking connectivity.", reason),
-				"source": "empty_fallback",
+				"source":  "empty_fallback",
 			},
 		}
 	}

@@ -60,6 +60,7 @@ type SnapshotItemResp struct {
 	Type      string                `json:"type"`
 	Role      string                `json:"role"`
 	Content   []SnapshotContentResp `json:"content"`
+	CallID    *string               `json:"call_id,omitempty"` // For tool role messages to match with tool_calls
 	CreatedAt int64                 `json:"created_at"`
 }
 
@@ -210,6 +211,7 @@ func newSnapshotItemResp(item share.SnapshotItem) SnapshotItemResp {
 		Type:      item.Type,
 		Role:      item.Role,
 		Content:   make([]SnapshotContentResp, 0, len(item.Content)),
+		CallID:    item.CallID, // For tool role messages to match with tool_calls
 		CreatedAt: item.CreatedAt.Unix(),
 	}
 
