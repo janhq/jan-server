@@ -4,10 +4,19 @@
   "$defs": {
     "APIKeyConfig": {
       "properties": {
-        "prefix": { "type": "string" },
-        "default_ttl": { "type": "integer" },
-        "max_ttl": { "type": "integer" },
-        "max_per_user": { "type": "integer", "minimum": 1 }
+        "prefix": {
+          "type": "string"
+        },
+        "default_ttl": {
+          "type": "integer"
+        },
+        "max_ttl": {
+          "type": "integer"
+        },
+        "max_per_user": {
+          "type": "integer",
+          "minimum": 1
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -15,9 +24,16 @@
     },
     "BatchConfig": {
       "properties": {
-        "enabled": { "type": "boolean" },
-        "max_size": { "type": "integer", "minimum": 1 },
-        "timeout": { "type": "integer" }
+        "enabled": {
+          "type": "boolean"
+        },
+        "max_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "timeout": {
+          "type": "integer"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -25,10 +41,19 @@
     },
     "CacheConfig": {
       "properties": {
-        "enabled": { "type": "boolean" },
-        "type": { "type": "string", "enum": ["redis", "memory", "noop"] },
-        "redis": { "$ref": "#/$defs/RedisCacheConfig" },
-        "memory": { "$ref": "#/$defs/MemoryCacheConfig" }
+        "enabled": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["redis", "memory", "noop"]
+        },
+        "redis": {
+          "$ref": "#/$defs/RedisCacheConfig"
+        },
+        "memory": {
+          "$ref": "#/$defs/MemoryCacheConfig"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -36,10 +61,20 @@
     },
     "CircuitBreakerConfig": {
       "properties": {
-        "enabled": { "type": "boolean" },
-        "threshold": { "type": "integer", "minimum": 1 },
-        "timeout": { "type": "integer" },
-        "max_concurrent": { "type": "integer", "minimum": 1 }
+        "enabled": {
+          "type": "boolean"
+        },
+        "threshold": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "timeout": {
+          "type": "integer"
+        },
+        "max_concurrent": {
+          "type": "integer",
+          "minimum": 1
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -47,16 +82,38 @@
     },
     "EmbeddingConfig": {
       "properties": {
-        "base_url": { "type": "string", "format": "uri" },
-        "api_key": { "type": "string" },
-        "timeout": { "type": "integer" },
-        "validate_on_startup": { "type": "boolean" },
-        "expected_model": { "type": "string" },
-        "expected_dimension": { "type": "integer", "minimum": 1 },
-        "retry": { "$ref": "#/$defs/RetryConfig" },
-        "cache": { "$ref": "#/$defs/CacheConfig" },
-        "batch": { "$ref": "#/$defs/BatchConfig" },
-        "circuit_breaker": { "$ref": "#/$defs/CircuitBreakerConfig" }
+        "base_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "api_key": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "integer"
+        },
+        "validate_on_startup": {
+          "type": "boolean"
+        },
+        "expected_model": {
+          "type": "string"
+        },
+        "expected_dimension": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "retry": {
+          "$ref": "#/$defs/RetryConfig"
+        },
+        "cache": {
+          "$ref": "#/$defs/CacheConfig"
+        },
+        "batch": {
+          "$ref": "#/$defs/BatchConfig"
+        },
+        "circuit_breaker": {
+          "$ref": "#/$defs/CircuitBreakerConfig"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -74,24 +131,59 @@
     },
     "LLMAPIConfig": {
       "properties": {
-        "http_port": { "type": "integer", "maximum": 65535, "minimum": 1 },
-        "metrics_port": { "type": "integer", "maximum": 65535, "minimum": 1 },
+        "http_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
+        "metrics_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
         "log_level": {
           "type": "string",
           "enum": ["debug", "info", "warn", "error"]
         },
-        "log_format": { "type": "string", "enum": ["json", "console"] },
-        "auto_migrate": { "type": "boolean" },
-        "provider_config_file": { "type": "string" },
-        "provider_config_set": { "type": "string" },
-        "provider_configs_enabled": { "type": "boolean" },
-        "api_key": { "$ref": "#/$defs/APIKeyConfig" },
-        "model_provider_secret": { "type": "string" },
-        "model_sync_enabled": { "type": "boolean" },
-        "model_sync_interval_minutes": { "type": "integer", "minimum": 1 },
-        "prompt_orchestration": { "$ref": "#/$defs/PromptOrchestrationConfig" },
-        "media_resolve_url": { "type": "string", "format": "uri" },
-        "media_resolve_timeout": { "type": "integer" }
+        "log_format": {
+          "type": "string",
+          "enum": ["json", "console"]
+        },
+        "auto_migrate": {
+          "type": "boolean"
+        },
+        "provider_config_file": {
+          "type": "string"
+        },
+        "provider_config_set": {
+          "type": "string"
+        },
+        "provider_configs_enabled": {
+          "type": "boolean"
+        },
+        "api_key": {
+          "$ref": "#/$defs/APIKeyConfig"
+        },
+        "model_provider_secret": {
+          "type": "string"
+        },
+        "model_sync_enabled": {
+          "type": "boolean"
+        },
+        "model_sync_interval_minutes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "prompt_orchestration": {
+          "$ref": "#/$defs/PromptOrchestrationConfig"
+        },
+        "media_resolve_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "media_resolve_timeout": {
+          "type": "integer"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -114,32 +206,74 @@
     },
     "MCPToolsConfig": {
       "properties": {
-        "http_port": { "type": "integer", "maximum": 65535, "minimum": 1 },
+        "http_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
         "log_level": {
           "type": "string",
           "enum": ["debug", "info", "warn", "error"]
         },
-        "log_format": { "type": "string", "enum": ["json", "console"] },
+        "log_format": {
+          "type": "string",
+          "enum": ["json", "console"]
+        },
         "search_engine": {
           "type": "string",
           "enum": ["serper", "exa", "tavily", "searxng"]
         },
-        "serper_api_key": { "type": "string" },
-        "serper_enabled": { "type": "boolean" },
-        "exa_api_key": { "type": "string" },
-        "exa_enabled": { "type": "boolean" },
-        "exa_search_endpoint": { "type": "string" },
-        "exa_timeout": { "type": "integer" },
-        "tavily_api_key": { "type": "string" },
-        "tavily_enabled": { "type": "boolean" },
-        "tavily_search_endpoint": { "type": "string" },
-        "tavily_timeout": { "type": "integer" },
-        "searxng_url": { "type": "string", "format": "uri" },
-        "searxng_enabled": { "type": "boolean" },
-        "vector_store_url": { "type": "string", "format": "uri" },
-        "sandbox_fusion_url": { "type": "string", "format": "uri" },
-        "sandbox_require_approval": { "type": "boolean" },
-        "mcp_config_file": { "type": "string" }
+        "serper_api_key": {
+          "type": "string"
+        },
+        "serper_enabled": {
+          "type": "boolean"
+        },
+        "exa_api_key": {
+          "type": "string"
+        },
+        "exa_enabled": {
+          "type": "boolean"
+        },
+        "exa_search_endpoint": {
+          "type": "string"
+        },
+        "exa_timeout": {
+          "type": "integer"
+        },
+        "tavily_api_key": {
+          "type": "string"
+        },
+        "tavily_enabled": {
+          "type": "boolean"
+        },
+        "tavily_search_endpoint": {
+          "type": "string"
+        },
+        "tavily_timeout": {
+          "type": "integer"
+        },
+        "searxng_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "searxng_enabled": {
+          "type": "boolean"
+        },
+        "vector_store_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "sandbox_fusion_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "sandbox_require_approval": {
+          "type": "boolean"
+        },
+        "mcp_config_file": {
+          "type": "string"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -165,16 +299,32 @@
     },
     "MediaAPIConfig": {
       "properties": {
-        "http_port": { "type": "integer", "maximum": 65535, "minimum": 1 },
+        "http_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
         "log_level": {
           "type": "string",
           "enum": ["debug", "info", "warn", "error"]
         },
-        "max_upload_bytes": { "type": "integer", "minimum": 1 },
-        "retention_days": { "type": "integer", "minimum": 1 },
-        "proxy_download": { "type": "boolean" },
-        "remote_fetch_timeout": { "type": "integer" },
-        "s3": { "$ref": "#/$defs/S3Config" }
+        "max_upload_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "retention_days": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "proxy_download": {
+          "type": "boolean"
+        },
+        "remote_fetch_timeout": {
+          "type": "integer"
+        },
+        "s3": {
+          "$ref": "#/$defs/S3Config"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -190,8 +340,13 @@
     },
     "MemoryCacheConfig": {
       "properties": {
-        "max_size": { "type": "integer", "minimum": 1 },
-        "ttl": { "type": "integer" }
+        "max_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ttl": {
+          "type": "integer"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -199,9 +354,17 @@
     },
     "MemoryToolsConfig": {
       "properties": {
-        "enabled": { "type": "boolean" },
-        "http_port": { "type": "integer", "maximum": 65535, "minimum": 1 },
-        "embedding": { "$ref": "#/$defs/EmbeddingConfig" }
+        "enabled": {
+          "type": "boolean"
+        },
+        "http_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
+        "embedding": {
+          "$ref": "#/$defs/EmbeddingConfig"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -209,10 +372,18 @@
     },
     "PromptOrchestrationConfig": {
       "properties": {
-        "enabled": { "type": "boolean" },
-        "enable_memory": { "type": "boolean" },
-        "enable_templates": { "type": "boolean" },
-        "enable_tools": { "type": "boolean" }
+        "enabled": {
+          "type": "boolean"
+        },
+        "enable_memory": {
+          "type": "boolean"
+        },
+        "enable_templates": {
+          "type": "boolean"
+        },
+        "enable_tools": {
+          "type": "boolean"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -225,9 +396,16 @@
     },
     "RedisCacheConfig": {
       "properties": {
-        "url": { "type": "string", "format": "uri" },
-        "key_prefix": { "type": "string" },
-        "ttl": { "type": "integer" }
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "key_prefix": {
+          "type": "string"
+        },
+        "ttl": {
+          "type": "integer"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -235,15 +413,31 @@
     },
     "ResponseAPIConfig": {
       "properties": {
-        "http_port": { "type": "integer", "maximum": 65535, "minimum": 1 },
+        "http_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
         "log_level": {
           "type": "string",
           "enum": ["debug", "info", "warn", "error"]
         },
-        "llm_api_url": { "type": "string", "format": "uri" },
-        "mcp_tools_url": { "type": "string", "format": "uri" },
-        "max_tool_depth": { "type": "integer", "maximum": 20, "minimum": 1 },
-        "tool_timeout": { "type": "integer" }
+        "llm_api_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "mcp_tools_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "max_tool_depth": {
+          "type": "integer",
+          "maximum": 20,
+          "minimum": 1
+        },
+        "tool_timeout": {
+          "type": "integer"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -258,10 +452,19 @@
     },
     "RetryConfig": {
       "properties": {
-        "enabled": { "type": "boolean" },
-        "max_attempts": { "type": "integer", "minimum": 1 },
-        "initial_backoff": { "type": "integer" },
-        "max_backoff": { "type": "integer" }
+        "enabled": {
+          "type": "boolean"
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "initial_backoff": {
+          "type": "integer"
+        },
+        "max_backoff": {
+          "type": "integer"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -269,14 +472,32 @@
     },
     "S3Config": {
       "properties": {
-        "endpoint": { "type": "string", "format": "uri" },
-        "public_endpoint": { "type": "string", "format": "uri" },
-        "region": { "type": "string" },
-        "bucket": { "type": "string" },
-        "access_key": { "type": "string" },
-        "secret_key": { "type": "string" },
-        "use_path_style": { "type": "boolean" },
-        "presign_ttl": { "type": "integer" }
+        "endpoint": {
+          "type": "string",
+          "format": "uri"
+        },
+        "public_endpoint": {
+          "type": "string",
+          "format": "uri"
+        },
+        "region": {
+          "type": "string"
+        },
+        "bucket": {
+          "type": "string"
+        },
+        "access_key": {
+          "type": "string"
+        },
+        "secret_key": {
+          "type": "string"
+        },
+        "use_path_style": {
+          "type": "boolean"
+        },
+        "presign_ttl": {
+          "type": "integer"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -291,11 +512,21 @@
     }
   },
   "properties": {
-    "llm_api": { "$ref": "#/$defs/LLMAPIConfig" },
-    "mcp_tools": { "$ref": "#/$defs/MCPToolsConfig" },
-    "media_api": { "$ref": "#/$defs/MediaAPIConfig" },
-    "response_api": { "$ref": "#/$defs/ResponseAPIConfig" },
-    "memory_tools": { "$ref": "#/$defs/MemoryToolsConfig" }
+    "llm_api": {
+      "$ref": "#/$defs/LLMAPIConfig"
+    },
+    "mcp_tools": {
+      "$ref": "#/$defs/MCPToolsConfig"
+    },
+    "media_api": {
+      "$ref": "#/$defs/MediaAPIConfig"
+    },
+    "response_api": {
+      "$ref": "#/$defs/ResponseAPIConfig"
+    },
+    "memory_tools": {
+      "$ref": "#/$defs/MemoryToolsConfig"
+    }
   },
   "additionalProperties": false,
   "type": "object",

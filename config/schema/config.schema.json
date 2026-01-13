@@ -4,26 +4,46 @@
   "$defs": {
     "APIKeyConfig": {
       "properties": {
-        "prefix": { "type": "string" },
-        "default_ttl": { "type": "integer" },
-        "max_ttl": { "type": "integer" },
-        "max_per_user": { "type": "integer", "minimum": 1 }
+        "prefix": {
+          "type": "string"
+        },
+        "default_ttl": {
+          "type": "integer"
+        },
+        "max_ttl": {
+          "type": "integer"
+        },
+        "max_per_user": {
+          "type": "integer",
+          "minimum": 1
+        }
       },
       "additionalProperties": false,
       "type": "object",
       "required": ["prefix", "default_ttl", "max_ttl", "max_per_user"]
     },
     "AuthConfig": {
-      "properties": { "keycloak": { "$ref": "#/$defs/KeycloakConfig" } },
+      "properties": {
+        "keycloak": {
+          "$ref": "#/$defs/KeycloakConfig"
+        }
+      },
       "additionalProperties": false,
       "type": "object",
       "required": ["keycloak"]
     },
     "BatchConfig": {
       "properties": {
-        "enabled": { "type": "boolean" },
-        "max_size": { "type": "integer", "minimum": 1 },
-        "timeout": { "type": "integer" }
+        "enabled": {
+          "type": "boolean"
+        },
+        "max_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "timeout": {
+          "type": "integer"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -31,10 +51,19 @@
     },
     "CacheConfig": {
       "properties": {
-        "enabled": { "type": "boolean" },
-        "type": { "type": "string", "enum": ["redis", "memory", "noop"] },
-        "redis": { "$ref": "#/$defs/RedisCacheConfig" },
-        "memory": { "$ref": "#/$defs/MemoryCacheConfig" }
+        "enabled": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["redis", "memory", "noop"]
+        },
+        "redis": {
+          "$ref": "#/$defs/RedisCacheConfig"
+        },
+        "memory": {
+          "$ref": "#/$defs/MemoryCacheConfig"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -42,33 +71,69 @@
     },
     "CircuitBreakerConfig": {
       "properties": {
-        "enabled": { "type": "boolean" },
-        "threshold": { "type": "integer", "minimum": 1 },
-        "timeout": { "type": "integer" },
-        "max_concurrent": { "type": "integer", "minimum": 1 }
+        "enabled": {
+          "type": "boolean"
+        },
+        "threshold": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "timeout": {
+          "type": "integer"
+        },
+        "max_concurrent": {
+          "type": "integer",
+          "minimum": 1
+        }
       },
       "additionalProperties": false,
       "type": "object",
       "required": ["enabled", "threshold", "timeout", "max_concurrent"]
     },
     "DatabaseConfig": {
-      "properties": { "postgres": { "$ref": "#/$defs/PostgresConfig" } },
+      "properties": {
+        "postgres": {
+          "$ref": "#/$defs/PostgresConfig"
+        }
+      },
       "additionalProperties": false,
       "type": "object",
       "required": ["postgres"]
     },
     "EmbeddingConfig": {
       "properties": {
-        "base_url": { "type": "string", "format": "uri" },
-        "api_key": { "type": "string" },
-        "timeout": { "type": "integer" },
-        "validate_on_startup": { "type": "boolean" },
-        "expected_model": { "type": "string" },
-        "expected_dimension": { "type": "integer", "minimum": 1 },
-        "retry": { "$ref": "#/$defs/RetryConfig" },
-        "cache": { "$ref": "#/$defs/CacheConfig" },
-        "batch": { "$ref": "#/$defs/BatchConfig" },
-        "circuit_breaker": { "$ref": "#/$defs/CircuitBreakerConfig" }
+        "base_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "api_key": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "integer"
+        },
+        "validate_on_startup": {
+          "type": "boolean"
+        },
+        "expected_model": {
+          "type": "string"
+        },
+        "expected_dimension": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "retry": {
+          "$ref": "#/$defs/RetryConfig"
+        },
+        "cache": {
+          "$ref": "#/$defs/CacheConfig"
+        },
+        "batch": {
+          "$ref": "#/$defs/BatchConfig"
+        },
+        "circuit_breaker": {
+          "$ref": "#/$defs/CircuitBreakerConfig"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -85,32 +150,54 @@
       ]
     },
     "GatewayConfig": {
-      "properties": { "kong": { "$ref": "#/$defs/KongConfig" } },
+      "properties": {
+        "kong": {
+          "$ref": "#/$defs/KongConfig"
+        }
+      },
       "additionalProperties": false,
       "type": "object",
       "required": ["kong"]
     },
     "GrafanaConfig": {
       "properties": {
-        "port": { "type": "integer", "maximum": 65535, "minimum": 1 },
-        "admin_user": { "type": "string" },
-        "admin_password": { "type": "string" }
+        "port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
+        "admin_user": {
+          "type": "string"
+        },
+        "admin_password": {
+          "type": "string"
+        }
       },
       "additionalProperties": false,
       "type": "object",
       "required": ["port", "admin_user"]
     },
     "InferenceConfig": {
-      "properties": { "vllm": { "$ref": "#/$defs/VLLMConfig" } },
+      "properties": {
+        "vllm": {
+          "$ref": "#/$defs/VLLMConfig"
+        }
+      },
       "additionalProperties": false,
       "type": "object",
       "required": ["vllm"]
     },
     "InfrastructureConfig": {
       "properties": {
-        "database": { "$ref": "#/$defs/DatabaseConfig" },
-        "auth": { "$ref": "#/$defs/AuthConfig" },
-        "gateway": { "$ref": "#/$defs/GatewayConfig" }
+        "database": {
+          "$ref": "#/$defs/DatabaseConfig"
+        },
+        "auth": {
+          "$ref": "#/$defs/AuthConfig"
+        },
+        "gateway": {
+          "$ref": "#/$defs/GatewayConfig"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -118,7 +205,11 @@
     },
     "JaegerConfig": {
       "properties": {
-        "ui_port": { "type": "integer", "maximum": 65535, "minimum": 1 }
+        "ui_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -126,26 +217,77 @@
     },
     "KeycloakConfig": {
       "properties": {
-        "base_url": { "type": "string", "format": "uri" },
-        "public_url": { "type": "string", "format": "uri" },
-        "realm": { "type": "string" },
-        "http_port": { "type": "integer", "maximum": 65535, "minimum": 1 },
-        "admin_user": { "type": "string" },
-        "admin_password": { "type": "string" },
-        "admin_realm": { "type": "string" },
-        "admin_client_id": { "type": "string" },
-        "backend_client_id": { "type": "string" },
-        "backend_client_secret": { "type": "string" },
-        "client": { "type": "string" },
-        "oauth_redirect_uri": { "type": "string", "format": "uri" },
-        "jwks_url": { "type": "string", "format": "uri" },
-        "oidc_discovery_url": { "type": "string", "format": "uri" },
-        "issuer": { "type": "string", "format": "uri" },
-        "account": { "type": "string" },
-        "refresh_jwks_interval": { "type": "integer" },
-        "auth_clock_skew": { "type": "integer" },
-        "guest_role": { "type": "string" },
-        "features": { "items": { "type": "string" }, "type": "array" }
+        "base_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "public_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "realm": {
+          "type": "string"
+        },
+        "http_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
+        "admin_user": {
+          "type": "string"
+        },
+        "admin_password": {
+          "type": "string"
+        },
+        "admin_realm": {
+          "type": "string"
+        },
+        "admin_client_id": {
+          "type": "string"
+        },
+        "backend_client_id": {
+          "type": "string"
+        },
+        "backend_client_secret": {
+          "type": "string"
+        },
+        "client": {
+          "type": "string"
+        },
+        "oauth_redirect_uri": {
+          "type": "string",
+          "format": "uri"
+        },
+        "jwks_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "oidc_discovery_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "issuer": {
+          "type": "string",
+          "format": "uri"
+        },
+        "account": {
+          "type": "string"
+        },
+        "refresh_jwks_interval": {
+          "type": "integer"
+        },
+        "auth_clock_skew": {
+          "type": "integer"
+        },
+        "guest_role": {
+          "type": "string"
+        },
+        "features": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -174,9 +316,20 @@
     },
     "KongConfig": {
       "properties": {
-        "http_port": { "type": "integer", "maximum": 65535, "minimum": 1 },
-        "admin_port": { "type": "integer", "maximum": 65535, "minimum": 1 },
-        "admin_url": { "type": "string", "format": "uri" },
+        "http_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
+        "admin_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
+        "admin_url": {
+          "type": "string",
+          "format": "uri"
+        },
         "log_level": {
           "type": "string",
           "enum": ["debug", "info", "warn", "error"]
@@ -188,24 +341,59 @@
     },
     "LLMAPIConfig": {
       "properties": {
-        "http_port": { "type": "integer", "maximum": 65535, "minimum": 1 },
-        "metrics_port": { "type": "integer", "maximum": 65535, "minimum": 1 },
+        "http_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
+        "metrics_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
         "log_level": {
           "type": "string",
           "enum": ["debug", "info", "warn", "error"]
         },
-        "log_format": { "type": "string", "enum": ["json", "console"] },
-        "auto_migrate": { "type": "boolean" },
-        "provider_config_file": { "type": "string" },
-        "provider_config_set": { "type": "string" },
-        "provider_configs_enabled": { "type": "boolean" },
-        "api_key": { "$ref": "#/$defs/APIKeyConfig" },
-        "model_provider_secret": { "type": "string" },
-        "model_sync_enabled": { "type": "boolean" },
-        "model_sync_interval_minutes": { "type": "integer", "minimum": 1 },
-        "prompt_orchestration": { "$ref": "#/$defs/PromptOrchestrationConfig" },
-        "media_resolve_url": { "type": "string", "format": "uri" },
-        "media_resolve_timeout": { "type": "integer" }
+        "log_format": {
+          "type": "string",
+          "enum": ["json", "console"]
+        },
+        "auto_migrate": {
+          "type": "boolean"
+        },
+        "provider_config_file": {
+          "type": "string"
+        },
+        "provider_config_set": {
+          "type": "string"
+        },
+        "provider_configs_enabled": {
+          "type": "boolean"
+        },
+        "api_key": {
+          "$ref": "#/$defs/APIKeyConfig"
+        },
+        "model_provider_secret": {
+          "type": "string"
+        },
+        "model_sync_enabled": {
+          "type": "boolean"
+        },
+        "model_sync_interval_minutes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "prompt_orchestration": {
+          "$ref": "#/$defs/PromptOrchestrationConfig"
+        },
+        "media_resolve_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "media_resolve_timeout": {
+          "type": "integer"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -228,32 +416,74 @@
     },
     "MCPToolsConfig": {
       "properties": {
-        "http_port": { "type": "integer", "maximum": 65535, "minimum": 1 },
+        "http_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
         "log_level": {
           "type": "string",
           "enum": ["debug", "info", "warn", "error"]
         },
-        "log_format": { "type": "string", "enum": ["json", "console"] },
+        "log_format": {
+          "type": "string",
+          "enum": ["json", "console"]
+        },
         "search_engine": {
           "type": "string",
           "enum": ["serper", "exa", "tavily", "searxng"]
         },
-        "serper_api_key": { "type": "string" },
-        "serper_enabled": { "type": "boolean" },
-        "exa_api_key": { "type": "string" },
-        "exa_enabled": { "type": "boolean" },
-        "exa_search_endpoint": { "type": "string" },
-        "exa_timeout": { "type": "integer" },
-        "tavily_api_key": { "type": "string" },
-        "tavily_enabled": { "type": "boolean" },
-        "tavily_search_endpoint": { "type": "string" },
-        "tavily_timeout": { "type": "integer" },
-        "searxng_url": { "type": "string", "format": "uri" },
-        "searxng_enabled": { "type": "boolean" },
-        "vector_store_url": { "type": "string", "format": "uri" },
-        "sandbox_fusion_url": { "type": "string", "format": "uri" },
-        "sandbox_require_approval": { "type": "boolean" },
-        "mcp_config_file": { "type": "string" }
+        "serper_api_key": {
+          "type": "string"
+        },
+        "serper_enabled": {
+          "type": "boolean"
+        },
+        "exa_api_key": {
+          "type": "string"
+        },
+        "exa_enabled": {
+          "type": "boolean"
+        },
+        "exa_search_endpoint": {
+          "type": "string"
+        },
+        "exa_timeout": {
+          "type": "integer"
+        },
+        "tavily_api_key": {
+          "type": "string"
+        },
+        "tavily_enabled": {
+          "type": "boolean"
+        },
+        "tavily_search_endpoint": {
+          "type": "string"
+        },
+        "tavily_timeout": {
+          "type": "integer"
+        },
+        "searxng_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "searxng_enabled": {
+          "type": "boolean"
+        },
+        "vector_store_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "sandbox_fusion_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "sandbox_require_approval": {
+          "type": "boolean"
+        },
+        "mcp_config_file": {
+          "type": "string"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -279,16 +509,32 @@
     },
     "MediaAPIConfig": {
       "properties": {
-        "http_port": { "type": "integer", "maximum": 65535, "minimum": 1 },
+        "http_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
         "log_level": {
           "type": "string",
           "enum": ["debug", "info", "warn", "error"]
         },
-        "max_upload_bytes": { "type": "integer", "minimum": 1 },
-        "retention_days": { "type": "integer", "minimum": 1 },
-        "proxy_download": { "type": "boolean" },
-        "remote_fetch_timeout": { "type": "integer" },
-        "s3": { "$ref": "#/$defs/S3Config" }
+        "max_upload_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "retention_days": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "proxy_download": {
+          "type": "boolean"
+        },
+        "remote_fetch_timeout": {
+          "type": "integer"
+        },
+        "s3": {
+          "$ref": "#/$defs/S3Config"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -304,8 +550,13 @@
     },
     "MemoryCacheConfig": {
       "properties": {
-        "max_size": { "type": "integer", "minimum": 1 },
-        "ttl": { "type": "integer" }
+        "max_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ttl": {
+          "type": "integer"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -313,9 +564,17 @@
     },
     "MemoryToolsConfig": {
       "properties": {
-        "enabled": { "type": "boolean" },
-        "http_port": { "type": "integer", "maximum": 65535, "minimum": 1 },
-        "embedding": { "$ref": "#/$defs/EmbeddingConfig" }
+        "enabled": {
+          "type": "boolean"
+        },
+        "http_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
+        "embedding": {
+          "$ref": "#/$defs/EmbeddingConfig"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -323,8 +582,12 @@
     },
     "MetaConfig": {
       "properties": {
-        "version": { "type": "string" },
-        "environment": { "type": "string" }
+        "version": {
+          "type": "string"
+        },
+        "environment": {
+          "type": "string"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -332,10 +595,18 @@
     },
     "MonitoringConfig": {
       "properties": {
-        "otel": { "$ref": "#/$defs/OTELConfig" },
-        "prometheus": { "$ref": "#/$defs/PrometheusConfig" },
-        "grafana": { "$ref": "#/$defs/GrafanaConfig" },
-        "jaeger": { "$ref": "#/$defs/JaegerConfig" }
+        "otel": {
+          "$ref": "#/$defs/OTELConfig"
+        },
+        "prometheus": {
+          "$ref": "#/$defs/PrometheusConfig"
+        },
+        "grafana": {
+          "$ref": "#/$defs/GrafanaConfig"
+        },
+        "jaeger": {
+          "$ref": "#/$defs/JaegerConfig"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -343,20 +614,50 @@
     },
     "OTELConfig": {
       "properties": {
-        "enabled": { "type": "boolean" },
-        "tracing_enabled": { "type": "boolean" },
-        "service_name": { "type": "string" },
-        "service_version": { "type": "string" },
-        "endpoint": { "type": "string", "format": "uri" },
+        "enabled": {
+          "type": "boolean"
+        },
+        "tracing_enabled": {
+          "type": "boolean"
+        },
+        "service_name": {
+          "type": "string"
+        },
+        "service_version": {
+          "type": "string"
+        },
+        "endpoint": {
+          "type": "string",
+          "format": "uri"
+        },
         "headers": {
-          "additionalProperties": { "type": "string" },
+          "additionalProperties": {
+            "type": "string"
+          },
           "type": "object"
         },
-        "sampling_rate": { "type": "number", "maximum": 1, "minimum": 0 },
-        "pii_level": { "type": "string", "enum": ["none", "hashed", "full"] },
-        "metric_interval": { "type": "string" },
-        "http_port": { "type": "integer", "maximum": 65535, "minimum": 1 },
-        "grpc_port": { "type": "integer", "maximum": 65535, "minimum": 1 }
+        "sampling_rate": {
+          "type": "number",
+          "maximum": 1,
+          "minimum": 0
+        },
+        "pii_level": {
+          "type": "string",
+          "enum": ["none", "hashed", "full"]
+        },
+        "metric_interval": {
+          "type": "string"
+        },
+        "http_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
+        "grpc_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -375,19 +676,43 @@
     },
     "PostgresConfig": {
       "properties": {
-        "host": { "type": "string" },
-        "port": { "type": "integer", "maximum": 65535, "minimum": 1 },
-        "user": { "type": "string" },
-        "database": { "type": "string" },
-        "password": { "type": "string" },
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
+        "user": {
+          "type": "string"
+        },
+        "database": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        },
         "ssl_mode": {
           "type": "string",
           "enum": ["disable", "require", "verify-ca", "verify-full"]
         },
-        "max_connections": { "type": "integer", "maximum": 1000, "minimum": 1 },
-        "max_idle_conns": { "type": "integer", "minimum": 1 },
-        "max_open_conns": { "type": "integer", "minimum": 1 },
-        "conn_max_lifetime": { "type": "integer" }
+        "max_connections": {
+          "type": "integer",
+          "maximum": 1000,
+          "minimum": 1
+        },
+        "max_idle_conns": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_open_conns": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "conn_max_lifetime": {
+          "type": "integer"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -406,7 +731,11 @@
     },
     "PrometheusConfig": {
       "properties": {
-        "port": { "type": "integer", "maximum": 65535, "minimum": 1 }
+        "port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -414,10 +743,18 @@
     },
     "PromptOrchestrationConfig": {
       "properties": {
-        "enabled": { "type": "boolean" },
-        "enable_memory": { "type": "boolean" },
-        "enable_templates": { "type": "boolean" },
-        "enable_tools": { "type": "boolean" }
+        "enabled": {
+          "type": "boolean"
+        },
+        "enable_memory": {
+          "type": "boolean"
+        },
+        "enable_templates": {
+          "type": "boolean"
+        },
+        "enable_tools": {
+          "type": "boolean"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -430,9 +767,16 @@
     },
     "RedisCacheConfig": {
       "properties": {
-        "url": { "type": "string", "format": "uri" },
-        "key_prefix": { "type": "string" },
-        "ttl": { "type": "integer" }
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "key_prefix": {
+          "type": "string"
+        },
+        "ttl": {
+          "type": "integer"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -440,15 +784,31 @@
     },
     "ResponseAPIConfig": {
       "properties": {
-        "http_port": { "type": "integer", "maximum": 65535, "minimum": 1 },
+        "http_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
         "log_level": {
           "type": "string",
           "enum": ["debug", "info", "warn", "error"]
         },
-        "llm_api_url": { "type": "string", "format": "uri" },
-        "mcp_tools_url": { "type": "string", "format": "uri" },
-        "max_tool_depth": { "type": "integer", "maximum": 20, "minimum": 1 },
-        "tool_timeout": { "type": "integer" }
+        "llm_api_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "mcp_tools_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "max_tool_depth": {
+          "type": "integer",
+          "maximum": 20,
+          "minimum": 1
+        },
+        "tool_timeout": {
+          "type": "integer"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -463,10 +823,19 @@
     },
     "RetryConfig": {
       "properties": {
-        "enabled": { "type": "boolean" },
-        "max_attempts": { "type": "integer", "minimum": 1 },
-        "initial_backoff": { "type": "integer" },
-        "max_backoff": { "type": "integer" }
+        "enabled": {
+          "type": "boolean"
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "initial_backoff": {
+          "type": "integer"
+        },
+        "max_backoff": {
+          "type": "integer"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -474,14 +843,32 @@
     },
     "S3Config": {
       "properties": {
-        "endpoint": { "type": "string", "format": "uri" },
-        "public_endpoint": { "type": "string", "format": "uri" },
-        "region": { "type": "string" },
-        "bucket": { "type": "string" },
-        "access_key": { "type": "string" },
-        "secret_key": { "type": "string" },
-        "use_path_style": { "type": "boolean" },
-        "presign_ttl": { "type": "integer" }
+        "endpoint": {
+          "type": "string",
+          "format": "uri"
+        },
+        "public_endpoint": {
+          "type": "string",
+          "format": "uri"
+        },
+        "region": {
+          "type": "string"
+        },
+        "bucket": {
+          "type": "string"
+        },
+        "access_key": {
+          "type": "string"
+        },
+        "secret_key": {
+          "type": "string"
+        },
+        "use_path_style": {
+          "type": "boolean"
+        },
+        "presign_ttl": {
+          "type": "integer"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -496,11 +883,21 @@
     },
     "ServicesConfig": {
       "properties": {
-        "llm_api": { "$ref": "#/$defs/LLMAPIConfig" },
-        "mcp_tools": { "$ref": "#/$defs/MCPToolsConfig" },
-        "media_api": { "$ref": "#/$defs/MediaAPIConfig" },
-        "response_api": { "$ref": "#/$defs/ResponseAPIConfig" },
-        "memory_tools": { "$ref": "#/$defs/MemoryToolsConfig" }
+        "llm_api": {
+          "$ref": "#/$defs/LLMAPIConfig"
+        },
+        "mcp_tools": {
+          "$ref": "#/$defs/MCPToolsConfig"
+        },
+        "media_api": {
+          "$ref": "#/$defs/MediaAPIConfig"
+        },
+        "response_api": {
+          "$ref": "#/$defs/ResponseAPIConfig"
+        },
+        "memory_tools": {
+          "$ref": "#/$defs/MemoryToolsConfig"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -514,13 +911,31 @@
     },
     "VLLMConfig": {
       "properties": {
-        "enabled": { "type": "boolean" },
-        "port": { "type": "integer", "maximum": 65535, "minimum": 1 },
-        "model": { "type": "string" },
-        "served_name": { "type": "string" },
-        "gpu_utilization": { "type": "number", "maximum": 1, "minimum": 0 },
-        "internal_key": { "type": "string" },
-        "hf_token": { "type": "string" }
+        "enabled": {
+          "type": "boolean"
+        },
+        "port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
+        "model": {
+          "type": "string"
+        },
+        "served_name": {
+          "type": "string"
+        },
+        "gpu_utilization": {
+          "type": "number",
+          "maximum": 1,
+          "minimum": 0
+        },
+        "internal_key": {
+          "type": "string"
+        },
+        "hf_token": {
+          "type": "string"
+        }
       },
       "additionalProperties": false,
       "type": "object",
@@ -528,11 +943,21 @@
     }
   },
   "properties": {
-    "meta": { "$ref": "#/$defs/MetaConfig" },
-    "infrastructure": { "$ref": "#/$defs/InfrastructureConfig" },
-    "services": { "$ref": "#/$defs/ServicesConfig" },
-    "inference": { "$ref": "#/$defs/InferenceConfig" },
-    "monitoring": { "$ref": "#/$defs/MonitoringConfig" }
+    "meta": {
+      "$ref": "#/$defs/MetaConfig"
+    },
+    "infrastructure": {
+      "$ref": "#/$defs/InfrastructureConfig"
+    },
+    "services": {
+      "$ref": "#/$defs/ServicesConfig"
+    },
+    "inference": {
+      "$ref": "#/$defs/InferenceConfig"
+    },
+    "monitoring": {
+      "$ref": "#/$defs/MonitoringConfig"
+    }
   },
   "additionalProperties": false,
   "type": "object",

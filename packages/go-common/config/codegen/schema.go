@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -61,7 +62,17 @@ func writeSchemaFile(path string, schema *jsonschema.Schema) error {
 		return fmt.Errorf("marshal schema: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	// Format JSON with proper indentation
+	var indented []byte
+	indented, err = json.MarshalIndent(json.RawMessage(data), "", "  ")
+	if err != nil {
+		return fmt.Errorf("format JSON: %w", err)
+	}
+
+	// Add newline at end of file
+	indented = append(indented, '\n')
+
+	if err := os.WriteFile(path, indented, 0644); err != nil {
 		return fmt.Errorf("write file: %w", err)
 	}
 
