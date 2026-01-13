@@ -47,6 +47,7 @@ import {
 import { Button } from "@janhq/interfaces/button";
 import { twMerge } from "tailwind-merge";
 import { cn } from "@/lib/utils";
+import AgentExecution from "./agent-execution";
 
 export type MessageItemProps = {
   message: UIMessage;
@@ -233,7 +234,12 @@ export const MessageItem = memo(
             {message.role === MESSAGE_ROLE.USER ? (
               renderUserTextWithCodeBlocks(displayText)
             ) : (
-              <MessageResponse>{normalizeLatex(part.text)}</MessageResponse>
+              <>
+                <MessageResponse>{normalizeLatex(part.text)}</MessageResponse>
+                <div className="mt-4">
+                  <AgentExecution />
+                </div>
+              </>
             )}
           </MessageContent>
 
