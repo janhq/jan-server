@@ -31,7 +31,7 @@ const dummy: Plan[] = [
       "Research and gather information on AI's impact on the future of work",
     description:
       "I'm gathering key research on AI's impact on jobs, focusing on automation, displacement, new roles, and reskilling to prepare an engaging, well-structured presentation.",
-    status: "active",
+    status: "complete",
     items: [
       {
         name: "Search",
@@ -205,7 +205,7 @@ const AgentExecutionDemo = () => {
 
   const handleStepClick = (
     stepIndex: number,
-    allPlanSteps: StepWithResults[],
+    allPlanSteps: StepWithResults[]
   ) => {
     setAllSteps(allPlanSteps);
     setCurrentStep(stepIndex);
