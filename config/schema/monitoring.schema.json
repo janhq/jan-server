@@ -18,7 +18,10 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["port", "admin_user"]
+      "required": [
+        "port",
+        "admin_user"
+      ]
     },
     "JaegerConfig": {
       "properties": {
@@ -30,7 +33,9 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["ui_port"]
+      "required": [
+        "ui_port"
+      ]
     },
     "OTELConfig": {
       "properties": {
@@ -63,7 +68,11 @@
         },
         "pii_level": {
           "type": "string",
-          "enum": ["none", "hashed", "full"]
+          "enum": [
+            "none",
+            "hashed",
+            "full"
+          ]
         },
         "metric_interval": {
           "type": "string"
@@ -104,7 +113,9 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["port"]
+      "required": [
+        "port"
+      ]
     }
   },
   "properties": {
@@ -123,5 +134,10 @@
   },
   "additionalProperties": false,
   "type": "object",
-  "required": ["otel", "prometheus", "grafana", "jaeger"]
+  "required": [
+    "otel",
+    "prometheus",
+    "grafana",
+    "jaeger"
+  ]
 }

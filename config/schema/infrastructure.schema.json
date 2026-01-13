@@ -10,7 +10,9 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["keycloak"]
+      "required": [
+        "keycloak"
+      ]
     },
     "DatabaseConfig": {
       "properties": {
@@ -20,7 +22,9 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["postgres"]
+      "required": [
+        "postgres"
+      ]
     },
     "GatewayConfig": {
       "properties": {
@@ -30,7 +34,9 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["kong"]
+      "required": [
+        "kong"
+      ]
     },
     "KeycloakConfig": {
       "properties": {
@@ -149,12 +155,22 @@
         },
         "log_level": {
           "type": "string",
-          "enum": ["debug", "info", "warn", "error"]
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ]
         }
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["http_port", "admin_port", "admin_url", "log_level"]
+      "required": [
+        "http_port",
+        "admin_port",
+        "admin_url",
+        "log_level"
+      ]
     },
     "PostgresConfig": {
       "properties": {
@@ -177,7 +193,12 @@
         },
         "ssl_mode": {
           "type": "string",
-          "enum": ["disable", "require", "verify-ca", "verify-full"]
+          "enum": [
+            "disable",
+            "require",
+            "verify-ca",
+            "verify-full"
+          ]
         },
         "max_connections": {
           "type": "integer",
@@ -225,5 +246,9 @@
   },
   "additionalProperties": false,
   "type": "object",
-  "required": ["database", "auth", "gateway"]
+  "required": [
+    "database",
+    "auth",
+    "gateway"
+  ]
 }

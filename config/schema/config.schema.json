@@ -20,7 +20,12 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["prefix", "default_ttl", "max_ttl", "max_per_user"]
+      "required": [
+        "prefix",
+        "default_ttl",
+        "max_ttl",
+        "max_per_user"
+      ]
     },
     "AuthConfig": {
       "properties": {
@@ -30,7 +35,9 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["keycloak"]
+      "required": [
+        "keycloak"
+      ]
     },
     "BatchConfig": {
       "properties": {
@@ -47,7 +54,11 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["enabled", "max_size", "timeout"]
+      "required": [
+        "enabled",
+        "max_size",
+        "timeout"
+      ]
     },
     "CacheConfig": {
       "properties": {
@@ -56,7 +67,11 @@
         },
         "type": {
           "type": "string",
-          "enum": ["redis", "memory", "noop"]
+          "enum": [
+            "redis",
+            "memory",
+            "noop"
+          ]
         },
         "redis": {
           "$ref": "#/$defs/RedisCacheConfig"
@@ -67,7 +82,12 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["enabled", "type", "redis", "memory"]
+      "required": [
+        "enabled",
+        "type",
+        "redis",
+        "memory"
+      ]
     },
     "CircuitBreakerConfig": {
       "properties": {
@@ -88,7 +108,12 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["enabled", "threshold", "timeout", "max_concurrent"]
+      "required": [
+        "enabled",
+        "threshold",
+        "timeout",
+        "max_concurrent"
+      ]
     },
     "DatabaseConfig": {
       "properties": {
@@ -98,7 +123,9 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["postgres"]
+      "required": [
+        "postgres"
+      ]
     },
     "EmbeddingConfig": {
       "properties": {
@@ -157,7 +184,9 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["kong"]
+      "required": [
+        "kong"
+      ]
     },
     "GrafanaConfig": {
       "properties": {
@@ -175,7 +204,10 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["port", "admin_user"]
+      "required": [
+        "port",
+        "admin_user"
+      ]
     },
     "InferenceConfig": {
       "properties": {
@@ -185,7 +217,9 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["vllm"]
+      "required": [
+        "vllm"
+      ]
     },
     "InfrastructureConfig": {
       "properties": {
@@ -201,7 +235,11 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["database", "auth", "gateway"]
+      "required": [
+        "database",
+        "auth",
+        "gateway"
+      ]
     },
     "JaegerConfig": {
       "properties": {
@@ -213,7 +251,9 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["ui_port"]
+      "required": [
+        "ui_port"
+      ]
     },
     "KeycloakConfig": {
       "properties": {
@@ -332,12 +372,22 @@
         },
         "log_level": {
           "type": "string",
-          "enum": ["debug", "info", "warn", "error"]
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ]
         }
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["http_port", "admin_port", "admin_url", "log_level"]
+      "required": [
+        "http_port",
+        "admin_port",
+        "admin_url",
+        "log_level"
+      ]
     },
     "LLMAPIConfig": {
       "properties": {
@@ -353,11 +403,19 @@
         },
         "log_level": {
           "type": "string",
-          "enum": ["debug", "info", "warn", "error"]
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ]
         },
         "log_format": {
           "type": "string",
-          "enum": ["json", "console"]
+          "enum": [
+            "json",
+            "console"
+          ]
         },
         "auto_migrate": {
           "type": "boolean"
@@ -423,15 +481,28 @@
         },
         "log_level": {
           "type": "string",
-          "enum": ["debug", "info", "warn", "error"]
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ]
         },
         "log_format": {
           "type": "string",
-          "enum": ["json", "console"]
+          "enum": [
+            "json",
+            "console"
+          ]
         },
         "search_engine": {
           "type": "string",
-          "enum": ["serper", "exa", "tavily", "searxng"]
+          "enum": [
+            "serper",
+            "exa",
+            "tavily",
+            "searxng"
+          ]
         },
         "serper_api_key": {
           "type": "string"
@@ -516,7 +587,12 @@
         },
         "log_level": {
           "type": "string",
-          "enum": ["debug", "info", "warn", "error"]
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ]
         },
         "max_upload_bytes": {
           "type": "integer",
@@ -560,7 +636,10 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["max_size", "ttl"]
+      "required": [
+        "max_size",
+        "ttl"
+      ]
     },
     "MemoryToolsConfig": {
       "properties": {
@@ -578,7 +657,11 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["enabled", "http_port", "embedding"]
+      "required": [
+        "enabled",
+        "http_port",
+        "embedding"
+      ]
     },
     "MetaConfig": {
       "properties": {
@@ -591,7 +674,10 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["version", "environment"]
+      "required": [
+        "version",
+        "environment"
+      ]
     },
     "MonitoringConfig": {
       "properties": {
@@ -610,7 +696,12 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["otel", "prometheus", "grafana", "jaeger"]
+      "required": [
+        "otel",
+        "prometheus",
+        "grafana",
+        "jaeger"
+      ]
     },
     "OTELConfig": {
       "properties": {
@@ -643,7 +734,11 @@
         },
         "pii_level": {
           "type": "string",
-          "enum": ["none", "hashed", "full"]
+          "enum": [
+            "none",
+            "hashed",
+            "full"
+          ]
         },
         "metric_interval": {
           "type": "string"
@@ -695,7 +790,12 @@
         },
         "ssl_mode": {
           "type": "string",
-          "enum": ["disable", "require", "verify-ca", "verify-full"]
+          "enum": [
+            "disable",
+            "require",
+            "verify-ca",
+            "verify-full"
+          ]
         },
         "max_connections": {
           "type": "integer",
@@ -739,7 +839,9 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["port"]
+      "required": [
+        "port"
+      ]
     },
     "PromptOrchestrationConfig": {
       "properties": {
@@ -780,7 +882,11 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["url", "key_prefix", "ttl"]
+      "required": [
+        "url",
+        "key_prefix",
+        "ttl"
+      ]
     },
     "ResponseAPIConfig": {
       "properties": {
@@ -791,7 +897,12 @@
         },
         "log_level": {
           "type": "string",
-          "enum": ["debug", "info", "warn", "error"]
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ]
         },
         "llm_api_url": {
           "type": "string",
@@ -839,7 +950,12 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["enabled", "max_attempts", "initial_backoff", "max_backoff"]
+      "required": [
+        "enabled",
+        "max_attempts",
+        "initial_backoff",
+        "max_backoff"
+      ]
     },
     "S3Config": {
       "properties": {
@@ -939,7 +1055,13 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["enabled", "port", "model", "served_name", "gpu_utilization"]
+      "required": [
+        "enabled",
+        "port",
+        "model",
+        "served_name",
+        "gpu_utilization"
+      ]
     }
   },
   "properties": {
@@ -961,7 +1083,13 @@
   },
   "additionalProperties": false,
   "type": "object",
-  "required": ["meta", "infrastructure", "services", "inference", "monitoring"],
+  "required": [
+    "meta",
+    "infrastructure",
+    "services",
+    "inference",
+    "monitoring"
+  ],
   "title": "Jan Server Configuration",
   "description": "Complete configuration schema for Jan Server infrastructure and services"
 }

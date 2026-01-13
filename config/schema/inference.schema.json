@@ -32,7 +32,13 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "required": ["enabled", "port", "model", "served_name", "gpu_utilization"]
+      "required": [
+        "enabled",
+        "port",
+        "model",
+        "served_name",
+        "gpu_utilization"
+      ]
     }
   },
   "properties": {
@@ -42,5 +48,7 @@
   },
   "additionalProperties": false,
   "type": "object",
-  "required": ["vllm"]
+  "required": [
+    "vllm"
+  ]
 }
