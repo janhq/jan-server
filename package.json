@@ -46,11 +46,11 @@
     "vite": "npm:rolldown-vite@7.2.5"
   },
   "lint-staged": {
-    "*.{js,jsx,ts,tsx}": [
+    "apps/**/*.{js,jsx,ts,tsx}": [
       "eslint --fix",
       "prettier --write"
     ],
-    "*.{json,md}": [
+    "apps/**/*.{json,md}": [
       "prettier --write"
     ]
   }

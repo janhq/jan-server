@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"jan-server/services/response-api/internal/domain/plan"
@@ -192,9 +193,28 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 		return nil, err
 	}
 
+	// Get the previous step's output (if any) to pass as context
+	var previousOutput json.RawMessage
+	if step.Sequence > 1 {
+		// Find the previous step in the same task
+		for _, s := range task.Steps {
+			if s.Sequence == step.Sequence-1 && s.Status == status.StatusCompleted {
+				previousOutput = s.OutputData
+				break
+			}
+		}
+	}
+
+	// Preserve planned params before execution
+	// PlannedParams should already be set during step creation, but ensure it's set
+	if len(step.PlannedParams) == 0 && len(step.InputParams) > 0 {
+		step.PlannedParams = step.InputParams
+	}
+
 	// Prepare input
 	input := ExecutionInput{
-		StepParams: step.InputParams,
+		StepParams:     step.GetEffectiveParams(),
+		PreviousOutput: previousOutput,
 		PlanContext: &PlanContext{
 			PlanID:         p.ID,
 			TaskID:         task.ID,
@@ -216,6 +236,15 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 				Severity: status.ErrorSeverityRetryable,
 			}
 		}
+
+		// Create error output for the step (Fix 2: always capture output)
+		errorOutput := &plan.StepOutput{
+			Status:    "failed",
+			Type:      "error",
+			Error:     execErr.Message,
+			CreatedAt: time.Now(),
+		}
+		step.SetOutputData(errorOutput)
 
 		if err := o.planService.FailStep(ctx, step.ID, execErr.Message, execErr.Severity); err != nil {
 			return nil, err
@@ -243,9 +272,73 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 		}, nil
 	}
 
-	// Step completed successfully
+	// Handle failed result with error (when err is nil but result indicates failure)
+	if result.Status == status.StatusFailed && result.Error != nil {
+		execErr := result.Error
+
+		// Set error output for the step
+		errorOutput := &plan.StepOutput{
+			Status:    "failed",
+			Type:      "error",
+			Error:     execErr.Message,
+			CreatedAt: time.Now(),
+		}
+		step.SetOutputData(errorOutput)
+
+		if err := o.planService.FailStep(ctx, step.ID, execErr.Message, execErr.Severity); err != nil {
+			return nil, err
+		}
+
+		// Handle based on severity - retry if retryable and step can retry
+		if execErr.Severity == status.ErrorSeverityRetryable && step.CanRetry() {
+			_, retryErr := o.planService.RetryStep(ctx, step.ID)
+			if retryErr != nil {
+				return nil, retryErr
+			}
+			return o.ExecuteNextStep(ctx, p.ID) // Retry immediately
+		}
+
+		if execErr.IsFatal() {
+			errMsg := execErr.Message
+			if err := o.planService.UpdateStatus(ctx, p.ID, status.StatusFailed, &errMsg); err != nil {
+				return nil, err
+			}
+		}
+
+		return &ExecutionResult{
+			Status: status.StatusFailed,
+			Output: result.Output,
+			Error:  execErr,
+		}, nil
+	}
+
+	// Step completed successfully - but verify output doesn't indicate failure
 	if result.Status == status.StatusCompleted {
-		if err := o.planService.CompleteStep(ctx, step.ID, result.Output); err != nil {
+		outputBytes := result.Output
+		if len(outputBytes) == 0 {
+			// Create a minimal output if none provided
+			minimalOutput := &plan.StepOutput{
+				Status:    "completed",
+				Type:      string(step.Action),
+				CreatedAt: time.Now(),
+			}
+			outputBytes, _ = json.Marshal(minimalOutput)
+		}
+
+		// Check if the output actually indicates a failure (e.g., tool execution error)
+		if isOutputIndicatingFailure(outputBytes) {
+			errMsg := extractErrorFromOutput(outputBytes)
+			if err := o.planService.FailStep(ctx, step.ID, errMsg, status.ErrorSeverityRetryable); err != nil {
+				return nil, err
+			}
+			return &ExecutionResult{
+				Status: status.StatusFailed,
+				Output: outputBytes,
+				Error:  &ExecutionError{Code: "output_indicates_failure", Message: errMsg, Severity: status.ErrorSeverityRetryable},
+			}, nil
+		}
+
+		if err := o.planService.CompleteStep(ctx, step.ID, outputBytes); err != nil {
 			return nil, err
 		}
 
@@ -350,4 +443,163 @@ func (o *DefaultOrchestrator) GetStatus(ctx context.Context, planID string) (*Or
 	}
 
 	return orchestratorStatus, nil
+}
+
+// isOutputIndicatingFailure checks if the execution output contains error indicators.
+func isOutputIndicatingFailure(output []byte) bool {
+	if len(output) == 0 {
+		return false
+	}
+
+	var outputMap map[string]interface{}
+	if err := json.Unmarshal(output, &outputMap); err != nil {
+		return false
+	}
+
+	// Check for is_error field (MCP tool result format)
+	if isError, ok := outputMap["is_error"].(bool); ok && isError {
+		return true
+	}
+
+	// Check for status field indicating failure
+	if statusStr, ok := outputMap["status"].(string); ok {
+		if statusStr == "failed" || statusStr == "error" {
+			return true
+		}
+	}
+
+	// Check nested result for is_error
+	if result, ok := outputMap["result"].(map[string]interface{}); ok {
+		if isError, ok := result["is_error"].(bool); ok && isError {
+			return true
+		}
+
+		// Check for error in content text (code execution results)
+		if hasErrorInResultContent(result) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// hasErrorInResultContent checks if result content contains error indicators.
+func hasErrorInResultContent(result map[string]interface{}) bool {
+	content, ok := result["content"].([]interface{})
+	if !ok {
+		return false
+	}
+
+	for _, c := range content {
+		cMap, ok := c.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		text, ok := cMap["text"].(string)
+		if !ok || text == "" {
+			continue
+		}
+
+		// Try to parse the text as JSON (code execution returns nested JSON)
+		var nestedResult map[string]interface{}
+		if err := json.Unmarshal([]byte(text), &nestedResult); err == nil {
+			// Check for error_details in the nested result
+			if errorDetails, ok := nestedResult["error_details"].(map[string]interface{}); ok {
+				if errorName, ok := errorDetails["error_name"].(string); ok && errorName != "" {
+					return true
+				}
+			}
+
+			// Check for success=false in nested result
+			if success, ok := nestedResult["success"].(bool); ok && !success {
+				return true
+			}
+
+			// Check for error field in nested result
+			if errStr, ok := nestedResult["error"].(string); ok && errStr != "" {
+				return true
+			}
+		}
+
+		// Check for Python error patterns in raw text
+		if containsCodeError(text) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// containsCodeError checks for common Python/code error patterns.
+func containsCodeError(text string) bool {
+	errorPatterns := []string{
+		"ModuleNotFoundError",
+		"ImportError",
+		"SyntaxError",
+		"NameError",
+		"TypeError",
+		"ValueError",
+		"AttributeError",
+		"KeyError",
+		"IndexError",
+		"ZeroDivisionError",
+		"FileNotFoundError",
+		"PermissionError",
+		"RuntimeError",
+		"RecursionError",
+		"MemoryError",
+		"Traceback (most recent call last)",
+	}
+
+	for _, pattern := range errorPatterns {
+		if strings.Contains(text, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// extractErrorFromOutput extracts the error message from execution output.
+func extractErrorFromOutput(output []byte) string {
+	if len(output) == 0 {
+		return "unknown error"
+	}
+
+	var outputMap map[string]interface{}
+	if err := json.Unmarshal(output, &outputMap); err != nil {
+		return "failed to parse output"
+	}
+
+	// Check for error field
+	if errStr, ok := outputMap["error"].(string); ok && errStr != "" {
+		return errStr
+	}
+
+	// Check nested result for error content
+	if result, ok := outputMap["result"].(map[string]interface{}); ok {
+		if content, ok := result["content"].([]interface{}); ok {
+			for _, c := range content {
+				if cMap, ok := c.(map[string]interface{}); ok {
+					if text, ok := cMap["text"].(string); ok {
+						return text
+					}
+				}
+			}
+		}
+	}
+
+	// Check for content array directly
+	if content, ok := outputMap["content"].([]interface{}); ok {
+		for _, c := range content {
+			if cMap, ok := c.(map[string]interface{}); ok {
+				if text, ok := cMap["text"].(string); ok {
+					return text
+				}
+			}
+		}
+	}
+
+	return "execution failed"
 }

@@ -109,7 +109,9 @@ type Step struct {
 	Sequence      int                  `json:"sequence"`
 	Action        ActionType           `json:"action"`
 	Status        status.Status        `json:"status"`
-	InputParams   json.RawMessage      `json:"input_params,omitempty"`
+	PlannedParams json.RawMessage      `json:"planned_params,omitempty"` // Original planned parameters
+	ActualParams  json.RawMessage      `json:"actual_params,omitempty"`  // Actual execution parameters (may differ if agent changed tool)
+	InputParams   json.RawMessage      `json:"input_params,omitempty"`   // Deprecated: use PlannedParams
 	OutputData    json.RawMessage      `json:"output_data,omitempty"`
 	RetryCount    int                  `json:"retry_count"`
 	MaxRetries    int                  `json:"max_retries"`
@@ -220,4 +222,260 @@ func (p *Plan) IsCompleted() bool {
 // IsFailed returns true if the plan is in a failed state.
 func (p *Plan) IsFailed() bool {
 	return p.Status == status.StatusFailed
+}
+
+// StepOutput represents the structured output of a step execution.
+// Each step should have its own unique output, not shared across steps.
+type StepOutput struct {
+	Status     string          `json:"status"`
+	Type       string          `json:"type,omitempty"` // "llm_response", "tool_result", etc.
+	Content    string          `json:"content,omitempty"`
+	Result     json.RawMessage `json:"result,omitempty"`
+	Error      string          `json:"error,omitempty"`
+	ToolName   string          `json:"tool_name,omitempty"`
+	CallID     string          `json:"call_id,omitempty"`
+	CreatedAt  time.Time       `json:"created_at"`
+	TokensUsed *int            `json:"tokens_used,omitempty"`
+	Artifact   *MediaArtifact  `json:"artifact,omitempty"`
+}
+
+// MediaArtifact represents an artifact uploaded to media-api.
+// These are accessible files with jan_file_* IDs and download URLs.
+type MediaArtifact struct {
+	ID          string `json:"id"`   // jan_file_xxx format
+	Type        string `json:"type"` // code, image, document, etc.
+	Filename    string `json:"filename"`
+	DownloadURL string `json:"download_url"` // Pre-signed or permanent URL
+	Size        int64  `json:"size"`
+	ContentType string `json:"content_type"` // MIME type
+}
+
+// Citation represents a source citation from research steps.
+type Citation struct {
+	Title     string `json:"title"`
+	URL       string `json:"url"`
+	Snippet   string `json:"snippet,omitempty"`
+	FetchedAt string `json:"fetched_at,omitempty"`
+}
+
+// SetPlannedParams sets the planned parameters for a step.
+// This should be called when creating the step from the plan.
+func (s *Step) SetPlannedParams(params json.RawMessage) {
+	s.PlannedParams = params
+	// For backward compatibility, also set InputParams
+	s.InputParams = params
+}
+
+// SetActualParams sets the actual execution parameters.
+// This should be called when the agent decides to use different parameters.
+func (s *Step) SetActualParams(params json.RawMessage) {
+	s.ActualParams = params
+}
+
+// GetEffectiveParams returns the actual params if set, otherwise planned params.
+func (s *Step) GetEffectiveParams() json.RawMessage {
+	if len(s.ActualParams) > 0 {
+		return s.ActualParams
+	}
+	if len(s.PlannedParams) > 0 {
+		return s.PlannedParams
+	}
+	return s.InputParams
+}
+
+// HasOutputData returns true if the step has output data set.
+func (s *Step) HasOutputData() bool {
+	return len(s.OutputData) > 0 && string(s.OutputData) != "null"
+}
+
+// SetOutputData sets the output data from a StepOutput struct.
+func (s *Step) SetOutputData(output *StepOutput) error {
+	if output == nil {
+		return nil
+	}
+	data, err := json.Marshal(output)
+	if err != nil {
+		return err
+	}
+	s.OutputData = data
+	return nil
+}
+
+// GetStepOutput parses and returns the step output.
+func (s *Step) GetStepOutput() (*StepOutput, error) {
+	if !s.HasOutputData() {
+		return nil, nil
+	}
+	var output StepOutput
+	if err := json.Unmarshal(s.OutputData, &output); err != nil {
+		return nil, err
+	}
+	return &output, nil
+}
+
+// ValidateCompletedStep checks that a completed step has all required data.
+// Returns an error if the step is completed but missing output_data.
+func (s *Step) ValidateCompletedStep() error {
+	if s.Status == status.StatusCompleted && !s.HasOutputData() {
+		return &ValidationError{
+			StepID:  s.ID,
+			Message: "completed step must have output_data",
+		}
+	}
+	return nil
+}
+
+// ValidationError represents a validation error for plan/step data.
+type ValidationError struct {
+	StepID  string `json:"step_id,omitempty"`
+	TaskID  string `json:"task_id,omitempty"`
+	PlanID  string `json:"plan_id,omitempty"`
+	Message string `json:"message"`
+}
+
+func (e *ValidationError) Error() string {
+	if e.StepID != "" {
+		return "step " + e.StepID + ": " + e.Message
+	}
+	if e.TaskID != "" {
+		return "task " + e.TaskID + ": " + e.Message
+	}
+	if e.PlanID != "" {
+		return "plan " + e.PlanID + ": " + e.Message
+	}
+	return e.Message
+}
+
+// Validate validates the entire plan including all tasks and steps.
+func (p *Plan) Validate() error {
+	for _, task := range p.Tasks {
+		for _, step := range task.Steps {
+			if err := step.ValidateCompletedStep(); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// ExtractCitations extracts all citations from search tool results in the plan.
+func (p *Plan) ExtractCitations() []Citation {
+	citations := make([]Citation, 0)
+	seen := make(map[string]bool)
+
+	for _, task := range p.Tasks {
+		for _, step := range task.Steps {
+			stepCitations := step.extractCitationsFromOutput()
+			for _, c := range stepCitations {
+				if !seen[c.URL] {
+					seen[c.URL] = true
+					citations = append(citations, c)
+				}
+			}
+		}
+	}
+
+	return citations
+}
+
+// extractCitationsFromOutput extracts citations from a step's output data.
+func (s *Step) extractCitationsFromOutput() []Citation {
+	citations := make([]Citation, 0)
+	if !s.HasOutputData() {
+		return citations
+	}
+
+	// Try to parse as StepOutput with result containing search results
+	var output StepOutput
+	if err := json.Unmarshal(s.OutputData, &output); err != nil {
+		return citations
+	}
+
+	// Check if this is a search tool result
+	if output.ToolName == "" || output.Result == nil {
+		return citations
+	}
+
+	return append(citations, extractSearchCitations(output.Result)...)
+}
+
+func extractSearchCitations(raw json.RawMessage) []Citation {
+	citations := make([]Citation, 0)
+
+	// Try direct search result structure.
+	var searchResult struct {
+		Citations []string `json:"citations"`
+		Results   []struct {
+			Title     string `json:"title"`
+			URL       string `json:"url"`
+			SourceURL string `json:"source_url"`
+			Snippet   string `json:"snippet"`
+			FetchedAt string `json:"fetched_at"`
+		} `json:"results"`
+	}
+
+	if err := json.Unmarshal(raw, &searchResult); err == nil {
+		for _, r := range searchResult.Results {
+			url := r.URL
+			if url == "" {
+				url = r.SourceURL
+			}
+			if url != "" {
+				citations = append(citations, Citation{
+					Title:     r.Title,
+					URL:       url,
+					Snippet:   r.Snippet,
+					FetchedAt: r.FetchedAt,
+				})
+			}
+		}
+		if len(citations) > 0 {
+			return citations
+		}
+	}
+
+	// Fallback: MCP tool results embed JSON in content.text.
+	var mcpResult struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(raw, &mcpResult); err != nil {
+		return citations
+	}
+
+	for _, content := range mcpResult.Content {
+		if content.Type != "text" || content.Text == "" {
+			continue
+		}
+		var nested json.RawMessage
+		if err := json.Unmarshal([]byte(content.Text), &nested); err != nil {
+			continue
+		}
+		citations = append(citations, extractSearchCitations(nested)...)
+	}
+
+	return citations
+}
+
+// ExtractArtifacts extracts all artifacts from step outputs in the plan.
+func (p *Plan) ExtractArtifacts() []MediaArtifact {
+	artifacts := make([]MediaArtifact, 0)
+	seen := make(map[string]bool)
+
+	for _, task := range p.Tasks {
+		for _, step := range task.Steps {
+			output, err := step.GetStepOutput()
+			if err != nil || output == nil || output.Artifact == nil {
+				continue
+			}
+			if !seen[output.Artifact.ID] {
+				seen[output.Artifact.ID] = true
+				artifacts = append(artifacts, *output.Artifact)
+			}
+		}
+	}
+
+	return artifacts
 }

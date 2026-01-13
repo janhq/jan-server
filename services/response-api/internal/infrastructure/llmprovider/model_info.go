@@ -21,10 +21,9 @@ func (c *Client) GetModelInfo(ctx context.Context, modelID string) (*llm.ModelIn
 		SetContext(ctx).
 		SetResult(&resp)
 
-	if token := llm.AuthTokenFromContext(ctx); token != "" {
-		// Token already includes "Bearer " prefix from original Authorization header
-		request.SetHeader("Authorization", token)
-	}
+	setAuthHeaders(ctx, func(key, value string) {
+		request.SetHeader(key, value)
+	})
 
 	httpResp, err := request.Get(fmt.Sprintf("/v1/models/catalogs/%s", modelID))
 	if err != nil {

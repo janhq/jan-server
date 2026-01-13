@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"jan-server/services/response-api/internal/domain/llm"
+	"jan-server/services/response-api/internal/domain/plan"
 	"jan-server/services/response-api/internal/domain/tool"
 )
 
@@ -48,6 +49,12 @@ type Response struct {
 	CompletedAt          *time.Time             `json:"completed_at,omitempty"`
 	CancelledAt          *time.Time             `json:"cancelled_at,omitempty"`
 	FailedAt             *time.Time             `json:"failed_at,omitempty"`
+
+	// Artifacts extracted from plan execution (uploaded to media-api)
+	Artifacts []plan.MediaArtifact `json:"artifacts,omitempty"`
+
+	// Citations extracted from research/search steps
+	Citations []plan.Citation `json:"citations,omitempty"`
 }
 
 // ErrorDetails contains machine readable error info surfaced to clients.

@@ -38,10 +38,14 @@ type Config struct {
 	// External Services
 	LLMAPIURL   string `env:"RESPONSE_LLM_API_URL" envDefault:"http://localhost:8080"`
 	MCPToolsURL string `env:"RESPONSE_MCP_TOOLS_URL" envDefault:"http://localhost:8091"`
+	MediaAPIURL string `env:"RESPONSE_MEDIA_API_URL" envDefault:"http://media-api:8285"`
 
 	// Tool Execution
 	MaxToolDepth int           `env:"RESPONSE_MAX_TOOL_DEPTH" envDefault:"50"`
 	ToolTimeout  time.Duration `env:"TOOL_EXECUTION_TIMEOUT" envDefault:"300s"`
+
+	// Code Execution Retry
+	CodeFixModel string `env:"CODE_FIX_MODEL" envDefault:"gpt-4o-mini"`
 
 	// Background Task Processing
 	BackgroundWorkerCount  int           `env:"BACKGROUND_WORKER_COUNT" envDefault:"4"`

@@ -15,6 +15,7 @@ import (
 	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/agent/planners"
 	"jan-server/services/response-api/internal/domain/artifact"
+	"jan-server/services/response-api/internal/domain/llm"
 	"jan-server/services/response-api/internal/domain/plan"
 	"jan-server/services/response-api/internal/domain/response"
 	"jan-server/services/response-api/internal/domain/tool"
@@ -22,6 +23,7 @@ import (
 	"jan-server/services/response-api/internal/infrastructure/database"
 	"jan-server/services/response-api/internal/infrastructure/llmprovider"
 	"jan-server/services/response-api/internal/infrastructure/logger"
+	"jan-server/services/response-api/internal/infrastructure/media"
 	"jan-server/services/response-api/internal/infrastructure/mcp"
 	"jan-server/services/response-api/internal/infrastructure/observability"
 	"jan-server/services/response-api/internal/infrastructure/queue"
@@ -111,6 +113,7 @@ func main() {
 	artifactRepository := artifactrepo.NewPostgresRepository(db)
 	llmClient := llmprovider.NewClient(cfg.LLMAPIURL)
 	mcpClient := mcp.NewClient(cfg.MCPToolsURL)
+	mediaClient := media.NewClient(cfg.MediaAPIURL)
 	orchestrator := tool.NewOrchestrator(llmClient, mcpClient, cfg.MaxToolDepth, cfg.ToolTimeout)
 
 	// Initialize webhook service
@@ -119,11 +122,38 @@ func main() {
 	// Initialize plan service first (needed for agent registry)
 	planService := plan.NewService(planRepository)
 
-	// Initialize agent registry with planners
+	// Initialize artifact service
+	artifactService := artifact.NewService(artifactRepository)
+
+	// Initialize agent registry with planners and executors
 	agentRegistry := agent.NewRegistry()
 	deepResearchPlanner := planners.NewDeepResearchPlanner(planService)
 	if err := agentRegistry.RegisterPlanner(deepResearchPlanner); err != nil {
 		log.Warn().Err(err).Msg("failed to register deep research planner")
+	}
+
+	// Register slide generator planner
+	slideGeneratorPlanner := planners.NewSlideGeneratorPlanner(planService, artifactService)
+	if err := agentRegistry.RegisterPlanner(slideGeneratorPlanner); err != nil {
+		log.Warn().Err(err).Msg("failed to register slide generator planner")
+	}
+
+	// Create code fixer for LLM-based code fix retry
+	codeFixer := llm.NewCodeFixer(llmClient, cfg.CodeFixModel)
+
+	// Register executor for tool calls and LLM calls
+	deepResearchExecutor := planners.NewDeepResearchExecutor(mcpClient, codeFixer)
+	if err := agentRegistry.RegisterExecutor(plan.ActionTypeToolCall, deepResearchExecutor); err != nil {
+		log.Warn().Err(err).Msg("failed to register tool call executor")
+	}
+	if err := agentRegistry.RegisterExecutor(plan.ActionTypeLLMCall, deepResearchExecutor); err != nil {
+		log.Warn().Err(err).Msg("failed to register llm call executor")
+	}
+
+	// Register slide generator executor for artifact creation
+	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService)
+	if err := agentRegistry.RegisterExecutor(plan.ActionTypeArtifactCreate, slideGeneratorExecutor); err != nil {
+		log.Warn().Err(err).Msg("failed to register artifact create executor")
 	}
 
 	// Initialize response service with webhook support
@@ -134,13 +164,13 @@ func main() {
 		responseRepository,
 		orchestrator,
 		mcpClient,
+		mediaClient,
 		llmClient, // Also implements ModelInfoProvider
 		webhookService,
 		agentRegistry,
 		planService,
 		log,
 	)
-	artifactService := artifact.NewService(artifactRepository)
 
 	// Initialize background task infrastructure
 	taskQueue := queue.NewPostgresQueue(db, log)

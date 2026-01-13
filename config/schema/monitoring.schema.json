@@ -1,1 +1,143 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://github.com/janhq/jan-server/packages/go-common/config/monitoring-config","$defs":{"GrafanaConfig":{"properties":{"port":{"type":"integer","maximum":65535,"minimum":1},"admin_user":{"type":"string"},"admin_password":{"type":"string"}},"additionalProperties":false,"type":"object","required":["port","admin_user"]},"JaegerConfig":{"properties":{"ui_port":{"type":"integer","maximum":65535,"minimum":1}},"additionalProperties":false,"type":"object","required":["ui_port"]},"OTELConfig":{"properties":{"enabled":{"type":"boolean"},"tracing_enabled":{"type":"boolean"},"service_name":{"type":"string"},"service_version":{"type":"string"},"endpoint":{"type":"string","format":"uri"},"headers":{"additionalProperties":{"type":"string"},"type":"object"},"sampling_rate":{"type":"number","maximum":1,"minimum":0},"pii_level":{"type":"string","enum":["none","hashed","full"]},"metric_interval":{"type":"string"},"http_port":{"type":"integer","maximum":65535,"minimum":1},"grpc_port":{"type":"integer","maximum":65535,"minimum":1}},"additionalProperties":false,"type":"object","required":["enabled","tracing_enabled","service_name","service_version","endpoint","sampling_rate","pii_level","metric_interval","http_port","grpc_port"]},"PrometheusConfig":{"properties":{"port":{"type":"integer","maximum":65535,"minimum":1}},"additionalProperties":false,"type":"object","required":["port"]}},"properties":{"otel":{"$ref":"#/$defs/OTELConfig"},"prometheus":{"$ref":"#/$defs/PrometheusConfig"},"grafana":{"$ref":"#/$defs/GrafanaConfig"},"jaeger":{"$ref":"#/$defs/JaegerConfig"}},"additionalProperties":false,"type":"object","required":["otel","prometheus","grafana","jaeger"]}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/janhq/jan-server/packages/go-common/config/monitoring-config",
+  "$defs": {
+    "GrafanaConfig": {
+      "properties": {
+        "port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
+        "admin_user": {
+          "type": "string"
+        },
+        "admin_password": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "port",
+        "admin_user"
+      ]
+    },
+    "JaegerConfig": {
+      "properties": {
+        "ui_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "ui_port"
+      ]
+    },
+    "OTELConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "tracing_enabled": {
+          "type": "boolean"
+        },
+        "service_name": {
+          "type": "string"
+        },
+        "service_version": {
+          "type": "string"
+        },
+        "endpoint": {
+          "type": "string",
+          "format": "uri"
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "sampling_rate": {
+          "type": "number",
+          "maximum": 1,
+          "minimum": 0
+        },
+        "pii_level": {
+          "type": "string",
+          "enum": [
+            "none",
+            "hashed",
+            "full"
+          ]
+        },
+        "metric_interval": {
+          "type": "string"
+        },
+        "http_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
+        "grpc_port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "enabled",
+        "tracing_enabled",
+        "service_name",
+        "service_version",
+        "endpoint",
+        "sampling_rate",
+        "pii_level",
+        "metric_interval",
+        "http_port",
+        "grpc_port"
+      ]
+    },
+    "PrometheusConfig": {
+      "properties": {
+        "port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "port"
+      ]
+    }
+  },
+  "properties": {
+    "otel": {
+      "$ref": "#/$defs/OTELConfig"
+    },
+    "prometheus": {
+      "$ref": "#/$defs/PrometheusConfig"
+    },
+    "grafana": {
+      "$ref": "#/$defs/GrafanaConfig"
+    },
+    "jaeger": {
+      "$ref": "#/$defs/JaegerConfig"
+    }
+  },
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "otel",
+    "prometheus",
+    "grafana",
+    "jaeger"
+  ]
+}

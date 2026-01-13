@@ -193,6 +193,7 @@ This document maps centralized configuration (`pkg/config/types.go`) environment
 | `RESPONSE_API_LOG_LEVEL`  | string   | `info`                  | `LOG_LEVEL`      | TODO Need prefix |
 | `RESPONSE_LLM_API_URL`    | string   | `http://llm-api:8080`   | `LLM_API_URL`    | TODO Need prefix |
 | `RESPONSE_MCP_TOOLS_URL`  | string   | `http://mcp-tools:8091` | `MCP_TOOLS_URL`  | TODO Need prefix |
+| `RESPONSE_MEDIA_API_URL`  | string   | `http://media-api:8285` | `MEDIA_API_URL`  | TODO Need prefix |
 | `RESPONSE_MAX_TOOL_DEPTH` | int      | `8`                     | `MAX_TOOL_DEPTH` | TODO Need prefix |
 | `RESPONSE_TOOL_TIMEOUT`   | duration | `45s`                   | `TOOL_TIMEOUT`   | TODO Need prefix |
 

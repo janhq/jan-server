@@ -23,6 +23,7 @@ import (
 	"jan-server/services/response-api/internal/infrastructure/database"
 	"jan-server/services/response-api/internal/infrastructure/llmprovider"
 	"jan-server/services/response-api/internal/infrastructure/logger"
+	"jan-server/services/response-api/internal/infrastructure/media"
 	"jan-server/services/response-api/internal/infrastructure/mcp"
 	artifactrepo "jan-server/services/response-api/internal/infrastructure/repository/artifact"
 	conversationrepo "jan-server/services/response-api/internal/infrastructure/repository/conversation"
@@ -50,6 +51,7 @@ var responseSet = wire.NewSet(
 	newMCPClient,
 	wire.Bind(new(tool.MCPClient), new(*mcp.Client)),
 	wire.Bind(new(planners.MCPClient), new(*mcp.Client)),
+	newMediaClient,
 	newOrchestrator,
 	newWebhookService,
 	wire.Bind(new(webhook.Service), new(*webhook.HTTPService)),
@@ -107,6 +109,10 @@ func newMCPClient(cfg *config.Config) *mcp.Client {
 	return mcp.NewClient(cfg.MCPToolsURL)
 }
 
+func newMediaClient(cfg *config.Config) *media.Client {
+	return media.NewClient(cfg.MediaAPIURL)
+}
+
 func newOrchestrator(cfg *config.Config, provider llm.Provider, mcpClient tool.MCPClient) *tool.Orchestrator {
 	return tool.NewOrchestrator(provider, mcpClient, cfg.MaxToolDepth, cfg.ToolTimeout)
 }
@@ -115,7 +121,7 @@ func newWebhookService(log zerolog.Logger) *webhook.HTTPService {
 	return webhook.NewHTTPService(log)
 }
 
-func newAgentRegistry(planService plan.Service, mcpClient tool.MCPClient) agent.Registry {
+func newAgentRegistry(planService plan.Service, mcpClient tool.MCPClient, llmProvider llm.Provider, artifactService artifact.Service, cfg *config.Config) agent.Registry {
 	registry := agent.NewRegistry()
 
 	// Register the deep research planner
@@ -125,10 +131,23 @@ func newAgentRegistry(planService plan.Service, mcpClient tool.MCPClient) agent.
 		_ = err
 	}
 
+	// Register the slide generator planner
+	slideGeneratorPlanner := planners.NewSlideGeneratorPlanner(planService, artifactService)
+	if err := registry.RegisterPlanner(slideGeneratorPlanner); err != nil {
+		_ = err
+	}
+
+	// Create code fixer for LLM-based code fix retry
+	codeFixer := llm.NewCodeFixer(llmProvider, cfg.CodeFixModel)
+
 	// Register the deep research executor for tool calls and LLM calls
-	deepResearchExecutor := planners.NewDeepResearchExecutor(mcpClient)
+	deepResearchExecutor := planners.NewDeepResearchExecutor(mcpClient, codeFixer)
 	_ = registry.RegisterExecutor(plan.ActionTypeToolCall, deepResearchExecutor)
 	_ = registry.RegisterExecutor(plan.ActionTypeLLMCall, deepResearchExecutor)
+
+	// Register the slide generator executor for artifact creation
+	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService)
+	_ = registry.RegisterExecutor(plan.ActionTypeArtifactCreate, slideGeneratorExecutor)
 
 	return registry
 }
@@ -140,11 +159,12 @@ func newResponseService(
 	toolRepo responseDomain.ToolExecutionRepository,
 	orchestrator *tool.Orchestrator,
 	mcpClient tool.MCPClient,
+	mediaClient *media.Client,
 	modelInfoProvider llm.ModelInfoProvider,
 	webhookService webhook.Service,
 	agentRegistry agent.Registry,
 	planService plan.Service,
 	log zerolog.Logger,
 ) responseDomain.Service {
-	return responseDomain.NewService(repo, conversations, conversationItems, toolRepo, orchestrator, mcpClient, modelInfoProvider, webhookService, agentRegistry, planService, log)
+	return responseDomain.NewService(repo, conversations, conversationItems, toolRepo, orchestrator, mcpClient, mediaClient, modelInfoProvider, webhookService, agentRegistry, planService, log)
 }

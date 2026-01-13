@@ -74,7 +74,9 @@ type PlanStep struct {
 	Sequence      int            `gorm:"default:0"`
 	Action        string         `gorm:"size:32"`
 	Status        string         `gorm:"size:32;index:idx_step_status"`
-	InputParams   datatypes.JSON `gorm:"type:jsonb"`
+	PlannedParams datatypes.JSON `gorm:"type:jsonb"` // Original planned parameters
+	ActualParams  datatypes.JSON `gorm:"type:jsonb"` // Actual execution parameters (may differ)
+	InputParams   datatypes.JSON `gorm:"type:jsonb"` // Deprecated: use PlannedParams
 	OutputData    datatypes.JSON `gorm:"type:jsonb"`
 	RetryCount    int            `gorm:"default:0"`
 	MaxRetries    int            `gorm:"default:3"`
