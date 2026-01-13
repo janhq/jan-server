@@ -31,7 +31,7 @@ const SearchResult = ({
         <div
           className={cn(
             "p-3 bg-background hover:bg-secondary/50 transition-colors",
-            !isLast && "border-b",
+            !isLast && "border-b"
           )}
         >
           <div className="flex items-start gap-2">
@@ -115,7 +115,7 @@ export const AppSidebarRight = memo(function AppSidebarRight() {
   const toggleSidebar = useRightSidebarStore((state) => state.toggleSidebar);
   const allSteps = useRightSidebarStore((state) => state.allSteps);
   const currentStepIndex = useRightSidebarStore(
-    (state) => state.currentStepIndex,
+    (state) => state.currentStepIndex
   );
   const clearSelection = useRightSidebarStore((state) => state.clearSelection);
   const nextStep = useRightSidebarStore((state) => state.nextStep);
@@ -134,7 +134,7 @@ export const AppSidebarRight = memo(function AppSidebarRight() {
 
   return (
     <div
-      className="group text-sidebar-foreground hidden md:block"
+      className="group text-sidebar-foreground block relative z-50"
       data-state={rightSidebarOpen ? "expanded" : "collapsed"}
       data-side="right"
     >
@@ -142,19 +142,19 @@ export const AppSidebarRight = memo(function AppSidebarRight() {
       <div
         className={cn(
           "relative bg-transparent transition-[width] duration-200 ease-linear",
-          rightSidebarOpen ? "w-120" : "w-0",
+          rightSidebarOpen ? "w-full md:w-120" : "w-0"
         )}
       />
 
       {/* Sidebar container */}
       <div
         className={cn(
-          "fixed p-2 inset-y-0 z-10 hidden h-svh transition-[right,width] duration-200 ease-linear md:flex",
+          "fixed p-2 inset-y-0 z-10 flex h-svh transition-[right,width] duration-200 ease-linear",
           "right-0",
-          rightSidebarOpen ? "w-120" : "w-0 -right-60",
+          rightSidebarOpen ? "w-full md:w-120" : "w-0 -right-60"
         )}
       >
-        <div className="bg-secondary/50 border flex h-full w-full flex-col rounded-2xl overflow-hidden">
+        <div className="bg-secondary/50 backdrop-blur-2xl border flex h-full w-full flex-col rounded-2xl overflow-hidden">
           {/* Header */}
           <div className="flex flex-col gap-2 p-2 pt-3.5 shrink-0 ">
             <div className="flex items-center w-full pl-2 mb-2 justify-between">
