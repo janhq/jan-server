@@ -218,7 +218,23 @@ func main() {
 		log.Info().Msg("AIO Sandbox integration disabled (AIO_ENABLED=false)")
 	}
 
-	mcpRoute := mcp.NewMCPRoute(searchMCP, providerMCP, sandboxMCP, memoryMCP, imageMCP, imageEditMCP, aioMCP, llmClient, toolConfigCache)
+	// Initialize Agent Proxy MCP handler
+	var agentProxyMCP *mcp.AgentProxyMCP
+	if cfg.AgentProxyEnabled {
+		agentProxyMCP = mcp.NewAgentProxyMCP(cfg.ResponseAPIURL, cfg.LLMAPIBaseURL, true)
+		if agentProxyMCP != nil {
+			log.Info().
+				Str("response_api_url", cfg.ResponseAPIURL).
+				Str("llm_api_url", cfg.LLMAPIBaseURL).
+				Msg("Agent proxy integration enabled")
+		} else {
+			log.Warn().Msg("MCP_AGENT_PROXY_ENABLED=true but client failed to initialize")
+		}
+	} else {
+		log.Info().Msg("Agent proxy integration disabled (MCP_AGENT_PROXY_ENABLED=false)")
+	}
+
+	mcpRoute := mcp.NewMCPRoute(searchMCP, providerMCP, sandboxMCP, memoryMCP, imageMCP, imageEditMCP, aioMCP, agentProxyMCP, llmClient, toolConfigCache)
 
 	authValidator, err := auth.NewValidator(ctx, cfg, log.Logger)
 	if err != nil {

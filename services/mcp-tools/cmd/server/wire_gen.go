@@ -39,9 +39,10 @@ func CreateApplication(ctx context.Context) (*Application, error) {
 	imageGenerateMCP := routes.ProvideImageGenerateMCP(config)
 	imageEditMCP := routes.ProvideImageEditMCP(config)
 	aiomcp := routes.ProvideAIOMCP(config)
+	agentProxyMCP := routes.ProvideAgentProxyMCP(config)
 	llmapiClient := infrastructure.ProvideLLMAPIClient(config)
 	cache := routes.ProvideToolConfigCache(config, llmapiClient)
-	mcpRoute := routes.ProvideMCPRoute(searchMCP, providerMCP, sandboxFusionMCP, memoryMCP, imageGenerateMCP, imageEditMCP, aiomcp, llmapiClient, cache)
+	mcpRoute := routes.ProvideMCPRoute(searchMCP, providerMCP, sandboxFusionMCP, memoryMCP, imageGenerateMCP, imageEditMCP, aiomcp, agentProxyMCP, llmapiClient, cache)
 	validator, err := infrastructure.ProvideAuthValidator(ctx, config)
 	if err != nil {
 		return nil, err

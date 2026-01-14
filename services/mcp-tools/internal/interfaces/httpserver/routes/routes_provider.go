@@ -21,6 +21,7 @@ var RoutesProvider = wire.NewSet(
 	ProvideImageGenerateMCP,
 	ProvideImageEditMCP,
 	ProvideAIOMCP,
+	ProvideAgentProxyMCP,
 	ProvideToolConfigCache,
 	ProvideMCPRoute,
 	ProvideSearchMCPConfig,
@@ -121,6 +122,24 @@ func ProvideAIOMCP(cfg *config.Config) *mcp.AIOMCP {
 	return mcp.NewAIOMCP(aioClient, true)
 }
 
+// ProvideAgentProxyMCP creates an AgentProxyMCP with dependencies
+func ProvideAgentProxyMCP(cfg *config.Config) *mcp.AgentProxyMCP {
+	if !cfg.AgentProxyEnabled {
+		log.Info().Msg("Agent proxy integration disabled (MCP_AGENT_PROXY_ENABLED=false)")
+		return nil
+	}
+	agentProxy := mcp.NewAgentProxyMCP(cfg.ResponseAPIURL, cfg.LLMAPIBaseURL, true)
+	if agentProxy == nil {
+		log.Warn().Msg("MCP_AGENT_PROXY_ENABLED=true but client failed to initialize")
+		return nil
+	}
+	log.Info().
+		Str("response_api_url", cfg.ResponseAPIURL).
+		Str("llm_api_url", cfg.LLMAPIBaseURL).
+		Msg("Agent proxy integration enabled")
+	return agentProxy
+}
+
 // ProvideMCPRoute creates a MCPRoute with all dependencies
 func ProvideMCPRoute(
 	searchMCP *mcp.SearchMCP,
@@ -130,6 +149,7 @@ func ProvideMCPRoute(
 	imageMCP *mcp.ImageGenerateMCP,
 	imageEditMCP *mcp.ImageEditMCP,
 	aioMCP *mcp.AIOMCP,
+	agentProxyMCP *mcp.AgentProxyMCP,
 	llmClient *llmapi.Client,
 	toolConfigCache *toolconfig.Cache,
 ) *mcp.MCPRoute {
@@ -137,5 +157,5 @@ func ProvideMCPRoute(
 	if toolConfigCache != nil {
 		searchMCP.SetToolConfigCache(toolConfigCache)
 	}
-	return mcp.NewMCPRoute(searchMCP, providerMCP, sandboxMCP, memoryMCP, imageMCP, imageEditMCP, aioMCP, llmClient, toolConfigCache)
+	return mcp.NewMCPRoute(searchMCP, providerMCP, sandboxMCP, memoryMCP, imageMCP, imageEditMCP, aioMCP, agentProxyMCP, llmClient, toolConfigCache)
 }

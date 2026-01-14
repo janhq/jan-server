@@ -418,6 +418,44 @@ services:
               exposed_headers: ["X-Request-Id", "X-Gateway-Auth"]
               credentials: true
               max_age: 3600
+      - name: agents-discovery-proxy
+        paths: [/v1/agents]
+        strip_path: false
+        path_handling: v0
+        tags: [response, agents, discovery]
+        plugins:
+          - name: jwt
+            tags: [agents, jwt]
+            config:
+              key_claim_name: iss
+              claims_to_verify: ["exp", "nbf"]
+              maximum_expiration: 3600
+              secret_is_base64: false
+              run_on_preflight: false
+              anonymous: kong-anon-jwt
+          - name: keycloak-apikey
+            tags: [agents, apikey]
+            config:
+              validation_url: "http://llm-api:8080/auth/validate-api-key"
+              validation_timeout: 5000
+              hide_credentials: false
+              run_on_preflight: false
+          - name: rate-limiting
+            tags: [agents, rate]
+            config:
+              minute: 200
+              policy: local
+              limit_by: ip
+              fault_tolerant: true
+          - name: cors
+            tags: [agents, cors]
+            config:
+              origins: ["http://localhost", "http://localhost:3000", "http://localhost:3001", "http://127.0.0.1", "http://127.0.0.1:3000", "http://127.0.0.1:3001", "http://127.0.0.1:8080", "http://localhost:8080", "https://chat-dev.jan.ai", "https://platform-dev.jan.ai", "https://api-gateway-dev.jan.ai", "https://chat.jan.ai", "https://platform.jan.ai"]
+              methods: ["GET", "OPTIONS"]
+              headers: ["Authorization", "Content-Type", "X-API-Key", "X-Request-Id"]
+              exposed_headers: ["X-Request-Id", "X-Gateway-Auth"]
+              credentials: true
+              max_age: 3600
 
   - name: mcp-tools-rpc-svc
     url: http://mcp-tools:8091/v1/mcp

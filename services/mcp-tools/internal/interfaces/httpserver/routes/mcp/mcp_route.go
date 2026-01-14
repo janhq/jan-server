@@ -48,6 +48,7 @@ type MCPRoute struct {
 	imageMCP        *ImageGenerateMCP
 	imageEditMCP    *ImageEditMCP
 	aioMCP          *AIOMCP
+	agentProxyMCP   *AgentProxyMCP
 	llmClient       *llmapi.Client    // LLM-API client for tool call tracking
 	toolConfigCache *toolconfig.Cache // Cache for dynamic tool descriptions
 	mcpServer       *mcp.Server
@@ -62,6 +63,7 @@ func NewMCPRoute(
 	imageMCP *ImageGenerateMCP,
 	imageEditMCP *ImageEditMCP,
 	aioMCP *AIOMCP,
+	agentProxyMCP *AgentProxyMCP,
 	llmClient *llmapi.Client,
 	toolConfigCache *toolconfig.Cache,
 ) *MCPRoute {
@@ -105,6 +107,12 @@ func NewMCPRoute(
 		aioMCP.RegisterTools(server)
 	}
 
+	// Register unified run_agent tool for agent execution
+	if agentProxyMCP != nil {
+		agentProxyMCP.SetLLMClient(llmClient)
+		agentProxyMCP.RegisterTools(server)
+	}
+
 	// Register tools from external MCP providers
 	if providerMCP != nil {
 		if err := providerMCP.RegisterTools(server); err != nil {
@@ -121,6 +129,7 @@ func NewMCPRoute(
 		imageMCP:        imageMCP,
 		imageEditMCP:    imageEditMCP,
 		aioMCP:          aioMCP,
+		agentProxyMCP:   agentProxyMCP,
 		llmClient:       llmClient,
 		toolConfigCache: toolConfigCache,
 		mcpServer:       server,

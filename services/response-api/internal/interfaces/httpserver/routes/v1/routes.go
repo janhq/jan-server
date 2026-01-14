@@ -32,4 +32,9 @@ func (r *Routes) Register(engine *gin.Engine) {
 	if r.handlers.Artifact != nil {
 		registerArtifactRoutes(group, r.handlers.Artifact)
 	}
+
+	// Agent discovery routes (optional - only if handler is provided)
+	if r.handlers.Agent != nil {
+		registerAgentRoutes(group, r.handlers.Agent)
+	}
 }

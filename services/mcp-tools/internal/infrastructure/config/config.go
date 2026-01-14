@@ -70,6 +70,10 @@ type Config struct {
 	LLMAPIBaseURL      string `env:"LLM_API_BASE_URL" envDefault:"http://llm-api:8080"`
 	MCPTrackingEnabled bool   `env:"MCP_TRACKING_ENABLED" envDefault:"true"`
 
+	// Response API configuration for agent proxying
+	ResponseAPIURL    string `env:"RESPONSE_API_URL" envDefault:"http://response-api:8082"`
+	AgentProxyEnabled bool   `env:"MCP_AGENT_PROXY_ENABLED" envDefault:"true"`
+
 	// Sandbox Configuration
 	SandboxFusionRequireApproval bool `env:"MCP_SANDBOX_REQUIRE_APPROVAL" envDefault:"false"`
 	EnablePythonExec             bool `env:"MCP_ENABLE_PYTHON_EXEC" envDefault:"true"`

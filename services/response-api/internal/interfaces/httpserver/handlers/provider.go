@@ -3,6 +3,7 @@ package handlers
 import (
 	"github.com/rs/zerolog"
 
+	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/plan"
 	domain "jan-server/services/response-api/internal/domain/response"
@@ -14,6 +15,7 @@ type Provider struct {
 	Response *ResponseHandler
 	Plan     *PlanHandler
 	Artifact *ArtifactHandler
+	Agent    *AgentHandler
 }
 
 // NewProvider constructs the handler provider with domain services.
@@ -35,5 +37,22 @@ func NewProviderWithPlanAndArtifact(
 		Response: NewResponseHandler(responseService, apiKeyProvider, log),
 		Plan:     NewPlanHandler(planService, log),
 		Artifact: NewArtifactHandler(artifactService, log),
+	}
+}
+
+// NewProviderFull constructs the handler provider with all services including agent registry.
+func NewProviderFull(
+	responseService domain.Service,
+	planService plan.Service,
+	artifactService artifact.Service,
+	agentRegistry agent.Registry,
+	apiKeyProvider apikey.Provider,
+	log zerolog.Logger,
+) *Provider {
+	return &Provider{
+		Response: NewResponseHandler(responseService, apiKeyProvider, log),
+		Plan:     NewPlanHandler(planService, log),
+		Artifact: NewArtifactHandler(artifactService, log),
+		Agent:    NewAgentHandler(agentRegistry, log),
 	}
 }

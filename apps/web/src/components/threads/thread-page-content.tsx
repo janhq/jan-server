@@ -228,6 +228,10 @@ export function ThreadPageContent({
         !message?.parts.some(
           (e) => e.type === CONTENT_TYPE.TEXT && e.text.length > 0,
         );
+
+      // Track if run_agent was called - if so, stop the chat after execution
+      let ranAgent = false;
+
       // After finishing a message, check if we need to resubmit for tool calls
       Promise.all(
         sessionData.tools.map(async (toolCall: any) => {
@@ -236,11 +240,28 @@ export function ThreadPageContent({
             return;
           }
 
+          // Prepare arguments - inject model for agent tools if not already specified
+          let toolArguments = toolCall.input as Record<string, unknown>;
+          if (toolCall.toolName === "run_agent") {
+            ranAgent = true; // Mark that we ran an agent - always set regardless of model injection
+            if (!toolArguments.model && selectedModel?.id) {
+              toolArguments = {
+                ...toolArguments,
+                model: selectedModel.id,
+              };
+            }
+          }
+
+          // Check if already aborted before making the call
+          if (signal.aborted) {
+            return;
+          }
+
           const result = await mcpService.callTool(
             {
               toolName: toolCall.toolName,
               serverName: MCP.SERVER_NAME,
-              arguments: toolCall.input as any,
+              arguments: toolArguments,
             },
             {
               conversationId,
@@ -257,6 +278,12 @@ export function ThreadPageContent({
               errorText: `Error: ${result.error}`,
             });
           } else {
+            // If this was run_agent, abort the controller BEFORE addToolOutput to prevent auto-follow-up
+            // addToolOutput triggers state update which evaluates sendAutomaticallyWhen immediately
+            if (toolCall.toolName === "run_agent") {
+              toolCallAbortController.current?.abort();
+            }
+
             addToolOutput({
               tool: toolCall.toolName,
               toolCallId: toolCall.toolCallId,
@@ -266,6 +293,12 @@ export function ThreadPageContent({
         }),
       )
         .then(() => {
+          // If run_agent was called, stop the chat - don't continue with follow-up
+          if (ranAgent) {
+            console.log("Agent was executed, stopping chat flow");
+            return;
+          }
+
           // Continue generate if need follow up on a blank message
           if (needFollowUp) {
             sendMessage();

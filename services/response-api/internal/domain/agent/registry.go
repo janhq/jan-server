@@ -20,6 +20,12 @@ type Registry interface {
 	RegisterExecutor(action plan.ActionType, executor Executor) error
 	GetExecutor(action plan.ActionType) (Executor, bool)
 	ListExecutors() []plan.ActionType
+
+	// Agent discovery operations
+	GetAllAgents() []AgentMetadata
+	GetAgent(agentType string) *AgentDetail
+	GetAgentSchema(agentType string) *AgentInputSchema
+	GetAgentCapabilitiesForLLM() []AgentCapability
 }
 
 // DefaultRegistry is the default implementation of Registry.
@@ -117,4 +123,70 @@ func (r *DefaultRegistry) ListExecutors() []plan.ActionType {
 		actions = append(actions, action)
 	}
 	return actions
+}
+
+// GetAllAgents returns metadata for all registered agents.
+func (r *DefaultRegistry) GetAllAgents() []AgentMetadata {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	// Return metadata for all registered planners
+	agents := make([]AgentMetadata, 0, len(r.planners))
+	for name := range r.planners {
+		if detail := GetAgentDetail(name); detail != nil {
+			agents = append(agents, detail.AgentMetadata)
+		}
+	}
+
+	// If no planners registered yet, return default metadata
+	if len(agents) == 0 {
+		return GetAllAgentMetadata()
+	}
+
+	return agents
+}
+
+// GetAgent returns full detail for a specific agent type.
+func (r *DefaultRegistry) GetAgent(agentType string) *AgentDetail {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	// Check if the planner is registered
+	if _, exists := r.planners[agentType]; !exists {
+		// Still return metadata if it exists (for discovery before registration)
+		return GetAgentDetail(agentType)
+	}
+
+	return GetAgentDetail(agentType)
+}
+
+// GetAgentSchema returns the input schema for a specific agent type.
+func (r *DefaultRegistry) GetAgentSchema(agentType string) *AgentInputSchema {
+	detail := r.GetAgent(agentType)
+	if detail == nil {
+		return nil
+	}
+	return detail.InputSchema
+}
+
+// GetAgentCapabilitiesForLLM returns condensed capabilities for LLM selection.
+func (r *DefaultRegistry) GetAgentCapabilitiesForLLM() []AgentCapability {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	// Get all agents and filter to enabled ones
+	agents := r.GetAllAgents()
+	capabilities := make([]AgentCapability, 0, len(agents))
+
+	for _, m := range agents {
+		if m.Enabled {
+			capabilities = append(capabilities, AgentCapability{
+				Type:     m.Type,
+				UseWhen:  m.UseWhen,
+				Keywords: m.Keywords,
+			})
+		}
+	}
+
+	return capabilities
 }
