@@ -91,6 +91,7 @@ type Service interface {
 	GetWithPlanDetails(ctx context.Context, publicID string) (*ResponseWithPlan, error)
 	Cancel(ctx context.Context, publicID string) (*Response, error)
 	ListConversationItems(ctx context.Context, publicID string) ([]ConversationItem, error)
+	ListByConversation(ctx context.Context, conversationPublicID string) ([]*Response, error)
 }
 
 // ConversationItem is returned when listing stored conversation history.

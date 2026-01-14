@@ -416,6 +416,11 @@ func (s *ServiceImpl) ListConversationItems(ctx context.Context, publicID string
 	return result, nil
 }
 
+// ListByConversation returns all responses for a given conversation.
+func (s *ServiceImpl) ListByConversation(ctx context.Context, conversationPublicID string) ([]*Response, error) {
+	return s.responses.FindByConversationPublicID(ctx, conversationPublicID)
+}
+
 func (s *ServiceImpl) failResponse(ctx context.Context, resp *Response, failure error) (*Response, error) {
 	now := time.Now()
 	resp.Status = StatusFailed

@@ -124,6 +124,64 @@ func (r *PostgresRepository) MarkCancelled(ctx context.Context, resp *domain.Res
 	return r.Update(ctx, resp)
 }
 
+// FindByConversationPublicID fetches all responses for a given conversation public ID.
+func (r *PostgresRepository) FindByConversationPublicID(ctx context.Context, conversationPublicID string) ([]*domain.Response, error) {
+	// First find the conversation by its public ID
+	var conversation entities.Conversation
+	if err := r.db.WithContext(ctx).
+		Where("public_id = ?", conversationPublicID).
+		First(&conversation).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			// Return empty list if conversation not found
+			return []*domain.Response{}, nil
+		}
+		return nil, platformerrors.NewError(
+			ctx,
+			platformerrors.LayerRepository,
+			platformerrors.ErrorTypeDatabaseError,
+			"failed to find conversation by public id",
+			err,
+			"1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+		)
+	}
+
+	// Find all responses for this conversation
+	var responseEntities []entities.Response
+	if err := r.db.WithContext(ctx).
+		Preload("Conversation").
+		Where("conversation_id = ?", conversation.ID).
+		Order("created_at DESC").
+		Find(&responseEntities).Error; err != nil {
+		return nil, platformerrors.NewError(
+			ctx,
+			platformerrors.LayerRepository,
+			platformerrors.ErrorTypeDatabaseError,
+			"failed to find responses by conversation id",
+			err,
+			"2b3c4d5e-6f7a-8b9c-0d1e-2f3a4b5c6d7e",
+		)
+	}
+
+	// Map entities to domain models
+	responses := make([]*domain.Response, 0, len(responseEntities))
+	for i := range responseEntities {
+		resp := &domain.Response{}
+		if err := mapFromEntity(&responseEntities[i], resp); err != nil {
+			return nil, platformerrors.NewError(
+				ctx,
+				platformerrors.LayerRepository,
+				platformerrors.ErrorTypeInternal,
+				"failed to map response entity to domain",
+				err,
+				"3c4d5e6f-7a8b-9c0d-1e2f-3a4b5c6d7e8f",
+			)
+		}
+		responses = append(responses, resp)
+	}
+
+	return responses, nil
+}
+
 // RecordExecutions persists tool execution snapshot rows.
 func (r *PostgresRepository) RecordExecutions(ctx context.Context, responseID uint, executions []tool.Execution) error {
 	if len(executions) == 0 {
