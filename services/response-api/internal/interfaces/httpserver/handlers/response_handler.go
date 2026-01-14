@@ -102,7 +102,14 @@ func (h *ResponseHandler) Create(c *gin.Context) {
 		h.log.Debug().Msg("Using user-provided API key")
 	} else if h.apiKeyProvider != nil && bearerToken != "" {
 		// Generate temporary API key using the user's JWT
-		tempKey, err := h.apiKeyProvider.CreateTemporaryKey(c.Request.Context(), bearerToken, time.Hour)
+		// For background tasks, use longer TTL since execution happens later
+		ttl := time.Hour
+		if background {
+			ttl = 24 * time.Hour // Background tasks need longer-lived keys
+			h.log.Debug().Msg("Creating long-lived API key for background task")
+		}
+
+		tempKey, err := h.apiKeyProvider.CreateTemporaryKey(c.Request.Context(), bearerToken, ttl)
 		if err != nil {
 			h.log.Error().Err(err).Msg("Failed to create temporary API key")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "failed to authenticate: " + err.Error()})
@@ -112,10 +119,15 @@ func (h *ResponseHandler) Create(c *gin.Context) {
 		tempKeyID = tempKey.ID
 		h.log.Debug().
 			Str("key_id", tempKey.ID).
+			Bool("background", background).
 			Msg("Created temporary API key for request")
 
 		// Schedule cleanup of temporary key after request completes
-		defer h.cleanupTempKey(context.Background(), bearerToken, tempKeyID)
+		// IMPORTANT: Skip immediate cleanup for background tasks since execution happens later
+		if !background {
+			defer h.cleanupTempKey(context.Background(), bearerToken, tempKeyID)
+		}
+		// Note: Background task temp keys will be cleaned up by a separate cleanup job or TTL expiration
 	} else {
 		h.log.Error().
 			Bool("has_auth_header", authHeader != "").
