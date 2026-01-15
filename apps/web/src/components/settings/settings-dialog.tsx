@@ -95,16 +95,16 @@ export function SettingsDialog({
           <DialogTitle className="font-medium">Settings</DialogTitle>
         </DialogHeader>
 
-        <div className="flex flex-col lg:flex-row max-h-screen lg:h-[500px]">
+        <div className="flex flex-col lg:flex-row max-h-screen lg:h-[500px] overflow-hidden">
           {/* Sidebar - Mobile: Horizontal Scrollable Tabs */}
-          <div className="lg:w-48 lg:p-4 flex lg:flex-col justify-between shrink-0">
-            <nav className="flex lg:flex-col gap-1 w-full whitespace-nowrap overflow-x-auto lg:overflow-x-visible p-4 lg:p-0 border-b lg:border-b-0">
+          <div className="lg:w-48 lg:p-4 flex-shrink-0 overflow-x-auto lg:overflow-visible border-b lg:border-b-0">
+            <nav className="flex lg:flex-col gap-1 whitespace-nowrap p-4 lg:p-0 lg:w-full">
               {sections.map((s) => (
                 <button
                   key={s.id}
                   onClick={() => handleSectionChange(s.id)}
                   className={cn(
-                    "flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors text-left whitespace-nowrap shrink-0",
+                    "flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors text-left flex-shrink-0",
                     activeSection === s.id
                       ? "bg-muted text-foreground"
                       : "text-muted-foreground hover:bg-background/50 hover:text-foreground",

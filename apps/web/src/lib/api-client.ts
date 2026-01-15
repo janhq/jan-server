@@ -171,7 +171,7 @@ export function createAuthenticatedFetch(customBody?: object): typeof fetch {
           : input.url;
 
     // Pass through fetchWithAuth which handles token refresh
-    return fetchWithAuth(url, {
+    const response = await fetchWithAuth(url, {
       ...init,
       body: customBody
         ? JSON.stringify({
@@ -181,6 +181,25 @@ export function createAuthenticatedFetch(customBody?: object): typeof fetch {
         : init?.body,
       skipAuthRefresh: false,
     });
+
+    if (!response.ok) {
+      let errorBody: any = null;
+      try {
+        errorBody = await response.json();
+      } catch {
+        errorBody = { message: await response.text().catch(() => "Unknown error") };
+      }
+      
+      const error = new Error(
+        errorBody.message || errorBody.error || `HTTP error ${response.status}`
+      );
+      
+      (error as any).responseBody = JSON.stringify(errorBody);
+      (error as any).statusCode = response.status;
+      throw error;
+    }
+
+    return response;
   };
 }
 

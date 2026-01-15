@@ -3,8 +3,14 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Copy the interfaces package from the additional context
+COPY --from=interfaces . ./packages/interfaces
+
 # Copy package files
 COPY package.json ./
+
+# Fix the path reference for the local dependency
+RUN sed -i 's|file:../../packages/interfaces|file:./packages/interfaces|g' package.json
 
 # Install dependencies
 RUN npm install --workspaces=false

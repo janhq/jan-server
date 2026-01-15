@@ -24,6 +24,8 @@ jobs:
       context: apps/web
       registry-url: registry.menlo.ai
       tags: registry.menlo.ai/jan-server/web:dev-${{ github.sha }}
+      build-contexts: |
+        interfaces=packages/interfaces
       build-args: |
         JAN_BASE_URL=https://api-dev.jan.ai/v1
         JAN_API_BASE_URL=https://api-dev.jan.ai/
