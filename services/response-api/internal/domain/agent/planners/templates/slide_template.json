@@ -1,0 +1,140 @@
+{
+  "deck": {
+    "size": {
+      "width": 13.33,
+      "height": 7.5
+    },
+    "theme": {
+      "title_bg": "#0A1221",
+      "title_text": "#F5F1E9",
+      "header_bg": "#12707C",
+      "header_text": "#F5F1E9",
+      "body_bg": "#F5F1E9",
+      "body_text": "#141820",
+      "closing_bg": "#0A1221",
+      "closing_text": "#F5F1E9"
+    }
+  },
+  "slides": [
+    {
+      "type": "title",
+      "title": "Deck Title",
+      "subtitle": "Subtitle",
+      "logo": "logo"
+    },
+    {
+      "type": "section",
+      "title": "Agenda",
+      "subtitle": "What we cover",
+      "icons": [
+        { "text": "A", "color": "#12707C" },
+        { "text": "B", "color": "#0A1221" },
+        { "text": "C", "color": "#6B7280" }
+      ]
+    },
+    {
+      "type": "bullets",
+      "title": "Highlights",
+      "bullets": ["Point 1", "Point 2", "Point 3"],
+      "image": "hero",
+      "image_pos": { "x": 7.2, "y": 1.4, "w": 5.4 }
+    },
+    {
+      "type": "metrics",
+      "title": "Key Metrics",
+      "metrics": [
+        { "label": "Active Orgs", "value": "128", "note": "+18% QoQ", "color": "#12707C" },
+        { "label": "Daily Requests", "value": "4.2M", "note": "+32% MoM", "color": "#0A1221" },
+        { "label": "Median Latency", "value": "210ms", "note": "-14% QoQ", "color": "#334155" }
+      ]
+    },
+    {
+      "type": "chart",
+      "title": "Growth Trend",
+      "chart": {
+        "type": "column",
+        "x": 0.9,
+        "y": 1.6,
+        "w": 6.3,
+        "h": 4.3,
+        "categories": ["Q1", "Q2", "Q3", "Q4"],
+        "series": [
+          { "name": "Requests (M)", "values": [12, 18, 26, 40] },
+          { "name": "Latency (ms)", "values": [260, 240, 210, 190] }
+        ]
+      },
+      "side_bullets": [
+        "Steady quarter-over-quarter growth",
+        "Latency drops as throughput rises",
+        "Prometheus dashboard aligns with KPIs"
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Provider Comparison",
+      "table": {
+        "headers": ["Provider", "Latency", "Cost", "Status"],
+        "rows": [
+          ["vLLM", "190ms", "$$", "Primary"],
+          ["Serper", "220ms", "$", "Fallback"],
+          ["Exa", "240ms", "$$", "Fallback"],
+          ["Tavily", "260ms", "$", "Fallback"]
+        ],
+        "x": 0.8,
+        "y": 1.6,
+        "w": 11.5,
+        "h": 4.6
+      }
+    },
+    {
+      "type": "comparison",
+      "title": "Build vs Buy",
+      "left": {
+        "title": "Build",
+        "bullets": [
+          "Full control over latency targets",
+          "Custom tool routing and policies",
+          "Higher operational cost"
+        ]
+      },
+      "right": {
+        "title": "Buy",
+        "bullets": [
+          "Fast time to value",
+          "Lower infra ownership",
+          "Less control over roadmaps"
+        ]
+      }
+    },
+    {
+      "type": "timeline",
+      "title": "Delivery Timeline",
+      "timeline": {
+        "x": 1.0,
+        "y": 3.6,
+        "w": 11.0,
+        "items": [
+          { "label": "Discover", "color": "#12707C" },
+          { "label": "Design", "color": "#0A1221" },
+          { "label": "Build", "color": "#334155" },
+          { "label": "Test", "color": "#64748B" },
+          { "label": "Launch", "color": "#0A1221" }
+        ]
+      }
+    },
+    {
+      "type": "quote",
+      "title": "Customer Voice",
+      "quote": "Jan Server reduced our time-to-launch from months to weeks.",
+      "author": "Head of Platform Engineering",
+      "image": "hero",
+      "image_pos": { "x": 9.4, "y": 1.6, "w": 3.2 }
+    },
+    {
+      "type": "closing",
+      "header": "Thank You",
+      "body": "Slides delivered from AIO",
+      "logo": "logo"
+    }
+  ]
+}
