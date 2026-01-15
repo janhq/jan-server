@@ -3,19 +3,6 @@ import { fetchJsonWithAuth } from "@/lib/api-client";
 declare const JAN_API_BASE_URL: string;
 
 // Types matching the response-api server responses
-export interface ResponseSummary {
-  id: string;
-  status: string;
-  agent_type?: string;
-  has_plan: boolean;
-  plan_progress?: number;
-  created_at: number;
-}
-
-export interface ConversationResponsesListResponse {
-  data: ResponseSummary[];
-}
-
 export interface PlanProgressResponse {
   plan_id: string;
   status: string;
@@ -90,17 +77,6 @@ export interface PlanDetailResponse {
 const RESPONSE_API_PREFIX = `${JAN_API_BASE_URL}responses/`;
 
 export const responseApiService = {
-  /**
-   * Get all responses for a conversation (for historical display)
-   */
-  getConversationResponses: async (
-    conversationId: string,
-  ): Promise<ConversationResponsesListResponse> => {
-    return fetchJsonWithAuth<ConversationResponsesListResponse>(
-      `${RESPONSE_API_PREFIX}v1/conversations/${conversationId}/responses`,
-    );
-  },
-
   /**
    * Get plan progress for polling during active execution
    */

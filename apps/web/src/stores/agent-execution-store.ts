@@ -11,7 +11,6 @@ export type ExecutionStatus = "pending" | "in_progress" | "completed" | "failed"
 
 export interface AgentExecution {
   responseId: string;
-  conversationId: string;
   status: ExecutionStatus;
   progress: number;
   planDetails: PlanDetailResponse | null;
@@ -21,15 +20,15 @@ export interface AgentExecution {
 
 interface AgentExecutionState {
   executions: Record<string, AgentExecution>;
-  startExecution: (conversationId: string, responseId: string, onComplete?: (execution: AgentExecution) => void) => void;
-  loadHistoricalExecution: (conversationId: string, responseId: string) => Promise<void>;
-  updateProgress: (conversationId: string, progress: PlanProgressResponse) => void;
-  updatePlanDetails: (conversationId: string, details: PlanDetailResponse) => void;
-  setError: (conversationId: string, error: string) => void;
-  clearExecution: (conversationId: string) => void;
+  startExecution: (responseId: string, onComplete?: (execution: AgentExecution) => void) => void;
+  loadHistoricalExecution: (responseId: string) => Promise<void>;
+  updateProgress: (responseId: string, progress: PlanProgressResponse) => void;
+  updatePlanDetails: (responseId: string, details: PlanDetailResponse) => void;
+  setError: (responseId: string, error: string) => void;
+  clearExecution: (responseId: string) => void;
   clearAllExecutions: () => void;
-  getExecution: (conversationId: string) => AgentExecution | undefined;
-  stopPolling: (conversationId: string) => void;
+  getExecution: (responseId: string) => AgentExecution | undefined;
+  stopPolling: (responseId: string) => void;
 }
 
 const pollingIntervals: Record<string, ReturnType<typeof setInterval>> = {};
@@ -38,17 +37,16 @@ const completionCallbacks: Record<string, (execution: AgentExecution) => void> =
 export const useAgentExecutionStore = create<AgentExecutionState>((set, get) => ({
   executions: {},
 
-  startExecution: (conversationId: string, responseId: string, onComplete?: (execution: AgentExecution) => void) => {
+  startExecution: (responseId: string, onComplete?: (execution: AgentExecution) => void) => {
     if (onComplete) {
-      completionCallbacks[conversationId] = onComplete;
+      completionCallbacks[responseId] = onComplete;
     }
 
     set((state) => ({
       executions: {
         ...state.executions,
-        [conversationId]: {
+        [responseId]: {
           responseId,
-          conversationId,
           status: "in_progress",
           progress: 0,
           planDetails: null,
@@ -57,10 +55,10 @@ export const useAgentExecutionStore = create<AgentExecutionState>((set, get) => 
       },
     }));
 
-    startPolling(conversationId, responseId, set, get);
+    startPolling(responseId, set, get);
   },
 
-  loadHistoricalExecution: async (conversationId: string, responseId: string) => {
+  loadHistoricalExecution: async (responseId: string) => {
     try {
       const details = await responseApiService.getPlanDetails(responseId);
       const isStillRunning = details.status === "in_progress" || details.status === "running";
@@ -68,9 +66,8 @@ export const useAgentExecutionStore = create<AgentExecutionState>((set, get) => 
       set((state) => ({
         executions: {
           ...state.executions,
-          [conversationId]: {
+          [responseId]: {
             responseId,
-            conversationId,
             status: details.status as ExecutionStatus,
             progress: details.progress,
             planDetails: details,
@@ -80,22 +77,22 @@ export const useAgentExecutionStore = create<AgentExecutionState>((set, get) => 
       }));
 
       if (isStillRunning) {
-        startPolling(conversationId, responseId, set, get);
+        startPolling(responseId, set, get);
       }
     } catch {
       // Failed to load historical execution
     }
   },
 
-  updateProgress: (conversationId: string, progress: PlanProgressResponse) => {
+  updateProgress: (responseId: string, progress: PlanProgressResponse) => {
     set((state) => {
-      const existing = state.executions[conversationId];
+      const existing = state.executions[responseId];
       if (!existing) return state;
 
       return {
         executions: {
           ...state.executions,
-          [conversationId]: {
+          [responseId]: {
             ...existing,
             status: progress.status as ExecutionStatus,
             progress: progress.progress,
@@ -105,15 +102,15 @@ export const useAgentExecutionStore = create<AgentExecutionState>((set, get) => 
     });
   },
 
-  updatePlanDetails: (conversationId: string, details: PlanDetailResponse) => {
+  updatePlanDetails: (responseId: string, details: PlanDetailResponse) => {
     set((state) => {
-      const existing = state.executions[conversationId];
+      const existing = state.executions[responseId];
       if (!existing) return state;
 
       return {
         executions: {
           ...state.executions,
-          [conversationId]: {
+          [responseId]: {
             ...existing,
             status: details.status as ExecutionStatus,
             progress: details.progress,
@@ -124,15 +121,15 @@ export const useAgentExecutionStore = create<AgentExecutionState>((set, get) => 
     });
   },
 
-  setError: (conversationId: string, error: string) => {
+  setError: (responseId: string, error: string) => {
     set((state) => {
-      const existing = state.executions[conversationId];
+      const existing = state.executions[responseId];
       if (!existing) return state;
 
       return {
         executions: {
           ...state.executions,
-          [conversationId]: {
+          [responseId]: {
             ...existing,
             status: "failed",
             error,
@@ -143,11 +140,11 @@ export const useAgentExecutionStore = create<AgentExecutionState>((set, get) => 
     });
   },
 
-  clearExecution: (conversationId: string) => {
-    stopPollingInterval(conversationId);
+  clearExecution: (responseId: string) => {
+    stopPollingInterval(responseId);
 
     set((state) => {
-      const { [conversationId]: _, ...rest } = state.executions;
+      const { [responseId]: _, ...rest } = state.executions;
       return { executions: rest };
     });
   },
@@ -157,21 +154,21 @@ export const useAgentExecutionStore = create<AgentExecutionState>((set, get) => 
     set({ executions: {} });
   },
 
-  getExecution: (conversationId: string) => {
-    return get().executions[conversationId];
+  getExecution: (responseId: string) => {
+    return get().executions[responseId];
   },
 
-  stopPolling: (conversationId: string) => {
-    stopPollingInterval(conversationId);
+  stopPolling: (responseId: string) => {
+    stopPollingInterval(responseId);
 
     set((state) => {
-      const existing = state.executions[conversationId];
+      const existing = state.executions[responseId];
       if (!existing) return state;
 
       return {
         executions: {
           ...state.executions,
-          [conversationId]: {
+          [responseId]: {
             ...existing,
             isPolling: false,
           },
@@ -181,44 +178,43 @@ export const useAgentExecutionStore = create<AgentExecutionState>((set, get) => 
   },
 }));
 
-function stopPollingInterval(conversationId: string) {
-  if (pollingIntervals[conversationId]) {
-    clearInterval(pollingIntervals[conversationId]);
-    delete pollingIntervals[conversationId];
+function stopPollingInterval(responseId: string) {
+  if (pollingIntervals[responseId]) {
+    clearInterval(pollingIntervals[responseId]);
+    delete pollingIntervals[responseId];
   }
 }
 
 function startPolling(
-  conversationId: string,
   responseId: string,
   _set: (fn: (state: AgentExecutionState) => Partial<AgentExecutionState>) => void,
   get: () => AgentExecutionState,
 ) {
-  stopPollingInterval(conversationId);
+  stopPollingInterval(responseId);
 
   const poll = async () => {
-    const execution = get().executions[conversationId];
+    const execution = get().executions[responseId];
     if (!execution || !execution.isPolling) {
-      stopPollingInterval(conversationId);
+      stopPollingInterval(responseId);
       return;
     }
 
     try {
       const details = await responseApiService.getPlanDetails(responseId);
-      get().updatePlanDetails(conversationId, details);
+      get().updatePlanDetails(responseId, details);
 
       const isComplete = ["completed", "failed", "cancelled"].includes(details.status);
 
       if (isComplete) {
-        get().stopPolling(conversationId);
+        get().stopPolling(responseId);
 
-        const callback = completionCallbacks[conversationId];
+        const callback = completionCallbacks[responseId];
         if (callback) {
-          const updatedExecution = get().executions[conversationId];
+          const updatedExecution = get().executions[responseId];
           if (updatedExecution) {
             callback(updatedExecution);
           }
-          delete completionCallbacks[conversationId];
+          delete completionCallbacks[responseId];
         }
       }
     } catch {
@@ -227,19 +223,19 @@ function startPolling(
   };
 
   poll();
-  pollingIntervals[conversationId] = setInterval(poll, POLL_INTERVAL_MS);
+  pollingIntervals[responseId] = setInterval(poll, POLL_INTERVAL_MS);
 }
 
-export const useAgentExecution = (conversationId: string | undefined) => {
+export const useAgentExecution = (responseId: string | undefined) => {
   return useAgentExecutionStore((state) =>
-    conversationId ? state.executions[conversationId] : undefined,
+    responseId ? state.executions[responseId] : undefined,
   );
 };
 
-export const useIsAgentExecuting = (conversationId: string | undefined) => {
+export const useIsAgentExecuting = (responseId: string | undefined) => {
   return useAgentExecutionStore((state) => {
-    if (!conversationId) return false;
-    const execution = state.executions[conversationId];
+    if (!responseId) return false;
+    const execution = state.executions[responseId];
     return execution?.status === "in_progress" && execution?.isPolling;
   });
 };

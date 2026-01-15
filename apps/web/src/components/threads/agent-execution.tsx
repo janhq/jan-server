@@ -17,22 +17,21 @@ import {
 import type { TaskResponse, StepResponse } from "@/services/response-api-service";
 
 interface AgentExecutionPanelProps {
-  conversationId?: string;
   toolState?: string;
   responseId?: string;
 }
 
-const AgentExecutionPanel = ({ conversationId, toolState, responseId }: AgentExecutionPanelProps) => {
+const AgentExecutionPanel = ({ toolState, responseId }: AgentExecutionPanelProps) => {
   const setAllSteps = useRightSidebarStore((state) => state.setAllSteps);
   const setCurrentStep = useRightSidebarStore((state) => state.setCurrentStep);
   const loadHistoricalExecution = useAgentExecutionStore((state) => state.loadHistoricalExecution);
-  const execution = useAgentExecution(conversationId);
+  const execution = useAgentExecution(responseId);
 
   useEffect(() => {
-    if (conversationId && responseId && !execution) {
-      loadHistoricalExecution(conversationId, responseId);
+    if (responseId && !execution) {
+      loadHistoricalExecution(responseId);
     }
-  }, [conversationId, responseId, execution, loadHistoricalExecution]);
+  }, [responseId, execution, loadHistoricalExecution]);
 
   if (!execution) {
     if (toolState || responseId) {

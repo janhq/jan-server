@@ -288,8 +288,18 @@ export function ThreadPageContent({
                   if (textContent && textContent.text) {
                     const agentResult = JSON.parse(textContent.text);
                     const responseId = agentResult.id || agentResult.response_id;
-                    if (responseId && conversationId) {
-                      startExecution(conversationId, responseId, (execution) => {
+                    if (responseId) {
+                      addToolOutput({
+                        tool: toolCall.toolName,
+                        toolCallId: toolCall.toolCallId,
+                        output: [{ type: "text", text: JSON.stringify({
+                          status: "in_progress",
+                          response_id: responseId,
+                          message: "Deep research started"
+                        })}],
+                      });
+
+                      startExecution(responseId, (execution) => {
                         let finalReport = "";
                         if (execution.status === "completed" && execution.planDetails) {
                           const reportTask = execution.planDetails.tasks.find(

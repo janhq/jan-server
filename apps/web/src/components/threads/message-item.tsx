@@ -428,7 +428,6 @@ export const MessageItem = memo(
         return (
           <AgentExecutionPanel
             key={`${message.id}-${partIndex}`}
-            conversationId={conversationId}
             toolState={part.state}
             responseId={responseId}
           />
