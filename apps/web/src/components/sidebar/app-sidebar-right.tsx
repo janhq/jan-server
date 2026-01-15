@@ -4,6 +4,7 @@ import {
   type SearchResultItem,
 } from "@/stores/right-sidebar-store";
 import { Button } from "@janhq/interfaces/button";
+import { MessageResponse } from "@janhq/interfaces/ai-elements/message";
 import {
   XIcon,
   ChevronLeftIcon,
@@ -99,9 +100,9 @@ const SearchResult = ({
           <h3 className="font-medium text-sm mb-2">{result.title}</h3>
         )}
         {result.content && (
-          <p className="text-muted-foreground text-sm leading-relaxed whitespace-pre-wrap">
-            {result.content}
-          </p>
+          <div className="text-sm leading-relaxed prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+            <MessageResponse>{result.content}</MessageResponse>
+          </div>
         )}
       </div>
     );

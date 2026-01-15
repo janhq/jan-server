@@ -11,6 +11,8 @@ export function parseStepOutputToResults(step: StepResponse): SearchResultItem[]
       return parseToolCallOutput(step, output);
     case "llm_call":
       return parseLLMOutput(output);
+    case "artifact_create":
+      return parseArtifactOutput(output);
     case "file_operation":
       return parseFileOperationOutput(output);
     default:
@@ -111,8 +113,28 @@ function parseLLMOutput(output: Record<string, unknown>): SearchResultItem[] {
   if (content) {
     results.push({
       type: "text",
-      title: "LLM Response",
+      title: "AI Analysis",
       content: content,
+    });
+  }
+
+  return results;
+}
+
+function parseArtifactOutput(output: Record<string, unknown>): SearchResultItem[] {
+  const results: SearchResultItem[] = [];
+
+  const artifact = output.artifact as Record<string, unknown>;
+  if (artifact) {
+    const filename = artifact.filename as string || "artifact";
+    const type = artifact.type as string || "file";
+    const downloadUrl = artifact.download_url as string;
+
+    results.push({
+      type: "link",
+      title: filename,
+      description: `${type} artifact created`,
+      url: downloadUrl || "",
     });
   }
 
