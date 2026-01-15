@@ -25,7 +25,7 @@ export const useCapabilities = create<CapabilitiesState>()(
     (set) => ({
       searchEnabled: false,
       browserEnabled: false,
-      deepResearchEnabled: false,
+      deepResearchEnabled: true,
       reasoningEnabled: false,
       imageGenerationEnabled: false,
       setSearchEnabled: (enabled: boolean) => {

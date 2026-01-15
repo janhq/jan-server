@@ -120,7 +120,7 @@ export const AgentExecutionHeader = memo(
         >
           <div className="bg-background z-10 relative flex shrink-0 items-center justify-center size-4">
             {status === "complete" && (
-              <CircleCheck className="size-4 text-primary" />
+              <CircleCheck className="size-4 text-green-600 dark:text-green-500" />
             )}
             {status === "pending" && (
               <Circle className="size-4 text-muted-foreground" />
