@@ -39,21 +39,12 @@ func setAuthHeader(ctx context.Context, req *resty.Request) {
 		return
 	}
 	if strings.HasPrefix(strings.ToLower(token), "bearer ") {
-		req.SetHeader("Authorization", token)
-		return
+		token = strings.TrimSpace(token[7:])
 	}
-	if looksLikeJWT(token) {
-		req.SetHeader("Authorization", "Bearer "+token)
+	if token == "" {
 		return
 	}
 	req.SetHeader("X-API-Key", token)
-}
-
-func looksLikeJWT(token string) bool {
-	if strings.HasPrefix(token, "sk_") {
-		return false
-	}
-	return strings.Count(token, ".") == 2
 }
 
 // parseSSEorJSON extracts JSON from SSE format or returns body as-is if already JSON.

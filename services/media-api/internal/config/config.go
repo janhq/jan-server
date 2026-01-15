@@ -32,6 +32,7 @@ type Config struct {
 	// API Configuration
 	APIURL       string `env:"MEDIA_API_URL"`                                          // Internal service URL
 	PublicURL    string `env:"MEDIA_PUBLIC_URL" envDefault:"http://localhost:8000"`    // Public URL via Kong gateway
+	LLMAPIBaseURL string `env:"LLM_API_BASE_URL" envDefault:"http://llm-api:8080"`     // LLM API base URL (API key validation)
 
 	// Storage Backend Selection
 	StorageBackend string `env:"MEDIA_STORAGE_BACKEND" envDefault:"s3"` // Options: "s3" or "local"

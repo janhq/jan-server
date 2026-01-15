@@ -47,6 +47,17 @@ type Config struct {
 	// Code Execution Retry
 	CodeFixModel string `env:"CODE_FIX_MODEL" envDefault:"gpt-4o-mini"`
 
+	// Skill Execution
+	SkillExecutionEnabled    bool          `env:"SKILL_EXECUTION_ENABLED" envDefault:"true"`
+	SkillExecutionTimeout    time.Duration `env:"SKILL_EXECUTION_TIMEOUT" envDefault:"120s"`
+	SkillMaxFileSize         int64         `env:"SKILL_MAX_FILE_SIZE" envDefault:"52428800"` // 50MB
+	SkillMaxCodeFixRetries   int           `env:"SKILL_MAX_CODE_FIX_RETRIES" envDefault:"3"`
+	SkillMaxInstallRetries   int           `env:"SKILL_MAX_INSTALL_RETRIES" envDefault:"3"`
+	SkillSlidesEnabled       bool          `env:"SKILL_SLIDES_ENABLED" envDefault:"true"`
+	SkillDocsEnabled         bool          `env:"SKILL_DOCS_ENABLED" envDefault:"true"`
+	SkillPDFsEnabled         bool          `env:"SKILL_PDFS_ENABLED" envDefault:"true"`
+	SkillSpreadsheetsEnabled bool          `env:"SKILL_SPREADSHEETS_ENABLED" envDefault:"true"`
+
 	// Background Task Processing
 	BackgroundWorkerCount  int           `env:"BACKGROUND_WORKER_COUNT" envDefault:"4"`
 	BackgroundTaskTimeout  time.Duration `env:"BACKGROUND_TASK_TIMEOUT" envDefault:"600s"`

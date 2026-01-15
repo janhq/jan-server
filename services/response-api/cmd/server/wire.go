@@ -18,6 +18,7 @@ import (
 	"jan-server/services/response-api/internal/domain/llm"
 	"jan-server/services/response-api/internal/domain/plan"
 	responseDomain "jan-server/services/response-api/internal/domain/response"
+	"jan-server/services/response-api/internal/domain/skill"
 	"jan-server/services/response-api/internal/domain/tool"
 	"jan-server/services/response-api/internal/infrastructure/auth"
 	"jan-server/services/response-api/internal/infrastructure/database"
@@ -25,6 +26,7 @@ import (
 	"jan-server/services/response-api/internal/infrastructure/logger"
 	"jan-server/services/response-api/internal/infrastructure/mcp"
 	"jan-server/services/response-api/internal/infrastructure/media"
+	skillinfra "jan-server/services/response-api/internal/infrastructure/skill"
 	artifactrepo "jan-server/services/response-api/internal/infrastructure/repository/artifact"
 	conversationrepo "jan-server/services/response-api/internal/infrastructure/repository/conversation"
 	planrepo "jan-server/services/response-api/internal/infrastructure/repository/plan"
@@ -52,6 +54,8 @@ var responseSet = wire.NewSet(
 	wire.Bind(new(tool.MCPClient), new(*mcp.Client)),
 	wire.Bind(new(planners.MCPClient), new(*mcp.Client)),
 	newMediaClient,
+	newSkillService,
+	wire.Bind(new(skill.Service), new(*skillinfra.Service)),
 	newOrchestrator,
 	newAgentOrchestrator,
 	newWebhookService,
@@ -114,6 +118,10 @@ func newMediaClient(cfg *config.Config) *media.Client {
 	return media.NewClient(cfg.MediaAPIURL)
 }
 
+func newSkillService() (*skillinfra.Service, error) {
+	return skillinfra.NewService()
+}
+
 func newOrchestrator(cfg *config.Config, provider llm.Provider, mcpClient tool.MCPClient) *tool.Orchestrator {
 	return tool.NewOrchestrator(provider, mcpClient, cfg.MaxToolDepth, cfg.ToolTimeout)
 }
@@ -126,7 +134,7 @@ func newWebhookService(log zerolog.Logger) *webhook.HTTPService {
 	return webhook.NewHTTPService(log)
 }
 
-func newAgentRegistry(planService plan.Service, mcpClient tool.MCPClient, llmProvider llm.Provider, artifactService artifact.Service, cfg *config.Config, mediaClient *media.Client) agent.Registry {
+func newAgentRegistry(planService plan.Service, mcpClient tool.MCPClient, llmProvider llm.Provider, artifactService artifact.Service, cfg *config.Config, mediaClient *media.Client, skillService skill.Service) agent.Registry {
 	registry := agent.NewRegistry()
 
 	// Register the deep research planner
@@ -142,6 +150,21 @@ func newAgentRegistry(planService plan.Service, mcpClient tool.MCPClient, llmPro
 		_ = err
 	}
 
+	docGeneratorPlanner := planners.NewDocGeneratorPlanner(planService, artifactService)
+	if err := registry.RegisterPlanner(docGeneratorPlanner); err != nil {
+		_ = err
+	}
+
+	pdfGeneratorPlanner := planners.NewPDFGeneratorPlanner(planService, artifactService)
+	if err := registry.RegisterPlanner(pdfGeneratorPlanner); err != nil {
+		_ = err
+	}
+
+	spreadsheetGeneratorPlanner := planners.NewSpreadsheetGeneratorPlanner(planService, artifactService)
+	if err := registry.RegisterPlanner(spreadsheetGeneratorPlanner); err != nil {
+		_ = err
+	}
+
 	// Create code fixer for LLM-based code fix retry
 	codeFixer := llm.NewCodeFixer(llmProvider, cfg.CodeFixModel)
 
@@ -151,8 +174,25 @@ func newAgentRegistry(planService plan.Service, mcpClient tool.MCPClient, llmPro
 	_ = registry.RegisterExecutor(plan.ActionTypeLLMCall, deepResearchExecutor)
 
 	// Register the slide generator executor for artifact creation
-	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient)
+	skillExecutor := planners.NewSkillExecutor(
+		mcpClient,
+		codeFixer,
+		skillService,
+		cfg.SkillExecutionEnabled,
+		cfg.SkillMaxInstallRetries,
+		cfg.SkillMaxCodeFixRetries,
+		cfg.SkillMaxFileSize,
+		cfg.SkillExecutionTimeout,
+		map[skill.SkillType]bool{
+			skill.SkillTypeSlides:       cfg.SkillSlidesEnabled,
+			skill.SkillTypeDocs:         cfg.SkillDocsEnabled,
+			skill.SkillTypePDFs:         cfg.SkillPDFsEnabled,
+			skill.SkillTypeSpreadsheets: cfg.SkillSpreadsheetsEnabled,
+		},
+	)
+	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient, skillExecutor)
 	_ = registry.RegisterExecutor(plan.ActionTypeArtifactCreate, slideGeneratorExecutor)
+	_ = registry.RegisterExecutor(plan.ActionTypeSkillExecute, skillExecutor)
 
 	return registry
 }

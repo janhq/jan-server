@@ -1,7 +1,11 @@
 package auth
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -16,15 +20,24 @@ import (
 
 // Validator validates JWTs using JWKS.
 type Validator struct {
-	cfg  *config.Config
-	log  zerolog.Logger
-	jwks *keyfunc.JWKS
+	cfg        *config.Config
+	log        zerolog.Logger
+	jwks       *keyfunc.JWKS
+	httpClient *http.Client
 }
 
 // NewValidator initializes JWKS fetching when auth is enabled.
 func NewValidator(ctx context.Context, cfg *config.Config, log zerolog.Logger) (*Validator, error) {
+	validator := &Validator{
+		cfg: cfg,
+		log: log,
+		httpClient: &http.Client{
+			Timeout: 10 * time.Second,
+		},
+	}
+
 	if !cfg.AuthEnabled {
-		return &Validator{cfg: cfg, log: log}, nil
+		return validator, nil
 	}
 
 	options := keyfunc.Options{
@@ -41,11 +54,8 @@ func NewValidator(ctx context.Context, cfg *config.Config, log zerolog.Logger) (
 		return nil, err
 	}
 
-	return &Validator{
-		cfg:  cfg,
-		log:  log,
-		jwks: jwks,
-	}, nil
+	validator.jwks = jwks
+	return validator, nil
 }
 
 // Middleware enforces JWT auth when enabled.
@@ -57,9 +67,25 @@ func (v *Validator) Middleware() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		tokenString := bearerToken(c.GetHeader("Authorization"))
+		tokenString := strings.TrimSpace(c.GetHeader("X-API-Key"))
 		if tokenString == "" {
-			abortUnauthorized(c, "missing bearer token")
+			tokenString = bearerToken(c.GetHeader("Authorization"))
+		}
+		if tokenString == "" {
+			abortUnauthorized(c, "missing API key or bearer token")
+			return
+		}
+
+		if strings.HasPrefix(tokenString, "sk_") {
+			userInfo, err := v.validateAPIKey(c.Request.Context(), tokenString)
+			if err != nil {
+				v.log.Warn().Err(err).Msg("API key validation failed")
+				abortUnauthorized(c, "invalid API key")
+				return
+			}
+			c.Set("user_id", userInfo.UserID)
+			c.Set("api_key_validated", true)
+			c.Next()
 			return
 		}
 
@@ -139,6 +165,56 @@ func bearerToken(header string) string {
 		return ""
 	}
 	return strings.TrimSpace(parts[1])
+}
+
+type APIKeyUserInfo struct {
+	UserID   string `json:"user_id"`
+	Subject  string `json:"subject"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+}
+
+func (v *Validator) validateAPIKey(ctx context.Context, apiKey string) (*APIKeyUserInfo, error) {
+	if strings.TrimSpace(v.cfg.LLMAPIBaseURL) == "" {
+		return nil, fmt.Errorf("LLM_API_BASE_URL not configured for API key validation")
+	}
+
+	endpoint := v.cfg.LLMAPIBaseURL + "/auth/validate-api-key"
+
+	reqBody := map[string]string{"api_key": apiKey}
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := v.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("call LLM-API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("LLM-API returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var userInfo APIKeyUserInfo
+	if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	v.log.Debug().
+		Str("user_id", userInfo.UserID).
+		Str("username", userInfo.Username).
+		Msg("API key validated via LLM-API")
+
+	return &userInfo, nil
 }
 
 func abortUnauthorized(c *gin.Context, message string) {

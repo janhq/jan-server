@@ -1,0 +1,36 @@
+from openpyxl import Workbook
+from openpyxl.styles import Font
+import json
+
+data = {{.ContentJSON}}
+options = {{.OptionsJSON}}
+
+wb = Workbook()
+wb.remove(wb.active)
+
+for sheet_def in data.get("sheets", []):
+    ws = wb.create_sheet(title=sheet_def.get("name", "Sheet"))
+
+    headers = sheet_def.get("headers", [])
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = Font(bold=True)
+
+    rows = sheet_def.get("rows", [])
+    for row_idx, row in enumerate(rows, 2):
+        for col_idx, val in enumerate(row, 1):
+            ws.cell(row=row_idx, column=col_idx, value=val)
+
+    for formula_def in sheet_def.get("formulas", []):
+        cell_addr = formula_def.get("cell")
+        formula = formula_def.get("formula")
+        if cell_addr and formula:
+            ws[cell_addr] = formula
+
+    col_widths = sheet_def.get("column_widths", {})
+    for col, width in col_widths.items():
+        ws.column_dimensions[col].width = width
+
+output_path = "{{.OutputPath}}"
+wb.save(output_path)
+print(f"OUTPUT_PATH:{output_path}")

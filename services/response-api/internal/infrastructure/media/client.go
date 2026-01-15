@@ -13,6 +13,7 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/rs/zerolog/log"
 
+	"jan-server/services/response-api/internal/domain/llm"
 	"jan-server/services/response-api/internal/domain/plan"
 )
 
@@ -45,10 +46,10 @@ type UploadRequest struct {
 
 // UploadResponse contains the result of an upload operation.
 type UploadResponse struct {
-	ID          string `json:"id"`           // jan_file_xxx format
-	DownloadURL string `json:"download_url"` // Accessible URL
-	Size        int64  `json:"bytes"`
-	MimeType    string `json:"mime"`
+	ID    string `json:"id"`    // jan_* format
+	URL   string `json:"url"`   // Public URL
+	Size  int64  `json:"bytes"` // File size
+	Mime  string `json:"mime"`  // MIME type
 }
 
 // UploadArtifact uploads content to media-api and returns artifact metadata.
@@ -88,7 +89,17 @@ func (c *Client) UploadArtifact(ctx context.Context, req *UploadRequest) (*plan.
 		SetContext(ctx).
 		SetBody(payload)
 
-	resp, err := httpReq.Post("/v1/files/ingest")
+	// Always use API key auth for service-to-service calls.
+	if authToken := strings.TrimSpace(llm.AuthTokenFromContext(ctx)); authToken != "" {
+		if strings.HasPrefix(strings.ToLower(authToken), "bearer ") {
+			authToken = strings.TrimSpace(authToken[7:])
+		}
+		if authToken != "" {
+			httpReq.SetHeader("X-API-Key", authToken)
+		}
+	}
+
+	resp, err := httpReq.Post("/v1/files")
 	if err != nil {
 		return nil, fmt.Errorf("media-api request failed: %w", err)
 	}
@@ -103,9 +114,9 @@ func (c *Client) UploadArtifact(ctx context.Context, req *UploadRequest) (*plan.
 	}
 
 	// Build download URL if not provided
-	downloadURL := result.DownloadURL
+	downloadURL := result.URL
 	if downloadURL == "" {
-		downloadURL = fmt.Sprintf("%s/v1/files/%s/content", c.baseURL, result.ID)
+		downloadURL = fmt.Sprintf("%s/v1/files/%s", c.baseURL, result.ID)
 	}
 
 	return &plan.MediaArtifact{
@@ -240,3 +251,6 @@ func detectArtifactType(filename, mimeType string) string {
 
 	return "file"
 }
+
+// Note: Auth token is retrieved using llm.AuthTokenFromContext
+// to ensure consistent context key usage across the application.

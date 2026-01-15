@@ -2,6 +2,7 @@ package responses
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"jan-server/services/response-api/internal/domain/artifact"
@@ -241,7 +242,7 @@ func MapStepToResponse(s *plan.Step) StepResponse {
 		PlannedParams: s.PlannedParams,
 		ActualParams:  s.ActualParams,
 		InputParams:   s.InputParams, // Deprecated, kept for compatibility
-		OutputData:    s.OutputData,
+		OutputData:    sanitizeStepOutputData(s.OutputData),
 	}
 
 	if s.ErrorSeverity != "" {
@@ -260,6 +261,68 @@ func MapStepToResponse(s *plan.Step) StepResponse {
 	}
 
 	return resp
+}
+
+// sanitizeStepOutputData removes large binary content (like base64) from step output data.
+// This prevents bloated API responses while preserving meaningful metadata.
+func sanitizeStepOutputData(outputData json.RawMessage) json.RawMessage {
+	if len(outputData) == 0 {
+		return outputData
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(outputData, &data); err != nil {
+		// Not a JSON object, return as-is but truncate if too large
+		if len(outputData) > 10000 {
+			return json.RawMessage(`{"truncated": true, "message": "output too large"}`)
+		}
+		return outputData
+	}
+
+	// Fields to strip (large binary content)
+	stripFields := []string{
+		"file_content_base64",
+		"content_base64",
+		"base64",
+		"data_url",
+	}
+
+	modified := false
+	for _, field := range stripFields {
+		if val, exists := data[field]; exists {
+			if str, ok := val.(string); ok && len(str) > 1000 {
+				// Replace with a placeholder
+				data[field] = "[content stripped - use download URL]"
+				modified = true
+			}
+		}
+	}
+
+	// Also check nested content array (for tool outputs)
+	if content, ok := data["content"].([]interface{}); ok {
+		for i, item := range content {
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				if text, ok := itemMap["text"].(string); ok && len(text) > 50000 {
+					itemMap["text"] = text[:1000] + "... [truncated, " + fmt.Sprintf("%d", len(text)) + " bytes total]"
+					content[i] = itemMap
+					modified = true
+				}
+			}
+		}
+		if modified {
+			data["content"] = content
+		}
+	}
+
+	if !modified {
+		return outputData
+	}
+
+	sanitized, err := json.Marshal(data)
+	if err != nil {
+		return outputData
+	}
+	return sanitized
 }
 
 // MapArtifactToResponse converts a domain artifact to an API response.

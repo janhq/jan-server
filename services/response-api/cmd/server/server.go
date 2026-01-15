@@ -18,6 +18,7 @@ import (
 	"jan-server/services/response-api/internal/domain/llm"
 	"jan-server/services/response-api/internal/domain/plan"
 	"jan-server/services/response-api/internal/domain/response"
+	"jan-server/services/response-api/internal/domain/skill"
 	"jan-server/services/response-api/internal/domain/tool"
 	"jan-server/services/response-api/internal/infrastructure/apikey"
 	"jan-server/services/response-api/internal/infrastructure/auth"
@@ -28,6 +29,7 @@ import (
 	"jan-server/services/response-api/internal/infrastructure/media"
 	"jan-server/services/response-api/internal/infrastructure/observability"
 	"jan-server/services/response-api/internal/infrastructure/queue"
+	skillinfra "jan-server/services/response-api/internal/infrastructure/skill"
 	artifactrepo "jan-server/services/response-api/internal/infrastructure/repository/artifact"
 	conversationrepo "jan-server/services/response-api/internal/infrastructure/repository/conversation"
 	planrepo "jan-server/services/response-api/internal/infrastructure/repository/plan"
@@ -126,6 +128,12 @@ func main() {
 	// Initialize artifact service
 	artifactService := artifact.NewService(artifactRepository)
 
+	// Initialize skill service
+	skillService, err := skillinfra.NewService()
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to initialize skill service")
+	}
+
 	// Initialize agent registry with planners and executors
 	agentRegistry := agent.NewRegistry()
 	deepResearchPlanner := planners.NewDeepResearchPlanner(planService)
@@ -137,6 +145,21 @@ func main() {
 	slideGeneratorPlanner := planners.NewSlideGeneratorPlanner(planService, artifactService)
 	if err := agentRegistry.RegisterPlanner(slideGeneratorPlanner); err != nil {
 		log.Warn().Err(err).Msg("failed to register slide generator planner")
+	}
+
+	docGeneratorPlanner := planners.NewDocGeneratorPlanner(planService, artifactService)
+	if err := agentRegistry.RegisterPlanner(docGeneratorPlanner); err != nil {
+		log.Warn().Err(err).Msg("failed to register doc generator planner")
+	}
+
+	pdfGeneratorPlanner := planners.NewPDFGeneratorPlanner(planService, artifactService)
+	if err := agentRegistry.RegisterPlanner(pdfGeneratorPlanner); err != nil {
+		log.Warn().Err(err).Msg("failed to register pdf generator planner")
+	}
+
+	spreadsheetGeneratorPlanner := planners.NewSpreadsheetGeneratorPlanner(planService, artifactService)
+	if err := agentRegistry.RegisterPlanner(spreadsheetGeneratorPlanner); err != nil {
+		log.Warn().Err(err).Msg("failed to register spreadsheet generator planner")
 	}
 
 	// Create code fixer for LLM-based code fix retry
@@ -152,9 +175,28 @@ func main() {
 	}
 
 	// Register slide generator executor for artifact creation
-	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient)
+	skillExecutor := planners.NewSkillExecutor(
+		mcpClient,
+		codeFixer,
+		skillService,
+		cfg.SkillExecutionEnabled,
+		cfg.SkillMaxInstallRetries,
+		cfg.SkillMaxCodeFixRetries,
+		cfg.SkillMaxFileSize,
+		cfg.SkillExecutionTimeout,
+		map[skill.SkillType]bool{
+			skill.SkillTypeSlides:       cfg.SkillSlidesEnabled,
+			skill.SkillTypeDocs:         cfg.SkillDocsEnabled,
+			skill.SkillTypePDFs:         cfg.SkillPDFsEnabled,
+			skill.SkillTypeSpreadsheets: cfg.SkillSpreadsheetsEnabled,
+		},
+	)
+	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient, skillExecutor)
 	if err := agentRegistry.RegisterExecutor(plan.ActionTypeArtifactCreate, slideGeneratorExecutor); err != nil {
 		log.Warn().Err(err).Msg("failed to register artifact create executor")
+	}
+	if err := agentRegistry.RegisterExecutor(plan.ActionTypeSkillExecute, skillExecutor); err != nil {
+		log.Warn().Err(err).Msg("failed to register skill execute executor")
 	}
 
 	agentOrchestrator := agent.NewOrchestrator(agentRegistry, planService)

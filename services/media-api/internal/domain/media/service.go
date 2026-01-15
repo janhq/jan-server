@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -19,15 +20,6 @@ import (
 	"jan-server/services/media-api/internal/utils/platformerrors"
 	"jan-server/services/media-api/utils/mediaid"
 )
-
-var allowedMIMEs = map[string]string{
-	"image/jpeg": "jpg",
-	"image/png":  "png",
-	"image/webp": "webp",
-	"image/gif":  "gif",
-	"image/bmp":  "bmp",
-	"image/tiff": "tiff",
-}
 
 // Repository defines persistence operations needed by the service.
 type Repository interface {
@@ -77,10 +69,14 @@ func (s *Service) Ingest(ctx context.Context, req IngestRequest) (*MediaObject, 
 		return nil, false, fmt.Errorf("file exceeds max size of %d bytes", s.cfg.MaxMediaBytes)
 	}
 
-	mimeType := mimetype.Detect(data).String()
-	ext, ok := allowedMIMEs[mimeType]
-	if !ok {
-		return nil, false, fmt.Errorf("unsupported mime type %s", mimeType)
+	detected := mimetype.Detect(data)
+	mimeType := detected.String()
+	ext := strings.TrimPrefix(filepath.Ext(strings.TrimSpace(req.Filename)), ".")
+	if ext == "" {
+		ext = strings.TrimPrefix(detected.Extension(), ".")
+	}
+	if ext == "" {
+		ext = "bin"
 	}
 
 	sum := sha256.Sum256(data)
@@ -93,7 +89,7 @@ func (s *Service) Ingest(ctx context.Context, req IngestRequest) (*MediaObject, 
 	}
 
 	id := mediaid.New()
-	key := fmt.Sprintf("images/%s.%s", id, ext)
+	key := fmt.Sprintf("files/%s.%s", id, ext)
 
 	if err := s.storage.Upload(ctx, key, bytes.NewReader(data), int64(len(data)), mimeType); err != nil {
 		return nil, false, err

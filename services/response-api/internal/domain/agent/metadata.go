@@ -119,6 +119,64 @@ func SlideGeneratorMetadata() AgentMetadata {
 	}
 }
 
+// DocGeneratorMetadata returns metadata for the document generator agent.
+func DocGeneratorMetadata() AgentMetadata {
+	return AgentMetadata{
+		Type:        "doc_generator",
+		Name:        "Document Generator Agent",
+		Description: "Creates structured Word documents for reports, briefs, and structured write-ups.",
+		Keywords: []string{
+			"document", "docx", "report", "brief", "proposal",
+			"word document", "write-up",
+		},
+		Capabilities: []string{
+			"content_generation", "structured_sections", "tables", "export",
+		},
+		OutputFormats:     []string{"docx", "pdf"},
+		EstimatedDuration: "1-5 minutes",
+		UseWhen:           "User wants a structured document such as a report or brief",
+		Enabled:           true,
+	}
+}
+
+// PDFGeneratorMetadata returns metadata for the PDF generator agent.
+func PDFGeneratorMetadata() AgentMetadata {
+	return AgentMetadata{
+		Type:        "pdf_generator",
+		Name:        "PDF Generator Agent",
+		Description: "Generates PDF documents with headings, tables, and structured sections.",
+		Keywords: []string{
+			"pdf", "export pdf", "report pdf", "document pdf",
+		},
+		Capabilities: []string{
+			"content_generation", "tables", "pdf_export",
+		},
+		OutputFormats:     []string{"pdf"},
+		EstimatedDuration: "1-5 minutes",
+		UseWhen:           "User wants a PDF output",
+		Enabled:           true,
+	}
+}
+
+// SpreadsheetGeneratorMetadata returns metadata for the spreadsheet generator agent.
+func SpreadsheetGeneratorMetadata() AgentMetadata {
+	return AgentMetadata{
+		Type:        "spreadsheet_generator",
+		Name:        "Spreadsheet Generator Agent",
+		Description: "Builds spreadsheets with multiple sheets, tables, and formulas.",
+		Keywords: []string{
+			"spreadsheet", "xlsx", "excel", "table", "worksheet",
+		},
+		Capabilities: []string{
+			"table_generation", "formulas", "export",
+		},
+		OutputFormats:     []string{"xlsx"},
+		EstimatedDuration: "1-5 minutes",
+		UseWhen:           "User wants an Excel spreadsheet or structured tabular data",
+		Enabled:           true,
+	}
+}
+
 // DeepResearchInputSchema returns the input schema for deep research.
 func DeepResearchInputSchema() *AgentInputSchema {
 	return &AgentInputSchema{
@@ -211,6 +269,77 @@ func SlideGeneratorInputSchema() *AgentInputSchema {
 	}
 }
 
+// DocGeneratorInputSchema returns the input schema for document generation.
+func DocGeneratorInputSchema() *AgentInputSchema {
+	return &AgentInputSchema{
+		Type: "object",
+		Properties: map[string]SchemaProperty{
+			"prompt": {
+				Type:        "string",
+				Description: "Description of the document to create",
+			},
+			"template": {
+				Type:        "string",
+				Description: "Document template style",
+				Enum:        []string{"professional", "academic", "minimal"},
+				Default:     "professional",
+			},
+			"format": {
+				Type:        "string",
+				Description: "Output format",
+				Enum:        []string{"docx", "pdf"},
+				Default:     "docx",
+			},
+		},
+		Required: []string{"prompt"},
+	}
+}
+
+// PDFGeneratorInputSchema returns the input schema for PDF generation.
+func PDFGeneratorInputSchema() *AgentInputSchema {
+	return &AgentInputSchema{
+		Type: "object",
+		Properties: map[string]SchemaProperty{
+			"prompt": {
+				Type:        "string",
+				Description: "Description of the PDF to create",
+			},
+			"page_size": {
+				Type:        "string",
+				Description: "Page size for the PDF",
+				Enum:        []string{"A4", "Letter", "Legal"},
+				Default:     "A4",
+			},
+			"orientation": {
+				Type:        "string",
+				Description: "Page orientation",
+				Enum:        []string{"portrait", "landscape"},
+				Default:     "portrait",
+			},
+		},
+		Required: []string{"prompt"},
+	}
+}
+
+// SpreadsheetGeneratorInputSchema returns the input schema for spreadsheet generation.
+func SpreadsheetGeneratorInputSchema() *AgentInputSchema {
+	return &AgentInputSchema{
+		Type: "object",
+		Properties: map[string]SchemaProperty{
+			"prompt": {
+				Type:        "string",
+				Description: "Description of the spreadsheet to create",
+			},
+			"include_charts": {
+				Type:        "boolean",
+				Description: "Whether to include charts where applicable",
+				Default:     false,
+			},
+		},
+		Required: []string{"prompt"},
+	}
+}
+
 // DeepResearchOutputSchema returns the output schema for deep research.
 func DeepResearchOutputSchema() *AgentOutputSchema {
 	return &AgentOutputSchema{
@@ -261,6 +390,57 @@ func SlideGeneratorOutputSchema() *AgentOutputSchema {
 	}
 }
 
+// DocGeneratorOutputSchema returns the output schema for document generation.
+func DocGeneratorOutputSchema() *AgentOutputSchema {
+	return &AgentOutputSchema{
+		Type: "object",
+		Properties: map[string]SchemaProperty{
+			"artifact_id": {
+				Type:        "string",
+				Description: "ID of the generated document artifact",
+			},
+			"download_url": {
+				Type:        "string",
+				Description: "URL to download the document",
+			},
+		},
+	}
+}
+
+// PDFGeneratorOutputSchema returns the output schema for PDF generation.
+func PDFGeneratorOutputSchema() *AgentOutputSchema {
+	return &AgentOutputSchema{
+		Type: "object",
+		Properties: map[string]SchemaProperty{
+			"artifact_id": {
+				Type:        "string",
+				Description: "ID of the generated PDF artifact",
+			},
+			"download_url": {
+				Type:        "string",
+				Description: "URL to download the PDF",
+			},
+		},
+	}
+}
+
+// SpreadsheetGeneratorOutputSchema returns the output schema for spreadsheet generation.
+func SpreadsheetGeneratorOutputSchema() *AgentOutputSchema {
+	return &AgentOutputSchema{
+		Type: "object",
+		Properties: map[string]SchemaProperty{
+			"artifact_id": {
+				Type:        "string",
+				Description: "ID of the generated spreadsheet artifact",
+			},
+			"download_url": {
+				Type:        "string",
+				Description: "URL to download the spreadsheet",
+			},
+		},
+	}
+}
+
 // DeepResearchExamples returns usage examples for deep research.
 func DeepResearchExamples() []AgentExample {
 	return []AgentExample{
@@ -289,6 +469,36 @@ func SlideGeneratorExamples() []AgentExample {
 	}
 }
 
+// DocGeneratorExamples returns usage examples for document generation.
+func DocGeneratorExamples() []AgentExample {
+	return []AgentExample{
+		{
+			Input:       json.RawMessage(`{"prompt": "Write a project proposal for a new analytics platform", "format": "docx"}`),
+			Description: "Creates a structured Word document proposal",
+		},
+	}
+}
+
+// PDFGeneratorExamples returns usage examples for PDF generation.
+func PDFGeneratorExamples() []AgentExample {
+	return []AgentExample{
+		{
+			Input:       json.RawMessage(`{"prompt": "Generate a quarterly report summary", "page_size": "Letter"}`),
+			Description: "Creates a PDF summary report",
+		},
+	}
+}
+
+// SpreadsheetGeneratorExamples returns usage examples for spreadsheet generation.
+func SpreadsheetGeneratorExamples() []AgentExample {
+	return []AgentExample{
+		{
+			Input:       json.RawMessage(`{"prompt": "Create a budget tracker spreadsheet", "include_charts": false}`),
+			Description: "Creates a budget tracker in XLSX format",
+		},
+	}
+}
+
 // GetAgentDetail returns the full detail for an agent type.
 func GetAgentDetail(agentType string) *AgentDetail {
 	switch agentType {
@@ -306,6 +516,27 @@ func GetAgentDetail(agentType string) *AgentDetail {
 			OutputSchema:  SlideGeneratorOutputSchema(),
 			Examples:      SlideGeneratorExamples(),
 		}
+	case "doc_generator":
+		return &AgentDetail{
+			AgentMetadata: DocGeneratorMetadata(),
+			InputSchema:   DocGeneratorInputSchema(),
+			OutputSchema:  DocGeneratorOutputSchema(),
+			Examples:      DocGeneratorExamples(),
+		}
+	case "pdf_generator":
+		return &AgentDetail{
+			AgentMetadata: PDFGeneratorMetadata(),
+			InputSchema:   PDFGeneratorInputSchema(),
+			OutputSchema:  PDFGeneratorOutputSchema(),
+			Examples:      PDFGeneratorExamples(),
+		}
+	case "spreadsheet_generator":
+		return &AgentDetail{
+			AgentMetadata: SpreadsheetGeneratorMetadata(),
+			InputSchema:   SpreadsheetGeneratorInputSchema(),
+			OutputSchema:  SpreadsheetGeneratorOutputSchema(),
+			Examples:      SpreadsheetGeneratorExamples(),
+		}
 	default:
 		return nil
 	}
@@ -316,6 +547,9 @@ func GetAllAgentMetadata() []AgentMetadata {
 	return []AgentMetadata{
 		DeepResearchMetadata(),
 		SlideGeneratorMetadata(),
+		DocGeneratorMetadata(),
+		PDFGeneratorMetadata(),
+		SpreadsheetGeneratorMetadata(),
 	}
 }
 

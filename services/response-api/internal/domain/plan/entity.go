@@ -37,6 +37,9 @@ type AgentType string
 const (
 	AgentTypeSlideGenerator AgentType = "slide_generator"
 	AgentTypeDeepResearch   AgentType = "deep_research"
+	AgentTypeDocGenerator   AgentType = "doc_generator"
+	AgentTypePDFGenerator   AgentType = "pdf_generator"
+	AgentTypeSpreadsheetGenerator AgentType = "spreadsheet_generator"
 	AgentTypeCustom         AgentType = "custom"
 )
 
@@ -137,6 +140,7 @@ const (
 	ActionTypeUserPrompt     ActionType = "user_prompt"
 	ActionTypeValidation     ActionType = "validation"
 	ActionTypeTransform      ActionType = "transform"
+	ActionTypeSkillExecute   ActionType = "skill_execute"
 )
 
 // String returns the string representation of the action type.

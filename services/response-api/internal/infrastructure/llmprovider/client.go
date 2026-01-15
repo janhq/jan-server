@@ -150,21 +150,12 @@ func setAuthHeaders(ctx context.Context, setHeader func(string, string)) {
 		return
 	}
 	if strings.HasPrefix(strings.ToLower(token), "bearer ") {
-		setHeader("Authorization", token)
-		return
+		token = strings.TrimSpace(token[7:])
 	}
-	if looksLikeJWT(token) {
-		setHeader("Authorization", "Bearer "+token)
+	if token == "" {
 		return
 	}
 	setHeader("X-API-Key", token)
-}
-
-func looksLikeJWT(token string) bool {
-	if strings.HasPrefix(token, "sk_") {
-		return false
-	}
-	return strings.Count(token, ".") == 2
 }
 
 // sseStream implements llm.Stream backed by http.Response body with SSE parsing.

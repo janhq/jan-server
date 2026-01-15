@@ -7,7 +7,7 @@ type MediaObject struct {
 	ID              string `gorm:"type:varchar(40);primaryKey"`
 	StorageProvider string `gorm:"type:varchar(32);not null"`
 	StorageKey      string `gorm:"type:varchar(255);not null"`
-	MimeType        string `gorm:"type:varchar(64);not null"`
+	MimeType        string `gorm:"type:varchar(255);not null"`
 	Bytes           int64  `gorm:"not null"`
 	Sha256          string `gorm:"type:char(64);uniqueIndex;not null"`
 	CreatedBy       string `gorm:"type:varchar(64)"`
