@@ -284,37 +284,6 @@ func (h *ResponseHandler) ListInputItems(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": items})
 }
 
-// ListByConversation handles GET /v1/conversations/:conversation_id/responses
-// @Summary List responses for a conversation
-// @Description Returns all responses associated with a conversation, ordered by creation date descending
-// @Tags Conversations
-// @Produce json
-// @Param conversation_id path string true "Conversation ID"
-// @Success 200 {object} responses.ConversationResponsesListResponse
-// @Failure 400 {object} map[string]string
-// @Router /v1/conversations/{conversation_id}/responses [get]
-func (h *ResponseHandler) ListByConversation(c *gin.Context) {
-	conversationID := c.Param("conversation_id")
-	if conversationID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "conversation_id is required"})
-		return
-	}
-
-	respList, err := h.service.ListByConversation(c.Request.Context(), conversationID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Map domain responses to summary DTOs
-	summaries := make([]responses.ConversationResponseSummary, 0, len(respList))
-	for _, r := range respList {
-		summaries = append(summaries, responses.FromDomainToSummary(r))
-	}
-
-	c.JSON(http.StatusOK, responses.ConversationResponsesListResponse{Data: summaries})
-}
-
 func (h *ResponseHandler) streamResponse(c *gin.Context, params response.CreateParams) {
 	writer := c.Writer
 	flusher, ok := writer.(http.Flusher)

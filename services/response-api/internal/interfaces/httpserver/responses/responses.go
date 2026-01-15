@@ -184,41 +184,6 @@ type ConversationItemsResponse struct {
 	Data []response.ConversationItem `json:"data"`
 }
 
-// ConversationResponseSummary represents a summarized response for listing.
-type ConversationResponseSummary struct {
-	ID           string  `json:"id"`
-	Status       string  `json:"status"`
-	AgentType    string  `json:"agent_type,omitempty"`
-	HasPlan      bool    `json:"has_plan"`
-	PlanProgress float64 `json:"plan_progress,omitempty"`
-	CreatedAt    int64   `json:"created_at"`
-}
-
-// ConversationResponsesListResponse wraps a list of response summaries.
-type ConversationResponsesListResponse struct {
-	Data []ConversationResponseSummary `json:"data"`
-}
-
-// FromDomainToSummary maps a domain response to a summary DTO.
-func FromDomainToSummary(r *response.Response) ConversationResponseSummary {
-	summary := ConversationResponseSummary{
-		ID:        r.PublicID,
-		Status:    string(r.Status),
-		HasPlan:   false,
-		CreatedAt: r.CreatedAt.Unix(),
-	}
-
-	// Check metadata for agent_type to determine if it has a plan
-	if r.Metadata != nil {
-		if agentType, ok := r.Metadata["agent_type"].(string); ok && agentType != "" {
-			summary.AgentType = agentType
-			summary.HasPlan = true
-		}
-	}
-
-	return summary
-}
-
 // FullResponsePayload combines response with plan details in one payload.
 type FullResponsePayload struct {
 	ResponsePayload

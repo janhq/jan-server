@@ -13,5 +13,4 @@ func registerResponseRoutes(router gin.IRoutes, handler *handlers.ResponseHandle
 	router.DELETE("/responses/:response_id", handler.Delete)
 	router.POST("/responses/:response_id/cancel", handler.Cancel)
 	router.GET("/responses/:response_id/input_items", handler.ListInputItems)
-	router.GET("/conversations/:conversation_id/responses", handler.ListByConversation)
 }
