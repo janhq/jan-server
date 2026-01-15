@@ -231,12 +231,12 @@ func (e *SkillExecutor) executeWithRetry(
 	fileName := e.getFileName(params)
 	mimeType := e.getMimeType(params.SkillType)
 	output := SkillExecuteOutput{
-		Success:           true,
-		SkillType:         string(params.SkillType),
-		OutputPath:        outputPath,
-		FileName:          fileName,
-		MimeType:          mimeType,
-		FileSize:          int64(len(fileContent)),
+		Success:    true,
+		SkillType:  string(params.SkillType),
+		OutputPath: outputPath,
+		FileName:   fileName,
+		MimeType:   mimeType,
+		FileSize:   int64(len(fileContent)),
 	}
 	outputBytes, _ := json.Marshal(output)
 
@@ -314,16 +314,29 @@ func (e *SkillExecutor) readFileFromSandbox(ctx context.Context, path string, in
 	return decodeSandboxContent(rawText, ext)
 }
 
-// readBinaryFileFromSandbox reads a binary file using shell command with base64 encoding.
+// readBinaryFileFromSandbox reads a binary file using Python code execution with base64 encoding.
+// This is more reliable than shell base64 command for large binary files.
 func (e *SkillExecutor) readBinaryFileFromSandbox(ctx context.Context, path string, input agent.ExecutionInput) ([]byte, error) {
-	// Use base64 encoding to safely transfer binary data
-	// -w0 disables line wrapping for cleaner output
-	command := fmt.Sprintf("base64 -w0 %q", path)
+	// Use Python to read and base64-encode the file, which is more reliable than shell base64 for large binary files
+	code := fmt.Sprintf(`import base64
+import json
+import os
+
+path = %q
+if not os.path.exists(path):
+    print(json.dumps({"error": "file not found", "path": path}))
+else:
+    with open(path, "rb") as f:
+        data = f.read()
+    encoded = base64.b64encode(data).decode("ascii")
+    print(json.dumps({"base64": encoded, "size": len(data)}))
+`, path)
 
 	callReq := tool.CallRequest{
-		Name: "aio_shell_exec",
+		Name: "aio_code_execute",
 		Arguments: map[string]interface{}{
-			"command": command,
+			"language": "python",
+			"code":     code,
 		},
 	}
 	if input.PlanContext != nil {
@@ -333,46 +346,64 @@ func (e *SkillExecutor) readBinaryFileFromSandbox(ctx context.Context, path stri
 
 	result, err := e.mcpClient.CallTool(ctx, callReq)
 	if err != nil {
-		return nil, fmt.Errorf("shell exec failed: %w", err)
+		return nil, fmt.Errorf("code execute failed: %w", err)
 	}
 	if result == nil {
-		return nil, fmt.Errorf("shell exec returned nil result")
+		return nil, fmt.Errorf("code execute returned nil result")
 	}
 	if result.IsError {
 		errMsg := result.Error
 		if errMsg == "" {
 			errMsg = firstTextContent(result.Content)
 		}
-		return nil, fmt.Errorf("shell exec error: %s", errMsg)
+		return nil, fmt.Errorf("code execute error: %s", errMsg)
 	}
 
-	// Extract the base64 content from the result
 	rawText := firstTextContent(result.Content)
 	if rawText == "" {
-		return nil, fmt.Errorf("shell exec returned empty content")
+		return nil, fmt.Errorf("code execute returned empty content")
 	}
 
-	// Parse the JSON response from aio_shell_exec
-	var shellResult struct {
+	// Parse the code execution result
+	var execResult struct {
 		Stdout   string `json:"stdout"`
 		Stderr   string `json:"stderr"`
 		ExitCode int    `json:"exit_code"`
+		Status   string `json:"status"`
 	}
-	if err := json.Unmarshal([]byte(rawText), &shellResult); err != nil {
-		// If not JSON, assume it's raw base64 - clean and decode
-		cleanedB64 := cleanBase64String(rawText)
-		return base64.StdEncoding.DecodeString(cleanedB64)
-	}
-
-	if shellResult.ExitCode != 0 {
-		return nil, fmt.Errorf("base64 command failed (exit %d): %s", shellResult.ExitCode, shellResult.Stderr)
+	if err := json.Unmarshal([]byte(rawText), &execResult); err != nil {
+		return nil, fmt.Errorf("failed to parse code execute result: %w", err)
 	}
 
-	// Clean the base64 output - remove any whitespace, newlines, or extra characters
-	cleanedB64 := cleanBase64String(shellResult.Stdout)
+	if execResult.Status != "" && execResult.Status != "ok" {
+		return nil, fmt.Errorf("code execute status: %s, stderr: %s", execResult.Status, execResult.Stderr)
+	}
 
-	// Decode the base64 content
-	decoded, err := base64.StdEncoding.DecodeString(cleanedB64)
+	// Parse the Python script output
+	stdout := strings.TrimSpace(execResult.Stdout)
+	if stdout == "" {
+		return nil, fmt.Errorf("code execute returned empty stdout")
+	}
+
+	var fileResult struct {
+		Base64 string `json:"base64"`
+		Size   int    `json:"size"`
+		Error  string `json:"error"`
+		Path   string `json:"path"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &fileResult); err != nil {
+		return nil, fmt.Errorf("failed to parse file read result: %w, stdout: %s", err, stdout)
+	}
+
+	if fileResult.Error != "" {
+		return nil, fmt.Errorf("file read error: %s (path: %s)", fileResult.Error, fileResult.Path)
+	}
+
+	if fileResult.Base64 == "" {
+		return nil, fmt.Errorf("file read returned empty base64")
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(fileResult.Base64)
 	if err != nil {
 		return nil, fmt.Errorf("base64 decode failed: %w", err)
 	}
