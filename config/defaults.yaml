@@ -114,15 +114,6 @@ services:
     mcp_tools_url: http://mcp-tools:8091
     max_tool_depth: 8
     tool_timeout: 45s
-    skill_execution_enabled: true
-    skill_execution_timeout: 120s
-    skill_max_file_size: 52428800
-    skill_max_code_fix_retries: 3
-    skill_max_install_retries: 3
-    skill_slides_enabled: true
-    skill_docs_enabled: true
-    skill_pdfs_enabled: true
-    skill_spreadsheets_enabled: true
   memory_tools:
     enabled: false
     http_port: 0
