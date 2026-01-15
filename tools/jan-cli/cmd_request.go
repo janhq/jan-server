@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -28,6 +30,7 @@ type ChainedRequest struct {
 	Name    string            `json:"name"`
 	Request SimpleRequestSpec `json:"request"`
 	Extract map[string]string `json:"extract,omitempty"` // Extract values from response using JSON path
+	Options *RequestOptions   `json:"options,omitempty"`
 }
 
 type SimpleAuth struct {
@@ -41,6 +44,10 @@ type SimpleRequestSpec struct {
 	Endpoint string            `json:"endpoint"`
 	Headers  map[string]string `json:"headers,omitempty"`
 	Body     interface{}       `json:"body,omitempty"`
+}
+
+type RequestOptions struct {
+	SaveToFile string `json:"saveToFile,omitempty"`
 }
 
 var requestCmd = &cobra.Command{
@@ -154,12 +161,12 @@ func runRequestFile(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no request or chain defined in request file")
 	}
 
-	_, err = executeSingleRequest("Main Request", *req.Request, authToken, variables, nil)
+	_, err = executeSingleRequest("Main Request", *req.Request, authToken, variables, nil, nil)
 	return err
 }
 
 // executeSingleRequest executes a single request and returns the response body
-func executeSingleRequest(name string, reqSpec SimpleRequestSpec, authToken string, variables map[string]string, extract map[string]string) ([]byte, error) {
+func executeSingleRequest(name string, reqSpec SimpleRequestSpec, authToken string, variables map[string]string, extract map[string]string, options *RequestOptions) ([]byte, error) {
 	// Substitute variables in endpoint
 	endpoint := substituteVariables(reqSpec.Endpoint, variables)
 	fullURL := reqBaseURL + endpoint
@@ -261,16 +268,28 @@ func executeSingleRequest(name string, reqSpec SimpleRequestSpec, authToken stri
 		}
 	}
 
-	// Pretty print JSON response
-	var prettyResp bytes.Buffer
-	if err := json.Indent(&prettyResp, respBody, "   ", "  "); err == nil {
-		fmt.Printf("   Body:\n   %s\n", prettyResp.String())
+	var saveOptions *RequestOptions
+	if options != nil && strings.TrimSpace(options.SaveToFile) != "" {
+		saveOptions = &RequestOptions{
+			SaveToFile: substituteVariables(options.SaveToFile, variables),
+		}
+	}
+	if saved, saveErr := maybeSaveResponseToFile(resp, respBody, saveOptions); saveErr != nil {
+		return respBody, saveErr
+	} else if saved != "" {
+		fmt.Printf("   Body saved to: %s\n", saved)
 	} else {
-		fmt.Printf("   Body: %s\n", string(respBody))
+		// Pretty print JSON response
+		var prettyResp bytes.Buffer
+		if err := json.Indent(&prettyResp, respBody, "   ", "  "); err == nil {
+			fmt.Printf("   Body:\n   %s\n", prettyResp.String())
+		} else {
+			fmt.Printf("   Body: %s\n", string(respBody))
+		}
 	}
 
 	// Full output mode - parse and display tool calls, steps, and output items
-	if reqFullOutput && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+	if reqFullOutput && resp.StatusCode >= 200 && resp.StatusCode < 300 && (options == nil || strings.TrimSpace(options.SaveToFile) == "") {
 		printFullOutput(respBody)
 	}
 
@@ -300,7 +319,7 @@ func executeChainedRequests(chain []ChainedRequest, authToken string, variables 
 		fmt.Printf("📍 Step %d/%d: %s\n", i+1, len(chain), chainReq.Name)
 		fmt.Printf(strings.Repeat("─", 60) + "\n")
 
-		_, err := executeSingleRequest(chainReq.Name, chainReq.Request, authToken, variables, chainReq.Extract)
+		_, err := executeSingleRequest(chainReq.Name, chainReq.Request, authToken, variables, chainReq.Extract, chainReq.Options)
 		if err != nil {
 			return fmt.Errorf("chain step %d (%s) failed: %w", i+1, chainReq.Name, err)
 		}
@@ -595,6 +614,43 @@ func guestLogin(baseURL, endpoint string) (string, error) {
 	}
 
 	return "", fmt.Errorf("no access_token in response: %v", result)
+}
+
+func maybeSaveResponseToFile(resp *http.Response, respBody []byte, options *RequestOptions) (string, error) {
+	if options == nil || strings.TrimSpace(options.SaveToFile) == "" {
+		return "", nil
+	}
+
+	targetPath := strings.TrimSpace(options.SaveToFile)
+	if targetPath == "auto" {
+		targetPath = ""
+	}
+
+	if targetPath == "" {
+		if header := resp.Header.Get("Content-Disposition"); header != "" {
+			if _, params, err := mime.ParseMediaType(header); err == nil {
+				if filename := strings.TrimSpace(params["filename"]); filename != "" {
+					targetPath = filename
+				}
+			}
+		}
+	}
+
+	if targetPath == "" {
+		targetPath = "response_body.bin"
+	}
+
+	if !filepath.IsAbs(targetPath) {
+		if wd, err := os.Getwd(); err == nil {
+			targetPath = filepath.Join(wd, targetPath)
+		}
+	}
+
+	if err := os.WriteFile(targetPath, respBody, 0600); err != nil {
+		return "", fmt.Errorf("failed to save response body to file: %w", err)
+	}
+
+	return targetPath, nil
 }
 
 func indentString(s, indent string) string {
