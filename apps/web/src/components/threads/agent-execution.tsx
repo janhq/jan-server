@@ -86,24 +86,25 @@ const AgentExecutionPanel = ({ toolState, responseId }: AgentExecutionPanelProps
     }
   };
 
-  // Collect all steps from all tasks with their global indices
-  const allStepsFromAllTasks: StepWithResults[] = [];
+  // Collect all steps from all tasks that have results (non-empty)
+  const allStepsWithResults: StepWithResults[] = [];
   const stepIndexMap: Map<string, number> = new Map();
 
   tasks.forEach((task: TaskResponse) => {
     const taskSteps = convertTaskToStepWithResults(task);
     task.steps?.forEach((step: StepResponse, localIndex: number) => {
-      const globalIndex = allStepsFromAllTasks.length;
-      stepIndexMap.set(step.id, globalIndex);
-      if (taskSteps[localIndex]) {
-        allStepsFromAllTasks.push(taskSteps[localIndex]);
+      const stepData = taskSteps[localIndex];
+      // Only include steps that have results
+      if (stepData && stepData.results && stepData.results.length > 0) {
+        stepIndexMap.set(step.id, allStepsWithResults.length);
+        allStepsWithResults.push(stepData);
       }
     });
   });
 
   const handleStepClick = (stepId: string) => {
     const globalIndex = stepIndexMap.get(stepId) ?? 0;
-    setAllSteps(allStepsFromAllTasks);
+    setAllSteps(allStepsWithResults);
     setCurrentStep(globalIndex);
   };
 
