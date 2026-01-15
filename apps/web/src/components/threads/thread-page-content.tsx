@@ -232,10 +232,7 @@ export function ThreadPageContent({
           (e) => e.type === CONTENT_TYPE.TEXT && e.text.length > 0,
         );
 
-      // Track if run_agent was called - if so, stop the chat after execution
       let ranAgent = false;
-
-      // After finishing a message, check if we need to resubmit for tool calls
       Promise.all(
         sessionData.tools.map(async (toolCall: any) => {
           // Check if already aborted before starting
@@ -281,11 +278,9 @@ export function ThreadPageContent({
               errorText: `Error: ${result.error}`,
             });
           } else {
-            // If this was run_agent, handle differently - wait for agent completion before adding output
             if (toolCall.toolName === "run_agent") {
               toolCallAbortController.current?.abort();
 
-              // Parse the run_agent result to extract response_id and start polling
               try {
                 const content = result.content;
                 if (Array.isArray(content) && content.length > 0) {
@@ -294,14 +289,9 @@ export function ThreadPageContent({
                     const agentResult = JSON.parse(textContent.text);
                     const responseId = agentResult.id || agentResult.response_id;
                     if (responseId && conversationId) {
-                      // Start polling for agent execution progress with completion callback
                       startExecution(conversationId, responseId, (execution) => {
-                        console.log("Agent execution completed:", execution.status);
-
-                        // Extract the final report from the agent's plan details
                         let finalReport = "";
                         if (execution.status === "completed" && execution.planDetails) {
-                          // Find the Report task and get its llm_call output
                           const reportTask = execution.planDetails.tasks.find(
                             (t) => t.title === "Report" || t.task_type === "generation"
                           );
@@ -314,7 +304,6 @@ export function ThreadPageContent({
                           }
                         }
 
-                        // Create the tool output with the final report
                         const agentOutput = finalReport
                           ? [{ type: "text", text: JSON.stringify({
                               status: execution.status,
@@ -328,22 +317,17 @@ export function ThreadPageContent({
                               error: execution.error || "Agent execution failed or was cancelled"
                             })}];
 
-                        // Add tool output with the final result
                         addToolOutput({
                           tool: toolCall.toolName,
                           toolCallId: toolCall.toolCallId,
                           output: agentOutput,
                         });
 
-                        // Trigger LLM follow-up to present the report
                         setTimeout(() => {
-                          console.log("Triggering follow-up message after agent completion");
                           sendMessage();
                         }, 100);
                       });
-                      console.log("Started agent execution polling for response:", responseId);
 
-                      // Don't add tool output yet - wait for agent completion
                       return;
                     }
                   }
@@ -359,7 +343,6 @@ export function ThreadPageContent({
                 output: result.content,
               });
             } else {
-              // For non-agent tools, add output immediately
               addToolOutput({
                 tool: toolCall.toolName,
                 toolCallId: toolCall.toolCallId,
@@ -370,13 +353,10 @@ export function ThreadPageContent({
         }),
       )
         .then(() => {
-          // If run_agent was called, stop the chat - don't continue with follow-up
           if (ranAgent) {
-            console.log("Agent was executed, stopping chat flow");
             return;
           }
 
-          // Continue generate if need follow up on a blank message
           if (needFollowUp) {
             sendMessage();
           } else if (conversationId && !isPrivateChat && !hadToolCalls) {
@@ -700,9 +680,6 @@ export function ThreadPageContent({
   const startExecution = useAgentExecutionStore(
     (state) => state.startExecution,
   );
-  const loadConversationExecutions = useAgentExecutionStore(
-    (state) => state.loadConversationExecutions,
-  );
   const clearExecution = useAgentExecutionStore(
     (state) => state.clearExecution,
   );
@@ -712,20 +689,13 @@ export function ThreadPageContent({
     initialMessageSentRef.current = false;
   }, [conversationId]);
 
-  // Load historical agent executions when conversation changes
   useEffect(() => {
-    if (conversationId && !isPrivateChat) {
-      // Load any historical agent executions for this conversation
-      loadConversationExecutions(conversationId);
-    }
-
-    // Cleanup when conversation changes
     return () => {
       if (conversationId) {
         clearExecution(conversationId);
       }
     };
-  }, [conversationId, isPrivateChat, loadConversationExecutions, clearExecution]);
+  }, [conversationId, clearExecution]);
 
   useEffect(() => {
     const initialMessageKey = isPrivateChat

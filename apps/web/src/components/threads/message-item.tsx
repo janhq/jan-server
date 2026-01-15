@@ -397,13 +397,40 @@ export const MessageItem = memo(
       const toolName = part.type.split("-").slice(1).join("-");
 
       // For run_agent tool, render AgentExecutionPanel instead of normal tool block
-      // This shows the task/step progress inline in the chat
       if (toolName === "run_agent" && conversationId) {
+        let responseId: string | undefined;
+
+        if (part.output && Array.isArray(part.output)) {
+          try {
+            // Try streaming format: { type: "text", text: "..." }
+            const textContent = part.output.find((c: any) => c.type === "text");
+            if (textContent?.text) {
+              const parsed = JSON.parse(textContent.text);
+              responseId = parsed.id || parsed.response_id;
+            }
+
+            // Try history format: { tool_result: "..." } or { mcp_call: "..." }
+            if (!responseId) {
+              const toolResultContent = part.output.find((c: any) => c.tool_result || c.mcp_call);
+              if (toolResultContent) {
+                const resultText = toolResultContent.tool_result || toolResultContent.mcp_call;
+                if (typeof resultText === "string") {
+                  const parsed = JSON.parse(resultText);
+                  responseId = parsed.id || parsed.response_id;
+                }
+              }
+            }
+          } catch {
+            // Ignore parse errors
+          }
+        }
+
         return (
           <AgentExecutionPanel
             key={`${message.id}-${partIndex}`}
             conversationId={conversationId}
             toolState={part.state}
+            responseId={responseId}
           />
         );
       }

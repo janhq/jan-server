@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   AgentExecution,
   AgentExecutionContent,
@@ -7,7 +8,7 @@ import {
 } from "@janhq/interfaces/ai-elements/agent-execution";
 import { useRightSidebarStore } from "@/stores/right-sidebar-store";
 import type { StepWithResults } from "@/stores/right-sidebar-store";
-import { useAgentExecution } from "@/stores/agent-execution-store";
+import { useAgentExecution, useAgentExecutionStore } from "@/stores/agent-execution-store";
 import {
   convertTaskToStepWithResults,
   getStepLabel,
@@ -17,41 +18,43 @@ import type { TaskResponse, StepResponse } from "@/services/response-api-service
 
 interface AgentExecutionPanelProps {
   conversationId?: string;
-  toolState?: string; // Tool state from the message part (e.g., "call", "partial-call", "result")
+  toolState?: string;
+  responseId?: string;
 }
 
-const AgentExecutionPanel = ({ conversationId, toolState }: AgentExecutionPanelProps) => {
+const AgentExecutionPanel = ({ conversationId, toolState, responseId }: AgentExecutionPanelProps) => {
   const setAllSteps = useRightSidebarStore((state) => state.setAllSteps);
   const setCurrentStep = useRightSidebarStore((state) => state.setCurrentStep);
+  const loadHistoricalExecution = useAgentExecutionStore((state) => state.loadHistoricalExecution);
   const execution = useAgentExecution(conversationId);
 
-  // If no execution data yet, show loading state based on tool state
-  // This handles the case when the tool is being called but startExecution hasn't been called yet
+  useEffect(() => {
+    if (conversationId && responseId && !execution) {
+      loadHistoricalExecution(conversationId, responseId);
+    }
+  }, [conversationId, responseId, execution, loadHistoricalExecution]);
+
   if (!execution) {
-    // Show loading state for any tool state - either calling or just completed waiting for polling to start
-    // We show the panel as long as there's a toolState (meaning we're rendering for a run_agent tool)
-    if (toolState) {
-      const isToolInProgress = !toolState.startsWith("output-");
+    if (toolState || responseId) {
+      const isToolInProgress = toolState && !toolState.startsWith("output-");
       return (
         <AgentExecution defaultOpen={true} lastItem={true}>
           <AgentExecutionHeader status="active">
-            {isToolInProgress ? "Starting Deep Research..." : "Deep Research in progress..."}
+            {isToolInProgress ? "Starting Deep Research..." : "Loading Deep Research..."}
           </AgentExecutionHeader>
           <AgentExecutionContent>
             <p className="text-muted-foreground text-sm leading-relaxed ml-2">
               {isToolInProgress
                 ? "Invoking research agent. Please wait..."
-                : "Initializing research agent. Please wait while the plan is being created..."}
+                : "Loading research data..."}
             </p>
           </AgentExecutionContent>
         </AgentExecution>
       );
     }
-    // No toolState and no execution - shouldn't happen but return nothing
     return null;
   }
 
-  // Show loading state while polling but no plan details yet
   if (!execution.planDetails) {
     if (execution.isPolling) {
       return (
@@ -72,7 +75,6 @@ const AgentExecutionPanel = ({ conversationId, toolState }: AgentExecutionPanelP
 
   const tasks = execution.planDetails.tasks;
 
-  // Map step status to UI status
   const mapStatus = (status: string): "complete" | "active" | "pending" => {
     switch (status) {
       case "completed":
@@ -85,11 +87,7 @@ const AgentExecutionPanel = ({ conversationId, toolState }: AgentExecutionPanelP
     }
   };
 
-  // Handle step click - populate right sidebar with step results
-  const handleStepClick = (
-    stepIndex: number,
-    allTaskSteps: StepWithResults[],
-  ) => {
+  const handleStepClick = (stepIndex: number, allTaskSteps: StepWithResults[]) => {
     setAllSteps(allTaskSteps);
     setCurrentStep(stepIndex);
   };
@@ -107,9 +105,7 @@ const AgentExecutionPanel = ({ conversationId, toolState }: AgentExecutionPanelP
             defaultOpen={shouldDefaultOpen}
             lastItem={isLastItem}
           >
-            <AgentExecutionHeader
-              status={mapStatus(task.status)}
-            >
+            <AgentExecutionHeader status={mapStatus(task.status)}>
               {task.title}
             </AgentExecutionHeader>
             <AgentExecutionContent>

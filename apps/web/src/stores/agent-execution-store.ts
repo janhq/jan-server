@@ -20,13 +20,9 @@ export interface AgentExecution {
 }
 
 interface AgentExecutionState {
-  // Map of conversationId -> AgentExecution
   executions: Record<string, AgentExecution>;
-
-  // Actions
   startExecution: (conversationId: string, responseId: string, onComplete?: (execution: AgentExecution) => void) => void;
   loadHistoricalExecution: (conversationId: string, responseId: string) => Promise<void>;
-  loadConversationExecutions: (conversationId: string) => Promise<void>;
   updateProgress: (conversationId: string, progress: PlanProgressResponse) => void;
   updatePlanDetails: (conversationId: string, details: PlanDetailResponse) => void;
   setError: (conversationId: string, error: string) => void;
@@ -36,22 +32,17 @@ interface AgentExecutionState {
   stopPolling: (conversationId: string) => void;
 }
 
-// Track polling intervals outside of store state
 const pollingIntervals: Record<string, ReturnType<typeof setInterval>> = {};
-
-// Callbacks for when execution completes - used to trigger follow-up in chat
 const completionCallbacks: Record<string, (execution: AgentExecution) => void> = {};
 
 export const useAgentExecutionStore = create<AgentExecutionState>((set, get) => ({
   executions: {},
 
   startExecution: (conversationId: string, responseId: string, onComplete?: (execution: AgentExecution) => void) => {
-    // Store the completion callback if provided
     if (onComplete) {
       completionCallbacks[conversationId] = onComplete;
     }
 
-    // Create initial execution state
     set((state) => ({
       executions: {
         ...state.executions,
@@ -66,13 +57,13 @@ export const useAgentExecutionStore = create<AgentExecutionState>((set, get) => 
       },
     }));
 
-    // Start polling for progress
     startPolling(conversationId, responseId, set, get);
   },
 
   loadHistoricalExecution: async (conversationId: string, responseId: string) => {
     try {
       const details = await responseApiService.getPlanDetails(responseId);
+      const isStillRunning = details.status === "in_progress" || details.status === "running";
 
       set((state) => ({
         executions: {
@@ -83,30 +74,16 @@ export const useAgentExecutionStore = create<AgentExecutionState>((set, get) => 
             status: details.status as ExecutionStatus,
             progress: details.progress,
             planDetails: details,
-            isPolling: false,
+            isPolling: isStillRunning,
           },
         },
       }));
-    } catch (error) {
-      console.error("Failed to load historical execution:", error);
-    }
-  },
 
-  loadConversationExecutions: async (conversationId: string) => {
-    try {
-      const responses = await responseApiService.getConversationResponses(conversationId);
-
-      // Find responses with plans (agent executions)
-      for (const resp of responses.data) {
-        if (resp.has_plan) {
-          // Load the plan details for this response
-          await get().loadHistoricalExecution(conversationId, resp.id);
-          // For now, only load the first/most recent execution per conversation
-          break;
-        }
+      if (isStillRunning) {
+        startPolling(conversationId, responseId, set, get);
       }
-    } catch (error) {
-      console.error("Failed to load conversation executions:", error);
+    } catch {
+      // Failed to load historical execution
     }
   },
 
@@ -167,7 +144,6 @@ export const useAgentExecutionStore = create<AgentExecutionState>((set, get) => 
   },
 
   clearExecution: (conversationId: string) => {
-    // Stop polling if active
     stopPollingInterval(conversationId);
 
     set((state) => {
@@ -177,9 +153,7 @@ export const useAgentExecutionStore = create<AgentExecutionState>((set, get) => 
   },
 
   clearAllExecutions: () => {
-    // Stop all polling
     Object.keys(pollingIntervals).forEach(stopPollingInterval);
-
     set({ executions: {} });
   },
 
@@ -207,8 +181,6 @@ export const useAgentExecutionStore = create<AgentExecutionState>((set, get) => 
   },
 }));
 
-// Helper functions for polling management
-
 function stopPollingInterval(conversationId: string) {
   if (pollingIntervals[conversationId]) {
     clearInterval(pollingIntervals[conversationId]);
@@ -222,7 +194,6 @@ function startPolling(
   _set: (fn: (state: AgentExecutionState) => Partial<AgentExecutionState>) => void,
   get: () => AgentExecutionState,
 ) {
-  // Clear any existing polling for this conversation
   stopPollingInterval(conversationId);
 
   const poll = async () => {
@@ -233,17 +204,14 @@ function startPolling(
     }
 
     try {
-      // Always fetch full details to get tasks and steps for real-time display
       const details = await responseApiService.getPlanDetails(responseId);
       get().updatePlanDetails(conversationId, details);
 
-      // Check if execution is complete
       const isComplete = ["completed", "failed", "cancelled"].includes(details.status);
 
       if (isComplete) {
         get().stopPolling(conversationId);
 
-        // Call completion callback if registered
         const callback = completionCallbacks[conversationId];
         if (callback) {
           const updatedExecution = get().executions[conversationId];
@@ -253,20 +221,15 @@ function startPolling(
           delete completionCallbacks[conversationId];
         }
       }
-    } catch (error) {
-      console.error("Polling error:", error);
-      // Don't stop polling on transient errors, but log them
+    } catch {
+      // Don't stop polling on transient errors
     }
   };
 
-  // Initial poll
   poll();
-
-  // Set up interval
   pollingIntervals[conversationId] = setInterval(poll, POLL_INTERVAL_MS);
 }
 
-// Selector hooks for components
 export const useAgentExecution = (conversationId: string | undefined) => {
   return useAgentExecutionStore((state) =>
     conversationId ? state.executions[conversationId] : undefined,
