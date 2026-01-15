@@ -39,6 +39,7 @@
     "cmdk": "^1.1.1",
     "framer-motion": "^12.23.25",
     "lucide-react": "^0.560.0",
+    "mermaid": "^11.12.2",
     "motion": "^12.23.26",
     "nanoid": "^5.1.6",
     "react": "^19.2.0",
