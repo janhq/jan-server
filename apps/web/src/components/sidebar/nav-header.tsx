@@ -3,9 +3,6 @@ import { ModelSelector } from "@/components/sidebar/model-selector";
 import { SidebarTrigger, useSidebar } from "@/components/sidebar/sidebar";
 import { ThemeToggle } from "../themes/theme-toggle";
 import { memo } from "react";
-import { Button } from "@janhq/interfaces/button";
-import { PanelRightIcon } from "lucide-react";
-import { useRightSidebarStore } from "@/stores/right-sidebar-store";
 
 interface NavHeaderProps {
   conversationId?: string;
@@ -17,8 +14,7 @@ export const NavHeader = memo(function NavHeader({
   conversationTitle,
 }: NavHeaderProps = {}) {
   const { state, isMobile } = useSidebar();
-  const toggleRightSidebar = useRightSidebarStore((state) => state.toggleSidebar);
-  const rightSidebarOpen = useRightSidebarStore((state) => state.isOpen);
+  
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 justify-between">
@@ -34,15 +30,6 @@ export const NavHeader = memo(function NavHeader({
           conversationId={conversationId}
           conversationTitle={conversationTitle}
         />
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 text-muted-foreground"
-          onClick={toggleRightSidebar}
-          title={rightSidebarOpen ? "Close panel" : "Open panel"}
-        >
-          <PanelRightIcon className="size-4" />
-        </Button>
       </div>
     </header>
   );
