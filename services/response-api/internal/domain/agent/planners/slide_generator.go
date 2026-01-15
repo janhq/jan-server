@@ -790,19 +790,7 @@ func (e *SlideGeneratorExecutor) executeLLMCall(ctx context.Context, step *plan.
 		}
 		theme, _ := config["theme"].(string)
 		template, _ := params["template"].(string)
-		prompt = fmt.Sprintf(
-			"Generate a %d-slide JSON deck with theme '%s'. %s\n\n"+
-				"Return JSON only (no markdown, no backticks).\n"+
-				"Output must match this template schema exactly with top-level keys: deck, slides.\n"+
-				"Do not introduce a 'presentation' wrapper or extra keys.\n"+
-				"Use image keys 'logo' and 'hero' where appropriate.\n"+
-				"Template:\n%s\n\nContext:\n%s",
-			numSlides,
-			theme,
-			description,
-			template,
-			contextData,
-		)
+		prompt = buildSlideGenerationPrompt(numSlides, theme, description, template, contextData)
 	default:
 		prompt = fmt.Sprintf("%s\n\nContext: %s", description, contextData)
 	}
@@ -2305,6 +2293,8 @@ func convertSlidesToTemplateWithDeck(rawSlides []interface{}, presentationTitle 
 	}
 
 	convertedSlides := make([]interface{}, 0, len(rawSlides))
+	usedTypes := make(map[string]int) // Track used types to ensure variety
+
 	for idx, raw := range rawSlides {
 		item, ok := raw.(map[string]interface{})
 		if !ok {
@@ -2314,48 +2304,391 @@ func convertSlidesToTemplateWithDeck(rawSlides []interface{}, presentationTitle 
 		if title == "" {
 			title = fmt.Sprintf("Slide %d", idx+1)
 		}
-		if title == fmt.Sprintf("Slide %d", idx+1) && presentationTitle != "" {
-			title = presentationTitle
+		titleLower := strings.ToLower(title)
+
+		// First slide: title type
+		if idx == 0 {
+			subtitle := ""
+			if contentList, ok := item["content"].([]interface{}); ok && len(contentList) > 0 {
+				subtitle = fmt.Sprintf("%v", contentList[0])
+			} else if contentStr, ok := item["content"].(string); ok {
+				parts := strings.Split(contentStr, "\n")
+				if len(parts) > 0 {
+					subtitle = parts[0]
+				}
+			}
+			if presentationTitle != "" && title == fmt.Sprintf("Slide %d", idx+1) {
+				title = presentationTitle
+			}
+			slide := map[string]interface{}{
+				"type":     "title",
+				"title":    title,
+				"subtitle": subtitle,
+				"logo":     "logo",
+			}
+			convertedSlides = append(convertedSlides, slide)
+			usedTypes["title"]++
+			continue
 		}
 
+		// Last slide: closing type
+		if idx == len(rawSlides)-1 {
+			body := "Questions & Discussion"
+			if contentList, ok := item["content"].([]interface{}); ok && len(contentList) > 0 {
+				body = fmt.Sprintf("%v", contentList[0])
+			}
+			slide := map[string]interface{}{
+				"type":   "closing",
+				"header": "Thank You",
+				"body":   body,
+				"logo":   "logo",
+			}
+			convertedSlides = append(convertedSlides, slide)
+			usedTypes["closing"]++
+			continue
+		}
+
+		// Second slide: section/agenda type
+		if idx == 1 {
+			icons := []map[string]interface{}{}
+			if contentList, ok := item["content"].([]interface{}); ok {
+				colors := []string{"#12707C", "#0A1221", "#6B7280"}
+				for i, entry := range contentList {
+					if i >= 3 {
+						break
+					}
+					text := fmt.Sprintf("%v", entry)
+					// Clean up bullet markers
+					text = strings.TrimPrefix(text, "• ")
+					text = strings.TrimPrefix(text, "- ")
+					if len(text) > 25 {
+						text = text[:25] + "..."
+					}
+					icons = append(icons, map[string]interface{}{
+						"text":  text,
+						"color": colors[i%len(colors)],
+					})
+				}
+			}
+			if len(icons) == 0 {
+				icons = append(icons, map[string]interface{}{"text": "Overview", "color": "#12707C"})
+			}
+			slide := map[string]interface{}{
+				"type":     "section",
+				"title":    title,
+				"subtitle": "Overview",
+				"icons":    icons,
+			}
+			convertedSlides = append(convertedSlides, slide)
+			usedTypes["section"]++
+			continue
+		}
+
+		// Parse content into bullets
 		bullets := make([]string, 0)
 		if contentList, ok := item["content"].([]interface{}); ok {
 			for _, entry := range contentList {
-				bullets = append(bullets, fmt.Sprintf("%v", entry))
+				text := fmt.Sprintf("%v", entry)
+				// Clean up bullet markers
+				text = strings.TrimPrefix(text, "• ")
+				text = strings.TrimPrefix(text, "- ")
+				if text != "" {
+					bullets = append(bullets, text)
+				}
 			}
 		} else if contentStr, ok := item["content"].(string); ok && contentStr != "" {
-			bullets = append(bullets, contentStr)
-		}
-		if visual, ok := item["visual_suggestion"].(string); ok && visual != "" {
-			bullets = append(bullets, "Visual: "+visual)
-		}
-		if len(bullets) == 0 {
-			if rationale, ok := item["flow_rationale"].(string); ok && rationale != "" {
-				bullets = append(bullets, rationale)
+			// Split by newlines or bullet markers
+			lines := strings.Split(contentStr, "\n")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				line = strings.TrimPrefix(line, "• ")
+				line = strings.TrimPrefix(line, "- ")
+				if line != "" {
+					bullets = append(bullets, line)
+				}
 			}
 		}
 		if len(bullets) == 0 {
-			bullets = append(bullets, "TBD")
+			bullets = append(bullets, "Content pending")
 		}
 
+		// Join all content for pattern detection
+		allContent := strings.ToLower(strings.Join(bullets, " ") + " " + titleLower)
+
+		// Detect TIMELINE patterns
+		timelinePatterns := []string{"timeline", "roadmap", "phases", "milestones", "journey", "history", "evolution", "progression", "2020", "2021", "2022", "2023", "2024", "2025", "2030", "phase 1", "phase 2", "step 1", "step 2"}
+		isTimeline := false
+		for _, pattern := range timelinePatterns {
+			if strings.Contains(allContent, pattern) {
+				isTimeline = true
+				break
+			}
+		}
+		if isTimeline && usedTypes["timeline"] < 2 {
+			colors := []string{"#12707C", "#0A1221", "#334155", "#64748B", "#0A1221"}
+			items := make([]map[string]interface{}, 0)
+			for i, b := range bullets {
+				if i >= 5 {
+					break
+				}
+				label := b
+				if len(label) > 30 {
+					label = label[:30] + "..."
+				}
+				items = append(items, map[string]interface{}{
+					"label": label,
+					"color": colors[i%len(colors)],
+				})
+			}
+			slide := map[string]interface{}{
+				"type":  "timeline",
+				"title": title,
+				"timeline": map[string]interface{}{
+					"x":     1.0,
+					"y":     3.6,
+					"w":     11.0,
+					"items": items,
+				},
+			}
+			convertedSlides = append(convertedSlides, slide)
+			usedTypes["timeline"]++
+			continue
+		}
+
+		// Detect COMPARISON patterns
+		comparisonPatterns := []string{" vs ", " vs.", "versus", "compared to", "pros and cons", "advantages and disadvantages", "benefits and drawbacks", "renewable vs", "fossil vs", "build vs buy"}
+		isComparison := false
+		for _, pattern := range comparisonPatterns {
+			if strings.Contains(allContent, pattern) {
+				isComparison = true
+				break
+			}
+		}
+		if isComparison && usedTypes["comparison"] < 2 && len(bullets) >= 2 {
+			// Split bullets into two groups
+			mid := len(bullets) / 2
+			leftBullets := bullets[:mid]
+			rightBullets := bullets[mid:]
+			if len(leftBullets) == 0 {
+				leftBullets = []string{"Point 1"}
+			}
+			if len(rightBullets) == 0 {
+				rightBullets = []string{"Point 1"}
+			}
+			// Extract comparison titles from slide title if possible
+			leftTitle := "Option A"
+			rightTitle := "Option B"
+			if strings.Contains(titleLower, " vs ") {
+				parts := strings.SplitN(title, " vs ", 2)
+				if len(parts) == 2 {
+					leftTitle = strings.TrimSpace(parts[0])
+					rightTitle = strings.TrimSpace(parts[1])
+				}
+			}
+			slide := map[string]interface{}{
+				"type":  "comparison",
+				"title": title,
+				"left": map[string]interface{}{
+					"title":   leftTitle,
+					"bullets": leftBullets,
+				},
+				"right": map[string]interface{}{
+					"title":   rightTitle,
+					"bullets": rightBullets,
+				},
+			}
+			convertedSlides = append(convertedSlides, slide)
+			usedTypes["comparison"]++
+			continue
+		}
+
+		// Detect TABLE patterns
+		tablePatterns := []string{"comparison table", "feature matrix", "sources comparison", "energy source", "provider comparison", "cost comparison", "technology comparison"}
+		isTable := false
+		for _, pattern := range tablePatterns {
+			if strings.Contains(allContent, pattern) {
+				isTable = true
+				break
+			}
+		}
+		if isTable && usedTypes["table"] < 2 && len(bullets) >= 3 {
+			// Create a simple table from bullets
+			headers := []string{"Item", "Details", "Notes"}
+			rows := make([][]string, 0)
+			for i, b := range bullets {
+				if i >= 5 {
+					break
+				}
+				// Try to split bullet into columns
+				parts := strings.SplitN(b, ":", 2)
+				if len(parts) == 2 {
+					rows = append(rows, []string{strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), ""})
+				} else {
+					rows = append(rows, []string{b, "", ""})
+				}
+			}
+			if len(rows) == 0 {
+				rows = append(rows, []string{"Item 1", "Details", ""})
+			}
+			slide := map[string]interface{}{
+				"type":  "table",
+				"title": title,
+				"table": map[string]interface{}{
+					"headers": headers,
+					"rows":    rows,
+					"x":       0.8,
+					"y":       1.6,
+					"w":       11.5,
+					"h":       4.6,
+				},
+			}
+			convertedSlides = append(convertedSlides, slide)
+			usedTypes["table"]++
+			continue
+		}
+
+		// Detect CHART patterns
+		chartPatterns := []string{"growth", "trend", "increase", "decrease", "chart", "graph", "data", "statistics", "annually", "quarterly", "yearly", "2020-", "2021-", "2022-", "2023-", "2024-", "capacity"}
+		isChart := false
+		for _, pattern := range chartPatterns {
+			if strings.Contains(allContent, pattern) {
+				isChart = true
+				break
+			}
+		}
+		if isChart && usedTypes["chart"] < 2 {
+			// Create sample chart data based on content
+			slide := map[string]interface{}{
+				"type":  "chart",
+				"title": title,
+				"chart": map[string]interface{}{
+					"type":       "column",
+					"x":          0.9,
+					"y":          1.6,
+					"w":          6.3,
+					"h":          4.3,
+					"categories": []string{"2022", "2023", "2024", "2025"},
+					"series": []map[string]interface{}{
+						{"name": "Growth", "values": []int{100, 150, 220, 310}},
+					},
+				},
+				"side_bullets": bullets[:min(3, len(bullets))],
+			}
+			convertedSlides = append(convertedSlides, slide)
+			usedTypes["chart"]++
+			continue
+		}
+
+		// Detect METRICS patterns
+		metricPatterns := []string{"billion", "million", "twh", "$", "tons", "%", "statistics", "key stats", "key metrics", "numbers", "data points", "facts"}
+		hasMetrics := false
+		for _, pattern := range metricPatterns {
+			if strings.Contains(allContent, pattern) {
+				hasMetrics = true
+				break
+			}
+		}
+		if hasMetrics && usedTypes["metrics"] < 3 && len(bullets) >= 2 {
+			metrics := make([]map[string]interface{}, 0)
+			colors := []string{"#12707C", "#0A1221", "#334155"}
+			for i, b := range bullets {
+				if i >= 3 {
+					break
+				}
+				value := "—"
+				label := b
+				if len(label) > 40 {
+					label = label[:40] + "..."
+				}
+				// Extract numbers/values from the string
+				words := strings.Fields(b)
+				for _, word := range words {
+					word = strings.Trim(word, "(),.:;")
+					if len(word) > 0 && (word[0] >= '0' && word[0] <= '9' || word[0] == '$' || word[0] == '+' || word[0] == '-') {
+						value = word
+						break
+					}
+					// Also check for patterns like "2.1B", "12M"
+					if len(word) > 1 && (strings.HasSuffix(word, "B") || strings.HasSuffix(word, "M") || strings.HasSuffix(word, "K") || strings.HasSuffix(word, "%")) {
+						if word[0] >= '0' && word[0] <= '9' {
+							value = word
+							break
+						}
+					}
+				}
+				metrics = append(metrics, map[string]interface{}{
+					"label": label,
+					"value": value,
+					"note":  "",
+					"color": colors[i%len(colors)],
+				})
+			}
+			slide := map[string]interface{}{
+				"type":    "metrics",
+				"title":   title,
+				"metrics": metrics,
+			}
+			convertedSlides = append(convertedSlides, slide)
+			usedTypes["metrics"]++
+			continue
+		}
+
+		// Detect QUOTE patterns
+		quotePatterns := []string{"quote", "testimonial", "said", "according to", "customer voice", "'", "\""}
+		isQuote := false
+		for _, pattern := range quotePatterns {
+			if strings.Contains(allContent, pattern) {
+				isQuote = true
+				break
+			}
+		}
+		if isQuote && usedTypes["quote"] < 1 && len(bullets) >= 1 {
+			quote := bullets[0]
+			author := "Industry Expert"
+			if len(bullets) > 1 {
+				author = bullets[1]
+			}
+			slide := map[string]interface{}{
+				"type":   "quote",
+				"title":  title,
+				"quote":  quote,
+				"author": author,
+				"image":  "hero",
+				"image_pos": map[string]interface{}{
+					"x": 9.4,
+					"y": 1.6,
+					"w": 3.2,
+				},
+			}
+			convertedSlides = append(convertedSlides, slide)
+			usedTypes["quote"]++
+			continue
+		}
+
+		// Default to bullets slide
 		slide := map[string]interface{}{
 			"type":    "bullets",
 			"title":   title,
 			"bullets": bullets,
 		}
+		// Add image to every other bullets slide for visual variety
 		if idx%2 == 1 {
 			slide["image"] = "hero"
+			slide["image_pos"] = map[string]interface{}{"x": 7.2, "y": 1.4, "w": 5.4}
 		}
 		convertedSlides = append(convertedSlides, slide)
+		usedTypes["bullets"]++
 	}
 
+	// Pad if needed
 	for len(convertedSlides) < numSlides {
 		convertedSlides = append(convertedSlides, map[string]interface{}{
 			"type":    "bullets",
-			"title":   fmt.Sprintf("Additional Slide %d", len(convertedSlides)+1),
-			"bullets": []string{"TBD"},
+			"title":   fmt.Sprintf("Additional Content %d", len(convertedSlides)+1),
+			"bullets": []string{"Additional information"},
 		})
 	}
+	// Trim if too many
 	if numSlides > 0 && len(convertedSlides) > numSlides {
 		convertedSlides = convertedSlides[:numSlides]
 	}
@@ -2372,6 +2705,75 @@ func convertSlidesToTemplateWithDeck(rawSlides []interface{}, presentationTitle 
 		return "", err
 	}
 	return string(convertedJSON), nil
+}
+
+// min returns the smaller of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// buildSlideGenerationPrompt creates a detailed prompt for the LLM to generate slide JSON.
+func buildSlideGenerationPrompt(numSlides int, theme string, description string, template string, contextData string) string {
+	return fmt.Sprintf(`You MUST generate EXACTLY this JSON structure for a %d-slide presentation. Theme: '%s'.
+
+TOPIC: %s
+
+MANDATORY JSON OUTPUT (copy this structure exactly):
+{
+  "deck": {
+    "size": {"width": 13.33, "height": 7.5},
+    "theme": {"title_bg": "#0A1221", "title_text": "#F5F1E9", "header_bg": "#12707C", "header_text": "#F5F1E9", "body_bg": "#F5F1E9", "body_text": "#141820", "closing_bg": "#0A1221", "closing_text": "#F5F1E9"}
+  },
+  "slides": [
+    ... your slides here ...
+  ]
+}
+
+ABSOLUTE RULES - VIOLATION MEANS FAILURE:
+1. Start JSON with { "deck": - NOT "presentation", NOT markdown
+2. Every slide MUST have "type" field as FIRST property
+3. "bullets" MUST be plain strings: ["text"] NOT [{"text":"..."}]
+4. Return RAW JSON only - no '''json, no backticks, no explanation
+
+SLIDE 1 - MUST BE:
+{"type": "title", "title": "YOUR TITLE", "subtitle": "YOUR SUBTITLE", "logo": "logo"}
+
+SLIDE 2 - MUST BE:
+{"type": "section", "title": "Agenda", "subtitle": "Overview", "icons": [{"text": "Topic 1", "color": "#12707C"}, {"text": "Topic 2", "color": "#0A1221"}]}
+
+SLIDES 3 TO %d - USE THESE TYPES:
+
+For statistics/numbers use METRICS:
+{"type": "metrics", "title": "Key Statistics", "metrics": [
+  {"label": "CO2 Avoided", "value": "2.1B tons", "note": "in 2024", "color": "#12707C"},
+  {"label": "Jobs Created", "value": "12M", "note": "+8%% YoY", "color": "#0A1221"}
+]}
+
+For trends/data over time use CHART:
+{"type": "chart", "title": "Growth Trends", "chart": {"type": "column", "x": 0.9, "y": 1.6, "w": 6.3, "h": 4.3, "categories": ["2022", "2023", "2024", "2025"], "series": [{"name": "Capacity (GW)", "values": [100, 150, 220, 310]}]}, "side_bullets": ["Rapid growth", "Accelerating adoption"]}
+
+For comparisons use TABLE:
+{"type": "table", "title": "Energy Source Comparison", "table": {"headers": ["Source", "Cost", "Emissions", "Reliability"], "rows": [["Solar", "$30/MWh", "Zero", "Variable"], ["Wind", "$35/MWh", "Zero", "Variable"], ["Coal", "$65/MWh", "High", "Baseload"]], "x": 0.8, "y": 1.6, "w": 11.5, "h": 4.6}}
+
+For pros/cons or A vs B use COMPARISON:
+{"type": "comparison", "title": "Renewable vs Fossil Fuels", "left": {"title": "Renewable", "bullets": ["Zero emissions", "Declining costs", "Energy independence"]}, "right": {"title": "Fossil Fuels", "bullets": ["Established infrastructure", "Stable baseload", "Price volatility"]}}
+
+For processes/roadmaps use TIMELINE:
+{"type": "timeline", "title": "Energy Transition Roadmap", "timeline": {"x": 1.0, "y": 3.6, "w": 11.0, "items": [{"label": "2020: Foundation", "color": "#12707C"}, {"label": "2025: Acceleration", "color": "#0A1221"}, {"label": "2030: Mainstream", "color": "#334155"}]}}
+
+For regular content use BULLETS:
+{"type": "bullets", "title": "Key Benefits", "bullets": ["Reduced emissions", "Lower costs", "Job creation", "Energy security"], "image": "hero", "image_pos": {"x": 7.2, "y": 1.4, "w": 5.4}}
+
+LAST SLIDE - MUST BE:
+{"type": "closing", "header": "Thank You", "body": "Questions?", "logo": "logo"}
+
+RESEARCH DATA TO USE:
+%s
+
+OUTPUT THE JSON NOW (start with { "deck":):`, numSlides, theme, description, numSlides-1, contextData)
 }
 
 func buildSlideRenderCode(slideSpec string, specPath string, scriptPath string, outputPath string, imageURL string) (string, error) {
