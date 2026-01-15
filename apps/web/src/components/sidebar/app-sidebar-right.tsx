@@ -54,8 +54,8 @@ const SearchResult = ({
                 </p>
               )}
               {result.url && (
-                <div className="text-xs bg-secondary px-2 py-0.5 rounded-full inline-flex mt-2">
-                  <span className="line-clamp-1">{result.url}</span>
+                <div className="text-xs bg-secondary px-2 py-0.5 rounded-full inline-flex mt-2 max-w-full">
+                  <span className="line-clamp-1 break-all">{result.url}</span>
                 </div>
               )}
             </div>
