@@ -86,9 +86,25 @@ const AgentExecutionPanel = ({ toolState, responseId }: AgentExecutionPanelProps
     }
   };
 
-  const handleStepClick = (stepIndex: number, allTaskSteps: StepWithResults[]) => {
-    setAllSteps(allTaskSteps);
-    setCurrentStep(stepIndex);
+  // Collect all steps from all tasks with their global indices
+  const allStepsFromAllTasks: StepWithResults[] = [];
+  const stepIndexMap: Map<string, number> = new Map();
+
+  tasks.forEach((task: TaskResponse) => {
+    const taskSteps = convertTaskToStepWithResults(task);
+    task.steps?.forEach((step: StepResponse, localIndex: number) => {
+      const globalIndex = allStepsFromAllTasks.length;
+      stepIndexMap.set(step.id, globalIndex);
+      if (taskSteps[localIndex]) {
+        allStepsFromAllTasks.push(taskSteps[localIndex]);
+      }
+    });
+  });
+
+  const handleStepClick = (stepId: string) => {
+    const globalIndex = stepIndexMap.get(stepId) ?? 0;
+    setAllSteps(allStepsFromAllTasks);
+    setCurrentStep(globalIndex);
   };
 
   return (
@@ -96,7 +112,7 @@ const AgentExecutionPanel = ({ toolState, responseId }: AgentExecutionPanelProps
       {tasks.map((task: TaskResponse, taskIndex: number) => {
         const isLastItem = taskIndex === tasks.length - 1;
         const shouldDefaultOpen = task.status !== "pending";
-        const allTaskSteps = convertTaskToStepWithResults(task);
+        const taskSteps = convertTaskToStepWithResults(task);
 
         return (
           <AgentExecution
@@ -119,8 +135,8 @@ const AgentExecutionPanel = ({ toolState, responseId }: AgentExecutionPanelProps
                   icon={getToolIcon(getStepToolName(step))}
                   label={getStepLabel(step)}
                   status={mapStatus(step.status)}
-                  searchResults={allTaskSteps[stepIndex]?.results || []}
-                  onStepClick={() => handleStepClick(stepIndex, allTaskSteps)}
+                  searchResults={taskSteps[stepIndex]?.results || []}
+                  onStepClick={() => handleStepClick(step.id)}
                 />
               ))}
             </AgentExecutionContent>
