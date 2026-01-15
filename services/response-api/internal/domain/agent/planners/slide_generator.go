@@ -819,7 +819,16 @@ func (e *SlideGeneratorExecutor) executeLLMCall(ctx context.Context, step *plan.
 		}, nil
 	}
 
-	response, err := e.llmProvider.GenerateWithModel(ctx, prompt, model)
+	var response string
+	var err error
+
+	// Use system prompt for slide JSON generation to enforce format
+	if action == "generate_slides_json" {
+		systemPrompt := buildSlideSystemPrompt()
+		response, err = e.llmProvider.GenerateWithSystemPrompt(ctx, systemPrompt, prompt, model)
+	} else {
+		response, err = e.llmProvider.GenerateWithModel(ctx, prompt, model)
+	}
 	if err != nil {
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
@@ -909,6 +918,9 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 	}
 	artifactType, _ := params["artifact_type"].(string)
 
+	// Check if this is a slide artifact type
+	isSlideArtifact := artifactType == "slide" || artifactType == "slides" || artifactType == "presentation"
+
 	if input.PreviousOutput != nil {
 		var skillOutput SkillExecuteOutput
 		if err := json.Unmarshal(input.PreviousOutput, &skillOutput); err == nil && skillOutput.Success {
@@ -918,29 +930,34 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 			}
 			return e.uploadSkillArtifact(ctx, step, input, skillOutput, artifactType, retentionPolicy)
 		}
-		if renderOutput := extractSlideRenderOutput(input.PreviousOutput); renderOutput != nil {
+		if isSlideArtifact {
+			if renderOutput := extractSlideRenderOutput(input.PreviousOutput); renderOutput != nil {
+				retentionPolicy, _ := config["retention_policy"].(string)
+				if retentionPolicy == "" {
+					retentionPolicy = "session"
+				}
+				return e.uploadRenderedArtifact(ctx, step, input, renderOutput, artifactType, retentionPolicy)
+			}
+		}
+	}
+	// Only attempt slide rendering for slide artifact types
+	if isSlideArtifact {
+		if renderOutput, err := e.renderSlidesFromSpec(ctx, input); err == nil && renderOutput != nil {
 			retentionPolicy, _ := config["retention_policy"].(string)
 			if retentionPolicy == "" {
 				retentionPolicy = "session"
 			}
 			return e.uploadRenderedArtifact(ctx, step, input, renderOutput, artifactType, retentionPolicy)
+		} else if err != nil {
+			return &agent.ExecutionResult{
+				Status: status.StatusFailed,
+				Error: &agent.ExecutionError{
+					Code:     "SLIDE_RENDER_FAILED",
+					Message:  fmt.Sprintf("render slides failed: %v", err),
+					Severity: status.ErrorSeverityRetryable,
+				},
+			}, nil
 		}
-	}
-	if renderOutput, err := e.renderSlidesFromSpec(ctx, input); err == nil && renderOutput != nil {
-		retentionPolicy, _ := config["retention_policy"].(string)
-		if retentionPolicy == "" {
-			retentionPolicy = "session"
-		}
-		return e.uploadRenderedArtifact(ctx, step, input, renderOutput, artifactType, retentionPolicy)
-	} else if err != nil {
-		return &agent.ExecutionResult{
-			Status: status.StatusFailed,
-			Error: &agent.ExecutionError{
-				Code:     "SLIDE_RENDER_FAILED",
-				Message:  fmt.Sprintf("render slides failed: %v", err),
-				Severity: status.ErrorSeverityRetryable,
-			},
-		}, nil
 	}
 
 	// Get content from previous step output
@@ -2713,6 +2730,38 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// buildSlideSystemPrompt creates a strict system prompt to guide slide JSON generation.
+func buildSlideSystemPrompt() string {
+	return `You are a presentation JSON generator. Output ONLY valid JSON matching the schema below.
+
+RULES:
+1. Output raw JSON only - no markdown code blocks, no explanation
+2. Start with { and end with }
+3. JSON must have "deck" and "slides" as top-level keys
+4. Every slide must have "type" as first property
+5. "bullets" must be array of strings: ["text1", "text2"]
+
+CORRECT FORMAT:
+{
+  "deck": {
+    "size": {"width": 13.33, "height": 7.5},
+    "theme": {"title_bg": "#0A1221", "title_text": "#F5F1E9", "header_bg": "#12707C", "header_text": "#F5F1E9", "body_bg": "#F5F1E9", "body_text": "#141820", "closing_bg": "#0A1221", "closing_text": "#F5F1E9"}
+  },
+  "slides": [
+    {"type": "title", "title": "...", "subtitle": "...", "logo": "logo"},
+    {"type": "bullets", "title": "...", "bullets": ["point 1", "point 2"]},
+    {"type": "metrics", "title": "...", "metrics": [{"label": "...", "value": "...", "note": "...", "color": "#12707C"}]},
+    {"type": "chart", "title": "...", "chart": {"type": "column", "categories": [...], "series": [...]}, "side_bullets": [...]},
+    {"type": "table", "title": "...", "table": {"headers": [...], "rows": [[...]]}},
+    {"type": "comparison", "title": "...", "left": {"title": "...", "bullets": [...]}, "right": {"title": "...", "bullets": [...]}},
+    {"type": "timeline", "title": "...", "timeline": {"items": [{"label": "...", "color": "#12707C"}]}},
+    {"type": "closing", "header": "Thank You", "body": "...", "logo": "logo"}
+  ]
+}
+
+SLIDE TYPES: title, section, bullets, metrics, chart, table, comparison, timeline, quote, closing`
 }
 
 // buildSlideGenerationPrompt creates a detailed prompt for the LLM to generate slide JSON.
