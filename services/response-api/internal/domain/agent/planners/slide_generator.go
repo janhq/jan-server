@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -19,6 +18,7 @@ import (
 	"jan-server/services/response-api/internal/domain/plan"
 	"jan-server/services/response-api/internal/domain/status"
 	"jan-server/services/response-api/internal/domain/tool"
+	"jan-server/services/response-api/internal/config"
 	"jan-server/services/response-api/internal/infrastructure/media"
 
 	"github.com/rs/zerolog/log"
@@ -521,16 +521,22 @@ type SlideGeneratorExecutor struct {
 	artifactService artifact.Service
 	mediaClient     *media.Client
 	skillExecutor   *SkillExecutor
+	aioBaseURL      string
 }
 
 // NewSlideGeneratorExecutor creates a new slide generator executor.
-func NewSlideGeneratorExecutor(mcpClient MCPClient, llmProvider LLMProvider, artifactService artifact.Service, mediaClient *media.Client, skillExecutor *SkillExecutor) *SlideGeneratorExecutor {
+func NewSlideGeneratorExecutor(mcpClient MCPClient, llmProvider LLMProvider, artifactService artifact.Service, mediaClient *media.Client, skillExecutor *SkillExecutor, cfg *config.Config) *SlideGeneratorExecutor {
+	aioBaseURL := ""
+	if cfg != nil {
+		aioBaseURL = strings.TrimSpace(cfg.AIOURL)
+	}
 	return &SlideGeneratorExecutor{
 		mcpClient:       mcpClient,
 		llmProvider:     llmProvider,
 		artifactService: artifactService,
 		mediaClient:     mediaClient,
 		skillExecutor:   skillExecutor,
+		aioBaseURL:      aioBaseURL,
 	}
 }
 
@@ -1342,18 +1348,14 @@ func (e *SlideGeneratorExecutor) uploadRenderedArtifact(ctx context.Context, ste
 }
 
 func (e *SlideGeneratorExecutor) readBinaryFileFromSandbox(ctx context.Context, path string, input agent.ExecutionInput) ([]byte, error) {
-	baseURL := strings.TrimSpace(os.Getenv("AIO_BASE_URL"))
-	if baseURL == "" {
-		baseURL = strings.TrimSpace(os.Getenv("AIO_URL"))
-	}
-	if baseURL != "" {
-		if payload, err := downloadAIOFile(ctx, baseURL, path); err == nil {
+	if strings.TrimSpace(e.aioBaseURL) != "" {
+		if payload, err := downloadAIOFile(ctx, e.aioBaseURL, path); err == nil {
 			return payload, nil
 		} else {
 			log.Debug().
 				Err(err).
 				Str("path", path).
-				Str("base_url", baseURL).
+				Str("base_url", e.aioBaseURL).
 				Msg("AIO direct download failed; falling back to code execution")
 		}
 	}

@@ -191,7 +191,7 @@ func main() {
 			skill.SkillTypeSpreadsheets: cfg.SkillSpreadsheetsEnabled,
 		},
 	)
-	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient, skillExecutor)
+	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient, skillExecutor, cfg)
 	if err := agentRegistry.RegisterExecutor(plan.ActionTypeArtifactCreate, slideGeneratorExecutor); err != nil {
 		log.Warn().Err(err).Msg("failed to register artifact create executor")
 	}
