@@ -11,8 +11,10 @@ import {
   ChevronRightIcon,
   ExternalLinkIcon,
   LinkIcon,
+  DownloadIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { fetchWithAuth } from "@/lib/api-client";
 
 const SearchResult = ({
   result,
@@ -21,7 +23,70 @@ const SearchResult = ({
   result: SearchResultItem;
   isLast?: boolean;
 }) => {
+  const handleDownload = async (url?: string, filename?: string) => {
+    if (!url) return;
+    try {
+      const response = await fetchWithAuth(url, { method: "GET" });
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = filename || "artifact";
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(blobUrl);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Failed to download artifact:", error);
+    }
+  };
+
   if (result.type === "link") {
+    if (result.requiresAuth) {
+      return (
+        <div
+          className={cn(
+            "p-3 bg-background hover:bg-secondary/50 transition-colors",
+            !isLast && "border-b"
+          )}
+        >
+          <div className="flex items-start gap-2">
+            {result.icon ? (
+              <span className="text-base shrink-0">{result.icon}</span>
+            ) : (
+              <LinkIcon className="size-4 shrink-0 mt-0.5 text-muted-foreground" />
+            )}
+            <div className="flex-1 min-w-0 text-muted-foreground">
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="font-medium text-sm line-clamp-1 transition-colors text-foreground">
+                  {result.title || result.url}
+                </h3>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6"
+                  onClick={() => handleDownload(result.downloadUrl, result.filename)}
+                >
+                  <DownloadIcon className="size-3" />
+                </Button>
+              </div>
+              {result.description && (
+                <p className="text-xs mt-1 line-clamp-2">
+                  {result.description}
+                </p>
+              )}
+              {result.downloadUrl && (
+                <div className="text-xs bg-secondary px-2 py-0.5 rounded-full inline-flex mt-2 max-w-full">
+                  <span className="line-clamp-1 break-all">
+                    {result.downloadUrl}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
       <a
         href={result.url}

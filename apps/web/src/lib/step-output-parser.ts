@@ -138,6 +138,9 @@ function parseArtifactOutput(output: Record<string, unknown>): SearchResultItem[
       title: filename,
       description: `${type} artifact created`,
       url: resolvedUrl || "",
+      downloadUrl: resolvedUrl || "",
+      filename,
+      requiresAuth: true,
     });
   }
 

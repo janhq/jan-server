@@ -8,6 +8,9 @@ export type SearchResultItem = {
   title?: string;
   description?: string;
   url?: string;
+  downloadUrl?: string;
+  filename?: string;
+  requiresAuth?: boolean;
   imageUrl?: string;
   icon?: string;
   content?: string;
