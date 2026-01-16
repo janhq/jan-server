@@ -1080,7 +1080,7 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 
 	artifactID := createdArtifact.ID
 	// Always expose the response-api artifact endpoint for downloads.
-	downloadURL = fmt.Sprintf("/v1/artifacts/%s/download", createdArtifact.ID)
+	downloadURL = fmt.Sprintf("/responses/v1/artifacts/%s/download", createdArtifact.ID)
 
 	// Create StepOutput with proper Artifact field for ExtractArtifacts to find
 	stepOutput := &plan.StepOutput{
@@ -1221,7 +1221,7 @@ func (e *SlideGeneratorExecutor) uploadSkillArtifact(ctx context.Context, step *
 			ID:          createdArtifact.ID,
 			Type:        string(contentType),
 			Filename:    fileName,
-			DownloadURL: fmt.Sprintf("/v1/artifacts/%s/download", createdArtifact.ID),
+			DownloadURL: fmt.Sprintf("/responses/v1/artifacts/%s/download", createdArtifact.ID),
 			Size:        int64(len(decoded)),
 			ContentType: mimeType,
 		},
@@ -1246,24 +1246,35 @@ func (e *SlideGeneratorExecutor) uploadRenderedArtifact(ctx context.Context, ste
 			},
 		}, nil
 	}
-	if renderOutput == nil || strings.TrimSpace(renderOutput.OutputPath) == "" {
+	if renderOutput == nil {
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
 			Error: &agent.ExecutionError{
 				Code:     "FILE_MISSING",
-				Message:  "no render output file available for upload",
+				Message:  "no render output available for upload",
 				Severity: status.ErrorSeverityRetryable,
 			},
 		}, nil
 	}
 
-	decoded, err := e.readBinaryFileFromSandbox(ctx, renderOutput.OutputPath, input)
+	if strings.TrimSpace(renderOutput.Base64) == "" {
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Code:     "FILE_MISSING",
+				Message:  "render output missing base64 payload",
+				Severity: status.ErrorSeverityRetryable,
+			},
+		}, nil
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(renderOutput.Base64)
 	if err != nil {
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
 			Error: &agent.ExecutionError{
 				Code:     "FILE_READ_ERROR",
-				Message:  err.Error(),
+				Message:  fmt.Sprintf("base64 decode failed: %v", err),
 				Severity: status.ErrorSeverityRetryable,
 			},
 		}, nil
@@ -1336,7 +1347,7 @@ func (e *SlideGeneratorExecutor) uploadRenderedArtifact(ctx context.Context, ste
 			ID:          createdArtifact.ID,
 			Type:        string(contentType),
 			Filename:    fileName,
-			DownloadURL: fmt.Sprintf("/v1/artifacts/%s/download", createdArtifact.ID),
+			DownloadURL: fmt.Sprintf("/responses/v1/artifacts/%s/download", createdArtifact.ID),
 			Size:        int64(len(decoded)),
 			ContentType: mimeType,
 		},
@@ -2062,6 +2073,7 @@ type slideRenderOutput struct {
 	OutputPath string `json:"output_path"`
 	FileName   string `json:"file_name"`
 	MimeType   string `json:"mime_type"`
+	Base64     string `json:"base64,omitempty"`
 }
 
 func extractSlideRenderOutput(previousOutput json.RawMessage) *slideRenderOutput {
@@ -2674,8 +2686,8 @@ func buildSlideRenderCode(slideSpec string, specPath string, scriptPath string, 
 		imageURL = "https://www.jan.ai/_next/static/media/cute-robot-flying.1479447f.png"
 	}
 
-	pythonBodyTemplate := `import subprocess, sys
-import os, json
+pythonBodyTemplate := `import subprocess, sys
+import os, json, base64
 import urllib.request
 import shutil
 try:
@@ -3263,14 +3275,17 @@ for item in slides:
             )
 
 prs.save(r"%s")
+with open(r"%s", "rb") as f:
+    encoded = base64.b64encode(f.read()).decode("ascii")
 print(json.dumps({
     "output_path": r"%s",
     "file_name": file_name,
-    "mime_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    "mime_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "base64": encoded
 }))
 `
 
-	codeBody := fmt.Sprintf(pythonBodyTemplate, imageURL, specPath, outputPath, outputPath, outputPath)
+	codeBody := fmt.Sprintf(pythonBodyTemplate, imageURL, specPath, outputPath, outputPath, outputPath, outputPath)
 	specB64 := base64.StdEncoding.EncodeToString([]byte(slideSpec))
 	scriptB64 := base64.StdEncoding.EncodeToString([]byte(codeBody))
 	pythonExecTemplate := `import base64, os
