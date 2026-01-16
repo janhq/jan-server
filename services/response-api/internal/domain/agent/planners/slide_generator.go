@@ -13,12 +13,12 @@ import (
 	"strings"
 	"time"
 
+	"jan-server/services/response-api/internal/config"
 	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/plan"
 	"jan-server/services/response-api/internal/domain/status"
 	"jan-server/services/response-api/internal/domain/tool"
-	"jan-server/services/response-api/internal/config"
 	"jan-server/services/response-api/internal/infrastructure/media"
 
 	"github.com/rs/zerolog/log"
@@ -159,7 +159,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 			Sequence:    taskSequence,
 			TaskType:    plan.TaskTypeResearch,
 			Title:       "Research",
-			Description: strPtr("Gather information and context for the presentation"),
+			Description: strPtr("Gather information and context for the topic of the presentation"),
 		})
 		if err != nil {
 			return nil, err
@@ -168,7 +168,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		// Step 1: Primary search
 		searchParams1, _ := json.Marshal(map[string]interface{}{
 			"tool":        "google_search",
-			"description": "Search for key topics related to the presentation",
+			"description": "Search for key ideas related to the topic for the presentation",
 			"q":           request.UserMessage, // Include user query for search
 		})
 		_, err = p.planService.CreateStep(ctx, researchTask.ID, plan.CreateStepParams{
@@ -303,6 +303,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 			"tool":        "google_search",
 			"description": "Search for relevant images and graphics",
 			"search_type": "images",
+			"q":           request.UserMessage + " images",
 		})
 		_, err = p.planService.CreateStep(ctx, visualTask.ID, plan.CreateStepParams{
 			Sequence:    1,

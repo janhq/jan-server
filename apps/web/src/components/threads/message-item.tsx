@@ -420,6 +420,14 @@ export const MessageItem = memo(
                 }
               }
             }
+
+            if (!responseId) {
+              const contentItem = part.output.find((c: any) => c.content);
+              if (contentItem?.content) {
+                const parsed = JSON.parse(contentItem.content);
+                responseId = parsed.id || parsed.response_id;
+              }
+            }
           } catch {
             // Ignore parse errors
           }
