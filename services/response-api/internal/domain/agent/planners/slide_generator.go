@@ -784,7 +784,10 @@ func (e *SlideGeneratorExecutor) executeLLMCall(ctx context.Context, step *plan.
 	var prompt string
 	switch action {
 	case "reasoning":
-		prompt = fmt.Sprintf("Analyze and plan the slide structure. %s\n\nResearch findings: %s\n\nProvide a clear outline for the presentation.",
+		prompt = fmt.Sprintf(
+			"Analyze and plan the slide structure. %s\n\nResearch findings:\n%s\n\n"+
+				"Provide a clear, concise outline for the presentation.\n"+
+				"Return plain text only.",
 			description, contextData)
 	case "generate_slides_json":
 		config, _ := params["config"].(map[string]interface{})
@@ -794,12 +797,24 @@ func (e *SlideGeneratorExecutor) executeLLMCall(ctx context.Context, step *plan.
 		}
 		theme, _ := config["theme"].(string)
 		template, _ := params["template"].(string)
+		if strings.TrimSpace(template) == "" {
+			if embedded, err := loadEmbeddedSlideTemplate(); err == nil {
+				template = embedded
+			}
+		}
 		prompt = fmt.Sprintf(
-			"Generate a %d-slide JSON deck with theme '%s'. %s\n\n"+
-				"Return JSON only (no markdown, no backticks).\n"+
-				"Output must match this template schema exactly with top-level keys: deck, slides.\n"+
-				"Do not introduce a 'presentation' wrapper or extra keys.\n"+
-				"Use image keys 'logo' and 'hero' where appropriate.\n"+
+			"Generate an exact %d-slide JSON deck with theme '%s'. %s\n\n"+
+				"Return a single JSON object only (no markdown, no backticks, no commentary).\n"+
+				"Output must start with '{' and end with '}'.\n"+
+				"Top-level keys must be exactly: deck, slides.\n"+
+				"Do not use a top-level array. Do not add a 'presentation' wrapper.\n"+
+				"Use only slide types shown in the template and keep the same key structure.\n"+
+				"If the template has more slides than required, drop slides from the end.\n"+
+				"If it has fewer slides, duplicate the last slide structure and update its content.\n"+
+				"Each slide must include a 'type' plus all required keys for that type.\n"+
+				"Do not include images: omit image, image_pos, logo, icons, and any image URLs.\n"+
+				"If the content supports it, include at least one chart slide and one table slide.\n"+
+				"Omit optional fields when not used.\n"+
 				"Template:\n%s\n\nContext:\n%s",
 			numSlides,
 			theme,
@@ -2137,8 +2152,12 @@ func (e *SlideGeneratorExecutor) renderSlidesFromSpec(ctx context.Context, input
 	if strings.TrimSpace(slideSpec) == "" {
 		return nil, fmt.Errorf("missing slide JSON in previous output")
 	}
-	if err := validateSlideTemplateJSON(slideSpec); err != nil {
-		if converted, convErr := convertPresentationToTemplate(slideSpec, nil); convErr == nil {
+	templateJSON, tmplErr := loadEmbeddedSlideTemplate()
+	if tmplErr != nil {
+		return nil, tmplErr
+	}
+	if err := validateSlideTemplateSchema(slideSpec, templateJSON); err != nil {
+		if converted, convErr := convertPresentationToTemplate(slideSpec, map[string]interface{}{"template": templateJSON}); convErr == nil {
 			slideSpec = converted
 		} else {
 			return nil, err
@@ -2354,12 +2373,31 @@ func convertSlidesToTemplateWithDeck(rawSlides []interface{}, presentationTitle 
 		} else if contentStr, ok := item["content"].(string); ok && contentStr != "" {
 			bullets = append(bullets, contentStr)
 		}
+		if len(bullets) == 0 {
+			if focus, ok := item["contentFocus"].(string); ok && focus != "" {
+				bullets = append(bullets, focus)
+			}
+		}
+		if len(bullets) == 0 {
+			if keyContent, ok := item["key_content"].([]interface{}); ok {
+				for _, entry := range keyContent {
+					bullets = append(bullets, fmt.Sprintf("%v", entry))
+				}
+			} else if keyContentStr, ok := item["key_content"].(string); ok && keyContentStr != "" {
+				bullets = append(bullets, keyContentStr)
+			}
+		}
 		if visual, ok := item["visual_suggestion"].(string); ok && visual != "" {
 			bullets = append(bullets, "Visual: "+visual)
 		}
 		if len(bullets) == 0 {
 			if rationale, ok := item["flow_rationale"].(string); ok && rationale != "" {
 				bullets = append(bullets, rationale)
+			}
+		}
+		if len(bullets) == 0 {
+			if purpose, ok := item["purpose"].(string); ok && purpose != "" {
+				bullets = append(bullets, purpose)
 			}
 		}
 		if len(bullets) == 0 {
@@ -2370,9 +2408,6 @@ func convertSlidesToTemplateWithDeck(rawSlides []interface{}, presentationTitle 
 			"type":    "bullets",
 			"title":   title,
 			"bullets": bullets,
-		}
-		if idx%2 == 1 {
-			slide["image"] = "hero"
 		}
 		convertedSlides = append(convertedSlides, slide)
 	}
