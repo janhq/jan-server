@@ -946,8 +946,9 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 		format = "pptx"
 	}
 	artifactType, _ := params["artifact_type"].(string)
+	isSlideArtifact := artifactType == "slides" || format == "pptx" || format == "pdf"
 
-	if input.PreviousOutput != nil {
+	if isSlideArtifact && input.PreviousOutput != nil {
 		var skillOutput SkillExecuteOutput
 		if err := json.Unmarshal(input.PreviousOutput, &skillOutput); err == nil && skillOutput.Success {
 			retentionPolicy, _ := config["retention_policy"].(string)
@@ -964,21 +965,23 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 			return e.uploadRenderedArtifact(ctx, step, input, renderOutput, artifactType, retentionPolicy)
 		}
 	}
-	if renderOutput, err := e.renderSlidesFromSpec(ctx, input); err == nil && renderOutput != nil {
-		retentionPolicy, _ := config["retention_policy"].(string)
-		if retentionPolicy == "" {
-			retentionPolicy = "session"
+	if isSlideArtifact {
+		if renderOutput, err := e.renderSlidesFromSpec(ctx, input); err == nil && renderOutput != nil {
+			retentionPolicy, _ := config["retention_policy"].(string)
+			if retentionPolicy == "" {
+				retentionPolicy = "session"
+			}
+			return e.uploadRenderedArtifact(ctx, step, input, renderOutput, artifactType, retentionPolicy)
+		} else if err != nil {
+			return &agent.ExecutionResult{
+				Status: status.StatusFailed,
+				Error: &agent.ExecutionError{
+					Code:     "SLIDE_RENDER_FAILED",
+					Message:  fmt.Sprintf("render slides failed: %v", err),
+					Severity: status.ErrorSeverityRetryable,
+				},
+			}, nil
 		}
-		return e.uploadRenderedArtifact(ctx, step, input, renderOutput, artifactType, retentionPolicy)
-	} else if err != nil {
-		return &agent.ExecutionResult{
-			Status: status.StatusFailed,
-			Error: &agent.ExecutionError{
-				Code:     "SLIDE_RENDER_FAILED",
-				Message:  fmt.Sprintf("render slides failed: %v", err),
-				Severity: status.ErrorSeverityRetryable,
-			},
-		}, nil
 	}
 
 	// Get content from previous step output
