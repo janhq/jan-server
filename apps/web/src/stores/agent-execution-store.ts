@@ -72,7 +72,29 @@ export const useAgentExecutionStore = create<AgentExecutionState>((set, get) => 
       },
     }));
 
-    startPolling(responseId, set, get);
+    try {
+      const details = await responseApiService.getPlanDetails(responseId);
+      const isStillRunning = details.status === "in_progress" || details.status === "running";
+
+      set((state) => ({
+        executions: {
+          ...state.executions,
+          [responseId]: {
+            responseId,
+            status: details.status as ExecutionStatus,
+            progress: details.progress,
+            planDetails: details,
+            isPolling: isStillRunning,
+          },
+        },
+      }));
+
+      if (isStillRunning) {
+        startPolling(responseId, set, get);
+      }
+    } catch {
+      startPolling(responseId, set, get);
+    }
   },
 
   updateProgress: (responseId: string, progress: PlanProgressResponse) => {

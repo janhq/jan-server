@@ -289,15 +289,39 @@ export function ThreadPageContent({
                     const agentResult = JSON.parse(textContent.text);
                     const responseId = agentResult.id || agentResult.response_id;
                     if (responseId) {
+                      const inProgressOutput = [{ type: "text", text: JSON.stringify({
+                        status: "in_progress",
+                        response_id: responseId,
+                        message: "Deep research started"
+                      })}];
+
                       addToolOutput({
                         tool: toolCall.toolName,
                         toolCallId: toolCall.toolCallId,
-                        output: [{ type: "text", text: JSON.stringify({
-                          status: "in_progress",
-                          response_id: responseId,
-                          message: "Deep research started"
-                        })}],
+                        output: inProgressOutput,
                       });
+
+                      // Persist tool result to backend so it's available on reload
+                      if (conversationId && !isPrivateChat) {
+                        createItems(conversationId, [
+                          {
+                            type: "message",
+                            role: MESSAGE_ROLE.TOOL,
+                            content: [{
+                              type: "tool_result",
+                              tool_call_id: toolCall.toolCallId,
+                              tool_result: JSON.stringify({
+                                status: "in_progress",
+                                response_id: responseId,
+                                message: "Deep research started"
+                              }),
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            } as any],
+                          },
+                        ]).catch((err) => {
+                          console.error("Failed to persist agent tool result:", err);
+                        });
+                      }
 
                       startExecution(responseId, (execution) => {
                         let finalReport = "";
