@@ -1,7 +1,12 @@
 package aio
 
 import (
+	"context"
+	"fmt"
+	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/agent-infra/sandbox-sdk-go/browser"
@@ -19,9 +24,10 @@ import (
 
 // Client wraps the AIO Sandbox SDK client
 type Client struct {
-	sdk     *client.Client
-	baseURL string
-	enabled bool
+	sdk        *client.Client
+	baseURL    string
+	enabled    bool
+	httpClient *http.Client
 }
 
 // ClientConfig holds AIO client configuration
@@ -42,15 +48,18 @@ func NewClient(cfg ClientConfig) *Client {
 		timeout = 60 * time.Second
 	}
 
+	httpClient := &http.Client{Timeout: timeout}
+
 	sdk := client.NewClient(
 		option.WithBaseURL(cfg.BaseURL),
-		option.WithHTTPClient(&http.Client{Timeout: timeout}),
+		option.WithHTTPClient(httpClient),
 	)
 
 	return &Client{
-		sdk:     sdk,
-		baseURL: cfg.BaseURL,
-		enabled: true,
+		sdk:        sdk,
+		baseURL:    cfg.BaseURL,
+		enabled:    true,
+		httpClient: httpClient,
 	}
 }
 
@@ -65,6 +74,36 @@ func (c *Client) BaseURL() string {
 		return ""
 	}
 	return c.baseURL
+}
+
+// DownloadFile downloads a file from the sandbox by path.
+func (c *Client) DownloadFile(ctx context.Context, path string) ([]byte, error) {
+	if !c.IsEnabled() {
+		return nil, fmt.Errorf("client not enabled")
+	}
+	if strings.TrimSpace(path) == "" {
+		return nil, fmt.Errorf("empty path")
+	}
+	escaped := url.QueryEscape(path)
+	url := strings.TrimRight(c.baseURL, "/") + "/v1/file/download?path=" + escaped
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create download request: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("download request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read download response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("download status=%d body=%s", resp.StatusCode, string(body))
+	}
+	return body, nil
 }
 
 // Shell returns the shell operations client

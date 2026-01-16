@@ -7,6 +7,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -98,7 +102,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		AgentType:      plan.AgentTypeSlideGenerator,
 		EstimatedSteps: estimatedSteps,
 		Config: &plan.PlanConfig{
-			MaxRetries:        3,
+			MaxRetries:        5,
 			TimeoutPerStep:    300000000000, // 5 minutes in nanoseconds
 			EnableFallback:    true,
 			UserApproval:      config.OptionsCount > 1, // Require approval if multiple options
@@ -138,7 +142,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 			Sequence:    1,
 			Action:      plan.ActionTypeLLMCall,
 			InputParams: selectionParams,
-			MaxRetries:  1,
+			MaxRetries:  3,
 		})
 		if err != nil {
 			return nil, err
@@ -202,7 +206,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 				Sequence:    3,
 				Action:      plan.ActionTypeToolCall,
 				InputParams: scrapeParams,
-				MaxRetries:  2,
+				MaxRetries:  3,
 			})
 			if err != nil {
 				return nil, err
@@ -237,7 +241,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		Sequence:    1,
 		Action:      plan.ActionTypeLLMCall,
 		InputParams: outlineParams,
-		MaxRetries:  2,
+		MaxRetries:  5,
 	})
 	if err != nil {
 		return nil, err
@@ -341,7 +345,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		Sequence:    1,
 		Action:      plan.ActionTypeToolCall,
 		InputParams: compileParams,
-		MaxRetries:  2,
+		MaxRetries:  3,
 	})
 	if err != nil {
 		return nil, err
@@ -361,7 +365,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		Sequence:    2,
 		Action:      plan.ActionTypeArtifactCreate,
 		InputParams: artifactParams,
-		MaxRetries:  1,
+		MaxRetries:  3,
 	})
 	if err != nil {
 		return nil, err
@@ -846,8 +850,9 @@ func (e *SlideGeneratorExecutor) executeLLMCall(ctx context.Context, step *plan.
 	if action == "generate_slides_json" {
 		latest := response
 		var lastErr error
+		templateStr, _ := params["template"].(string)
 		for attempt := 0; attempt < 5; attempt++ {
-			if err := validateSlideTemplateJSON(latest); err == nil {
+			if err := validateSlideTemplateSchema(latest, templateStr); err == nil {
 				response = latest
 				lastErr = nil
 				break
@@ -858,7 +863,7 @@ func (e *SlideGeneratorExecutor) executeLLMCall(ctx context.Context, step *plan.
 				break
 			}
 			fixErrMsg := lastErr.Error()
-			if templateStr, ok := params["template"].(string); ok && strings.TrimSpace(templateStr) != "" {
+			if strings.TrimSpace(templateStr) != "" {
 				fixErrMsg = fmt.Sprintf("%s. Must match template: %s", fixErrMsg, templateStr)
 			}
 			fixed, fixErr := e.llmProvider.FixCode(ctx, latest, fixErrMsg, "json")
@@ -1322,6 +1327,22 @@ func (e *SlideGeneratorExecutor) uploadRenderedArtifact(ctx context.Context, ste
 }
 
 func (e *SlideGeneratorExecutor) readBinaryFileFromSandbox(ctx context.Context, path string, input agent.ExecutionInput) ([]byte, error) {
+	baseURL := strings.TrimSpace(os.Getenv("AIO_BASE_URL"))
+	if baseURL == "" {
+		baseURL = strings.TrimSpace(os.Getenv("AIO_URL"))
+	}
+	if baseURL != "" {
+		if payload, err := downloadAIOFile(ctx, baseURL, path); err == nil {
+			return payload, nil
+		} else {
+			log.Debug().
+				Err(err).
+				Str("path", path).
+				Str("base_url", baseURL).
+				Msg("AIO direct download failed; falling back to code execution")
+		}
+	}
+
 	// Use Python to read and base64-encode the file, which is more reliable than shell base64 for large binary files
 	code := fmt.Sprintf(`import base64
 import json
@@ -1414,6 +1435,33 @@ else:
 	}
 
 	return decoded, nil
+}
+
+func downloadAIOFile(ctx context.Context, baseURL string, path string) ([]byte, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, fmt.Errorf("empty path")
+	}
+	baseURL = strings.TrimRight(baseURL, "/")
+	escaped := url.QueryEscape(path)
+	reqURL := baseURL + "/v1/file/download?path=" + escaped
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create download request: %w", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("download request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read download response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("download status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return body, nil
 }
 
 func resolveArtifactContentType(artifactType string, format string) artifact.ContentType {
@@ -2167,35 +2215,11 @@ func (e *SlideGeneratorExecutor) renderSlidesFromSpec(ctx context.Context, input
 }
 
 func validateSlideTemplateJSON(content string) error {
-	cleaned := strings.TrimSpace(extractJSONFromMarkdown(content))
-	if !json.Valid([]byte(cleaned)) {
-		return fmt.Errorf("invalid JSON output")
+	templateJSON, err := loadEmbeddedSlideTemplate()
+	if err != nil {
+		return err
 	}
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(cleaned), &payload); err != nil {
-		return fmt.Errorf("json parse error: %w", err)
-	}
-	if _, ok := payload["deck"]; !ok {
-		return fmt.Errorf("missing deck object in slide JSON")
-	}
-	rawSlides, ok := payload["slides"]
-	if !ok {
-		return fmt.Errorf("missing slides array in slide JSON")
-	}
-	slides, ok := rawSlides.([]interface{})
-	if !ok || len(slides) == 0 {
-		return fmt.Errorf("slides must be a non-empty array")
-	}
-	for i, slide := range slides {
-		obj, ok := slide.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("slide %d is not an object", i+1)
-		}
-		if _, ok := obj["type"]; !ok {
-			return fmt.Errorf("slide %d missing type", i+1)
-		}
-	}
-	return nil
+	return validateSlideTemplateSchema(content, templateJSON)
 }
 
 func convertPresentationToTemplate(content string, params map[string]interface{}) (string, error) {
@@ -2206,6 +2230,10 @@ func convertPresentationToTemplate(content string, params map[string]interface{}
 
 	var payload map[string]interface{}
 	if err := json.Unmarshal([]byte(cleaned), &payload); err != nil {
+		var rawSlides []interface{}
+		if err := json.Unmarshal([]byte(cleaned), &rawSlides); err == nil {
+			return convertSlidesToTemplate(rawSlides, "", params)
+		}
 		return "", fmt.Errorf("json parse error: %w", err)
 	}
 
@@ -2372,6 +2400,224 @@ func convertSlidesToTemplateWithDeck(rawSlides []interface{}, presentationTitle 
 		return "", err
 	}
 	return string(convertedJSON), nil
+}
+
+type schemaNode struct {
+	requiredKeys map[string]struct{}
+	children     map[string]*schemaNode
+	arrayItems   map[string]*schemaNode
+}
+
+var slideOptionalKeys = map[string]map[string]bool{
+	"title": {
+		"subtitle": true,
+		"logo":     true,
+	},
+	"section": {
+		"subtitle": true,
+		"icons":    true,
+	},
+	"bullets": {
+		"image":     true,
+		"image_pos": true,
+	},
+	"chart": {
+		"side_bullets": true,
+	},
+	"quote": {
+		"author":    true,
+		"image":     true,
+		"image_pos": true,
+	},
+	"closing": {
+		"logo": true,
+	},
+}
+
+func validateSlideTemplateSchema(content string, templateJSON string) error {
+	cleaned := strings.TrimSpace(extractJSONFromMarkdown(content))
+	if !json.Valid([]byte(cleaned)) {
+		return fmt.Errorf("invalid JSON output")
+	}
+
+	templateJSON = strings.TrimSpace(templateJSON)
+	if templateJSON == "" {
+		embedded, err := loadEmbeddedSlideTemplate()
+		if err != nil {
+			return err
+		}
+		templateJSON = embedded
+	}
+	if !json.Valid([]byte(templateJSON)) {
+		return fmt.Errorf("invalid template JSON")
+	}
+
+	var templatePayload map[string]interface{}
+	if err := json.Unmarshal([]byte(templateJSON), &templatePayload); err != nil {
+		return fmt.Errorf("template parse error: %w", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(cleaned), &payload); err != nil {
+		var rawSlides []interface{}
+		if err := json.Unmarshal([]byte(cleaned), &rawSlides); err == nil {
+			deck, ok := templatePayload["deck"].(map[string]interface{})
+			if !ok {
+				return fmt.Errorf("template missing deck")
+			}
+			payload = map[string]interface{}{
+				"deck":   deck,
+				"slides": rawSlides,
+			}
+		} else {
+			return fmt.Errorf("json parse error: %w", err)
+		}
+	}
+
+	deck, ok := payload["deck"].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("missing deck object in slide JSON")
+	}
+	slideSchemaMap, err := buildSlideSchemas(templatePayload)
+	if err != nil {
+		return err
+	}
+
+	if deckSchema, ok := slideSchemaMap["__deck__"]; ok {
+		if err := validateWithSchema(deck, deckSchema, "deck"); err != nil {
+			return err
+		}
+	}
+
+	rawSlides, ok := payload["slides"]
+	if !ok {
+		return fmt.Errorf("missing slides array in slide JSON")
+	}
+	slides, ok := rawSlides.([]interface{})
+	if !ok || len(slides) == 0 {
+		return fmt.Errorf("slides must be a non-empty array")
+	}
+
+	for i, slide := range slides {
+		obj, ok := slide.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("slide %d is not an object", i+1)
+		}
+		rawType, _ := obj["type"].(string)
+		if rawType == "" {
+			return fmt.Errorf("slide %d missing type", i+1)
+		}
+		schema, ok := slideSchemaMap[rawType]
+		if !ok {
+			return fmt.Errorf("slide %d has unsupported type %q", i+1, rawType)
+		}
+		if err := validateWithSchema(obj, schema, fmt.Sprintf("slides[%d]", i)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func buildSlideSchemas(templatePayload map[string]interface{}) (map[string]*schemaNode, error) {
+	schemaMap := make(map[string]*schemaNode)
+
+	templateDeck, ok := templatePayload["deck"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("template missing deck")
+	}
+	schemaMap["__deck__"] = buildSchemaFromTemplateMap(templateDeck, nil)
+
+	templateSlides, ok := templatePayload["slides"].([]interface{})
+	if !ok || len(templateSlides) == 0 {
+		return nil, fmt.Errorf("template missing slides")
+	}
+	for _, entry := range templateSlides {
+		slideTemplate, ok := entry.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		slideType, _ := slideTemplate["type"].(string)
+		if slideType == "" {
+			continue
+		}
+		optional := slideOptionalKeys[slideType]
+		schema := buildSchemaFromTemplateMap(slideTemplate, optional)
+		if slideType == "metrics" {
+			if metricsSchema, ok := schema.arrayItems["metrics"]; ok {
+				delete(metricsSchema.requiredKeys, "note")
+			}
+		}
+		schemaMap[slideType] = schema
+	}
+
+	return schemaMap, nil
+}
+
+func buildSchemaFromTemplateMap(template map[string]interface{}, optional map[string]bool) *schemaNode {
+	node := &schemaNode{
+		requiredKeys: map[string]struct{}{},
+		children:     map[string]*schemaNode{},
+		arrayItems:   map[string]*schemaNode{},
+	}
+	for key, value := range template {
+		if optional == nil || !optional[key] {
+			node.requiredKeys[key] = struct{}{}
+		}
+		switch typed := value.(type) {
+		case map[string]interface{}:
+			node.children[key] = buildSchemaFromTemplateMap(typed, nil)
+		case []interface{}:
+			if len(typed) == 0 {
+				continue
+			}
+			if itemMap, ok := typed[0].(map[string]interface{}); ok {
+				node.arrayItems[key] = buildSchemaFromTemplateMap(itemMap, nil)
+			}
+		}
+	}
+	return node
+}
+
+func validateWithSchema(value map[string]interface{}, schema *schemaNode, path string) error {
+	for key := range schema.requiredKeys {
+		if _, ok := value[key]; !ok {
+			return fmt.Errorf("%s missing required field %q", path, key)
+		}
+	}
+	for key, child := range schema.children {
+		childValue, ok := value[key]
+		if !ok {
+			continue
+		}
+		childMap, ok := childValue.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("%s.%s must be an object", path, key)
+		}
+		if err := validateWithSchema(childMap, child, path+"."+key); err != nil {
+			return err
+		}
+	}
+	for key, child := range schema.arrayItems {
+		childValue, ok := value[key]
+		if !ok {
+			continue
+		}
+		childSlice, ok := childValue.([]interface{})
+		if !ok {
+			return fmt.Errorf("%s.%s must be an array", path, key)
+		}
+		for idx, entry := range childSlice {
+			entryMap, ok := entry.(map[string]interface{})
+			if !ok {
+				return fmt.Errorf("%s.%s[%d] must be an object", path, key, idx)
+			}
+			if err := validateWithSchema(entryMap, child, fmt.Sprintf("%s.%s[%d]", path, key, idx)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func buildSlideRenderCode(slideSpec string, specPath string, scriptPath string, outputPath string, imageURL string) (string, error) {
