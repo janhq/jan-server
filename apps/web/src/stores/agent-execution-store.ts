@@ -59,6 +59,19 @@ export const useAgentExecutionStore = create<AgentExecutionState>((set, get) => 
   },
 
   loadHistoricalExecution: async (responseId: string) => {
+    set((state) => ({
+      executions: {
+        ...state.executions,
+        [responseId]: {
+          responseId,
+          status: "in_progress",
+          progress: 0,
+          planDetails: null,
+          isPolling: true,
+        },
+      },
+    }));
+
     try {
       const details = await responseApiService.getPlanDetails(responseId);
       const isStillRunning = details.status === "in_progress" || details.status === "running";
@@ -80,7 +93,7 @@ export const useAgentExecutionStore = create<AgentExecutionState>((set, get) => 
         startPolling(responseId, set, get);
       }
     } catch {
-      // Failed to load historical execution
+      startPolling(responseId, set, get);
     }
   },
 

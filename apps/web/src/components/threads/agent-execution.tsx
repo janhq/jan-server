@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
   AgentExecution,
   AgentExecutionContent,
@@ -27,11 +27,52 @@ const AgentExecutionPanel = ({ toolState, responseId }: AgentExecutionPanelProps
   const loadHistoricalExecution = useAgentExecutionStore((state) => state.loadHistoricalExecution);
   const execution = useAgentExecution(responseId);
 
+  const prevCompletedStepIdsRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     if (responseId && !execution) {
       loadHistoricalExecution(responseId);
     }
   }, [responseId, execution, loadHistoricalExecution]);
+
+  const tasks = execution?.planDetails?.tasks ?? [];
+  const allStepsWithResults: StepWithResults[] = [];
+  const stepIndexMap: Map<string, number> = new Map();
+  const completedStepIds: string[] = [];
+
+  tasks.forEach((task: TaskResponse) => {
+    const taskSteps = convertTaskToStepWithResults(task);
+    task.steps?.forEach((step: StepResponse, localIndex: number) => {
+      const stepData = taskSteps[localIndex];
+      // Only include steps that have results
+      if (stepData && stepData.results && stepData.results.length > 0) {
+        stepIndexMap.set(step.id, allStepsWithResults.length);
+        allStepsWithResults.push(stepData);
+        if (step.status === "completed") {
+          completedStepIds.push(step.id);
+        }
+      }
+    });
+  });
+
+  useEffect(() => {
+    if (completedStepIds.length === 0) return;
+
+    const prevCompletedIds = prevCompletedStepIdsRef.current;
+    const newlyCompletedIds = completedStepIds.filter(id => !prevCompletedIds.has(id));
+
+    if (newlyCompletedIds.length > 0) {
+      const latestCompletedId = newlyCompletedIds[newlyCompletedIds.length - 1];
+      const latestIndex = stepIndexMap.get(latestCompletedId);
+
+      if (latestIndex !== undefined && allStepsWithResults.length > 0) {
+        setAllSteps(allStepsWithResults);
+        setCurrentStep(latestIndex);
+      }
+
+      prevCompletedStepIdsRef.current = new Set(completedStepIds);
+    }
+  }, [completedStepIds.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!execution) {
     if (toolState || responseId) {
@@ -72,8 +113,6 @@ const AgentExecutionPanel = ({ toolState, responseId }: AgentExecutionPanelProps
     return null;
   }
 
-  const tasks = execution.planDetails.tasks;
-
   const mapStatus = (status: string): "complete" | "active" | "pending" => {
     switch (status) {
       case "completed":
@@ -85,22 +124,6 @@ const AgentExecutionPanel = ({ toolState, responseId }: AgentExecutionPanelProps
         return "pending";
     }
   };
-
-  // Collect all steps from all tasks that have results (non-empty)
-  const allStepsWithResults: StepWithResults[] = [];
-  const stepIndexMap: Map<string, number> = new Map();
-
-  tasks.forEach((task: TaskResponse) => {
-    const taskSteps = convertTaskToStepWithResults(task);
-    task.steps?.forEach((step: StepResponse, localIndex: number) => {
-      const stepData = taskSteps[localIndex];
-      // Only include steps that have results
-      if (stepData && stepData.results && stepData.results.length > 0) {
-        stepIndexMap.set(step.id, allStepsWithResults.length);
-        allStepsWithResults.push(stepData);
-      }
-    });
-  });
 
   const handleStepClick = (stepId: string) => {
     const globalIndex = stepIndexMap.get(stepId) ?? 0;
