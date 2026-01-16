@@ -192,7 +192,7 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 			Sequence:    1,
 			Action:      plan.ActionTypeLLMCall,
 			InputParams: codeGenParams,
-			MaxRetries:  2,
+			MaxRetries:  5, // Increased from 2 to handle LLM empty responses
 		})
 		if err != nil {
 			return nil, err
@@ -339,7 +339,7 @@ type LLMProvider interface {
 const MaxInstallRetries = 3
 
 // MaxCodeFixRetries is the maximum number of LLM code fix retry attempts.
-const MaxCodeFixRetries = 3
+const MaxCodeFixRetries = 5
 
 // NewDeepResearchExecutor creates a new deep research executor.
 func NewDeepResearchExecutor(mcpClient MCPClient, llmProvider LLMProvider) *DeepResearchExecutor {
@@ -818,6 +818,7 @@ func (e *DeepResearchExecutor) extractErrorText(result *tool.Result) string {
 // - As raw text with Python code blocks
 func (e *DeepResearchExecutor) extractCodeFromPreviousOutput(output json.RawMessage) string {
 	if len(output) == 0 {
+		log.Debug().Msg("extractCodeFromPreviousOutput: empty input")
 		return ""
 	}
 
@@ -826,20 +827,32 @@ func (e *DeepResearchExecutor) extractCodeFromPreviousOutput(output json.RawMess
 	if err := json.Unmarshal(output, &parsed); err == nil {
 		// Check for direct "code" field
 		if code, ok := parsed["code"].(string); ok && code != "" {
+			log.Debug().Int("code_len", len(code)).Msg("Found code in 'code' field")
 			return code
 		}
 
 		// Check for "content" field (common in LLM responses)
 		if content, ok := parsed["content"].(string); ok && content != "" {
 			if code := extractCodeBlock(content); code != "" {
+				log.Debug().Int("code_len", len(code)).Msg("Extracted code from 'content' field")
 				return code
+			}
+			// If no code block found but content looks like code, return it
+			if looksLikeCode(content) {
+				log.Debug().Int("content_len", len(content)).Msg("Content field looks like code, using it directly")
+				return strings.TrimSpace(content)
 			}
 		}
 
 		// Check for "text" field
 		if text, ok := parsed["text"].(string); ok && text != "" {
 			if code := extractCodeBlock(text); code != "" {
+				log.Debug().Int("code_len", len(code)).Msg("Extracted code from 'text' field")
 				return code
+			}
+			if looksLikeCode(text) {
+				log.Debug().Int("text_len", len(text)).Msg("Text field looks like code, using it directly")
+				return strings.TrimSpace(text)
 			}
 		}
 
@@ -849,20 +862,31 @@ func (e *DeepResearchExecutor) extractCodeFromPreviousOutput(output json.RawMess
 				if msg, ok := choice["message"].(map[string]interface{}); ok {
 					if content, ok := msg["content"].(string); ok && content != "" {
 						if code := extractCodeBlock(content); code != "" {
+							log.Debug().Int("code_len", len(code)).Msg("Extracted code from OpenAI choices format")
 							return code
 						}
 					}
 				}
 			}
 		}
+
+		log.Debug().Msg("No code found in JSON structure, trying raw text extraction")
 	}
 
 	// Try as raw text
 	rawText := string(output)
 	if code := extractCodeBlock(rawText); code != "" {
+		log.Debug().Int("code_len", len(code)).Msg("Extracted code from raw text")
 		return code
 	}
 
+	// Last resort: if the entire raw text looks like code, use it
+	if looksLikeCode(rawText) {
+		log.Debug().Int("raw_len", len(rawText)).Msg("Raw text looks like code, using it directly")
+		return strings.TrimSpace(rawText)
+	}
+
+	log.Warn().Str("output_preview", truncateForLog(output, 200)).Msg("Could not extract code from previous output")
 	return ""
 }
 
@@ -889,6 +913,30 @@ func extractCodeBlock(text string) string {
 	}
 
 	return ""
+}
+
+func looksLikeCode(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return false
+	}
+	if strings.Contains(trimmed, "```") {
+		return true
+	}
+	codePattern := regexp.MustCompile(`(?m)^\s*(def|class|import|from)\b`)
+	if codePattern.MatchString(trimmed) {
+		return true
+	}
+	if strings.Contains(trimmed, "if __name__") {
+		return true
+	}
+	if strings.Contains(trimmed, "return ") && strings.Contains(trimmed, "\n") {
+		return true
+	}
+	if strings.Contains(trimmed, "print(") && strings.Contains(trimmed, "\n") {
+		return true
+	}
+	return false
 }
 
 // buildToolArguments constructs proper tool arguments from step params and context.
@@ -950,7 +998,26 @@ func (e *DeepResearchExecutor) buildToolArguments(toolName string, params map[st
 		}
 
 		if code == "" {
-			return nil, fmt.Errorf("no code provided for execution")
+			// Try to extract from accumulated outputs as last resort
+			for _, accOutput := range input.AccumulatedOutputs {
+				if extracted := e.extractCodeFromPreviousOutput(accOutput); extracted != "" {
+					log.Info().
+						Str("tool", "aio_code_execute").
+						Int("code_len", len(extracted)).
+						Msg("Found code in accumulated outputs")
+					code = extracted
+					break
+				}
+			}
+		}
+
+		if code == "" {
+			log.Error().
+				Str("tool", "aio_code_execute").
+				Str("previous_output_preview", truncateForLog(input.PreviousOutput, 500)).
+				Int("accumulated_outputs_count", len(input.AccumulatedOutputs)).
+				Msg("No code provided for execution - LLM may have returned empty or invalid response")
+			return nil, fmt.Errorf("no code provided for execution: LLM returned empty or invalid response. This step will be retried automatically")
 		}
 
 		code = agent.NormalizeSandboxFilePaths(code)
@@ -1154,10 +1221,41 @@ func (e *DeepResearchExecutor) executeLLMCall(ctx context.Context, step *plan.St
 
 	response, err := e.llmProvider.GenerateWithModel(ctx, prompt, model)
 	if err != nil {
+		log.Error().
+			Err(err).
+			Str("action", action).
+			Str("step_id", step.ID).
+			Str("model", model).
+			Msg("LLM generation failed")
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
 			Error: &agent.ExecutionError{
 				Message:  fmt.Sprintf("LLM generation failed: %v", err),
+				Severity: status.ErrorSeverityRetryable,
+			},
+		}, nil
+	}
+
+	// Log LLM response for tracking
+	log.Info().
+		Str("action", action).
+		Str("step_id", step.ID).
+		Str("model", model).
+		Int("response_length", len(response)).
+		Str("response_preview", truncateForLog(json.RawMessage(response), 300)).
+		Msg("LLM response received")
+
+	// Check if response is empty
+	if strings.TrimSpace(response) == "" {
+		log.Warn().
+			Str("action", action).
+			Str("step_id", step.ID).
+			Str("model", model).
+			Msg("LLM returned empty response")
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Message:  "LLM returned empty response, please retry",
 				Severity: status.ErrorSeverityRetryable,
 			},
 		}, nil
@@ -1207,6 +1305,18 @@ func buildSkippedToolResult(toolName string, reason string, statusCode string) *
 		Status: status.StatusCompleted,
 		Output: output,
 	}
+}
+
+// truncateForLog truncates a byte slice for safe logging
+func truncateForLog(data json.RawMessage, maxLen int) string {
+	if len(data) == 0 {
+		return ""
+	}
+	s := string(data)
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 
 // CanExecute checks if this executor can handle the given action type.

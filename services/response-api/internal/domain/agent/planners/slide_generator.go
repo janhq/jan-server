@@ -7,6 +7,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -15,6 +18,7 @@ import (
 	"jan-server/services/response-api/internal/domain/plan"
 	"jan-server/services/response-api/internal/domain/status"
 	"jan-server/services/response-api/internal/domain/tool"
+	"jan-server/services/response-api/internal/config"
 	"jan-server/services/response-api/internal/infrastructure/media"
 
 	"github.com/rs/zerolog/log"
@@ -98,7 +102,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		AgentType:      plan.AgentTypeSlideGenerator,
 		EstimatedSteps: estimatedSteps,
 		Config: &plan.PlanConfig{
-			MaxRetries:        3,
+			MaxRetries:        5,
 			TimeoutPerStep:    300000000000, // 5 minutes in nanoseconds
 			EnableFallback:    true,
 			UserApproval:      config.OptionsCount > 1, // Require approval if multiple options
@@ -138,7 +142,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 			Sequence:    1,
 			Action:      plan.ActionTypeLLMCall,
 			InputParams: selectionParams,
-			MaxRetries:  1,
+			MaxRetries:  3,
 		})
 		if err != nil {
 			return nil, err
@@ -202,7 +206,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 				Sequence:    3,
 				Action:      plan.ActionTypeToolCall,
 				InputParams: scrapeParams,
-				MaxRetries:  2,
+				MaxRetries:  3,
 			})
 			if err != nil {
 				return nil, err
@@ -237,7 +241,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		Sequence:    1,
 		Action:      plan.ActionTypeLLMCall,
 		InputParams: outlineParams,
-		MaxRetries:  2,
+		MaxRetries:  5,
 	})
 	if err != nil {
 		return nil, err
@@ -341,7 +345,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		Sequence:    1,
 		Action:      plan.ActionTypeToolCall,
 		InputParams: compileParams,
-		MaxRetries:  2,
+		MaxRetries:  3,
 	})
 	if err != nil {
 		return nil, err
@@ -361,7 +365,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		Sequence:    2,
 		Action:      plan.ActionTypeArtifactCreate,
 		InputParams: artifactParams,
-		MaxRetries:  1,
+		MaxRetries:  3,
 	})
 	if err != nil {
 		return nil, err
@@ -517,16 +521,22 @@ type SlideGeneratorExecutor struct {
 	artifactService artifact.Service
 	mediaClient     *media.Client
 	skillExecutor   *SkillExecutor
+	aioBaseURL      string
 }
 
 // NewSlideGeneratorExecutor creates a new slide generator executor.
-func NewSlideGeneratorExecutor(mcpClient MCPClient, llmProvider LLMProvider, artifactService artifact.Service, mediaClient *media.Client, skillExecutor *SkillExecutor) *SlideGeneratorExecutor {
+func NewSlideGeneratorExecutor(mcpClient MCPClient, llmProvider LLMProvider, artifactService artifact.Service, mediaClient *media.Client, skillExecutor *SkillExecutor, cfg *config.Config) *SlideGeneratorExecutor {
+	aioBaseURL := ""
+	if cfg != nil {
+		aioBaseURL = strings.TrimSpace(cfg.AIOURL)
+	}
 	return &SlideGeneratorExecutor{
 		mcpClient:       mcpClient,
 		llmProvider:     llmProvider,
 		artifactService: artifactService,
 		mediaClient:     mediaClient,
 		skillExecutor:   skillExecutor,
+		aioBaseURL:      aioBaseURL,
 	}
 }
 
@@ -780,7 +790,10 @@ func (e *SlideGeneratorExecutor) executeLLMCall(ctx context.Context, step *plan.
 	var prompt string
 	switch action {
 	case "reasoning":
-		prompt = fmt.Sprintf("Analyze and plan the slide structure. %s\n\nResearch findings: %s\n\nProvide a clear outline for the presentation.",
+		prompt = fmt.Sprintf(
+			"Analyze and plan the slide structure. %s\n\nResearch findings:\n%s\n\n"+
+				"Provide a clear, concise outline for the presentation.\n"+
+				"Return plain text only.",
 			description, contextData)
 	case "generate_slides_json":
 		config, _ := params["config"].(map[string]interface{})
@@ -790,7 +803,31 @@ func (e *SlideGeneratorExecutor) executeLLMCall(ctx context.Context, step *plan.
 		}
 		theme, _ := config["theme"].(string)
 		template, _ := params["template"].(string)
-		prompt = buildSlideGenerationPrompt(numSlides, theme, description, template, contextData)
+		if strings.TrimSpace(template) == "" {
+			if embedded, err := loadEmbeddedSlideTemplate(); err == nil {
+				template = embedded
+			}
+		}
+		prompt = fmt.Sprintf(
+			"Generate an exact %d-slide JSON deck with theme '%s'. %s\n\n"+
+				"Return a single JSON object only (no markdown, no backticks, no commentary).\n"+
+				"Output must start with '{' and end with '}'.\n"+
+				"Top-level keys must be exactly: deck, slides.\n"+
+				"Do not use a top-level array. Do not add a 'presentation' wrapper.\n"+
+				"Use only slide types shown in the template and keep the same key structure.\n"+
+				"If the template has more slides than required, drop slides from the end.\n"+
+				"If it has fewer slides, duplicate the last slide structure and update its content.\n"+
+				"Each slide must include a 'type' plus all required keys for that type.\n"+
+				"Do not include images: omit image, image_pos, logo, icons, and any image URLs.\n"+
+				"If the content supports it, include at least one chart slide and one table slide.\n"+
+				"Omit optional fields when not used.\n"+
+				"Template:\n%s\n\nContext:\n%s",
+			numSlides,
+			theme,
+			description,
+			template,
+			contextData,
+		)
 	default:
 		prompt = fmt.Sprintf("%s\n\nContext: %s", description, contextData)
 	}
@@ -819,16 +856,7 @@ func (e *SlideGeneratorExecutor) executeLLMCall(ctx context.Context, step *plan.
 		}, nil
 	}
 
-	var response string
-	var err error
-
-	// Use system prompt for slide JSON generation to enforce format
-	if action == "generate_slides_json" {
-		systemPrompt := buildSlideSystemPrompt()
-		response, err = e.llmProvider.GenerateWithSystemPrompt(ctx, systemPrompt, prompt, model)
-	} else {
-		response, err = e.llmProvider.GenerateWithModel(ctx, prompt, model)
-	}
+	response, err := e.llmProvider.GenerateWithModel(ctx, prompt, model)
 	if err != nil {
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
@@ -843,8 +871,9 @@ func (e *SlideGeneratorExecutor) executeLLMCall(ctx context.Context, step *plan.
 	if action == "generate_slides_json" {
 		latest := response
 		var lastErr error
+		templateStr, _ := params["template"].(string)
 		for attempt := 0; attempt < 5; attempt++ {
-			if err := validateSlideTemplateJSON(latest); err == nil {
+			if err := validateSlideTemplateSchema(latest, templateStr); err == nil {
 				response = latest
 				lastErr = nil
 				break
@@ -855,7 +884,7 @@ func (e *SlideGeneratorExecutor) executeLLMCall(ctx context.Context, step *plan.
 				break
 			}
 			fixErrMsg := lastErr.Error()
-			if templateStr, ok := params["template"].(string); ok && strings.TrimSpace(templateStr) != "" {
+			if strings.TrimSpace(templateStr) != "" {
 				fixErrMsg = fmt.Sprintf("%s. Must match template: %s", fixErrMsg, templateStr)
 			}
 			fixed, fixErr := e.llmProvider.FixCode(ctx, latest, fixErrMsg, "json")
@@ -917,11 +946,9 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 		format = "pptx"
 	}
 	artifactType, _ := params["artifact_type"].(string)
+	isSlideArtifact := artifactType == "slides" || format == "pptx" || format == "pdf"
 
-	// Check if this is a slide artifact type
-	isSlideArtifact := artifactType == "slide" || artifactType == "slides" || artifactType == "presentation"
-
-	if input.PreviousOutput != nil {
+	if isSlideArtifact && input.PreviousOutput != nil {
 		var skillOutput SkillExecuteOutput
 		if err := json.Unmarshal(input.PreviousOutput, &skillOutput); err == nil && skillOutput.Success {
 			retentionPolicy, _ := config["retention_policy"].(string)
@@ -930,17 +957,14 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 			}
 			return e.uploadSkillArtifact(ctx, step, input, skillOutput, artifactType, retentionPolicy)
 		}
-		if isSlideArtifact {
-			if renderOutput := extractSlideRenderOutput(input.PreviousOutput); renderOutput != nil {
-				retentionPolicy, _ := config["retention_policy"].(string)
-				if retentionPolicy == "" {
-					retentionPolicy = "session"
-				}
-				return e.uploadRenderedArtifact(ctx, step, input, renderOutput, artifactType, retentionPolicy)
+		if renderOutput := extractSlideRenderOutput(input.PreviousOutput); renderOutput != nil {
+			retentionPolicy, _ := config["retention_policy"].(string)
+			if retentionPolicy == "" {
+				retentionPolicy = "session"
 			}
+			return e.uploadRenderedArtifact(ctx, step, input, renderOutput, artifactType, retentionPolicy)
 		}
 	}
-	// Only attempt slide rendering for slide artifact types
 	if isSlideArtifact {
 		if renderOutput, err := e.renderSlidesFromSpec(ctx, input); err == nil && renderOutput != nil {
 			retentionPolicy, _ := config["retention_policy"].(string)
@@ -1327,6 +1351,18 @@ func (e *SlideGeneratorExecutor) uploadRenderedArtifact(ctx context.Context, ste
 }
 
 func (e *SlideGeneratorExecutor) readBinaryFileFromSandbox(ctx context.Context, path string, input agent.ExecutionInput) ([]byte, error) {
+	if strings.TrimSpace(e.aioBaseURL) != "" {
+		if payload, err := downloadAIOFile(ctx, e.aioBaseURL, path); err == nil {
+			return payload, nil
+		} else {
+			log.Debug().
+				Err(err).
+				Str("path", path).
+				Str("base_url", e.aioBaseURL).
+				Msg("AIO direct download failed; falling back to code execution")
+		}
+	}
+
 	// Use Python to read and base64-encode the file, which is more reliable than shell base64 for large binary files
 	code := fmt.Sprintf(`import base64
 import json
@@ -1419,6 +1455,33 @@ else:
 	}
 
 	return decoded, nil
+}
+
+func downloadAIOFile(ctx context.Context, baseURL string, path string) ([]byte, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, fmt.Errorf("empty path")
+	}
+	baseURL = strings.TrimRight(baseURL, "/")
+	escaped := url.QueryEscape(path)
+	reqURL := baseURL + "/v1/file/download?path=" + escaped
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create download request: %w", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("download request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read download response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("download status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return body, nil
 }
 
 func resolveArtifactContentType(artifactType string, format string) artifact.ContentType {
@@ -2094,8 +2157,12 @@ func (e *SlideGeneratorExecutor) renderSlidesFromSpec(ctx context.Context, input
 	if strings.TrimSpace(slideSpec) == "" {
 		return nil, fmt.Errorf("missing slide JSON in previous output")
 	}
-	if err := validateSlideTemplateJSON(slideSpec); err != nil {
-		if converted, convErr := convertPresentationToTemplate(slideSpec, nil); convErr == nil {
+	templateJSON, tmplErr := loadEmbeddedSlideTemplate()
+	if tmplErr != nil {
+		return nil, tmplErr
+	}
+	if err := validateSlideTemplateSchema(slideSpec, templateJSON); err != nil {
+		if converted, convErr := convertPresentationToTemplate(slideSpec, map[string]interface{}{"template": templateJSON}); convErr == nil {
 			slideSpec = converted
 		} else {
 			return nil, err
@@ -2172,35 +2239,11 @@ func (e *SlideGeneratorExecutor) renderSlidesFromSpec(ctx context.Context, input
 }
 
 func validateSlideTemplateJSON(content string) error {
-	cleaned := strings.TrimSpace(extractJSONFromMarkdown(content))
-	if !json.Valid([]byte(cleaned)) {
-		return fmt.Errorf("invalid JSON output")
+	templateJSON, err := loadEmbeddedSlideTemplate()
+	if err != nil {
+		return err
 	}
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(cleaned), &payload); err != nil {
-		return fmt.Errorf("json parse error: %w", err)
-	}
-	if _, ok := payload["deck"]; !ok {
-		return fmt.Errorf("missing deck object in slide JSON")
-	}
-	rawSlides, ok := payload["slides"]
-	if !ok {
-		return fmt.Errorf("missing slides array in slide JSON")
-	}
-	slides, ok := rawSlides.([]interface{})
-	if !ok || len(slides) == 0 {
-		return fmt.Errorf("slides must be a non-empty array")
-	}
-	for i, slide := range slides {
-		obj, ok := slide.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("slide %d is not an object", i+1)
-		}
-		if _, ok := obj["type"]; !ok {
-			return fmt.Errorf("slide %d missing type", i+1)
-		}
-	}
-	return nil
+	return validateSlideTemplateSchema(content, templateJSON)
 }
 
 func convertPresentationToTemplate(content string, params map[string]interface{}) (string, error) {
@@ -2211,6 +2254,10 @@ func convertPresentationToTemplate(content string, params map[string]interface{}
 
 	var payload map[string]interface{}
 	if err := json.Unmarshal([]byte(cleaned), &payload); err != nil {
+		var rawSlides []interface{}
+		if err := json.Unmarshal([]byte(cleaned), &rawSlides); err == nil {
+			return convertSlidesToTemplate(rawSlides, "", params)
+		}
 		return "", fmt.Errorf("json parse error: %w", err)
 	}
 
@@ -2310,8 +2357,6 @@ func convertSlidesToTemplateWithDeck(rawSlides []interface{}, presentationTitle 
 	}
 
 	convertedSlides := make([]interface{}, 0, len(rawSlides))
-	usedTypes := make(map[string]int) // Track used types to ensure variety
-
 	for idx, raw := range rawSlides {
 		item, ok := raw.(map[string]interface{})
 		if !ok {
@@ -2321,391 +2366,64 @@ func convertSlidesToTemplateWithDeck(rawSlides []interface{}, presentationTitle 
 		if title == "" {
 			title = fmt.Sprintf("Slide %d", idx+1)
 		}
-		titleLower := strings.ToLower(title)
-
-		// First slide: title type
-		if idx == 0 {
-			subtitle := ""
-			if contentList, ok := item["content"].([]interface{}); ok && len(contentList) > 0 {
-				subtitle = fmt.Sprintf("%v", contentList[0])
-			} else if contentStr, ok := item["content"].(string); ok {
-				parts := strings.Split(contentStr, "\n")
-				if len(parts) > 0 {
-					subtitle = parts[0]
-				}
-			}
-			if presentationTitle != "" && title == fmt.Sprintf("Slide %d", idx+1) {
-				title = presentationTitle
-			}
-			slide := map[string]interface{}{
-				"type":     "title",
-				"title":    title,
-				"subtitle": subtitle,
-				"logo":     "logo",
-			}
-			convertedSlides = append(convertedSlides, slide)
-			usedTypes["title"]++
-			continue
+		if title == fmt.Sprintf("Slide %d", idx+1) && presentationTitle != "" {
+			title = presentationTitle
 		}
 
-		// Last slide: closing type
-		if idx == len(rawSlides)-1 {
-			body := "Questions & Discussion"
-			if contentList, ok := item["content"].([]interface{}); ok && len(contentList) > 0 {
-				body = fmt.Sprintf("%v", contentList[0])
-			}
-			slide := map[string]interface{}{
-				"type":   "closing",
-				"header": "Thank You",
-				"body":   body,
-				"logo":   "logo",
-			}
-			convertedSlides = append(convertedSlides, slide)
-			usedTypes["closing"]++
-			continue
-		}
-
-		// Second slide: section/agenda type
-		if idx == 1 {
-			icons := []map[string]interface{}{}
-			if contentList, ok := item["content"].([]interface{}); ok {
-				colors := []string{"#12707C", "#0A1221", "#6B7280"}
-				for i, entry := range contentList {
-					if i >= 3 {
-						break
-					}
-					text := fmt.Sprintf("%v", entry)
-					// Clean up bullet markers
-					text = strings.TrimPrefix(text, "• ")
-					text = strings.TrimPrefix(text, "- ")
-					if len(text) > 25 {
-						text = text[:25] + "..."
-					}
-					icons = append(icons, map[string]interface{}{
-						"text":  text,
-						"color": colors[i%len(colors)],
-					})
-				}
-			}
-			if len(icons) == 0 {
-				icons = append(icons, map[string]interface{}{"text": "Overview", "color": "#12707C"})
-			}
-			slide := map[string]interface{}{
-				"type":     "section",
-				"title":    title,
-				"subtitle": "Overview",
-				"icons":    icons,
-			}
-			convertedSlides = append(convertedSlides, slide)
-			usedTypes["section"]++
-			continue
-		}
-
-		// Parse content into bullets
 		bullets := make([]string, 0)
 		if contentList, ok := item["content"].([]interface{}); ok {
 			for _, entry := range contentList {
-				text := fmt.Sprintf("%v", entry)
-				// Clean up bullet markers
-				text = strings.TrimPrefix(text, "• ")
-				text = strings.TrimPrefix(text, "- ")
-				if text != "" {
-					bullets = append(bullets, text)
-				}
+				bullets = append(bullets, fmt.Sprintf("%v", entry))
 			}
 		} else if contentStr, ok := item["content"].(string); ok && contentStr != "" {
-			// Split by newlines or bullet markers
-			lines := strings.Split(contentStr, "\n")
-			for _, line := range lines {
-				line = strings.TrimSpace(line)
-				line = strings.TrimPrefix(line, "• ")
-				line = strings.TrimPrefix(line, "- ")
-				if line != "" {
-					bullets = append(bullets, line)
-				}
+			bullets = append(bullets, contentStr)
+		}
+		if len(bullets) == 0 {
+			if focus, ok := item["contentFocus"].(string); ok && focus != "" {
+				bullets = append(bullets, focus)
 			}
 		}
 		if len(bullets) == 0 {
-			bullets = append(bullets, "Content pending")
+			if keyContent, ok := item["key_content"].([]interface{}); ok {
+				for _, entry := range keyContent {
+					bullets = append(bullets, fmt.Sprintf("%v", entry))
+				}
+			} else if keyContentStr, ok := item["key_content"].(string); ok && keyContentStr != "" {
+				bullets = append(bullets, keyContentStr)
+			}
+		}
+		if visual, ok := item["visual_suggestion"].(string); ok && visual != "" {
+			bullets = append(bullets, "Visual: "+visual)
+		}
+		if len(bullets) == 0 {
+			if rationale, ok := item["flow_rationale"].(string); ok && rationale != "" {
+				bullets = append(bullets, rationale)
+			}
+		}
+		if len(bullets) == 0 {
+			if purpose, ok := item["purpose"].(string); ok && purpose != "" {
+				bullets = append(bullets, purpose)
+			}
+		}
+		if len(bullets) == 0 {
+			bullets = append(bullets, "TBD")
 		}
 
-		// Join all content for pattern detection
-		allContent := strings.ToLower(strings.Join(bullets, " ") + " " + titleLower)
-
-		// Detect TIMELINE patterns
-		timelinePatterns := []string{"timeline", "roadmap", "phases", "milestones", "journey", "history", "evolution", "progression", "2020", "2021", "2022", "2023", "2024", "2025", "2030", "phase 1", "phase 2", "step 1", "step 2"}
-		isTimeline := false
-		for _, pattern := range timelinePatterns {
-			if strings.Contains(allContent, pattern) {
-				isTimeline = true
-				break
-			}
-		}
-		if isTimeline && usedTypes["timeline"] < 2 {
-			colors := []string{"#12707C", "#0A1221", "#334155", "#64748B", "#0A1221"}
-			items := make([]map[string]interface{}, 0)
-			for i, b := range bullets {
-				if i >= 5 {
-					break
-				}
-				label := b
-				if len(label) > 30 {
-					label = label[:30] + "..."
-				}
-				items = append(items, map[string]interface{}{
-					"label": label,
-					"color": colors[i%len(colors)],
-				})
-			}
-			slide := map[string]interface{}{
-				"type":  "timeline",
-				"title": title,
-				"timeline": map[string]interface{}{
-					"x":     1.0,
-					"y":     3.6,
-					"w":     11.0,
-					"items": items,
-				},
-			}
-			convertedSlides = append(convertedSlides, slide)
-			usedTypes["timeline"]++
-			continue
-		}
-
-		// Detect COMPARISON patterns
-		comparisonPatterns := []string{" vs ", " vs.", "versus", "compared to", "pros and cons", "advantages and disadvantages", "benefits and drawbacks", "renewable vs", "fossil vs", "build vs buy"}
-		isComparison := false
-		for _, pattern := range comparisonPatterns {
-			if strings.Contains(allContent, pattern) {
-				isComparison = true
-				break
-			}
-		}
-		if isComparison && usedTypes["comparison"] < 2 && len(bullets) >= 2 {
-			// Split bullets into two groups
-			mid := len(bullets) / 2
-			leftBullets := bullets[:mid]
-			rightBullets := bullets[mid:]
-			if len(leftBullets) == 0 {
-				leftBullets = []string{"Point 1"}
-			}
-			if len(rightBullets) == 0 {
-				rightBullets = []string{"Point 1"}
-			}
-			// Extract comparison titles from slide title if possible
-			leftTitle := "Option A"
-			rightTitle := "Option B"
-			if strings.Contains(titleLower, " vs ") {
-				parts := strings.SplitN(title, " vs ", 2)
-				if len(parts) == 2 {
-					leftTitle = strings.TrimSpace(parts[0])
-					rightTitle = strings.TrimSpace(parts[1])
-				}
-			}
-			slide := map[string]interface{}{
-				"type":  "comparison",
-				"title": title,
-				"left": map[string]interface{}{
-					"title":   leftTitle,
-					"bullets": leftBullets,
-				},
-				"right": map[string]interface{}{
-					"title":   rightTitle,
-					"bullets": rightBullets,
-				},
-			}
-			convertedSlides = append(convertedSlides, slide)
-			usedTypes["comparison"]++
-			continue
-		}
-
-		// Detect TABLE patterns
-		tablePatterns := []string{"comparison table", "feature matrix", "sources comparison", "energy source", "provider comparison", "cost comparison", "technology comparison"}
-		isTable := false
-		for _, pattern := range tablePatterns {
-			if strings.Contains(allContent, pattern) {
-				isTable = true
-				break
-			}
-		}
-		if isTable && usedTypes["table"] < 2 && len(bullets) >= 3 {
-			// Create a simple table from bullets
-			headers := []string{"Item", "Details", "Notes"}
-			rows := make([][]string, 0)
-			for i, b := range bullets {
-				if i >= 5 {
-					break
-				}
-				// Try to split bullet into columns
-				parts := strings.SplitN(b, ":", 2)
-				if len(parts) == 2 {
-					rows = append(rows, []string{strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), ""})
-				} else {
-					rows = append(rows, []string{b, "", ""})
-				}
-			}
-			if len(rows) == 0 {
-				rows = append(rows, []string{"Item 1", "Details", ""})
-			}
-			slide := map[string]interface{}{
-				"type":  "table",
-				"title": title,
-				"table": map[string]interface{}{
-					"headers": headers,
-					"rows":    rows,
-					"x":       0.8,
-					"y":       1.6,
-					"w":       11.5,
-					"h":       4.6,
-				},
-			}
-			convertedSlides = append(convertedSlides, slide)
-			usedTypes["table"]++
-			continue
-		}
-
-		// Detect CHART patterns
-		chartPatterns := []string{"growth", "trend", "increase", "decrease", "chart", "graph", "data", "statistics", "annually", "quarterly", "yearly", "2020-", "2021-", "2022-", "2023-", "2024-", "capacity"}
-		isChart := false
-		for _, pattern := range chartPatterns {
-			if strings.Contains(allContent, pattern) {
-				isChart = true
-				break
-			}
-		}
-		if isChart && usedTypes["chart"] < 2 {
-			// Create sample chart data based on content
-			slide := map[string]interface{}{
-				"type":  "chart",
-				"title": title,
-				"chart": map[string]interface{}{
-					"type":       "column",
-					"x":          0.9,
-					"y":          1.6,
-					"w":          6.3,
-					"h":          4.3,
-					"categories": []string{"2022", "2023", "2024", "2025"},
-					"series": []map[string]interface{}{
-						{"name": "Growth", "values": []int{100, 150, 220, 310}},
-					},
-				},
-				"side_bullets": bullets[:min(3, len(bullets))],
-			}
-			convertedSlides = append(convertedSlides, slide)
-			usedTypes["chart"]++
-			continue
-		}
-
-		// Detect METRICS patterns
-		metricPatterns := []string{"billion", "million", "twh", "$", "tons", "%", "statistics", "key stats", "key metrics", "numbers", "data points", "facts"}
-		hasMetrics := false
-		for _, pattern := range metricPatterns {
-			if strings.Contains(allContent, pattern) {
-				hasMetrics = true
-				break
-			}
-		}
-		if hasMetrics && usedTypes["metrics"] < 3 && len(bullets) >= 2 {
-			metrics := make([]map[string]interface{}, 0)
-			colors := []string{"#12707C", "#0A1221", "#334155"}
-			for i, b := range bullets {
-				if i >= 3 {
-					break
-				}
-				value := "—"
-				label := b
-				if len(label) > 40 {
-					label = label[:40] + "..."
-				}
-				// Extract numbers/values from the string
-				words := strings.Fields(b)
-				for _, word := range words {
-					word = strings.Trim(word, "(),.:;")
-					if len(word) > 0 && (word[0] >= '0' && word[0] <= '9' || word[0] == '$' || word[0] == '+' || word[0] == '-') {
-						value = word
-						break
-					}
-					// Also check for patterns like "2.1B", "12M"
-					if len(word) > 1 && (strings.HasSuffix(word, "B") || strings.HasSuffix(word, "M") || strings.HasSuffix(word, "K") || strings.HasSuffix(word, "%")) {
-						if word[0] >= '0' && word[0] <= '9' {
-							value = word
-							break
-						}
-					}
-				}
-				metrics = append(metrics, map[string]interface{}{
-					"label": label,
-					"value": value,
-					"note":  "",
-					"color": colors[i%len(colors)],
-				})
-			}
-			slide := map[string]interface{}{
-				"type":    "metrics",
-				"title":   title,
-				"metrics": metrics,
-			}
-			convertedSlides = append(convertedSlides, slide)
-			usedTypes["metrics"]++
-			continue
-		}
-
-		// Detect QUOTE patterns
-		quotePatterns := []string{"quote", "testimonial", "said", "according to", "customer voice", "'", "\""}
-		isQuote := false
-		for _, pattern := range quotePatterns {
-			if strings.Contains(allContent, pattern) {
-				isQuote = true
-				break
-			}
-		}
-		if isQuote && usedTypes["quote"] < 1 && len(bullets) >= 1 {
-			quote := bullets[0]
-			author := "Industry Expert"
-			if len(bullets) > 1 {
-				author = bullets[1]
-			}
-			slide := map[string]interface{}{
-				"type":   "quote",
-				"title":  title,
-				"quote":  quote,
-				"author": author,
-				"image":  "hero",
-				"image_pos": map[string]interface{}{
-					"x": 9.4,
-					"y": 1.6,
-					"w": 3.2,
-				},
-			}
-			convertedSlides = append(convertedSlides, slide)
-			usedTypes["quote"]++
-			continue
-		}
-
-		// Default to bullets slide
 		slide := map[string]interface{}{
 			"type":    "bullets",
 			"title":   title,
 			"bullets": bullets,
 		}
-		// Add image to every other bullets slide for visual variety
-		if idx%2 == 1 {
-			slide["image"] = "hero"
-			slide["image_pos"] = map[string]interface{}{"x": 7.2, "y": 1.4, "w": 5.4}
-		}
 		convertedSlides = append(convertedSlides, slide)
-		usedTypes["bullets"]++
 	}
 
-	// Pad if needed
 	for len(convertedSlides) < numSlides {
 		convertedSlides = append(convertedSlides, map[string]interface{}{
 			"type":    "bullets",
-			"title":   fmt.Sprintf("Additional Content %d", len(convertedSlides)+1),
-			"bullets": []string{"Additional information"},
+			"title":   fmt.Sprintf("Additional Slide %d", len(convertedSlides)+1),
+			"bullets": []string{"TBD"},
 		})
 	}
-	// Trim if too many
 	if numSlides > 0 && len(convertedSlides) > numSlides {
 		convertedSlides = convertedSlides[:numSlides]
 	}
@@ -2724,105 +2442,222 @@ func convertSlidesToTemplateWithDeck(rawSlides []interface{}, presentationTitle 
 	return string(convertedJSON), nil
 }
 
-// min returns the smaller of two integers
-func min(a, b int) int {
-	if a < b {
-		return a
+type schemaNode struct {
+	requiredKeys map[string]struct{}
+	children     map[string]*schemaNode
+	arrayItems   map[string]*schemaNode
+}
+
+var slideOptionalKeys = map[string]map[string]bool{
+	"title": {
+		"subtitle": true,
+		"logo":     true,
+	},
+	"section": {
+		"subtitle": true,
+		"icons":    true,
+	},
+	"bullets": {
+		"image":     true,
+		"image_pos": true,
+	},
+	"chart": {
+		"side_bullets": true,
+	},
+	"quote": {
+		"author":    true,
+		"image":     true,
+		"image_pos": true,
+	},
+	"closing": {
+		"logo": true,
+	},
+}
+
+func validateSlideTemplateSchema(content string, templateJSON string) error {
+	cleaned := strings.TrimSpace(extractJSONFromMarkdown(content))
+	if !json.Valid([]byte(cleaned)) {
+		return fmt.Errorf("invalid JSON output")
 	}
-	return b
+
+	templateJSON = strings.TrimSpace(templateJSON)
+	if templateJSON == "" {
+		embedded, err := loadEmbeddedSlideTemplate()
+		if err != nil {
+			return err
+		}
+		templateJSON = embedded
+	}
+	if !json.Valid([]byte(templateJSON)) {
+		return fmt.Errorf("invalid template JSON")
+	}
+
+	var templatePayload map[string]interface{}
+	if err := json.Unmarshal([]byte(templateJSON), &templatePayload); err != nil {
+		return fmt.Errorf("template parse error: %w", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(cleaned), &payload); err != nil {
+		var rawSlides []interface{}
+		if err := json.Unmarshal([]byte(cleaned), &rawSlides); err == nil {
+			deck, ok := templatePayload["deck"].(map[string]interface{})
+			if !ok {
+				return fmt.Errorf("template missing deck")
+			}
+			payload = map[string]interface{}{
+				"deck":   deck,
+				"slides": rawSlides,
+			}
+		} else {
+			return fmt.Errorf("json parse error: %w", err)
+		}
+	}
+
+	deck, ok := payload["deck"].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("missing deck object in slide JSON")
+	}
+	slideSchemaMap, err := buildSlideSchemas(templatePayload)
+	if err != nil {
+		return err
+	}
+
+	if deckSchema, ok := slideSchemaMap["__deck__"]; ok {
+		if err := validateWithSchema(deck, deckSchema, "deck"); err != nil {
+			return err
+		}
+	}
+
+	rawSlides, ok := payload["slides"]
+	if !ok {
+		return fmt.Errorf("missing slides array in slide JSON")
+	}
+	slides, ok := rawSlides.([]interface{})
+	if !ok || len(slides) == 0 {
+		return fmt.Errorf("slides must be a non-empty array")
+	}
+
+	for i, slide := range slides {
+		obj, ok := slide.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("slide %d is not an object", i+1)
+		}
+		rawType, _ := obj["type"].(string)
+		if rawType == "" {
+			return fmt.Errorf("slide %d missing type", i+1)
+		}
+		schema, ok := slideSchemaMap[rawType]
+		if !ok {
+			return fmt.Errorf("slide %d has unsupported type %q", i+1, rawType)
+		}
+		if err := validateWithSchema(obj, schema, fmt.Sprintf("slides[%d]", i)); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
-// buildSlideSystemPrompt creates a strict system prompt to guide slide JSON generation.
-func buildSlideSystemPrompt() string {
-	return `You are a presentation JSON generator. Output ONLY valid JSON matching the schema below.
+func buildSlideSchemas(templatePayload map[string]interface{}) (map[string]*schemaNode, error) {
+	schemaMap := make(map[string]*schemaNode)
 
-RULES:
-1. Output raw JSON only - no markdown code blocks, no explanation
-2. Start with { and end with }
-3. JSON must have "deck" and "slides" as top-level keys
-4. Every slide must have "type" as first property
-5. "bullets" must be array of strings: ["text1", "text2"]
+	templateDeck, ok := templatePayload["deck"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("template missing deck")
+	}
+	schemaMap["__deck__"] = buildSchemaFromTemplateMap(templateDeck, nil)
 
-CORRECT FORMAT:
-{
-  "deck": {
-    "size": {"width": 13.33, "height": 7.5},
-    "theme": {"title_bg": "#0A1221", "title_text": "#F5F1E9", "header_bg": "#12707C", "header_text": "#F5F1E9", "body_bg": "#F5F1E9", "body_text": "#141820", "closing_bg": "#0A1221", "closing_text": "#F5F1E9"}
-  },
-  "slides": [
-    {"type": "title", "title": "...", "subtitle": "...", "logo": "logo"},
-    {"type": "bullets", "title": "...", "bullets": ["point 1", "point 2"]},
-    {"type": "metrics", "title": "...", "metrics": [{"label": "...", "value": "...", "note": "...", "color": "#12707C"}]},
-    {"type": "chart", "title": "...", "chart": {"type": "column", "categories": [...], "series": [...]}, "side_bullets": [...]},
-    {"type": "table", "title": "...", "table": {"headers": [...], "rows": [[...]]}},
-    {"type": "comparison", "title": "...", "left": {"title": "...", "bullets": [...]}, "right": {"title": "...", "bullets": [...]}},
-    {"type": "timeline", "title": "...", "timeline": {"items": [{"label": "...", "color": "#12707C"}]}},
-    {"type": "closing", "header": "Thank You", "body": "...", "logo": "logo"}
-  ]
+	templateSlides, ok := templatePayload["slides"].([]interface{})
+	if !ok || len(templateSlides) == 0 {
+		return nil, fmt.Errorf("template missing slides")
+	}
+	for _, entry := range templateSlides {
+		slideTemplate, ok := entry.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		slideType, _ := slideTemplate["type"].(string)
+		if slideType == "" {
+			continue
+		}
+		optional := slideOptionalKeys[slideType]
+		schema := buildSchemaFromTemplateMap(slideTemplate, optional)
+		if slideType == "metrics" {
+			if metricsSchema, ok := schema.arrayItems["metrics"]; ok {
+				delete(metricsSchema.requiredKeys, "note")
+			}
+		}
+		schemaMap[slideType] = schema
+	}
+
+	return schemaMap, nil
 }
 
-SLIDE TYPES: title, section, bullets, metrics, chart, table, comparison, timeline, quote, closing`
+func buildSchemaFromTemplateMap(template map[string]interface{}, optional map[string]bool) *schemaNode {
+	node := &schemaNode{
+		requiredKeys: map[string]struct{}{},
+		children:     map[string]*schemaNode{},
+		arrayItems:   map[string]*schemaNode{},
+	}
+	for key, value := range template {
+		if optional == nil || !optional[key] {
+			node.requiredKeys[key] = struct{}{}
+		}
+		switch typed := value.(type) {
+		case map[string]interface{}:
+			node.children[key] = buildSchemaFromTemplateMap(typed, nil)
+		case []interface{}:
+			if len(typed) == 0 {
+				continue
+			}
+			if itemMap, ok := typed[0].(map[string]interface{}); ok {
+				node.arrayItems[key] = buildSchemaFromTemplateMap(itemMap, nil)
+			}
+		}
+	}
+	return node
 }
 
-// buildSlideGenerationPrompt creates a detailed prompt for the LLM to generate slide JSON.
-func buildSlideGenerationPrompt(numSlides int, theme string, description string, template string, contextData string) string {
-	return fmt.Sprintf(`You MUST generate EXACTLY this JSON structure for a %d-slide presentation. Theme: '%s'.
-
-TOPIC: %s
-
-MANDATORY JSON OUTPUT (copy this structure exactly):
-{
-  "deck": {
-    "size": {"width": 13.33, "height": 7.5},
-    "theme": {"title_bg": "#0A1221", "title_text": "#F5F1E9", "header_bg": "#12707C", "header_text": "#F5F1E9", "body_bg": "#F5F1E9", "body_text": "#141820", "closing_bg": "#0A1221", "closing_text": "#F5F1E9"}
-  },
-  "slides": [
-    ... your slides here ...
-  ]
-}
-
-ABSOLUTE RULES - VIOLATION MEANS FAILURE:
-1. Start JSON with { "deck": - NOT "presentation", NOT markdown
-2. Every slide MUST have "type" field as FIRST property
-3. "bullets" MUST be plain strings: ["text"] NOT [{"text":"..."}]
-4. Return RAW JSON only - no '''json, no backticks, no explanation
-
-SLIDE 1 - MUST BE:
-{"type": "title", "title": "YOUR TITLE", "subtitle": "YOUR SUBTITLE", "logo": "logo"}
-
-SLIDE 2 - MUST BE:
-{"type": "section", "title": "Agenda", "subtitle": "Overview", "icons": [{"text": "Topic 1", "color": "#12707C"}, {"text": "Topic 2", "color": "#0A1221"}]}
-
-SLIDES 3 TO %d - USE THESE TYPES:
-
-For statistics/numbers use METRICS:
-{"type": "metrics", "title": "Key Statistics", "metrics": [
-  {"label": "CO2 Avoided", "value": "2.1B tons", "note": "in 2024", "color": "#12707C"},
-  {"label": "Jobs Created", "value": "12M", "note": "+8%% YoY", "color": "#0A1221"}
-]}
-
-For trends/data over time use CHART:
-{"type": "chart", "title": "Growth Trends", "chart": {"type": "column", "x": 0.9, "y": 1.6, "w": 6.3, "h": 4.3, "categories": ["2022", "2023", "2024", "2025"], "series": [{"name": "Capacity (GW)", "values": [100, 150, 220, 310]}]}, "side_bullets": ["Rapid growth", "Accelerating adoption"]}
-
-For comparisons use TABLE:
-{"type": "table", "title": "Energy Source Comparison", "table": {"headers": ["Source", "Cost", "Emissions", "Reliability"], "rows": [["Solar", "$30/MWh", "Zero", "Variable"], ["Wind", "$35/MWh", "Zero", "Variable"], ["Coal", "$65/MWh", "High", "Baseload"]], "x": 0.8, "y": 1.6, "w": 11.5, "h": 4.6}}
-
-For pros/cons or A vs B use COMPARISON:
-{"type": "comparison", "title": "Renewable vs Fossil Fuels", "left": {"title": "Renewable", "bullets": ["Zero emissions", "Declining costs", "Energy independence"]}, "right": {"title": "Fossil Fuels", "bullets": ["Established infrastructure", "Stable baseload", "Price volatility"]}}
-
-For processes/roadmaps use TIMELINE:
-{"type": "timeline", "title": "Energy Transition Roadmap", "timeline": {"x": 1.0, "y": 3.6, "w": 11.0, "items": [{"label": "2020: Foundation", "color": "#12707C"}, {"label": "2025: Acceleration", "color": "#0A1221"}, {"label": "2030: Mainstream", "color": "#334155"}]}}
-
-For regular content use BULLETS:
-{"type": "bullets", "title": "Key Benefits", "bullets": ["Reduced emissions", "Lower costs", "Job creation", "Energy security"], "image": "hero", "image_pos": {"x": 7.2, "y": 1.4, "w": 5.4}}
-
-LAST SLIDE - MUST BE:
-{"type": "closing", "header": "Thank You", "body": "Questions?", "logo": "logo"}
-
-RESEARCH DATA TO USE:
-%s
-
-OUTPUT THE JSON NOW (start with { "deck":):`, numSlides, theme, description, numSlides-1, contextData)
+func validateWithSchema(value map[string]interface{}, schema *schemaNode, path string) error {
+	for key := range schema.requiredKeys {
+		if _, ok := value[key]; !ok {
+			return fmt.Errorf("%s missing required field %q", path, key)
+		}
+	}
+	for key, child := range schema.children {
+		childValue, ok := value[key]
+		if !ok {
+			continue
+		}
+		childMap, ok := childValue.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("%s.%s must be an object", path, key)
+		}
+		if err := validateWithSchema(childMap, child, path+"."+key); err != nil {
+			return err
+		}
+	}
+	for key, child := range schema.arrayItems {
+		childValue, ok := value[key]
+		if !ok {
+			continue
+		}
+		childSlice, ok := childValue.([]interface{})
+		if !ok {
+			return fmt.Errorf("%s.%s must be an array", path, key)
+		}
+		for idx, entry := range childSlice {
+			entryMap, ok := entry.(map[string]interface{})
+			if !ok {
+				return fmt.Errorf("%s.%s[%d] must be an object", path, key, idx)
+			}
+			if err := validateWithSchema(entryMap, child, fmt.Sprintf("%s.%s[%d]", path, key, idx)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func buildSlideRenderCode(slideSpec string, specPath string, scriptPath string, outputPath string, imageURL string) (string, error) {

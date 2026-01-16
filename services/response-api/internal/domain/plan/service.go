@@ -34,6 +34,7 @@ type Service interface {
 	FailStep(ctx context.Context, stepID string, errorMsg string, severity status.ErrorSeverity) error
 	RetryStep(ctx context.Context, stepID string) (*Step, error)
 	SkipStep(ctx context.Context, stepID string, reason string) error
+	ResetTaskStepsForRetry(ctx context.Context, taskID string, maxSequence int) error
 
 	// Detail operations
 	AddStepDetail(ctx context.Context, stepID string, detail *StepDetail) error
@@ -403,6 +404,36 @@ func (s *DefaultService) RetryStep(ctx context.Context, stepID string) (*Step, e
 		return nil, err
 	}
 	return step, nil
+}
+
+// ResetTaskStepsForRetry resets completed steps in the task before the given sequence.
+func (s *DefaultService) ResetTaskStepsForRetry(ctx context.Context, taskID string, maxSequence int) error {
+	if maxSequence <= 1 {
+		return nil
+	}
+	steps, err := s.repo.ListStepsByTaskID(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	for _, step := range steps {
+		if step.Sequence >= maxSequence {
+			continue
+		}
+		if step.RetryCount < step.MaxRetries {
+			step.IncrementRetry()
+		}
+		step.Status = status.StatusPending
+		step.OutputData = nil
+		step.ErrorMessage = nil
+		step.ErrorSeverity = ""
+		step.StartedAt = nil
+		step.CompletedAt = nil
+		step.DurationMs = nil
+		if err := s.repo.UpdateStep(ctx, step); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SkipStep marks a step as skipped.

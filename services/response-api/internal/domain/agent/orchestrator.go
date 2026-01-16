@@ -310,6 +310,11 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 
 		// Handle based on severity
 		if execErr.Severity == status.ErrorSeverityRetryable && step.CanRetry() {
+			if task.TaskType == plan.TaskTypeFinalization && step.Sequence > 1 {
+				if resetErr := o.planService.ResetTaskStepsForRetry(ctx, task.ID, step.Sequence); resetErr != nil {
+					return nil, resetErr
+				}
+			}
 			_, retryErr := o.planService.RetryStep(ctx, step.ID)
 			if retryErr != nil {
 				return nil, retryErr
@@ -349,6 +354,11 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 
 		// Handle based on severity - retry if retryable and step can retry
 		if execErr.Severity == status.ErrorSeverityRetryable && step.CanRetry() {
+			if task.TaskType == plan.TaskTypeFinalization && step.Sequence > 1 {
+				if resetErr := o.planService.ResetTaskStepsForRetry(ctx, task.ID, step.Sequence); resetErr != nil {
+					return nil, resetErr
+				}
+			}
 			_, retryErr := o.planService.RetryStep(ctx, step.ID)
 			if retryErr != nil {
 				return nil, retryErr
@@ -388,6 +398,11 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 			errMsg := extractErrorFromOutput(outputBytes)
 			if err := o.planService.FailStep(ctx, step.ID, errMsg, status.ErrorSeverityRetryable); err != nil {
 				return nil, err
+			}
+			if task.TaskType == plan.TaskTypeFinalization && step.Sequence > 1 {
+				if resetErr := o.planService.ResetTaskStepsForRetry(ctx, task.ID, step.Sequence); resetErr != nil {
+					return nil, resetErr
+				}
 			}
 			return &ExecutionResult{
 				Status: status.StatusFailed,

@@ -190,7 +190,7 @@ func newAgentRegistry(planService plan.Service, mcpClient tool.MCPClient, llmPro
 			skill.SkillTypeSpreadsheets: cfg.SkillSpreadsheetsEnabled,
 		},
 	)
-	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient, skillExecutor)
+	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient, skillExecutor, cfg)
 	_ = registry.RegisterExecutor(plan.ActionTypeArtifactCreate, slideGeneratorExecutor)
 	_ = registry.RegisterExecutor(plan.ActionTypeSkillExecute, skillExecutor)
 
