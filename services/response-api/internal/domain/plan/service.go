@@ -31,7 +31,7 @@ type Service interface {
 	CreateStep(ctx context.Context, taskID string, params CreateStepParams) (*Step, error)
 	StartStep(ctx context.Context, stepID string) error
 	CompleteStep(ctx context.Context, stepID string, output []byte) error
-	FailStep(ctx context.Context, stepID string, errorMsg string, severity status.ErrorSeverity) error
+	FailStep(ctx context.Context, stepID string, errorMsg string, severity status.ErrorSeverity, output []byte) error
 	RetryStep(ctx context.Context, stepID string) (*Step, error)
 	SkipStep(ctx context.Context, stepID string, reason string) error
 	ResetTaskStepsForRetry(ctx context.Context, taskID string, maxSequence int) error
@@ -362,7 +362,7 @@ func (s *DefaultService) CompleteStep(ctx context.Context, stepID string, output
 }
 
 // FailStep marks a step as failed with error details.
-func (s *DefaultService) FailStep(ctx context.Context, stepID string, errorMsg string, severity status.ErrorSeverity) error {
+func (s *DefaultService) FailStep(ctx context.Context, stepID string, errorMsg string, severity status.ErrorSeverity, output []byte) error {
 	step, err := s.repo.FindStepByID(ctx, stepID)
 	if err != nil {
 		return err
@@ -371,6 +371,9 @@ func (s *DefaultService) FailStep(ctx context.Context, stepID string, errorMsg s
 	step.Status = status.StatusFailed
 	step.ErrorMessage = &errorMsg
 	step.ErrorSeverity = severity
+	if len(output) > 0 && string(output) != "null" {
+		step.OutputData = output
+	}
 	now := time.Now().UTC()
 	step.CompletedAt = &now
 

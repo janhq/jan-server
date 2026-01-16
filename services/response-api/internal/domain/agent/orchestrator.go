@@ -303,8 +303,9 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 			CreatedAt: time.Now(),
 		}
 		step.SetOutputData(errorOutput)
+		outputBytes, _ := json.Marshal(errorOutput)
 
-		if err := o.planService.FailStep(ctx, step.ID, execErr.Message, execErr.Severity); err != nil {
+		if err := o.planService.FailStep(ctx, step.ID, execErr.Message, execErr.Severity, outputBytes); err != nil {
 			return nil, err
 		}
 
@@ -346,9 +347,13 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 			Error:     execErr.Message,
 			CreatedAt: time.Now(),
 		}
+		if len(result.Output) > 0 && string(result.Output) != "null" {
+			errorOutput.Result = result.Output
+		}
 		step.SetOutputData(errorOutput)
+		outputBytes, _ := json.Marshal(errorOutput)
 
-		if err := o.planService.FailStep(ctx, step.ID, execErr.Message, execErr.Severity); err != nil {
+		if err := o.planService.FailStep(ctx, step.ID, execErr.Message, execErr.Severity, outputBytes); err != nil {
 			return nil, err
 		}
 
@@ -396,7 +401,7 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 		// Check if the output actually indicates a failure (e.g., tool execution error)
 		if isOutputIndicatingFailure(outputBytes) {
 			errMsg := extractErrorFromOutput(outputBytes)
-			if err := o.planService.FailStep(ctx, step.ID, errMsg, status.ErrorSeverityRetryable); err != nil {
+			if err := o.planService.FailStep(ctx, step.ID, errMsg, status.ErrorSeverityRetryable, outputBytes); err != nil {
 				return nil, err
 			}
 			if task.TaskType == plan.TaskTypeFinalization && step.Sequence > 1 {

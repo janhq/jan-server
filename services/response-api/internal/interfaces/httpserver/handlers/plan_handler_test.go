@@ -41,7 +41,7 @@ type MockPlanService struct {
 	CreateStepFunc   func(ctx context.Context, taskID string, params plan.CreateStepParams) (*plan.Step, error)
 	StartStepFunc    func(ctx context.Context, stepID string) error
 	CompleteStepFunc func(ctx context.Context, stepID string, output []byte) error
-	FailStepFunc     func(ctx context.Context, stepID, errorMsg string, severity status.ErrorSeverity) error
+	FailStepFunc     func(ctx context.Context, stepID, errorMsg string, severity status.ErrorSeverity, output []byte) error
 	RetryStepFunc    func(ctx context.Context, stepID string) (*plan.Step, error)
 	SkipStepFunc     func(ctx context.Context, stepID, reason string) error
 
@@ -169,9 +169,9 @@ func (m *MockPlanService) CompleteStep(ctx context.Context, stepID string, outpu
 	return nil
 }
 
-func (m *MockPlanService) FailStep(ctx context.Context, stepID, errorMsg string, severity status.ErrorSeverity) error {
+func (m *MockPlanService) FailStep(ctx context.Context, stepID, errorMsg string, severity status.ErrorSeverity, output []byte) error {
 	if m.FailStepFunc != nil {
-		return m.FailStepFunc(ctx, stepID, errorMsg, severity)
+		return m.FailStepFunc(ctx, stepID, errorMsg, severity, output)
 	}
 	return nil
 }

@@ -1,6 +1,8 @@
 import type { StepResponse } from "@/services/response-api-service";
 import type { SearchResultItem, StepWithResults } from "@/stores/right-sidebar-store";
 
+declare const JAN_API_BASE_URL: string;
+
 export function parseStepOutputToResults(step: StepResponse): SearchResultItem[] {
   if (!step.output_data) return [];
 
@@ -129,16 +131,27 @@ function parseArtifactOutput(output: Record<string, unknown>): SearchResultItem[
     const filename = artifact.filename as string || "artifact";
     const type = artifact.type as string || "file";
     const downloadUrl = artifact.download_url as string;
+    const resolvedUrl = resolveArtifactUrl(downloadUrl);
 
     results.push({
       type: "link",
       title: filename,
       description: `${type} artifact created`,
-      url: downloadUrl || "",
+      url: resolvedUrl || "",
     });
   }
 
   return results;
+}
+
+function resolveArtifactUrl(url: string | undefined): string {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  const base = (JAN_API_BASE_URL || "").trim();
+  if (!base) return url;
+  const normalizedBase = base.endsWith("/") ? base : `${base}/`;
+  const normalizedUrl = url.startsWith("/") ? url.slice(1) : url;
+  return `${normalizedBase}${normalizedUrl}`;
 }
 
 function parseFileOperationOutput(output: Record<string, unknown>): SearchResultItem[] {
