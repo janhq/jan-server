@@ -200,7 +200,7 @@ func newAgentRegistry(planService plan2.Service, mcpClient tool.MCPClient, llmPr
 	)
 
 	// Register the slide generator executor for artifact creation
-	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient, skillExecutor)
+	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient, skillExecutor, cfg)
 	_ = registry.RegisterExecutor(plan2.ActionTypeArtifactCreate, slideGeneratorExecutor)
 	_ = registry.RegisterExecutor(plan2.ActionTypeSkillExecute, skillExecutor)
 

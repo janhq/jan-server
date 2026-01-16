@@ -35,12 +35,88 @@ func extractJSONFromMarkdown(content string) string {
 	for _, pattern := range patterns {
 		re := regexp.MustCompile(pattern)
 		if matches := re.FindStringSubmatch(content); len(matches) > 1 {
-			return strings.TrimSpace(matches[1])
+			return strings.TrimSpace(stripJSONComments(matches[1]))
 		}
 	}
 
 	// No code block found, return as-is
-	return content
+	return strings.TrimSpace(stripJSONComments(content))
+}
+
+// stripJSONComments removes // and /* */ comments while preserving string literals.
+func stripJSONComments(input string) string {
+	if input == "" {
+		return input
+	}
+	var b strings.Builder
+	b.Grow(len(input))
+	inString := false
+	escaped := false
+	inLine := false
+	inBlock := false
+
+	for i := 0; i < len(input); i++ {
+		ch := input[i]
+		var next byte
+		if i+1 < len(input) {
+			next = input[i+1]
+		}
+
+		if inLine {
+			if ch == '\n' {
+				inLine = false
+				b.WriteByte(ch)
+			}
+			continue
+		}
+		if inBlock {
+			if ch == '*' && next == '/' {
+				inBlock = false
+				i++
+				continue
+			}
+			if ch == '\n' {
+				b.WriteByte(ch)
+			}
+			continue
+		}
+
+		if inString {
+			b.WriteByte(ch)
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' {
+				escaped = true
+				continue
+			}
+			if ch == '"' {
+				inString = false
+			}
+			continue
+		}
+
+		if ch == '"' {
+			inString = true
+			b.WriteByte(ch)
+			continue
+		}
+		if ch == '/' && next == '/' {
+			inLine = true
+			i++
+			continue
+		}
+		if ch == '/' && next == '*' {
+			inBlock = true
+			i++
+			continue
+		}
+
+		b.WriteByte(ch)
+	}
+
+	return b.String()
 }
 
 // SkillExecutor handles ActionTypeSkillExecute steps.

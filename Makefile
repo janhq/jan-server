@@ -874,6 +874,7 @@ ifeq ($(OS),Windows_NT)
 	@echo [API Services]
 	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:8080/healthz -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '  LLM API:      healthy' } catch { Write-Host '  LLM API:      unhealthy' }"
 	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:8285/healthz -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '  Media API:    healthy' } catch { try { if ($$PSItem.Exception.Response.StatusCode.Value__ -eq 401) { Write-Host '  Media API:    healthy' } else { Write-Host '  Media API:    unhealthy' } } catch { Write-Host '  Media API:    unhealthy' } }"
+	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:8082/healthz -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '  Response API: healthy' } catch { Write-Host '  Response API: not running' }"
 	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:8186/healthz -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '  Realtime API: healthy' } catch { Write-Host '  Realtime API: not running' }"
 	@echo.
 	@echo [MCP Services]
@@ -898,6 +899,7 @@ else
 	@echo "[API Services]"
 	@curl -sf http://localhost:8080/healthz >/dev/null && echo "  LLM API:      healthy" || echo "  LLM API:      unhealthy"
 	@curl -s http://localhost:8285/healthz >/dev/null && echo "  Media API:    healthy" || (curl -s -w "%{http_code}" -o /dev/null http://localhost:8285/healthz | grep -q "401" && echo "  Media API:    healthy" || echo "  Media API:    unhealthy")
+	@curl -sf http://localhost:8082/healthz >/dev/null && echo "  Response API: healthy" || echo "  Response API: not running"
 	@curl -sf http://localhost:8186/healthz >/dev/null && echo "  Realtime API: healthy" || echo "  Realtime API: not running"
 	@echo ""
 	@echo "[MCP Services]"
@@ -928,9 +930,11 @@ health-api:
 ifeq ($(OS),Windows_NT)
 	@powershell -Command "try { Invoke-WebRequest -Uri http://localhost:8080/healthz -UseBasicParsing | Select-Object -ExpandProperty Content | ConvertFrom-Json | ConvertTo-Json } catch { Write-Host 'ERROR LLM API not responding' }"
 	@powershell -Command "try { Invoke-WebRequest -Uri http://localhost:8285/healthz -UseBasicParsing | Select-Object -ExpandProperty Content | ConvertFrom-Json | ConvertTo-Json } catch { Write-Host 'ERROR Media API not responding' }"
+	@powershell -Command "try { Invoke-WebRequest -Uri http://localhost:8082/healthz -UseBasicParsing | Select-Object -ExpandProperty Content | ConvertFrom-Json | ConvertTo-Json } catch { Write-Host 'ERROR Response API not responding' }"
 else
 	@curl -sf http://localhost:8080/healthz | jq || echo "? LLM API not responding"
 	@curl -sf http://localhost:8285/healthz | jq || echo "? Media API not responding"
+	@curl -sf http://localhost:8082/healthz | jq || echo "? Response API not responding"
 endif
 
 health-mcp:

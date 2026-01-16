@@ -303,13 +303,19 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 			CreatedAt: time.Now(),
 		}
 		step.SetOutputData(errorOutput)
+		outputBytes, _ := json.Marshal(errorOutput)
 
-		if err := o.planService.FailStep(ctx, step.ID, execErr.Message, execErr.Severity); err != nil {
+		if err := o.planService.FailStep(ctx, step.ID, execErr.Message, execErr.Severity, outputBytes); err != nil {
 			return nil, err
 		}
 
 		// Handle based on severity
 		if execErr.Severity == status.ErrorSeverityRetryable && step.CanRetry() {
+			if task.TaskType == plan.TaskTypeFinalization && step.Sequence > 1 {
+				if resetErr := o.planService.ResetTaskStepsForRetry(ctx, task.ID, step.Sequence); resetErr != nil {
+					return nil, resetErr
+				}
+			}
 			_, retryErr := o.planService.RetryStep(ctx, step.ID)
 			if retryErr != nil {
 				return nil, retryErr
@@ -341,14 +347,23 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 			Error:     execErr.Message,
 			CreatedAt: time.Now(),
 		}
+		if len(result.Output) > 0 && string(result.Output) != "null" {
+			errorOutput.Result = result.Output
+		}
 		step.SetOutputData(errorOutput)
+		outputBytes, _ := json.Marshal(errorOutput)
 
-		if err := o.planService.FailStep(ctx, step.ID, execErr.Message, execErr.Severity); err != nil {
+		if err := o.planService.FailStep(ctx, step.ID, execErr.Message, execErr.Severity, outputBytes); err != nil {
 			return nil, err
 		}
 
 		// Handle based on severity - retry if retryable and step can retry
 		if execErr.Severity == status.ErrorSeverityRetryable && step.CanRetry() {
+			if task.TaskType == plan.TaskTypeFinalization && step.Sequence > 1 {
+				if resetErr := o.planService.ResetTaskStepsForRetry(ctx, task.ID, step.Sequence); resetErr != nil {
+					return nil, resetErr
+				}
+			}
 			_, retryErr := o.planService.RetryStep(ctx, step.ID)
 			if retryErr != nil {
 				return nil, retryErr
@@ -386,8 +401,13 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 		// Check if the output actually indicates a failure (e.g., tool execution error)
 		if isOutputIndicatingFailure(outputBytes) {
 			errMsg := extractErrorFromOutput(outputBytes)
-			if err := o.planService.FailStep(ctx, step.ID, errMsg, status.ErrorSeverityRetryable); err != nil {
+			if err := o.planService.FailStep(ctx, step.ID, errMsg, status.ErrorSeverityRetryable, outputBytes); err != nil {
 				return nil, err
+			}
+			if task.TaskType == plan.TaskTypeFinalization && step.Sequence > 1 {
+				if resetErr := o.planService.ResetTaskStepsForRetry(ctx, task.ID, step.Sequence); resetErr != nil {
+					return nil, resetErr
+				}
 			}
 			return &ExecutionResult{
 				Status: status.StatusFailed,

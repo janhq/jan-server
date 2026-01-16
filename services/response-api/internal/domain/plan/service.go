@@ -31,9 +31,10 @@ type Service interface {
 	CreateStep(ctx context.Context, taskID string, params CreateStepParams) (*Step, error)
 	StartStep(ctx context.Context, stepID string) error
 	CompleteStep(ctx context.Context, stepID string, output []byte) error
-	FailStep(ctx context.Context, stepID string, errorMsg string, severity status.ErrorSeverity) error
+	FailStep(ctx context.Context, stepID string, errorMsg string, severity status.ErrorSeverity, output []byte) error
 	RetryStep(ctx context.Context, stepID string) (*Step, error)
 	SkipStep(ctx context.Context, stepID string, reason string) error
+	ResetTaskStepsForRetry(ctx context.Context, taskID string, maxSequence int) error
 
 	// Detail operations
 	AddStepDetail(ctx context.Context, stepID string, detail *StepDetail) error
@@ -361,7 +362,7 @@ func (s *DefaultService) CompleteStep(ctx context.Context, stepID string, output
 }
 
 // FailStep marks a step as failed with error details.
-func (s *DefaultService) FailStep(ctx context.Context, stepID string, errorMsg string, severity status.ErrorSeverity) error {
+func (s *DefaultService) FailStep(ctx context.Context, stepID string, errorMsg string, severity status.ErrorSeverity, output []byte) error {
 	step, err := s.repo.FindStepByID(ctx, stepID)
 	if err != nil {
 		return err
@@ -370,6 +371,9 @@ func (s *DefaultService) FailStep(ctx context.Context, stepID string, errorMsg s
 	step.Status = status.StatusFailed
 	step.ErrorMessage = &errorMsg
 	step.ErrorSeverity = severity
+	if len(output) > 0 && string(output) != "null" {
+		step.OutputData = output
+	}
 	now := time.Now().UTC()
 	step.CompletedAt = &now
 
@@ -403,6 +407,36 @@ func (s *DefaultService) RetryStep(ctx context.Context, stepID string) (*Step, e
 		return nil, err
 	}
 	return step, nil
+}
+
+// ResetTaskStepsForRetry resets completed steps in the task before the given sequence.
+func (s *DefaultService) ResetTaskStepsForRetry(ctx context.Context, taskID string, maxSequence int) error {
+	if maxSequence <= 1 {
+		return nil
+	}
+	steps, err := s.repo.ListStepsByTaskID(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	for _, step := range steps {
+		if step.Sequence >= maxSequence {
+			continue
+		}
+		if step.RetryCount < step.MaxRetries {
+			step.IncrementRetry()
+		}
+		step.Status = status.StatusPending
+		step.OutputData = nil
+		step.ErrorMessage = nil
+		step.ErrorSeverity = ""
+		step.StartedAt = nil
+		step.CompletedAt = nil
+		step.DurationMs = nil
+		if err := s.repo.UpdateStep(ctx, step); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SkipStep marks a step as skipped.

@@ -14,6 +14,7 @@ export const NavHeader = memo(function NavHeader({
   conversationTitle,
 }: NavHeaderProps = {}) {
   const { state, isMobile } = useSidebar();
+  
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 justify-between">

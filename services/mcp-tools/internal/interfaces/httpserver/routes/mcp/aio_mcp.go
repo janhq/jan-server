@@ -3,9 +3,11 @@ package mcp
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"jan-server/services/mcp-tools/internal/infrastructure/aio"
@@ -145,9 +147,7 @@ func (a *AIOMCP) registerFileRead(server *mcpsdk.Server) {
 			Str("path", input.Path).
 			Msg("AIO file read requested")
 
-		result, err := a.client.File().ReadFile(ctx, &sdkgo.FileReadRequest{
-			File: input.Path,
-		})
+		content, err := a.readFileBase64(ctx, input.Path)
 
 		duration := time.Since(startTime)
 		status := "success"
@@ -161,7 +161,7 @@ func (a *AIOMCP) registerFileRead(server *mcpsdk.Server) {
 		}
 
 		return &mcpsdk.CallToolResult{
-			Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: result.Data.Content}},
+			Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: content}},
 		}, nil, nil
 	})
 }
@@ -664,6 +664,61 @@ func (a *AIOMCP) registerMarkitdownConvert(server *mcpsdk.Server) {
 	})
 }
 
+// readFileBase64 reads a file from the sandbox and returns it as base64-encoded string.
+// Prefer the download endpoint, then fall back to code execution when needed.
+func (a *AIOMCP) readFileBase64(ctx context.Context, path string) (string, error) {
+	if strings.TrimSpace(path) == "" {
+		return "", fmt.Errorf("empty path")
+	}
+
+	if payload, err := a.client.DownloadFile(ctx, path); err == nil {
+		if len(payload) == 0 {
+			return "", fmt.Errorf("downloaded file is empty")
+		}
+		return base64.StdEncoding.EncodeToString(payload), nil
+	}
+
+	pythonCode := fmt.Sprintf(`import base64
+with open(%q, 'rb') as f:
+    content = f.read()
+    encoded = base64.b64encode(content).decode('utf-8')
+    print(encoded)`, path)
+
+	result, err := a.client.Code().ExecuteCode(ctx, &sdkgo.CodeExecuteRequest{
+		Language: sdkgo.LanguagePython,
+		Code:     pythonCode,
+	})
+
+	if err != nil {
+		return "", fmt.Errorf("code execution failed: %w", err)
+	}
+
+	if result.Data.ExitCode != nil && *result.Data.ExitCode != 0 {
+		stderr := ""
+		if result.Data.Stderr != nil {
+			stderr = *result.Data.Stderr
+		}
+		if stderr == "" && len(result.Data.Outputs) > 0 {
+			stderr = extractStreamText(result.Data.Outputs, "stderr")
+		}
+		return "", fmt.Errorf("script failed with exit code %d: %s",
+			*result.Data.ExitCode, stderr)
+	}
+
+	content := ""
+	if result.Data.Stdout != nil {
+		content = *result.Data.Stdout
+	}
+	if content == "" && len(result.Data.Outputs) > 0 {
+		content = extractStreamText(result.Data.Outputs, "stdout")
+	}
+	if strings.TrimSpace(content) == "" {
+		return "", fmt.Errorf("no output from file read")
+	}
+
+	return strings.TrimSpace(content), nil
+}
+
 // Helper function to truncate strings for logging
 func truncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {
@@ -686,4 +741,18 @@ func marshalForLog(v any, maxLen int) string {
 		return ""
 	}
 	return truncateString(string(raw), maxLen)
+}
+
+func extractStreamText(outputs []map[string]interface{}, streamName string) string {
+	for _, output := range outputs {
+		outType, _ := output["output_type"].(string)
+		name, _ := output["name"].(string)
+		if outType != "stream" || name != streamName {
+			continue
+		}
+		if text, ok := output["text"].(string); ok {
+			return text
+		}
+	}
+	return ""
 }

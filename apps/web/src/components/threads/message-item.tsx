@@ -47,7 +47,7 @@ import {
 import { Button } from "@janhq/interfaces/button";
 import { twMerge } from "tailwind-merge";
 import { cn } from "@/lib/utils";
-import AgentExecution from "./agent-execution";
+import AgentExecutionPanel from "./agent-execution";
 
 export type MessageItemProps = {
   message: UIMessage;
@@ -56,6 +56,7 @@ export type MessageItemProps = {
   status: ChatStatus;
   reasoningContainerRef?: React.RefObject<HTMLDivElement | null>;
   onRegenerate?: (messageId: string) => Promise<void>;
+  conversationId?: string;
 };
 
 export const MessageItem = memo(
@@ -66,6 +67,7 @@ export const MessageItem = memo(
     status,
     reasoningContainerRef,
     onRegenerate,
+    conversationId,
   }: MessageItemProps) => {
     const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
     const [previewImage, setPreviewImage] = useState<{
@@ -234,12 +236,7 @@ export const MessageItem = memo(
             {message.role === MESSAGE_ROLE.USER ? (
               renderUserTextWithCodeBlocks(displayText)
             ) : (
-              <>
-                <MessageResponse>{normalizeLatex(part.text)}</MessageResponse>
-                <div className="mt-4">
-                  <AgentExecution />
-                </div>
-              </>
+              <MessageResponse>{normalizeLatex(part.text)}</MessageResponse>
             )}
           </MessageContent>
 
@@ -398,6 +395,52 @@ export const MessageItem = memo(
       }
 
       const toolName = part.type.split("-").slice(1).join("-");
+
+      // For run_agent tool, render AgentExecutionPanel instead of normal tool block
+      if (toolName === "run_agent" && conversationId) {
+        let responseId: string | undefined;
+
+        if (part.output && Array.isArray(part.output)) {
+          try {
+            // Try streaming format: { type: "text", text: "..." }
+            const textContent = part.output.find((c: any) => c.type === "text");
+            if (textContent?.text) {
+              const parsed = JSON.parse(textContent.text);
+              responseId = parsed.id || parsed.response_id;
+            }
+
+            // Try history format: { tool_result: "..." } or { mcp_call: "..." }
+            if (!responseId) {
+              const toolResultContent = part.output.find((c: any) => c.tool_result || c.mcp_call);
+              if (toolResultContent) {
+                const resultText = toolResultContent.tool_result || toolResultContent.mcp_call;
+                if (typeof resultText === "string") {
+                  const parsed = JSON.parse(resultText);
+                  responseId = parsed.id || parsed.response_id;
+                }
+              }
+            }
+
+            if (!responseId) {
+              const contentItem = part.output.find((c: any) => c.content);
+              if (contentItem?.content) {
+                const parsed = JSON.parse(contentItem.content);
+                responseId = parsed.id || parsed.response_id;
+              }
+            }
+          } catch {
+            // Ignore parse errors
+          }
+        }
+
+        return (
+          <AgentExecutionPanel
+            key={`${message.id}-${partIndex}`}
+            toolState={part.state}
+            responseId={responseId}
+          />
+        );
+      }
 
       // Check if there's any text/file/reasoning part before this tool
       const hasContentBefore = message.parts

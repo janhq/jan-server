@@ -72,6 +72,7 @@ interface Preferences {
   enable_search: boolean;
   enable_thinking: boolean;
   enable_image_generation: boolean;
+  enable_agent_mode: boolean;
   selected_model: string;
   theme_color?: string;
   theme_config?: ThemeConfig;

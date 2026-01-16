@@ -11,6 +11,7 @@ import { SettingsDialog } from "@/components/settings/settings-dialog";
 import { CreateProject } from "@/components/projects/create-project";
 import { SearchDialog } from "@/components/search/search-dialog";
 import { useAuth } from "@/stores/auth-store";
+import { useRightSidebarStore } from "@/stores/right-sidebar-store";
 import { ThemeProvider } from "@/components/themes/theme-provider";
 import { Toaster } from "@janhq/interfaces/sonner";
 import {
@@ -28,6 +29,16 @@ function RootLayout() {
   const accessToken = useAuth((state) => state.accessToken);
   const guestLogin = useAuth((state) => state.guestLogin);
   const hasAttemptedGuestLogin = useRef(false);
+  const clearRightSidebar = useRightSidebarStore(
+    (state) => state.clearSelection
+  );
+  const setSidebarOpen = useRightSidebarStore((state) => state.setSidebarOpen);
+
+  // Close right sidebar on route change
+  useEffect(() => {
+    clearRightSidebar();
+    setSidebarOpen(false);
+  }, [location.pathname]);
 
   // Auto guest login if no token exists
   useEffect(() => {

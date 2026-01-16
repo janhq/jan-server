@@ -29,6 +29,7 @@ import { useIsMobile } from "@janhq/interfaces/hooks/use-mobile";
 import { useIsMobileDevice } from "@janhq/interfaces/hooks/use-is-mobile-device";
 import { toast } from "@janhq/interfaces/sonner";
 import {
+  BotIcon,
   FolderIcon,
   GlobeIcon,
   ImageIcon,
@@ -192,7 +193,62 @@ const ChatInput = ({
   const toggleImageGeneration = useCapabilities(
     (state) => state.toggleImageGeneration,
   );
+  const agentModeEnabled = useCapabilities((state) => state.agentModeEnabled);
+  const toggleAgentMode = useCapabilities((state) => state.toggleAgentMode);
   const hydrateCapabilities = useCapabilities((state) => state.hydrate);
+
+  // Typewriter animation for placeholder
+  const DEFAULT_PLACEHOLDER = "Ask Jan ...";
+  const AGENT_PLACEHOLDER = "Let me take care of it ✨";
+  const [placeholder, setPlaceholder] = useState(
+    agentModeEnabled ? AGENT_PLACEHOLDER : DEFAULT_PLACEHOLDER
+  );
+
+  useEffect(() => {
+    const targetText = agentModeEnabled ? AGENT_PLACEHOLDER : DEFAULT_PLACEHOLDER;
+
+    let deleteInterval: ReturnType<typeof setInterval> | null = null;
+    let typeInterval: ReturnType<typeof setInterval> | null = null;
+    let cancelled = false;
+
+    const startAnimation = () => {
+      const currentText = placeholder;
+      let index = currentText.length;
+
+      // Delete animation
+      deleteInterval = setInterval(() => {
+        if (cancelled) return;
+        index--;
+        if (index < 0) {
+          if (deleteInterval) clearInterval(deleteInterval);
+          // Type animation
+          let typeIndex = 0;
+          typeInterval = setInterval(() => {
+            if (cancelled) return;
+            typeIndex++;
+            setPlaceholder(targetText.slice(0, typeIndex));
+            if (typeIndex >= targetText.length) {
+              if (typeInterval) clearInterval(typeInterval);
+            }
+          }, 30);
+        } else {
+          setPlaceholder(currentText.slice(0, index));
+        }
+      }, 20);
+    };
+
+    if (placeholder !== targetText) {
+      startAnimation();
+    }
+
+    return () => {
+      cancelled = true;
+      if (deleteInterval) clearInterval(deleteInterval);
+      if (typeInterval) clearInterval(typeInterval);
+      // Immediately set to target when cancelled (rapid toggle)
+      setPlaceholder(targetText);
+    };
+  }, [agentModeEnabled]);
 
   const setSearchEnabled = useCapabilities((state) => state.setSearchEnabled);
   const setDeepResearchEnabled = useCapabilities(
@@ -410,6 +466,7 @@ const ChatInput = ({
             <PromptInputBody>
               <PromptInputTextarea
                 ref={textareaRef}
+                placeholder={placeholder}
                 disabled={
                   status === CHAT_STATUS.STREAMING ||
                   status === CHAT_STATUS.SUBMITTED
@@ -486,10 +543,42 @@ const ChatInput = ({
                     <Settings2 className="size-4 text-muted-foreground" />
                   </Button>
                 </SettingChatInput>
+                {!imageGenerationEnabled && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        className={cn(
+                          "inline-flex items-center justify-center rounded-full h-8 transition-all duration-300 ease-in-out disabled:opacity-50",
+                          agentModeEnabled
+                            ? "bg-primary text-primary-foreground hover:bg-primary/90 px-3 gap-1.5"
+                            : "w-8 text-muted-foreground hover:text-primary-foreground hover:bg-primary/80"
+                        )}
+                        disabled={status === CHAT_STATUS.STREAMING}
+                        onClick={toggleAgentMode}
+                      >
+                        <BotIcon className="size-4 flex-shrink-0" />
+                        <span
+                          className={cn(
+                            "text-sm font-medium transition-all duration-300 ease-in-out overflow-hidden",
+                            agentModeEnabled
+                              ? "w-[46px] opacity-100"
+                              : "w-0 opacity-0"
+                          )}
+                        >
+                          Agent
+                        </span>
+                      </button>
+                    </TooltipTrigger>
+                    {!agentModeEnabled && (
+                      <TooltipContent>Agent Mode</TooltipContent>
+                    )}
+                  </Tooltip>
+                )}
                 {isSupportInstruct &&
                   reasoningEnabled &&
                   !deepResearchEnabled &&
-                  !imageGenerationEnabled && (
+                  !imageGenerationEnabled &&
+                  !agentModeEnabled && (
                     <PromptInputButton
                       variant="outline"
                       className="rounded-full group transition-all bg-primary/10 hover:bg-primary/10 border-0"
@@ -506,7 +595,8 @@ const ChatInput = ({
                   )}
                 {searchEnabled &&
                   !deepResearchEnabled &&
-                  !imageGenerationEnabled && (
+                  !imageGenerationEnabled &&
+                  !agentModeEnabled && (
                     <PromptInputButton
                       variant="outline"
                       className="rounded-full group transition-all bg-primary/10 hover:bg-primary/10 border-0"
@@ -518,7 +608,7 @@ const ChatInput = ({
                       <span className="text-primary">Search</span>
                     </PromptInputButton>
                   )}
-                {deepResearchEnabled && !imageGenerationEnabled && (
+                {deepResearchEnabled && !imageGenerationEnabled && !agentModeEnabled && (
                   <PromptInputButton
                     variant="outline"
                     className="rounded-full group transition-all bg-primary/10 hover:bg-primary/10 border-0"
@@ -532,7 +622,8 @@ const ChatInput = ({
                 )}
                 {browserEnabled &&
                   shouldShowBrowserUI &&
-                  !imageGenerationEnabled && (
+                  !imageGenerationEnabled &&
+                  !agentModeEnabled && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <PromptInputButton
@@ -572,7 +663,8 @@ const ChatInput = ({
                   )}
                 {selectedProjectId &&
                   !isPrivateChat &&
-                  !imageGenerationEnabled && (
+                  !imageGenerationEnabled &&
+                  !agentModeEnabled && (
                     <PromptInputButton
                       variant="outline"
                       className="rounded-full group transition-all bg-primary/10 hover:bg-primary/10 border-0"
