@@ -148,17 +148,20 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   private enabledSearch = false;
   private enableBrowse = false;
   private enableImageTools = false;
+  private enableAgentMode = false;
 
   constructor(
     model: LanguageModel,
     enabledSearch?: boolean,
     enableBrowse?: boolean,
     enableImageTools?: boolean,
+    enableAgentMode?: boolean,
   ) {
     this.model = model;
     this.enabledSearch = enabledSearch ?? false;
     this.enableBrowse = enableBrowse ?? false;
     this.enableImageTools = enableImageTools ?? false;
+    this.enableAgentMode = enableAgentMode ?? false;
     this.initializeTools();
   }
 
@@ -176,14 +179,18 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     this.enableImageTools = enableImageTools;
   }
 
+  updateAgentModeEnabled(enableAgentMode: boolean) {
+    this.enableAgentMode = enableAgentMode;
+  }
+
   /**
    * Initialize MCP tools and convert them to AI SDK format
    * Search tools (google_search, scrape) are always included regardless of user toggle
+   * AIO tools (aio_* prefix) are always filtered out from user-facing chat
    */
   private async initializeTools() {
     try {
-      // Always include "search" server for google_search and scrape tools
-      // Browser tools are conditional on user preference
+      // Fetch all tools from MCP service
       const servers = this.enableImageTools
         ? undefined
         : ([
@@ -192,11 +199,29 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           ].filter(Boolean) as string[]);
       const toolsResponse = await mcpService.getTools(servers);
       const allowedImageTools = new Set(["generate_image", "edit_image"]);
-      const filteredTools = toolsResponse.data.filter((tool) =>
-        this.enableImageTools
+
+      // Filter tools based on mode
+      const filteredTools = toolsResponse.data.filter((tool) => {
+        // Always filter out AIO tools (prefix: aio_) - these are for internal agent use
+        if (tool.name.startsWith("aio_")) {
+          return false;
+        }
+
+        // Agent mode: only allow run_agent tool
+        if (this.enableAgentMode) {
+          return tool.name === "run_agent";
+        }
+
+        // Normal mode: filter out run_agent
+        if (tool.name === "run_agent") {
+          return false;
+        }
+
+        // Image tool filtering
+        return this.enableImageTools
           ? allowedImageTools.has(tool.name)
-          : !allowedImageTools.has(tool.name),
-      );
+          : !allowedImageTools.has(tool.name);
+      });
 
       // Convert MCP tools to AI SDK CoreTool format
       this.tools = filteredTools.reduce(
@@ -211,7 +236,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         {} as Record<string, Tool>,
       );
 
-      console.log(`Initialized ${Object.keys(this.tools).length} MCP tools`);
+      console.log(
+        `Initialized ${Object.keys(this.tools).length} tools${this.enableAgentMode ? " (agent mode)" : " (AIO/agent tools filtered)"}`,
+      );
     } catch (error) {
       console.error("Failed to initialize MCP tools:", error);
       this.tools = {};
