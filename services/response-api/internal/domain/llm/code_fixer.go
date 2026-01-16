@@ -168,3 +168,45 @@ func floatPtr(f float64) *float64 {
 func intPtr(i int) *int {
 	return &i
 }
+
+// GenerateWithSystemPrompt generates content using a system prompt and user prompt.
+// Uses low temperature for more deterministic output.
+func (cf *CodeFixer) GenerateWithSystemPrompt(ctx context.Context, systemPrompt string, userPrompt string, model string) (string, error) {
+	if userPrompt == "" {
+		return "", fmt.Errorf("empty prompt provided")
+	}
+
+	useModel := cf.model
+	if model != "" {
+		useModel = model
+	}
+
+	messages := []ChatMessage{
+		{Role: "user", Content: userPrompt},
+	}
+	if systemPrompt != "" {
+		messages = []ChatMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		}
+	}
+
+	req := ChatCompletionRequest{
+		Model:       useModel,
+		Messages:    messages,
+		Temperature: floatPtr(0.2), // Low temperature for structured output
+		MaxTokens:   intPtr(8192),
+		Stream:      false,
+	}
+
+	resp, err := cf.provider.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("LLM call failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("LLM returned no choices")
+	}
+
+	return resp.Choices[0].Message.GetContentAsString(), nil
+}
