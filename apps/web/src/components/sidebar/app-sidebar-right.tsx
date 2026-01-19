@@ -1,4 +1,4 @@
-import { memo, useState, useEffect } from "react";
+import { memo, useState } from "react";
 import {
   useRightSidebarStore,
   type SearchResultItem,
@@ -16,10 +16,8 @@ import {
   FileIcon,
   PresentationIcon,
   FileTextIcon,
-  Loader2Icon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchWithAuth } from "@/lib/api-client";
 import DocViewer, { DocViewerRenderers } from "react-doc-viewer";
 
 const formatFileSize = (bytes: number): string => {
@@ -82,6 +80,8 @@ const ArtifactCard = ({ artifact }: { artifact: ArtifactItem }) => {
 
 // Preview component for bottom Panel content section
 const ArtifactPreview = ({ artifact }: { artifact: ArtifactItem }) => {
+
+
   return (
     <div className="h-full flex flex-col">
       <DocViewer
@@ -129,23 +129,6 @@ const SearchResult = ({
   result: SearchResultItem;
   isLast?: boolean;
 }) => {
-  const handleDownload = async (url?: string, filename?: string) => {
-    if (!url) return;
-    try {
-      const response = await fetchWithAuth(url, { method: "GET" });
-      const blob = await response.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = filename || "artifact";
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(blobUrl);
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error("Failed to download artifact:", error);
-    }
-  };
 
   if (result.type === "link") {
     return (
