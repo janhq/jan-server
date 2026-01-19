@@ -522,9 +522,11 @@ type SlideGeneratorExecutor struct {
 	artifactService    artifact.Service
 	mediaClient        *media.Client
 	skillExecutor      *SkillExecutor
+	aioClient          *agent.AIOSandboxClient // Direct AIO sandbox client (bypasses MCP)
 	aioBaseURL         string
 	rendererScriptPath string
 	rendererEnabled    bool
+	temperature        float64 // LLM temperature for slide generation (default: 0.2)
 }
 
 // NewSlideGeneratorExecutor creates a new slide generator executor.
@@ -537,15 +539,25 @@ func NewSlideGeneratorExecutor(mcpClient MCPClient, llmProvider LLMProvider, art
 		rendererScriptPath = strings.TrimSpace(cfg.SlideRendererScript)
 		rendererEnabled = cfg.SlideRendererEnabled
 	}
+
+	// Initialize direct AIO sandbox client (bypasses unstable MCP layer)
+	var aioClient *agent.AIOSandboxClient
+	if aioBaseURL != "" {
+		aioClient = agent.NewAIOSandboxClient(aioBaseURL, log.Logger)
+		log.Info().Str("aio_url", aioBaseURL).Msg("[slide_generator] Initialized direct AIO sandbox client")
+	}
+
 	return &SlideGeneratorExecutor{
 		mcpClient:          mcpClient,
 		llmProvider:        llmProvider,
 		artifactService:    artifactService,
 		mediaClient:        mediaClient,
 		skillExecutor:      skillExecutor,
+		aioClient:          aioClient,
 		aioBaseURL:         aioBaseURL,
 		rendererScriptPath: rendererScriptPath,
 		rendererEnabled:    rendererEnabled,
+		temperature:        0.2, // Low temperature for deterministic, structured output
 	}
 }
 
@@ -804,6 +816,7 @@ func (e *SlideGeneratorExecutor) executePlanAndTemplate(ctx context.Context, par
 	model := e.getModelFromContext(input)
 	log.Debug().
 		Str("model", model).
+		Float64("temperature", e.temperature).
 		Int("system_prompt_length", len(systemPrompt)).
 		Int("user_prompt_length", len(userPrompt)).
 		Str("user_prompt_preview", truncateForLogString(userPrompt, 300)).
@@ -954,24 +967,20 @@ func (e *SlideGeneratorExecutor) executeSingleSlide(ctx context.Context, params 
 		}, nil
 	}
 
-	var planEntry *schemas.PlanEntry
-	for i := range planAndTemplate.Plan.Slides {
-		entry := planAndTemplate.Plan.Slides[i]
-		if entry.Index == slideIndex {
-			planEntry = &entry
-			break
-		}
-	}
-	if planEntry == nil {
+	// Use 1-based slideIndex to access 0-based array
+	// (LLM may use 0-based or 1-based Index field, so use array position instead)
+	arrayIndex := slideIndex - 1
+	if arrayIndex < 0 || arrayIndex >= len(planAndTemplate.Plan.Slides) {
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
 			Error: &agent.ExecutionError{
 				Code:     "PLAN_ENTRY_NOT_FOUND",
-				Message:  fmt.Sprintf("No plan entry for slide %d", slideIndex),
+				Message:  fmt.Sprintf("No plan entry for slide %d (array index %d out of range, plan has %d slides)", slideIndex, arrayIndex, len(planAndTemplate.Plan.Slides)),
 				Severity: status.ErrorSeverityFatal,
 			},
 		}, nil
 	}
+	planEntry := &planAndTemplate.Plan.Slides[arrayIndex]
 
 	contextData := e.buildAccumulatedContext(input)
 	templateJSON, _ := json.Marshal(planAndTemplate.Template)
@@ -985,6 +994,7 @@ func (e *SlideGeneratorExecutor) executeSingleSlide(ctx context.Context, params 
 	log.Debug().
 		Int("slide_index", slideIndex).
 		Str("model", model).
+		Float64("temperature", e.temperature).
 		Int("system_prompt_length", len(systemPrompt)).
 		Int("user_prompt_length", len(userPrompt)).
 		Str("user_prompt_preview", truncateForLogString(userPrompt, 300)).
@@ -1177,6 +1187,7 @@ print(json.dumps({"success": True, "path": %q, "size": len(json.dumps(spec))}))
 		"type": "file_uploaded",
 		"path": targetPath,
 		"size": len(deckJSON),
+		"json": string(deckJSON), // Include the DeckSpec JSON for the next step
 	}
 	outputBytes, _ := json.Marshal(output)
 	log.Debug().Msg("[slide_generator] executeUploadSlideSpec completed")
@@ -1188,7 +1199,8 @@ print(json.dumps({"success": True, "path": %q, "size": len(json.dumps(spec))}))
 }
 
 func (e *SlideGeneratorExecutor) executeRenderScript(ctx context.Context, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
-	log.Debug().Bool("renderer_enabled", e.rendererEnabled).Msg("[slide_generator] executeRenderScript started")
+	log.Info().Bool("renderer_enabled", e.rendererEnabled).Msg("[slide_generator] executeRenderScript started")
+
 	if !e.rendererEnabled {
 		log.Warn().Msg("[slide_generator] slide renderer is disabled")
 		return &agent.ExecutionResult{
@@ -1201,20 +1213,22 @@ func (e *SlideGeneratorExecutor) executeRenderScript(ctx context.Context, params
 		}, nil
 	}
 
-	deckJSON, err := e.assembleDeck(input)
-	if err != nil {
+	// Check if AIO client is available
+	if e.aioClient == nil {
+		log.Error().Msg("[slide_generator] AIO sandbox client not initialized (AIO_URL not configured)")
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
 			Error: &agent.ExecutionError{
-				Code:     "ASSEMBLY_ERROR",
-				Message:  fmt.Sprintf("Failed to assemble deck: %v", err),
-				Severity: status.ErrorSeverityRetryable,
+				Code:     "AIO_NOT_CONFIGURED",
+				Message:  "AIO_URL environment variable not set",
+				Severity: status.ErrorSeverityFatal,
 			},
 		}, nil
 	}
 
 	renderScriptContent := e.loadRenderDeckScript()
 	if strings.TrimSpace(renderScriptContent) == "" {
+		log.Error().Msg("[slide_generator] render_deck.py script is empty")
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
 			Error: &agent.ExecutionError{
@@ -1225,142 +1239,80 @@ func (e *SlideGeneratorExecutor) executeRenderScript(ctx context.Context, params
 		}, nil
 	}
 
-	outputPath, _ := params["output_path"].(string)
-	if outputPath == "" {
-		responseID := "slide_output"
-		if input.PlanContext != nil && input.PlanContext.ResponseID != "" {
-			responseID = input.PlanContext.ResponseID
+	// Get DeckSpec JSON from previous step
+	var deckSpecJSON string
+	if input.PreviousOutput != nil {
+		var prevOutput map[string]interface{}
+		if err := json.Unmarshal(input.PreviousOutput, &prevOutput); err == nil {
+			// Try to get the JSON directly
+			if jsonStr, ok := prevOutput["json"].(string); ok {
+				deckSpecJSON = jsonStr
+			} else if data, ok := prevOutput["data"]; ok {
+				// Try to marshal the data object
+				if jsonBytes, err := json.Marshal(data); err == nil {
+					deckSpecJSON = string(jsonBytes)
+				}
+			}
 		}
-		outputPath = fmt.Sprintf("/home/gem/slide_%s.pptx", responseID)
 	}
 
-	code := fmt.Sprintf(`import base64
-import json
-import os
-import sys
-import tempfile
-import subprocess
-
-
-def ensure(package, module=None):
-    if module is None:
-        module = package
-    try:
-        __import__(module)
-    except Exception:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-
-
-ensure("python-pptx", "pptx")
-ensure("requests", "requests")
-
-slide_spec = json.loads(%s)
-
-%s
-
-try:
-    out_path = %q
-    if not out_path:
-        fd, out_path = tempfile.mkstemp(suffix=".pptx")
-        os.close(fd)
-    render(slide_spec, Path(out_path))
-    with open(out_path, "rb") as f:
-        pptx_data = f.read()
-    encoded = base64.b64encode(pptx_data).decode("ascii")
-    print(json.dumps({
-        "success": True,
-        "base64": encoded,
-        "filename": os.path.basename(out_path),
-        "mime_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        "size": len(pptx_data)
-    }))
-except Exception as e:
-    print(json.dumps({"success": False, "error": str(e)}))
-    sys.exit(1)
-`, strconv.Quote(string(deckJSON)), renderScriptContent, outputPath)
-
-	callReq := tool.CallRequest{
-		Name: "aio_code_execute",
-		Arguments: map[string]interface{}{
-			"language": "python",
-			"code":     code,
-		},
-	}
-	if input.PlanContext != nil {
-		callReq.RequestID = input.PlanContext.ResponseID
-		callReq.ConversationID = input.PlanContext.ConversationID
+	if deckSpecJSON == "" {
+		log.Error().Msg("[slide_generator] No DeckSpec JSON from previous step")
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Code:     "MISSING_INPUT",
+				Message:  "No DeckSpec JSON from previous step",
+				Severity: status.ErrorSeverityFatal,
+			},
+		}, nil
 	}
 
-	result, err := e.mcpClient.CallTool(ctx, callReq)
+	// Get output path from params or use response ID
+	outputPath := "/home/gem/output.pptx"
+	if params != nil {
+		if path, ok := params["output_path"].(string); ok && path != "" {
+			outputPath = path
+		}
+	}
+
+	log.Info().
+		Int("deck_spec_size", len(deckSpecJSON)).
+		Int("render_script_size", len(renderScriptContent)).
+		Str("output_path", outputPath).
+		Msg("[slide_generator] Starting PPTX rendering via direct AIO sandbox")
+
+	// Use direct AIO sandbox client (bypasses unstable MCP layer)
+	// This executes everything in a single sandbox call with clear step-by-step logging
+	pptxData, err := e.aioClient.RenderSlidesPPTX(ctx, deckSpecJSON, renderScriptContent, outputPath)
 	if err != nil {
+		log.Error().Err(err).Msg("[slide_generator] PPTX rendering failed")
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
 			Error: &agent.ExecutionError{
 				Code:     "RENDER_ERROR",
-				Message:  fmt.Sprintf("Render script execution failed: %v", err),
-				Severity: status.ErrorSeverityRetryable,
-			},
-		}, nil
-	}
-	if result != nil && result.IsError {
-		return &agent.ExecutionResult{
-			Status: status.StatusFailed,
-			Error: &agent.ExecutionError{
-				Code:     "RENDER_ERROR",
-				Message:  fmt.Sprintf("Render script reported error: %s", result.Error),
+				Message:  fmt.Sprintf("Render failed: %v", err),
 				Severity: status.ErrorSeverityRetryable,
 			},
 		}, nil
 	}
 
-	rawText := firstTextContent(result.Content)
-	var renderResult struct {
-		Success  bool   `json:"success"`
-		Base64   string `json:"base64"`
-		FileName string `json:"filename"`
-		MimeType string `json:"mime_type"`
-		Size     int    `json:"size"`
-		Error    string `json:"error"`
-	}
+	// Encode to base64 for artifact storage
+	base64Content := base64.StdEncoding.EncodeToString(pptxData)
 
-	if err := json.Unmarshal([]byte(rawText), &renderResult); err != nil {
-		return &agent.ExecutionResult{
-			Status: status.StatusFailed,
-			Error: &agent.ExecutionError{
-				Code:     "PARSE_ERROR",
-				Message:  fmt.Sprintf("Failed to parse render result: %v", err),
-				Severity: status.ErrorSeverityRetryable,
-			},
-		}, nil
-	}
-
-	if !renderResult.Success {
-		log.Error().Str("error", renderResult.Error).Msg("[slide_generator] render failed")
-		return &agent.ExecutionResult{
-			Status: status.StatusFailed,
-			Error: &agent.ExecutionError{
-				Code:     "RENDER_ERROR",
-				Message:  renderResult.Error,
-				Severity: status.ErrorSeverityRetryable,
-			},
-		}, nil
-	}
-
-	log.Debug().
-		Str("filename", renderResult.FileName).
-		Int("size", renderResult.Size).
-		Str("mime_type", renderResult.MimeType).
-		Msg("[slide_generator] render completed successfully")
+	log.Info().
+		Int("pptx_size", len(pptxData)).
+		Int("base64_length", len(base64Content)).
+		Msg("[slide_generator] ✓ PPTX rendering completed successfully")
 
 	output := map[string]interface{}{
 		"type":      "render_output",
-		"base64":    renderResult.Base64,
-		"filename":  renderResult.FileName,
-		"mime_type": renderResult.MimeType,
-		"size":      renderResult.Size,
+		"base64":    base64Content,
+		"filename":  "presentation.pptx",
+		"mime_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+		"size":      len(pptxData),
 	}
 	outputBytes, _ := json.Marshal(output)
-	log.Debug().Msg("[slide_generator] executeRenderScript completed")
 
 	return &agent.ExecutionResult{
 		Status: status.StatusCompleted,
@@ -1505,7 +1457,10 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 		}, nil
 	}
 
-	downloadURL = fmt.Sprintf("/responses/v1/artifacts/%s/download", createdArtifact.ID)
+	// Use media URL if available, otherwise fall back to artifact API path
+	if downloadURL == "" {
+		downloadURL = fmt.Sprintf("/responses/v1/artifacts/%s/download", createdArtifact.ID)
+	}
 	log.Debug().
 		Str("artifact_id", createdArtifact.ID).
 		Str("download_url", downloadURL).
@@ -1647,6 +1602,12 @@ func (e *SlideGeneratorExecutor) uploadSkillArtifact(ctx context.Context, step *
 		}, nil
 	}
 
+	// Use media URL if available, otherwise fall back to artifact API path
+	downloadURL := mediaArtifact.DownloadURL
+	if downloadURL == "" {
+		downloadURL = fmt.Sprintf("/responses/v1/artifacts/%s/download", createdArtifact.ID)
+	}
+
 	stepOutput := &plan.StepOutput{
 		Status:    "completed",
 		Type:      "artifact_create",
@@ -1655,7 +1616,7 @@ func (e *SlideGeneratorExecutor) uploadSkillArtifact(ctx context.Context, step *
 			ID:          createdArtifact.ID,
 			Type:        string(contentType),
 			Filename:    fileName,
-			DownloadURL: fmt.Sprintf("/responses/v1/artifacts/%s/download", createdArtifact.ID),
+			DownloadURL: downloadURL,
 			Size:        int64(len(decoded)),
 			ContentType: mimeType,
 		},
@@ -1778,6 +1739,12 @@ func (e *SlideGeneratorExecutor) uploadRenderedArtifact(ctx context.Context, ste
 		}, nil
 	}
 
+	// Use media URL if we uploaded to media-api
+	downloadURL := mediaArtifact.DownloadURL
+	if downloadURL == "" {
+		downloadURL = fmt.Sprintf("/responses/v1/artifacts/%s/download", createdArtifact.ID)
+	}
+
 	stepOutput := &plan.StepOutput{
 		Status:    "completed",
 		Type:      "artifact_create",
@@ -1786,7 +1753,7 @@ func (e *SlideGeneratorExecutor) uploadRenderedArtifact(ctx context.Context, ste
 			ID:          createdArtifact.ID,
 			Type:        string(contentType),
 			Filename:    fileName,
-			DownloadURL: fmt.Sprintf("/responses/v1/artifacts/%s/download", createdArtifact.ID),
+			DownloadURL: downloadURL,
 			Size:        int64(len(decoded)),
 			ContentType: mimeType,
 		},
@@ -2269,8 +2236,13 @@ func (e *SlideGeneratorExecutor) assembleDeck(input agent.ExecutionInput) ([]byt
 					if assets, ok := requires["assets"].([]any); ok {
 						allAssets = append(allAssets, assets...)
 					}
+					// Safely extract datasets - ignore invalid ones
 					if datasets, ok := requires["datasets"].([]any); ok {
-						allDatasets = append(allDatasets, datasets...)
+						for _, ds := range datasets {
+							if ds != nil {
+								allDatasets = append(allDatasets, ds)
+							}
+						}
 					}
 				}
 			}
@@ -2424,61 +2396,88 @@ func (e *SlideGeneratorExecutor) normalizeAssets(allAssets []any) map[string]any
 
 func (e *SlideGeneratorExecutor) normalizeDatasets(allDatasets []any) map[string]any {
 	normalizedDatasets := []any{}
-	for _, dataset := range allDatasets {
-		switch v := dataset.(type) {
-		case string:
-			normalizedDatasets = append(normalizedDatasets, map[string]any{
-				"id":   v,
-				"kind": "series",
-				"data": map[string]any{
-					"labels": []string{"A", "B", "C"},
-					"series": []any{map[string]any{"name": "Data", "values": []float64{1, 2, 3}}},
-				},
-				"sourceNote": fmt.Sprintf("Placeholder series for %s", v),
-			})
-		case map[string]any:
-			if _, hasID := v["id"]; !hasID {
-				v["id"] = fmt.Sprintf("dataset_%d", len(normalizedDatasets)+1)
-			}
-			if _, hasKind := v["kind"]; !hasKind {
-				v["kind"] = "series"
-			}
-			if _, hasData := v["data"]; !hasData {
-				v["data"] = map[string]any{}
-			}
-			kind, _ := v["kind"].(string)
-			dataMap, _ := v["data"].(map[string]any)
-			if dataMap == nil {
-				dataMap = map[string]any{}
-			}
-			if kind == "table" {
-				if _, ok := dataMap["columns"]; !ok {
-					dataMap["columns"] = []string{"placeholder"}
+	for i, dataset := range allDatasets {
+		// Use defer/recover to catch panics from invalid datasets
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Warn().
+						Int("dataset_index", i).
+						Interface("panic", r).
+						Msg("[slide_generator] panic while normalizing dataset, skipping")
 				}
-				if _, ok := dataMap["rows"]; !ok {
-					dataMap["rows"] = [][]string{}
-				}
-			} else {
-				if _, ok := dataMap["labels"]; !ok {
-					dataMap["labels"] = []string{"A", "B", "C"}
-				}
-				if _, ok := dataMap["series"]; !ok {
-					dataMap["series"] = []any{map[string]any{"name": "Data", "values": []float64{1, 2, 3}}}
-				}
+			}()
+
+			if dataset == nil {
+				log.Warn().Int("dataset_index", i).Msg("[slide_generator] nil dataset, skipping")
+				return
 			}
-			v["data"] = dataMap
-			if _, hasSourceNote := v["sourceNote"]; !hasSourceNote {
-				v["sourceNote"] = nil
+
+			switch v := dataset.(type) {
+			case string:
+				// String reference - create placeholder (should be avoided with updated prompts)
+				log.Warn().Str("dataset_ref", v).Msg("[slide_generator] received string dataset reference instead of complete object, using placeholder")
+				normalizedDatasets = append(normalizedDatasets, map[string]any{
+					"id":   v,
+					"kind": "series",
+					"data": map[string]any{
+						"labels": []string{"Category A", "Category B", "Category C"},
+						"series": []any{map[string]any{"name": "Placeholder Data", "values": []float64{10, 20, 30}}},
+					},
+					"sourceNote": fmt.Sprintf("WARNING: Placeholder data for %s - real data not provided", v),
+				})
+			case map[string]any:
+				// Complete dataset object - validate and normalize
+				if _, hasID := v["id"]; !hasID {
+					v["id"] = fmt.Sprintf("dataset_%d", len(normalizedDatasets)+1)
+				}
+				if _, hasKind := v["kind"]; !hasKind {
+					v["kind"] = "series"
+				}
+				if _, hasData := v["data"]; !hasData {
+					// Missing data - create placeholder
+					datasetID := "unknown"
+					if id, ok := v["id"].(string); ok {
+						datasetID = id
+					}
+					log.Warn().Str("dataset_id", datasetID).Msg("[slide_generator] dataset missing data field, using placeholder")
+					v["data"] = map[string]any{
+						"labels": []string{"A", "B", "C"},
+						"series": []any{map[string]any{"name": "Data", "values": []float64{1, 2, 3}}},
+					}
+				}
+				kind, _ := v["kind"].(string)
+				dataMap, _ := v["data"].(map[string]any)
+				if dataMap == nil {
+					dataMap = map[string]any{}
+				}
+				if kind == "table" {
+					if _, ok := dataMap["columns"]; !ok {
+						dataMap["columns"] = []string{"placeholder"}
+					}
+					if _, ok := dataMap["rows"]; !ok {
+						dataMap["rows"] = [][]string{}
+					}
+				} else {
+					if _, ok := dataMap["labels"]; !ok {
+						dataMap["labels"] = []string{"A", "B", "C"}
+					}
+					if _, ok := dataMap["series"]; !ok {
+						dataMap["series"] = []any{map[string]any{"name": "Data", "values": []float64{1, 2, 3}}}
+					}
+				}
+				v["data"] = dataMap
+				if _, hasSourceNote := v["sourceNote"]; !hasSourceNote {
+					v["sourceNote"] = nil
+				}
+				normalizedDatasets = append(normalizedDatasets, v)
+			default:
+				log.Warn().
+					Int("dataset_index", i).
+					Str("type", fmt.Sprintf("%T", dataset)).
+					Msg("[slide_generator] invalid dataset type, skipping")
 			}
-			normalizedDatasets = append(normalizedDatasets, v)
-		default:
-			normalizedDatasets = append(normalizedDatasets, map[string]any{
-				"id":         fmt.Sprintf("dataset_%d", len(normalizedDatasets)+1),
-				"kind":       "series",
-				"data":       map[string]any{"labels": []string{"A", "B", "C"}, "series": []any{map[string]any{"name": "Data", "values": []float64{1, 2, 3}}}},
-				"sourceNote": nil,
-			})
-		}
+		}()
 	}
 
 	return map[string]any{"datasets": normalizedDatasets}

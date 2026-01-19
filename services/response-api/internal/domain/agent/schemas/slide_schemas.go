@@ -522,8 +522,54 @@ var SlideGenResultSchema = map[string]any{
 				},
 				"datasets": map[string]any{
 					"type":        "array",
-					"description": "Dataset IDs or definitions required",
-					"items":       map[string]any{"type": "string"},
+					"description": "Complete dataset objects with id, kind, data, and optional sourceNote. DO NOT use string references.",
+					"items": map[string]any{
+						"type":        "object",
+						"description": "Complete dataset definition",
+						"properties": map[string]any{
+							"id": map[string]any{
+								"type":        "string",
+								"description": "Unique dataset identifier (e.g., 'dataset_gdp_2025')",
+							},
+							"kind": map[string]any{
+								"type":        "string",
+								"description": "Dataset type",
+								"enum":        []string{"series"},
+							},
+							"data": map[string]any{
+								"type":        "object",
+								"description": "Dataset values",
+								"properties": map[string]any{
+									"labels": map[string]any{
+										"type":        "array",
+										"description": "Category labels (x-axis)",
+										"items":       map[string]any{"type": "string"},
+									},
+									"series": map[string]any{
+										"type":        "array",
+										"description": "Data series",
+										"items": map[string]any{
+											"type": "object",
+											"properties": map[string]any{
+												"name":   map[string]any{"type": "string"},
+												"values": map[string]any{"type": "array", "items": map[string]any{"type": "number"}},
+											},
+											"required":             []string{"name", "values"},
+											"additionalProperties": false,
+										},
+									},
+								},
+								"required":             []string{"labels", "series"},
+								"additionalProperties": false,
+							},
+							"sourceNote": map[string]any{
+								"type":        "string",
+								"description": "Source attribution (optional)",
+							},
+						},
+						"required":             []string{"id", "kind", "data"},
+						"additionalProperties": false,
+					},
 				},
 			},
 			"required":             []string{"assets", "datasets"},

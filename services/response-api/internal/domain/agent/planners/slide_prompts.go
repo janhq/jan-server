@@ -114,6 +114,30 @@ TEXT LENGTH LIMITS:
 - When placing multiple text elements horizontally, ensure >=20pt gap between them
 - Use text.autoFit="shrink" for all text elements to prevent overflow
 
+DATASET GENERATION (CRITICAL FOR CHARTS):
+- If your slide includes a chart element, you MUST provide complete dataset definitions in requires.datasets
+- DO NOT use string references like ["dataset_xyz"] - these will fail during rendering
+- Instead, provide COMPLETE dataset objects with actual data from the research:
+  {
+    "id": "dataset_xyz",
+    "kind": "series",
+    "data": {
+      "labels": ["Q2 2025", "Q3 2025"],  // Use ACTUAL labels from the BRIEF research data
+      "series": [{"name": "GDP Growth (%%)", "values": [3.8, 4.3]}]  // Use ACTUAL numbers from research
+    },
+    "sourceNote": "Source: BEA 2025 GDP estimates"
+  }
+- Extract real numbers from the BRIEF section (research results, search output, etc.)
+- For GDP data: look for percentages, growth rates, specific quarterly or annual values
+- Ensure labels and values arrays have the same length
+- Use meaningful series names that match the chart purpose
+- Add proper source attribution in sourceNote
+
+IMPORTANT:
+- requires.datasets must be an array of complete objects, NOT strings
+- Each dataset must have: id (string), kind ("series"), data (object with labels and series arrays)
+- The chart element's datasetRef must match a dataset id you provide
+
 Create engaging, well-spaced content that fits the slide purpose.
 List any required assets/datasets in the "requires" section.
 `, sizeGuardPrompt, slideIndex, slideIndex)

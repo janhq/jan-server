@@ -16,21 +16,31 @@ Supported:
 Usage:
   python render_deck.py input.json output.pptx
 """
+# CRITICAL: Print immediately to confirm module loading starts
+import sys
+print(">>> MODULE LOAD: render_deck.py starting", file=sys.stderr, flush=True)
+
 import json
 import re
-import sys
 import logging
 import tempfile
 import io
 from pathlib import Path
 from urllib.parse import urlparse
 
+print(">>> MODULE LOAD: stdlib imports OK", file=sys.stderr, flush=True)
+
+print(">>> MODULE LOAD: stdlib imports OK", file=sys.stderr, flush=True)
+
 try:
     import requests
     HAS_REQUESTS = True
+    print(">>> MODULE LOAD: requests available", file=sys.stderr, flush=True)
 except ImportError:
     HAS_REQUESTS = False
+    print(">>> MODULE LOAD: requests NOT available", file=sys.stderr, flush=True)
 
+print(">>> MODULE LOAD: importing pptx...", file=sys.stderr, flush=True)
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
@@ -38,15 +48,23 @@ from pptx.enum.text import PP_ALIGN, MSO_VERTICAL_ANCHOR, MSO_AUTO_SIZE
 from pptx.enum.shapes import MSO_SHAPE, MSO_CONNECTOR
 from pptx.chart.data import ChartData
 from pptx.enum.chart import XL_CHART_TYPE
+print(">>> MODULE LOAD: pptx imports OK", file=sys.stderr, flush=True)
+
+print(">>> MODULE LOAD: pptx imports OK", file=sys.stderr, flush=True)
 
 # ----------------------------
 # Logging setup
 # ----------------------------
+print(">>> MODULE LOAD: configuring logging", file=sys.stderr, flush=True)
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    stream=sys.stderr,  # Explicitly write to stderr for subprocess capture
+    force=True  # Override any existing config
 )
 logger = logging.getLogger(__name__)
+logger.info("Logger initialized")
+print(">>> MODULE LOAD: logging configured", file=sys.stderr, flush=True)
 
 # ----------------------------
 # Constants
@@ -985,18 +1003,40 @@ def render(deck: dict, out_path: Path):
             ns = slide.notes_slide
             ns.notes_text_frame.text = notes
 
+    # Validate that slides were actually added
+    if len(prs.slides) == 0:
+        raise ValueError("Cannot save presentation: no slides were added to the presentation")
+    
     out_path.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(out_path))
     logger.info(f"Successfully saved presentation to {out_path}")
+    
+    # Verify file was actually created
+    if not out_path.exists():
+        raise IOError(f"Failed to create output file: {out_path}")
+    
+    file_size = out_path.stat().st_size
+    if file_size < 1000:
+        raise ValueError(f"Generated PPTX is suspiciously small ({file_size} bytes) - likely corrupt")
+    
+    logger.info(f"Verified output file: {file_size} bytes")
 
 
 def main():
+    # Immediate output to confirm script execution
+    print("=== render_deck.py starting ===")
+    sys.stdout.flush()
+    
     if len(sys.argv) < 3:
-        print("Usage: python render_deck.py input.json output.pptx")
+        print("Usage: python render_deck.py input.json output.pptx", file=sys.stderr)
         sys.exit(2)
 
     in_path = Path(sys.argv[1])
     out_path = Path(sys.argv[2])
+    
+    print(f"Input: {in_path}")
+    print(f"Output: {out_path}")
+    sys.stdout.flush()
 
     if not in_path.exists():
         logger.error(f"Input file not found: {in_path}")
@@ -1005,16 +1045,57 @@ def main():
     try:
         deck = json.loads(in_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in {in_path}: {e}")
+        error_msg = f"Invalid JSON in {in_path}: {e}"
+        logger.error(error_msg)
+        print(f"ERROR: {error_msg}", file=sys.stderr)
+        sys.stderr.flush()
+        sys.exit(1)
+    
+    # Validate deck structure
+    if not isinstance(deck, dict):
+        error_msg = f"Deck JSON is not an object: {type(deck)}"
+        print(f"ERROR: {error_msg}", file=sys.stderr)
+        sys.stderr.flush()
+        sys.exit(1)
+    
+    slides = deck.get("slides", [])
+    print(f"Deck loaded: {len(slides)} slides, version={deck.get('version', 'unknown')}")
+    sys.stdout.flush()
+    
+    if not slides:
+        error_msg = "Deck has no slides array or slides array is empty"
+        print(f"ERROR: {error_msg}", file=sys.stderr)
+        sys.stderr.flush()
         sys.exit(1)
 
     try:
         render(deck, out_path)
-        print(f"Wrote: {out_path}")
+        success_msg = f"SUCCESS: Wrote {out_path} ({out_path.stat().st_size} bytes)"
+        print(success_msg)
+        sys.stdout.flush()  # Ensure output is captured by subprocess
+        logger.info(success_msg)
     except Exception as e:
         logger.error(f"Rendering failed: {e}")
-        raise
+        # Print to stderr for visibility in subprocess output
+        error_msg = f"ERROR: Rendering failed: {e}"
+        print(error_msg, file=sys.stderr)
+        sys.stderr.flush()  # Ensure error is captured
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.stderr.flush()
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    main()
+    print(">>> SCRIPT ENTRY: __main__ block starting", file=sys.stderr, flush=True)
+    try:
+        print(">>> SCRIPT ENTRY: calling main()", file=sys.stderr, flush=True)
+        main()
+        print(">>> SCRIPT ENTRY: main() completed successfully", file=sys.stderr, flush=True)
+    except Exception as e:
+        # Catch any uncaught exceptions and print them
+        print(f">>> SCRIPT ENTRY: FATAL ERROR in main(): {e}", file=sys.stderr, flush=True)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.stderr.flush()
+        sys.exit(1)

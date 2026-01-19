@@ -239,7 +239,7 @@ func MapStepToResponse(s *plan.Step) StepResponse {
 		MaxRetries:    s.MaxRetries,
 		Error:         s.ErrorMessage,
 		DurationMs:    s.DurationMs,
-		PlannedParams: s.PlannedParams,
+		PlannedParams: sanitizePlannedParams(s.PlannedParams),
 		ActualParams:  s.ActualParams,
 		InputParams:   s.InputParams, // Deprecated, kept for compatibility
 		OutputData:    sanitizeStepOutputData(s.OutputData),
@@ -261,6 +261,36 @@ func MapStepToResponse(s *plan.Step) StepResponse {
 	}
 
 	return resp
+}
+
+// sanitizePlannedParams removes the large schema field from planned parameters.
+// The schema field can be very large and is not typically used by the API consumers.
+func sanitizePlannedParams(plannedParams json.RawMessage) json.RawMessage {
+	if len(plannedParams) == 0 {
+		return plannedParams
+	}
+
+	var params map[string]interface{}
+	if err := json.Unmarshal(plannedParams, &params); err != nil {
+		// Not a JSON object, return as-is
+		return plannedParams
+	}
+
+	// Remove the schema field if it exists
+	if _, exists := params["schema"]; exists {
+		delete(params, "schema")
+
+		// Re-marshal without the schema field
+		sanitized, err := json.Marshal(params)
+		if err != nil {
+			// If marshaling fails, return original
+			return plannedParams
+		}
+		return sanitized
+	}
+
+	// No schema field found, return original
+	return plannedParams
 }
 
 // sanitizeStepOutputData removes large binary content (like base64) from step output data.
