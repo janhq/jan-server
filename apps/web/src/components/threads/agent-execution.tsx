@@ -11,6 +11,7 @@ import type { StepWithResults } from "@/stores/right-sidebar-store";
 import { useAgentExecution, useAgentExecutionStore } from "@/stores/agent-execution-store";
 import {
   convertTaskToStepWithResults,
+  extractArtifactsFromTasks,
   getStepLabel,
   getStepToolName,
 } from "@/lib/step-output-parser";
@@ -24,6 +25,7 @@ interface AgentExecutionPanelProps {
 const AgentExecutionPanel = ({ toolState, responseId }: AgentExecutionPanelProps) => {
   const setAllSteps = useRightSidebarStore((state) => state.setAllSteps);
   const setCurrentStep = useRightSidebarStore((state) => state.setCurrentStep);
+  const setArtifacts = useRightSidebarStore((state) => state.setArtifacts);
   const loadHistoricalExecution = useAgentExecutionStore((state) => state.loadHistoricalExecution);
   const execution = useAgentExecution(responseId);
 
@@ -55,6 +57,9 @@ const AgentExecutionPanel = ({ toolState, responseId }: AgentExecutionPanelProps
     });
   });
 
+  // Extract artifacts from tasks
+  const artifacts = extractArtifactsFromTasks(tasks);
+
   useEffect(() => {
     if (completedStepIds.length === 0) return;
 
@@ -70,9 +75,14 @@ const AgentExecutionPanel = ({ toolState, responseId }: AgentExecutionPanelProps
         setCurrentStep(latestIndex);
       }
 
+      // Update artifacts whenever steps complete
+      if (artifacts.length > 0) {
+        setArtifacts(artifacts);
+      }
+
       prevCompletedStepIdsRef.current = new Set(completedStepIds);
     }
-  }, [completedStepIds.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [completedStepIds.join(","), artifacts.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!execution) {
     if (toolState || responseId) {

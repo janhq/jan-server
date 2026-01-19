@@ -44,6 +44,7 @@
     "motion": "^12.23.26",
     "nanoid": "^5.1.6",
     "react": "^19.2.0",
+    "react-doc-viewer": "^0.1.15",
     "react-dom": "^19.2.0",
     "react-hook-form": "^7.68.0",
     "shiki": "^3.19.0",

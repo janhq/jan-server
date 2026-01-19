@@ -3,8 +3,18 @@ import { persist, createJSONStorage } from "zustand/middleware";
 
 type SidebarVariant = "sidebar" | "floating";
 
+export type ArtifactItem = {
+  id: string;
+  filename: string;
+  contentType: string; // e.g., "slides", "document"
+  mimeType: string; // e.g., "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+  size: number;
+  downloadUrl: string;
+  createdAt?: string;
+};
+
 export type SearchResultItem = {
-  type: "link" | "image" | "text";
+  type: "link" | "image" | "text" | "artifact";
   title?: string;
   description?: string;
   url?: string;
@@ -14,11 +24,14 @@ export type SearchResultItem = {
   imageUrl?: string;
   icon?: string;
   content?: string;
+  artifact?: ArtifactItem;
 };
 
 export type StepWithResults = {
   stepName: string;
   stepTitle: string;
+  parentTask?: string;
+  parentTaskDescription?: string;
   results: SearchResultItem[];
 };
 
@@ -27,11 +40,14 @@ interface RightSidebarState {
   variant: SidebarVariant;
   allSteps: StepWithResults[];
   currentStepIndex: number;
+  artifacts: ArtifactItem[];
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
   setSidebarVariant: (variant: SidebarVariant) => void;
   setAllSteps: (steps: StepWithResults[]) => void;
   setCurrentStep: (stepIndex: number) => void;
+  setArtifacts: (artifacts: ArtifactItem[]) => void;
+  addArtifact: (artifact: ArtifactItem) => void;
   clearSelection: () => void;
   nextStep: () => void;
   prevStep: () => void;
@@ -53,6 +69,7 @@ export const useRightSidebarStore = create<RightSidebarState>()(
       variant: "sidebar",
       allSteps: [],
       currentStepIndex: 0,
+      artifacts: [],
       toggleSidebar: () => set((state) => ({ isOpen: !state.isOpen })),
       setSidebarOpen: (open: boolean) => set({ isOpen: open }),
       setSidebarVariant: (variant: SidebarVariant) => set({ variant }),
@@ -60,7 +77,16 @@ export const useRightSidebarStore = create<RightSidebarState>()(
         set({ allSteps: steps, isOpen: true, currentStepIndex: 0 }),
       setCurrentStep: (stepIndex: number) =>
         set({ currentStepIndex: stepIndex }),
-      clearSelection: () => set({ allSteps: [], currentStepIndex: 0 }),
+      setArtifacts: (artifacts: ArtifactItem[]) => set({ artifacts }),
+      addArtifact: (artifact: ArtifactItem) =>
+        set((state) => {
+          // Avoid duplicates
+          if (state.artifacts.some((a) => a.id === artifact.id)) {
+            return state;
+          }
+          return { artifacts: [...state.artifacts, artifact] };
+        }),
+      clearSelection: () => set({ allSteps: [], currentStepIndex: 0, artifacts: [] }),
       nextStep: () =>
         set((state) => ({
           currentStepIndex:
