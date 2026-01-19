@@ -26,11 +26,11 @@ import (
 	"jan-server/services/response-api/internal/infrastructure/logger"
 	"jan-server/services/response-api/internal/infrastructure/mcp"
 	"jan-server/services/response-api/internal/infrastructure/media"
-	skillinfra "jan-server/services/response-api/internal/infrastructure/skill"
 	artifactrepo "jan-server/services/response-api/internal/infrastructure/repository/artifact"
 	conversationrepo "jan-server/services/response-api/internal/infrastructure/repository/conversation"
 	planrepo "jan-server/services/response-api/internal/infrastructure/repository/plan"
 	responseRepo "jan-server/services/response-api/internal/infrastructure/repository/response"
+	skillinfra "jan-server/services/response-api/internal/infrastructure/skill"
 	"jan-server/services/response-api/internal/interfaces/httpserver"
 	"jan-server/services/response-api/internal/webhook"
 )
@@ -170,8 +170,6 @@ func newAgentRegistry(planService plan.Service, mcpClient tool.MCPClient, llmPro
 
 	// Register the deep research executor for tool calls and LLM calls
 	deepResearchExecutor := planners.NewDeepResearchExecutor(mcpClient, codeFixer)
-	_ = registry.RegisterExecutor(plan.ActionTypeToolCall, deepResearchExecutor)
-	_ = registry.RegisterExecutor(plan.ActionTypeLLMCall, deepResearchExecutor)
 
 	// Register the slide generator executor for artifact creation
 	skillExecutor := planners.NewSkillExecutor(
@@ -191,6 +189,9 @@ func newAgentRegistry(planService plan.Service, mcpClient tool.MCPClient, llmPro
 		},
 	)
 	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient, skillExecutor, cfg)
+	routingExecutor := planners.NewRoutingExecutor(deepResearchExecutor, slideGeneratorExecutor)
+	_ = registry.RegisterExecutor(plan.ActionTypeToolCall, routingExecutor)
+	_ = registry.RegisterExecutor(plan.ActionTypeLLMCall, routingExecutor)
 	_ = registry.RegisterExecutor(plan.ActionTypeArtifactCreate, slideGeneratorExecutor)
 	_ = registry.RegisterExecutor(plan.ActionTypeSkillExecute, skillExecutor)
 

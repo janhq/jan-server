@@ -29,11 +29,11 @@ import (
 	"jan-server/services/response-api/internal/infrastructure/media"
 	"jan-server/services/response-api/internal/infrastructure/observability"
 	"jan-server/services/response-api/internal/infrastructure/queue"
-	skillinfra "jan-server/services/response-api/internal/infrastructure/skill"
 	artifactrepo "jan-server/services/response-api/internal/infrastructure/repository/artifact"
 	conversationrepo "jan-server/services/response-api/internal/infrastructure/repository/conversation"
 	planrepo "jan-server/services/response-api/internal/infrastructure/repository/plan"
 	respRepo "jan-server/services/response-api/internal/infrastructure/repository/response"
+	skillinfra "jan-server/services/response-api/internal/infrastructure/skill"
 	"jan-server/services/response-api/internal/interfaces/httpserver"
 	"jan-server/services/response-api/internal/webhook"
 	"jan-server/services/response-api/internal/worker"
@@ -165,14 +165,8 @@ func main() {
 	// Create code fixer for LLM-based code fix retry
 	codeFixer := llm.NewCodeFixer(llmClient, cfg.CodeFixModel)
 
-	// Register executor for tool calls and LLM calls
+	// Register executors for tool calls and LLM calls
 	deepResearchExecutor := planners.NewDeepResearchExecutor(mcpClient, codeFixer)
-	if err := agentRegistry.RegisterExecutor(plan.ActionTypeToolCall, deepResearchExecutor); err != nil {
-		log.Warn().Err(err).Msg("failed to register tool call executor")
-	}
-	if err := agentRegistry.RegisterExecutor(plan.ActionTypeLLMCall, deepResearchExecutor); err != nil {
-		log.Warn().Err(err).Msg("failed to register llm call executor")
-	}
 
 	// Register slide generator executor for artifact creation
 	skillExecutor := planners.NewSkillExecutor(
@@ -192,6 +186,13 @@ func main() {
 		},
 	)
 	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient, skillExecutor, cfg)
+	routingExecutor := planners.NewRoutingExecutor(deepResearchExecutor, slideGeneratorExecutor)
+	if err := agentRegistry.RegisterExecutor(plan.ActionTypeToolCall, routingExecutor); err != nil {
+		log.Warn().Err(err).Msg("failed to register tool call executor")
+	}
+	if err := agentRegistry.RegisterExecutor(plan.ActionTypeLLMCall, routingExecutor); err != nil {
+		log.Warn().Err(err).Msg("failed to register llm call executor")
+	}
 	if err := agentRegistry.RegisterExecutor(plan.ActionTypeArtifactCreate, slideGeneratorExecutor); err != nil {
 		log.Warn().Err(err).Msg("failed to register artifact create executor")
 	}

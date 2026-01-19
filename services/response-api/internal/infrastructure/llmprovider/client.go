@@ -130,6 +130,9 @@ func convertToAPIRequest(ctx context.Context, req llm.ChatCompletionRequest) map
 	if req.ToolChoice != nil {
 		apiReq["tool_choice"] = req.ToolChoice
 	}
+	if req.ResponseFormat != nil {
+		apiReq["response_format"] = req.ResponseFormat
+	}
 	if req.Temperature != nil {
 		apiReq["temperature"] = *req.Temperature
 	}
