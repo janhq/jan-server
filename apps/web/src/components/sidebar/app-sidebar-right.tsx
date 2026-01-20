@@ -125,7 +125,7 @@ const ArtifactPreview = ({ artifact }: { artifact: ArtifactItem }) => {
                   <p className="text-sm font-medium line-clamp-1">{artifact.filename}</p>
                   <p className="text-xs text-muted-foreground">{formatFileSize(artifact.size)}</p>
                 </div>
-                <EyeIcon className="size-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                <EyeIcon className="size-4 text-muted-foreground shrink-0" />
               </div>
               {/* Loading overlay */}
               {isLoading && (
