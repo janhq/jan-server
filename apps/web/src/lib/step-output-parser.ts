@@ -213,6 +213,8 @@ export function getStepLabel(step: StepResponse): string {
   const params = step.actual_params || step.planned_params || inputParams;
   const paramsObj = params as Record<string, unknown>;
 
+  
+
   switch (step.action) {
     case "tool_call": {
       const toolName = (paramsObj.tool as string) || (paramsObj.tool_name as string) || "Tool";
@@ -224,8 +226,13 @@ export function getStepLabel(step: StepResponse): string {
       }
       return query ? `${toolName}: ${query.substring(0, 50)}${query.length > 50 ? "..." : ""}` : toolName;
     }
+
     case "llm_call":
+      console.log(paramsObj.action)
+      if (paramsObj.action  === "plan_and_template") return paramsObj.description as string
+      if (paramsObj.action  === "generate_single_slide") return paramsObj.description as string
       return "AI Analysis";
+    
     case "artifact_create":
       return "Creating Report";
     case "file_operation": {

@@ -32,8 +32,8 @@ const ArtifactCard = ({ artifact }: { artifact: ArtifactItem }) => {
   return (
     <div className="p-3 hover:bg-secondary/50 transition-colors">
       <div className="flex items-start gap-3">
-        <div className="size-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-          <Icon className="size-5 text-primary" />
+        <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+          <Icon className="size-4 text-primary" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
@@ -294,17 +294,9 @@ export const AppSidebarRight = memo(function AppSidebarRight() {
             </div>
           </div>
 
-          {/* Panel progress */}
-          <div className="flex flex-1 flex-col mx-2 overflow-auto bg-background border rounded-lg max-h-20">
-            <div className="sticky top-0 z-10 bg-background border-b px-3 py-2">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="shrink-0">Progress</span>
-              </div>
-            </div>
-          </div>
 
           {/* Panel artifact */}
-          {hasArtifacts && (
+          
             <div className="flex flex-col mx-2 overflow-auto bg-background border rounded-lg">
               <div className="sticky top-0 z-10 bg-background border-b px-3 py-2">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -313,12 +305,11 @@ export const AppSidebarRight = memo(function AppSidebarRight() {
                 </div>
               </div>
               <div className="divide-y">
-                {artifacts.map((artifact) => (
+                {hasArtifacts ?  artifacts.map((artifact) => (
                   <ArtifactCard key={artifact.id} artifact={artifact} />
-                ))}
+                )) : <div className="p-2">lorem</div>}
               </div>
             </div>
-          )}
 
           {/* Panel content */}
           <div className="flex flex-1 flex-col mx-2 overflow-auto bg-background border rounded-lg">

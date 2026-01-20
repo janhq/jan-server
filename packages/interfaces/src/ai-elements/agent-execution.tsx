@@ -108,7 +108,7 @@ export const AgentExecutionHeader = memo(
     const isPending = status === "pending";
 
     return (
-      <Collapsible onOpenChange={setIsOpen} open={isOpen} className="w-full">
+      <Collapsible onOpenChange={setIsOpen} open={isOpen} className="w-full" >
         <CollapsibleTrigger
           className={cn(
             "flex w-full items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground",
