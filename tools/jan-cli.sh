@@ -3,7 +3,8 @@
 # Automatically builds and runs jan-cli from cmd/jan-cli/
 
 set -e
-
+# Save the original working directory
+ROOT_DIR="$(pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLI_DIR="${SCRIPT_DIR}/jan-cli"
 CLI_BINARY="${CLI_DIR}/jan-cli"
@@ -26,8 +27,10 @@ if [ "$needs_build" = true ]; then
     echo "Building jan-cli..." >&2
     cd "${CLI_DIR}"
     go build -o jan-cli .
-    cd "${SCRIPT_DIR}"
 fi
+
+# Change to the original working directory
+cd "${ROOT_DIR}"
 
 # Run jan-cli with all arguments
 exec "${CLI_BINARY}" "$@"
