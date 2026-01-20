@@ -52,6 +52,12 @@ func ExecuteLLMCall(ctx context.Context, deps ExecutorDeps, step *plan.Step, inp
 
 	action, _ := params["action"].(string)
 	switch action {
+	case "plan_only":
+		return ExecutePlanOnly(ctx, deps, params, input)
+	case "template_only":
+		return ExecuteTemplateOnly(ctx, deps, params, input)
+	case "assemble_plan_template":
+		return ExecuteAssemblePlanTemplate(ctx, deps, params, input)
 	case "plan_and_template":
 		return ExecutePlanAndTemplate(ctx, deps, params, input)
 	case "generate_single_slide":

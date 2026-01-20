@@ -81,12 +81,32 @@ func ExecuteSingleSlide(ctx context.Context, deps ExecutorDeps, params map[strin
 	assets := limitImageAssets(deps.CollectImageAssets(input), 4)
 	assetsJSON, _ := json.Marshal(assets)
 	dataBankText := limitText(deps.CollectDataBankText(input), 3000)
-	templateJSON, _ := json.Marshal(planAndTemplate.Template)
+
+	// Reduce prompt size: avoid sending the full template object. Provide only the
+	// locked layout id, its slot ids, and a slim theme digest.
+	suggestedLayout := strings.TrimSpace(planEntry.SuggestedLayout)
+	slotIDs := extractLayoutSlotIDs(planAndTemplate.Template.Layouts, suggestedLayout)
+	componentIDs := extractComponentIDs(planAndTemplate.Template.Components)
+	lockedLayoutJSON, _ := json.Marshal(map[string]any{
+		"layoutId": suggestedLayout,
+		"slotIds":  slotIDs,
+	})
+	componentIDsJSON, _ := json.Marshal(componentIDs)
+	themeDigestJSON, _ := json.Marshal(buildThemeDigest(planAndTemplate.Template.Theme))
 	planEntryJSON, _ := json.Marshal(planEntry)
-	themeJSON, _ := json.Marshal(planAndTemplate.Template.Theme)
 
 	systemPrompt := slideWriterPrompt(slideIndex)
-	userPrompt := fmt.Sprintf("BRIEF:\n%s\n\nLOCKED TEMPLATE:\n%s\n\nTHEME:\n%s\n\nPLAN ENTRY (slide %d):\n%s\n\nASSETS AVAILABLE:\n%s\n\nDATA BANK:\n%s", contextData, string(templateJSON), string(themeJSON), slideIndex, string(planEntryJSON), string(assetsJSON), dataBankText)
+	userPrompt := fmt.Sprintf(
+		"BRIEF:\n%s\n\nLOCKED_LAYOUT (use this exact layoutId + slotIds):\n%s\n\nAVAILABLE_COMPONENT_IDS (useComponents):\n%s\n\nTHEME_DIGEST:\n%s\n\nPLAN ENTRY (slide %d):\n%s\n\nASSETS AVAILABLE:\n%s\n\nDATA BANK:\n%s",
+		contextData,
+		string(lockedLayoutJSON),
+		string(componentIDsJSON),
+		string(themeDigestJSON),
+		slideIndex,
+		string(planEntryJSON),
+		string(assetsJSON),
+		dataBankText,
+	)
 
 	model := getModelFromContext(input)
 	log.Debug().
@@ -108,24 +128,30 @@ func ExecuteSingleSlide(ctx context.Context, deps ExecutorDeps, params map[strin
 		}, nil
 	}
 
-	schema := cloneSchema(schemas.SlideGenResultSchema)
-	schemas.NormalizeSchemaForStructuredOutput(schema)
+	schema := prepareSlideSchema(schemas.SlideGenResultSchema, suggestedLayout, slotIDs)
 
 	var lastErr error
 	var slideResult schemas.SlideGenResult
 	var totalUsage *llm.Usage
+	var retryErrors []string
 
 	// All attempts use structured output
-	for attempt := 1; attempt <= 3; attempt++ {
+	for attempt := 1; attempt <= 5; attempt++ {
+		retryPrompt := userPrompt
+		if attempt > 1 && len(retryErrors) > 0 {
+			retryContext := strings.Join(retryErrors, "\n")
+			retryPrompt = fmt.Sprintf("%s\n\nPREVIOUS_ERRORS:\n%s", userPrompt, limitText(retryContext, 1200))
+		}
 		log.Debug().
 			Int("attempt", attempt).
 			Int("slide_index", slideIndex).
 			Str("model", model).
 			Msg("[slide_generator] slide LLM call started")
 
-		llmResult, err := deps.GenerateWithStructuredOutputWithMaxTokensAndUsage(ctx, systemPrompt, userPrompt, model, schema, intPtr(slideMaxTokens))
+		llmResult, err := deps.GenerateWithStructuredOutputWithMaxTokensAndUsage(ctx, systemPrompt, retryPrompt, model, schema, intPtr(slideMaxTokens))
 		if err != nil {
 			lastErr = err
+			retryErrors = append(retryErrors, fmt.Sprintf("attempt %d LLM call failed: %v", attempt, err))
 			log.Warn().
 				Err(err).
 				Int("attempt", attempt).
@@ -162,6 +188,7 @@ func ExecuteSingleSlide(ctx context.Context, deps ExecutorDeps, params map[strin
 		// Handle empty response
 		if isEmptyResponse(result) {
 			lastErr = fmt.Errorf("LLM returned empty response for slide %d", slideIndex)
+			retryErrors = append(retryErrors, fmt.Sprintf("attempt %d empty response", attempt))
 			log.Warn().
 				Int("attempt", attempt).
 				Int("slide_index", slideIndex).
@@ -171,6 +198,7 @@ func ExecuteSingleSlide(ctx context.Context, deps ExecutorDeps, params map[strin
 
 		if err := json.Unmarshal([]byte(result), &slideResult); err != nil {
 			lastErr = err
+			retryErrors = append(retryErrors, fmt.Sprintf("attempt %d parse error: %v", attempt, err))
 			log.Warn().
 				Err(err).
 				Int("attempt", attempt).
@@ -183,6 +211,7 @@ func ExecuteSingleSlide(ctx context.Context, deps ExecutorDeps, params map[strin
 		slideMap, ok := slideResult.Slide.(map[string]any)
 		if !ok {
 			lastErr = fmt.Errorf("slide result is not an object")
+			retryErrors = append(retryErrors, fmt.Sprintf("attempt %d invalid slide object", attempt))
 			log.Warn().
 				Err(lastErr).
 				Int("attempt", attempt).
@@ -208,6 +237,7 @@ func ExecuteSingleSlide(ctx context.Context, deps ExecutorDeps, params map[strin
 		}
 		if layoutID == "" || !layoutIDs[layoutID] {
 			lastErr = fmt.Errorf("layoutId %q not found in template layouts", layoutID)
+			retryErrors = append(retryErrors, fmt.Sprintf("attempt %d missing layoutId %q", attempt, layoutID))
 			log.Warn().
 				Err(lastErr).
 				Int("attempt", attempt).
@@ -249,6 +279,7 @@ func ExecuteSingleSlide(ctx context.Context, deps ExecutorDeps, params map[strin
 		if deps.ValidateChartDatasetRefs != nil {
 			if missing := deps.ValidateChartDatasetRefs(slideMap, datasetIDs); missing != "" {
 				lastErr = fmt.Errorf("chart datasetRef %q missing from requires.datasets", missing)
+				retryErrors = append(retryErrors, fmt.Sprintf("attempt %d missing datasetRef %q", attempt, missing))
 				log.Warn().
 					Err(lastErr).
 					Int("attempt", attempt).
@@ -261,6 +292,7 @@ func ExecuteSingleSlide(ctx context.Context, deps ExecutorDeps, params map[strin
 		if deps.ValidateImageAssetRefs != nil {
 			if missing := deps.ValidateImageAssetRefs(slideMap, assetIDs); missing != "" {
 				lastErr = fmt.Errorf("image ref %q missing from requires.assets", missing)
+				retryErrors = append(retryErrors, fmt.Sprintf("attempt %d missing image ref %q", attempt, missing))
 				log.Warn().
 					Err(lastErr).
 					Int("attempt", attempt).
@@ -273,6 +305,7 @@ func ExecuteSingleSlide(ctx context.Context, deps ExecutorDeps, params map[strin
 		if suggestedLayout := strings.TrimSpace(planEntry.SuggestedLayout); suggestedLayout != "" {
 			if deps.LayoutIDMatchesSuggestedLayout != nil && !deps.LayoutIDMatchesSuggestedLayout(layoutID, suggestedLayout, planAndTemplate.Template.Layouts) {
 				lastErr = fmt.Errorf("layoutId %q does not match suggestedLayout %q", layoutID, suggestedLayout)
+				retryErrors = append(retryErrors, fmt.Sprintf("attempt %d layout mismatch: %s vs %s", attempt, layoutID, suggestedLayout))
 				log.Warn().
 					Err(lastErr).
 					Int("attempt", attempt).
@@ -284,6 +317,7 @@ func ExecuteSingleSlide(ctx context.Context, deps ExecutorDeps, params map[strin
 			}
 			if suggestedLayout == "TABLE" && deps.SlideHasElementType != nil && !deps.SlideHasElementType(slideResult.Slide, "table") {
 				lastErr = fmt.Errorf("missing table element for TABLE layout")
+				retryErrors = append(retryErrors, fmt.Sprintf("attempt %d missing table element for TABLE layout", attempt))
 				log.Warn().
 					Err(lastErr).
 					Int("attempt", attempt).
@@ -299,6 +333,7 @@ func ExecuteSingleSlide(ctx context.Context, deps ExecutorDeps, params map[strin
 			minScore := getMinRichnessScore(layoutID)
 			if richScore < minScore {
 				lastErr = fmt.Errorf("slide is too sparse (richness score %d, minimum %d required)", richScore, minScore)
+				retryErrors = append(retryErrors, fmt.Sprintf("attempt %d slide too sparse: %d < %d", attempt, richScore, minScore))
 				log.Warn().
 					Int("attempt", attempt).
 					Int("slide_index", slideIndex).

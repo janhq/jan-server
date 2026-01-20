@@ -289,17 +289,17 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		Sequence:    taskSequence,
 		TaskType:    plan.TaskTypeGeneration,
 		Title:       "Plan & Template",
-		Description: strPtr("Create presentation plan and DeckSpec template structure"),
+		Description: strPtr("Create plan, template, and assemble DeckSpec"),
 	})
 	if err != nil {
 		return nil, err
 	}
 	log.Debug().Str("task_id", plannerTask.ID).Msg("[slide_generator] plan & template task created")
 
-	plannerParams, _ := json.Marshal(map[string]interface{}{
-		"action":      "plan_and_template",
-		"description": "Generate slide plan and template using PlanAndTemplateSchema",
-		"schema":      schemas.PlanAndTemplateSchema,
+	planParams, _ := json.Marshal(map[string]interface{}{
+		"action":      "plan_only",
+		"description": "Generate slide plan using SlidePlanSchema",
+		"schema":      schemas.SlidePlanSchema,
 		"config": map[string]interface{}{
 			"num_slides": config.NumSlides,
 			"theme":      config.Theme,
@@ -308,10 +308,47 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 	_, err = p.planService.CreateStep(ctx, plannerTask.ID, plan.CreateStepParams{
 		Sequence:    1,
 		Action:      plan.ActionTypeLLMCall,
-		Title:       "Plan & Template",
-		Description: strPtr("Generate slide plan and template structure"),
-		InputParams: plannerParams,
+		Title:       "Plan",
+		Description: strPtr("Generate slide plan"),
+		InputParams: planParams,
 		MaxRetries:  5,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	templateParams, _ := json.Marshal(map[string]interface{}{
+		"action":      "template_only",
+		"description": "Generate template using SlideTemplateSchema",
+		"schema":      schemas.SlideTemplateSchema,
+		"config": map[string]interface{}{
+			"num_slides": config.NumSlides,
+			"theme":      config.Theme,
+		},
+	})
+	_, err = p.planService.CreateStep(ctx, plannerTask.ID, plan.CreateStepParams{
+		Sequence:    2,
+		Action:      plan.ActionTypeLLMCall,
+		Title:       "Template",
+		Description: strPtr("Generate DeckSpec template"),
+		InputParams: templateParams,
+		MaxRetries:  5,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	assembleParams, _ := json.Marshal(map[string]interface{}{
+		"action":      "assemble_plan_template",
+		"description": "Assemble plan and template outputs",
+	})
+	_, err = p.planService.CreateStep(ctx, plannerTask.ID, plan.CreateStepParams{
+		Sequence:    3,
+		Action:      plan.ActionTypeLLMCall,
+		Title:       "Assemble",
+		Description: strPtr("Assemble plan and template"),
+		InputParams: assembleParams,
+		MaxRetries:  3,
 	})
 	if err != nil {
 		return nil, err
@@ -570,7 +607,7 @@ func (p *SlideGeneratorPlanner) calculateEstimatedSteps(config SlideGeneratorCon
 
 	steps += 2 // outline (reasoning + image_search)
 	steps += 1 // data bank
-	steps += 1 // plan & template
+	steps += 3 // plan, template, assemble
 	steps += config.NumSlides
 	steps += 1 // upload spec
 	steps += 1 // render

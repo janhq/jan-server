@@ -306,6 +306,303 @@ var PlanAndTemplateSchema = map[string]any{
 	"additionalProperties": false,
 }
 
+// SlidePlanSchema is the JSON schema for the plan-only response.
+var SlidePlanSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"deckTitle": map[string]any{
+			"type":        "string",
+			"description": "The title of the presentation",
+		},
+		"audience": map[string]any{
+			"type":        "string",
+			"description": "Target audience description",
+		},
+		"tone": map[string]any{
+			"type":        "string",
+			"description": "Presentation tone (professional, casual, technical, etc.)",
+		},
+		"purpose": map[string]any{
+			"type":        "string",
+			"description": "Main purpose of the presentation",
+		},
+		"recommendedSlideCount": map[string]any{
+			"type":        "integer",
+			"description": "Recommended number of slides",
+		},
+		"slides": map[string]any{
+			"type":        "array",
+			"description": "Array of slide plan entries",
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"index": map[string]any{
+						"type":        "integer",
+						"description": "1-based slide index",
+					},
+					"title": map[string]any{
+						"type":        "string",
+						"description": "Slide title",
+					},
+					"purpose": map[string]any{
+						"type":        "string",
+						"description": "Purpose of this slide",
+					},
+					"keyPoints": map[string]any{
+						"type":        "array",
+						"description": "Key points to cover",
+						"items":       map[string]any{"type": "string"},
+					},
+					"suggestedLayout": map[string]any{
+						"type":        "string",
+						"description": "Suggested layout type",
+						"enum":        []string{"TITLE", "SECTION_HEADER", "TITLE_AND_BULLETS", "TITLE_TWO_COLUMNS", "TITLE_IMAGE", "FULL_BLEED_IMAGE", "CHART", "TABLE", "QUOTE", "TIMELINE", "CLOSING", "APPENDIX", "DASHBOARD_3KPI_2COL", "CHART_AND_INSIGHTS", "TABLE_AND_CALLOUTS"},
+					},
+					"visualIdeas": map[string]any{
+						"type":        "array",
+						"description": "Visual element suggestions",
+						"items":       map[string]any{"type": "string"},
+					},
+				},
+				"required":             []string{"index", "title", "purpose", "keyPoints", "suggestedLayout", "visualIdeas"},
+				"additionalProperties": false,
+			},
+		},
+	},
+	"required":             []string{"deckTitle", "audience", "tone", "purpose", "recommendedSlideCount", "slides"},
+	"additionalProperties": false,
+}
+
+// SlideTemplateSchema is the JSON schema for the template-only response.
+var SlideTemplateSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"version": map[string]any{
+			"type":        "string",
+			"description": "Template version (e.g., '1.0')",
+		},
+		"metadata": map[string]any{
+			"type":        "object",
+			"description": "Presentation metadata",
+			"properties": map[string]any{
+				"title":    map[string]any{"type": "string"},
+				"language": map[string]any{"type": "string"},
+				"audience": map[string]any{"type": "string"},
+				"purpose":  map[string]any{"type": "string"},
+			},
+			"required":             []string{"title", "language", "audience", "purpose"},
+			"additionalProperties": false,
+		},
+		"theme": map[string]any{
+			"type":        "object",
+			"description": "Theme configuration including canvas, grid, colors, typography",
+			"properties": map[string]any{
+				"canvas": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"size": map[string]any{
+							"type":        "string",
+							"description": "Canvas size preset. This generator assumes a normal PowerPoint WIDE_16x9 slide.",
+							"enum":        []string{"WIDE_16x9"},
+						},
+						"customSize": map[string]any{
+							"type":        "object",
+							"description": "Optional custom size (in inches) when size=CUSTOM. Use null for WIDE_16x9.",
+							"properties": map[string]any{
+								"width":  map[string]any{"type": "number"},
+								"height": map[string]any{"type": "number"},
+							},
+							"required":             []string{"width", "height"},
+							"additionalProperties": false,
+						},
+						"unit": map[string]any{
+							"type":        "string",
+							"description": "Coordinate unit for all rects. Use pt so WIDE_16x9 becomes 960pt x 540pt.",
+							"enum":        []string{"pt"},
+						},
+						"safeMargins": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"top":    map[string]any{"type": "number", "minimum": 0, "maximum": 200, "default": 36},
+								"right":  map[string]any{"type": "number", "minimum": 0, "maximum": 200, "default": 36},
+								"bottom": map[string]any{"type": "number", "minimum": 0, "maximum": 200, "default": 36},
+								"left":   map[string]any{"type": "number", "minimum": 0, "maximum": 200, "default": 36},
+							},
+							"required":             []string{"top", "right", "bottom", "left"},
+							"additionalProperties": false,
+						},
+					},
+					"required":             []string{"size", "unit", "safeMargins"},
+					"additionalProperties": false,
+				},
+				"grid": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"columns":  map[string]any{"type": "integer"},
+						"gutter":   map[string]any{"type": "number"},
+						"baseline": map[string]any{"type": "number"},
+						"snap":     map[string]any{"type": "boolean"},
+					},
+					"required":             []string{"columns", "gutter", "baseline", "snap"},
+					"additionalProperties": false,
+				},
+				"colors": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"palette": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"primary":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+								"secondary": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+								"neutral":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+								"accent":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+							},
+							"required":             []string{"primary", "secondary", "neutral", "accent"},
+							"additionalProperties": false,
+						},
+						"semantic": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"background": map[string]any{"type": "string"},
+								"text":       map[string]any{"type": "string"},
+								"mutedText":  map[string]any{"type": "string"},
+								"border":     map[string]any{"type": "string"},
+								"link":       map[string]any{"type": "string"},
+								"success":    map[string]any{"type": "string"},
+								"warning":    map[string]any{"type": "string"},
+								"danger":     map[string]any{"type": "string"},
+							},
+							"required":             []string{"background", "text", "mutedText", "border", "link", "success", "warning", "danger"},
+							"additionalProperties": false,
+						},
+					},
+					"required":             []string{"palette", "semantic"},
+					"additionalProperties": false,
+				},
+				"typography": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"families": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"heading": map[string]any{"type": "string"},
+								"body":    map[string]any{"type": "string"},
+								"mono":    map[string]any{"type": "string"},
+							},
+							"required":             []string{"heading", "body", "mono"},
+							"additionalProperties": false,
+						},
+						"scale": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"h1":      map[string]any{"type": "number"},
+								"h2":      map[string]any{"type": "number"},
+								"h3":      map[string]any{"type": "number"},
+								"body":    map[string]any{"type": "number"},
+								"small":   map[string]any{"type": "number"},
+								"caption": map[string]any{"type": "number"},
+							},
+							"required":             []string{"h1", "h2", "h3", "body", "small", "caption"},
+							"additionalProperties": false,
+						},
+						"lineHeights": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"tight":   map[string]any{"type": "number"},
+								"normal":  map[string]any{"type": "number"},
+								"relaxed": map[string]any{"type": "number"},
+							},
+							"required":             []string{"tight", "normal", "relaxed"},
+							"additionalProperties": false,
+						},
+					},
+					"required":             []string{"families", "scale", "lineHeights"},
+					"additionalProperties": false,
+				},
+				"defaults": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"background": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"type":  map[string]any{"type": "string"},
+								"color": map[string]any{"type": "string"},
+							},
+							"required":             []string{"type", "color"},
+							"additionalProperties": false,
+						},
+						"textStyle": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"fontFamily": map[string]any{"type": "string"},
+								"fontSize":   map[string]any{"type": "number"},
+								"color":      map[string]any{"type": "string"},
+								"align":      map[string]any{"type": "string"},
+								"valign":     map[string]any{"type": "string"},
+							},
+							"required":             []string{"fontFamily", "fontSize", "color", "align", "valign"},
+							"additionalProperties": false,
+						},
+						"shapeStyle": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"fill": map[string]any{
+									"type": "object",
+									"properties": map[string]any{
+										"type":  map[string]any{"type": "string"},
+										"color": map[string]any{"type": "string"},
+									},
+									"required":             []string{"type", "color"},
+									"additionalProperties": false,
+								},
+							},
+							"required":             []string{"fill"},
+							"additionalProperties": false,
+						},
+						"linkStyle": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"color":     map[string]any{"type": "string"},
+								"underline": map[string]any{"type": "boolean"},
+							},
+							"required":             []string{"color", "underline"},
+							"additionalProperties": false,
+						},
+					},
+					"required":             []string{"background", "textStyle", "shapeStyle", "linkStyle"},
+					"additionalProperties": false,
+				},
+			},
+			"required":             []string{"canvas", "grid", "colors", "typography", "defaults"},
+			"additionalProperties": false,
+		},
+		"masters": map[string]any{
+			"type":  "array",
+			"items": map[string]any{"type": "object"},
+		},
+		"layouts": map[string]any{
+			"type":  "array",
+			"items": map[string]any{"type": "object"},
+		},
+		"components": map[string]any{
+			"type":  "array",
+			"items": map[string]any{"type": "object"},
+		},
+		"export": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"format":              map[string]any{"type": "string"},
+				"fileName":            map[string]any{"type": "string"},
+				"includeSpeakerNotes": map[string]any{"type": "boolean"},
+			},
+			"required":             []string{"format", "fileName", "includeSpeakerNotes"},
+			"additionalProperties": false,
+		},
+	},
+	"required":             []string{"version", "metadata", "theme", "masters", "layouts", "components", "export"},
+	"additionalProperties": false,
+}
+
 // SlideGenResultSchema is the JSON schema for individual slide generation.
 var SlideGenResultSchema = map[string]any{
 	"type": "object",

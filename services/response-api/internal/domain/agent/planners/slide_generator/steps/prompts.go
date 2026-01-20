@@ -28,9 +28,9 @@ TEXT LENGTH CONSTRAINTS:
 
 `
 
-const plannerAndTemplatePrompt = `
-You are the Planner and Template Builder for a slide-deck generation system.
-Given BRIEF, ASSETS, DATA, and CONSTRAINTS, produce BOTH a slide plan AND the template.
+const plannerPrompt = `
+You are the Planner for a slide-deck generation system.
+Given BRIEF, ASSETS, DATA, and CONSTRAINTS, produce a slide plan only.
 
 OUTPUT FORMAT (STRICT):
 - Return ONLY valid JSON that matches the provided schema.
@@ -69,6 +69,18 @@ LAYOUT TYPES (use for suggestedLayout):
 - CHART_AND_INSIGHTS: Chart with insight bullets
 - TABLE_AND_CALLOUTS: Table with key takeaways callouts
 
+Create a cohesive plan that flows logically from introduction to conclusion.
+`
+
+const templatePrompt = `
+You are the Template Builder for a slide-deck generation system.
+Given BRIEF, PLAN, THEME, and CONSTRAINTS, produce the template only.
+
+OUTPUT FORMAT (STRICT):
+- Return ONLY valid JSON that matches the provided schema.
+- Do NOT wrap in markdown, code fences, or commentary.
+- Do NOT include any extra keys outside the schema.
+
 TEMPLATE REQUIREMENTS:
 - version: "1.0"
 - metadata: title, language (en), audience, purpose
@@ -81,8 +93,6 @@ TEMPLATE REQUIREMENTS:
 - Template MUST define header and footer components. Every layout except TITLE/SECTION_HEADER/CLOSING must include them.
 - For each layout you create, you MUST define layouts[].slots[] with ids and grid positions.
 - Do NOT embed per-slide geometry rules into the plan; geometry is resolved by slots.
-
-Create a cohesive plan that flows logically from introduction to conclusion.
 `
 
 const dataBankPrompt = `
@@ -105,7 +115,7 @@ func slideWriterPrompt(slideIndex int) string {
 	return fmt.Sprintf(`
 %s
 
-You are the Slide Writer. Generate slide %d using the provided template and plan entry.
+You are the Slide Writer. Generate slide %d using the provided LOCKED_LAYOUT and plan entry.
 
 OUTPUT FORMAT (STRICT):
 - Return ONLY valid JSON that matches the provided schema.
@@ -123,11 +133,11 @@ DESIGN RULES:
 - For bullet lists: set text.style.bullet.enabled=true and separate items with newline \n (no | separators)
 - For titles or any text that might wrap: set text.autoFit="shrink" so it won't overlap other blocks
 - id: unique string like "slide_%d_title"
-- layoutId: must match a layout.id from the template
+- layoutId: MUST equal LOCKED_LAYOUT.layoutId from the user prompt
 - slide.order MUST equal slideIndex; slide.id MUST be slide_<slideIndex>.
 - useComponents MUST be an array (empty if unused).
-- If the selected layout has slots, you MUST use slotId for each element and OMIT rect.
-- Do not invent new slot ids; choose only from the layout's slot list.
+- If LOCKED_LAYOUT.slotIds is non-empty, you MUST use slotId for each element and OMIT rect.
+- slotId MUST be one of the provided LOCKED_LAYOUT.slotIds (or null when using rect).
 
 ELEMENT TYPES:
 - text: requires "text": {"content": "...", "style": {...}, "runs": [], "autoFit": "shrink"}
@@ -143,12 +153,12 @@ TABLE ELEMENT (USE WHEN REQUESTED):
 
 REQUIRED HEADER ELEMENT:
 - Every content slide MUST include a header text element at the very top
-- Header position: rect: {x: 36-50, y: 36-46, w: 650-700, h: 18-24}
+- If slotId "header" exists in LOCKED_LAYOUT.slotIds, place the header text element in slotId="header" (preferred)
 - Header content: Single short label only (max 80 characters). Do NOT add a subheader/summary line in the header band.
 - Header style: fontSize: 11-12pt, color: muted/secondary color, align: left
 - This provides context separate from the main title; the main title should start below the header band.
 - Every content slide MUST also include a footer element (page number or brand line).
-- If the template provides header/footer components, include them via useComponents.
+- If component IDs "header" and/or "footer" exist in AVAILABLE_COMPONENT_IDS, include them via useComponents.
 
 TEXT LENGTH LIMITS:
 - Header text: max 80 characters (REQUIRED for content slides)
@@ -156,10 +166,12 @@ TEXT LENGTH LIMITS:
 - When placing multiple text elements horizontally, ensure >=20pt gap between them
 - Use text.autoFit="shrink" for all text elements to prevent overflow
 
-DATASET GENERATION (CRITICAL FOR CHARTS):
-- If your slide includes a chart element, you MUST provide complete dataset definitions in requires.datasets
-- DO NOT use string references like ["dataset_xyz"] - these will fail during rendering
-- Instead, provide COMPLETE dataset objects with actual data from the research:
+DATASETS FOR CHARTS:
+- Prefer referencing an existing dataset from DATA BANK by setting chart.datasetRef to a DATA BANK dataset id.
+- If you use a DATA BANK dataset id, keep requires.datasets empty (do NOT duplicate the dataset object).
+- Only include datasets in requires.datasets when you introduce a dataset that is NOT already present in DATA BANK.
+- DO NOT use string references like ["dataset_xyz"] inside requires.datasets - these will fail during rendering.
+- When you include a dataset object in requires.datasets, it MUST be a COMPLETE dataset object with real data:
   {
     "id": "dataset_xyz",
     "kind": "series",
@@ -170,16 +182,17 @@ DATASET GENERATION (CRITICAL FOR CHARTS):
     "sourceNote": "Source: BEA 2025 GDP estimates"
   }
 - Extract real numbers from the BRIEF section (research results, search output, etc.)
-- For GDP data: look for percentages, growth rates, specific quarterly or annual values
 - Ensure labels and values arrays have the same length
 - Use meaningful series names that match the chart purpose
 - Add proper source attribution in sourceNote
 
 IMPORTANT:
-- requires.datasets must be an array of complete objects, NOT strings
-- Each dataset must have: id (string), kind ("series"), data (object with labels and series arrays)
-- The chart element's datasetRef must match a dataset id you provide
+- requires.datasets must be an array of complete objects, NOT strings (when non-empty)
+- The chart element's datasetRef must match either:
+  - a DATA BANK dataset id, OR
+  - a dataset id you include in requires.datasets
 - If you add an image element, it MUST reference an asset id that exists in ASSETS AVAILABLE.
+- Keep requires.assets empty unless you must introduce an asset not present in ASSETS AVAILABLE.
 
 Create engaging, well-spaced content that fits the slide purpose.
 Follow the plan entry's suggestedLayout exactly when provided.

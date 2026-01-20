@@ -43,8 +43,7 @@ func ExecuteDataBank(ctx context.Context, deps ExecutorDeps, params map[string]i
 		}, nil
 	}
 
-	schema := cloneSchema(schemas.DataBankSchema)
-	schemas.NormalizeSchemaForStructuredOutput(schema)
+	schema := prepareSchema(schemas.DataBankSchema)
 
 	var lastErr error
 	var dataBank schemas.DataBank
@@ -57,8 +56,14 @@ func ExecuteDataBank(ctx context.Context, deps ExecutorDeps, params map[string]i
 		if useStructuredOutput {
 			result, err = deps.GenerateWithStructuredOutput(ctx, systemPrompt, userPrompt, model, schema)
 		} else {
-			schemaJSON, _ := json.MarshalIndent(schemas.DataBankSchema, "", "  ")
-			enhancedUserPrompt := fmt.Sprintf("%s\n\nIMPORTANT: You MUST respond with valid JSON that strictly adheres to this schema:\n```json\n%s\n```\n\nReturn ONLY the JSON object, no markdown code blocks, no explanations.", userPrompt, string(schemaJSON))
+			// Final fallback (non-structured): avoid embedding the full JSON Schema in the prompt
+			// to reduce token overhead and improve compliance.
+			shape := `{"facts":[{"claim":"...","value":"...","unit":"...","sourceUrl":"https://...","date":"YYYY-MM-DD"}],"datasets":[{"id":"dataset_id","kind":"bar|line|pie","data":{"labels":["..."],"series":[{"name":"...","values":[1,2,3]}]},"sourceNote":"..."}]}`
+			enhancedUserPrompt := fmt.Sprintf(
+				"%s\n\nIMPORTANT:\n- Return ONLY a single JSON object (no markdown, no commentary).\n- Match this JSON SHAPE (example placeholders):\n%s\n- If you cannot extract reliable facts/datasets from the provided context, return empty arrays for facts and datasets.",
+				userPrompt,
+				shape,
+			)
 			result, err = deps.GenerateWithSystemPrompt(ctx, systemPrompt, enhancedUserPrompt, model)
 			if err == nil {
 				result = extractJSONFromResponse(result)

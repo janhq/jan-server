@@ -295,7 +295,7 @@ func (cf *CodeFixer) GenerateWithSystemPrompt(ctx context.Context, systemPrompt 
 		Model:       useModel,
 		Messages:    messages,
 		Temperature: floatPtr(0.2), // Low temperature for structured output
-		MaxTokens:   intPtr(8192),
+		MaxTokens:   intPtr(40000),
 		Stream:      false,
 	}
 
@@ -336,7 +336,7 @@ func (cf *CodeFixer) GenerateWithSystemPromptWithMaxTokens(ctx context.Context, 
 		Model:       useModel,
 		Messages:    messages,
 		Temperature: floatPtr(0.2),
-		MaxTokens:   resolveMaxTokens(8192, maxTokens),
+		MaxTokens:   resolveMaxTokens(40000, maxTokens),
 		Stream:      false,
 	}
 
@@ -377,7 +377,7 @@ func (cf *CodeFixer) GenerateWithSystemPromptWithTemperature(ctx context.Context
 		Model:       useModel,
 		Messages:    messages,
 		Temperature: floatPtr(temperature),
-		MaxTokens:   intPtr(8192),
+		MaxTokens:   intPtr(40000),
 		Stream:      false,
 	}
 
@@ -418,7 +418,7 @@ func (cf *CodeFixer) GenerateWithSystemPromptWithTemperatureAndMaxTokens(ctx con
 		Model:       useModel,
 		Messages:    messages,
 		Temperature: floatPtr(temperature),
-		MaxTokens:   resolveMaxTokens(8192, maxTokens),
+		MaxTokens:   resolveMaxTokens(40000, maxTokens),
 		Stream:      false,
 	}
 
@@ -462,7 +462,7 @@ func (cf *CodeFixer) GenerateWithStructuredOutput(ctx context.Context, systemPro
 		Model:       useModel,
 		Messages:    messages,
 		Temperature: floatPtr(0.2),
-		MaxTokens:   intPtr(8192),
+		MaxTokens:   intPtr(40000),
 		Stream:      false,
 		ResponseFormat: &ResponseFormat{
 			Type: "json_schema",
@@ -514,7 +514,7 @@ func (cf *CodeFixer) GenerateWithStructuredOutputWithMaxTokens(ctx context.Conte
 		Model:       useModel,
 		Messages:    messages,
 		Temperature: floatPtr(0.2),
-		MaxTokens:   resolveMaxTokens(8192, maxTokens),
+		MaxTokens:   resolveMaxTokens(40000, maxTokens),
 		Stream:      false,
 		ResponseFormat: &ResponseFormat{
 			Type: "json_schema",
@@ -566,7 +566,7 @@ func (cf *CodeFixer) GenerateWithStructuredOutputWithTemperature(ctx context.Con
 		Model:       useModel,
 		Messages:    messages,
 		Temperature: floatPtr(temperature),
-		MaxTokens:   intPtr(8192),
+		MaxTokens:   intPtr(40000),
 		Stream:      false,
 		ResponseFormat: &ResponseFormat{
 			Type: "json_schema",
@@ -618,7 +618,7 @@ func (cf *CodeFixer) GenerateWithStructuredOutputWithTemperatureAndMaxTokens(ctx
 		Model:       useModel,
 		Messages:    messages,
 		Temperature: floatPtr(temperature),
-		MaxTokens:   resolveMaxTokens(8192, maxTokens),
+		MaxTokens:   resolveMaxTokens(40000, maxTokens),
 		Stream:      false,
 		ResponseFormat: &ResponseFormat{
 			Type: "json_schema",
@@ -683,7 +683,7 @@ func (cf *CodeFixer) GenerateWithStructuredOutputWithMaxTokensAndUsage(ctx conte
 		Model:       useModel,
 		Messages:    messages,
 		Temperature: floatPtr(0.2),
-		MaxTokens:   resolveMaxTokens(8192, maxTokens),
+		MaxTokens:   resolveMaxTokens(40000, maxTokens),
 		Stream:      false,
 		ResponseFormat: &ResponseFormat{
 			Type: "json_schema",
@@ -738,7 +738,7 @@ func (cf *CodeFixer) GenerateWithStructuredOutputWithTemperatureAndMaxTokensAndU
 		Model:       useModel,
 		Messages:    messages,
 		Temperature: floatPtr(temperature),
-		MaxTokens:   resolveMaxTokens(8192, maxTokens),
+		MaxTokens:   resolveMaxTokens(40000, maxTokens),
 		Stream:      false,
 		ResponseFormat: &ResponseFormat{
 			Type: "json_schema",
