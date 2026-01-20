@@ -16,6 +16,8 @@ import (
 	"jan-server/services/response-api/internal/domain/status"
 	"jan-server/services/response-api/internal/domain/tool"
 	"jan-server/services/response-api/internal/utils/idgen"
+
+	"github.com/rs/zerolog/log"
 )
 
 // extractJSONFromMarkdown extracts JSON content from markdown code blocks.
@@ -162,20 +164,34 @@ func NewSkillExecutor(
 
 // Execute runs a skill execution step.
 func (e *SkillExecutor) Execute(ctx context.Context, step *plan.Step, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
+	log.Debug().
+		Str("step_id", step.ID).
+		Str("action", string(step.Action)).
+		Bool("enabled", e.enabled).
+		Msg("[skill_executor] Execute started")
 	if !e.enabled {
+		log.Warn().Msg("[skill_executor] skill executor is disabled")
 		return e.failedResult("SKILL_DISABLED", "skill execution is disabled", status.ErrorSeverityFatal), nil
 	}
 
 	var params SkillExecuteParams
 	if err := json.Unmarshal(step.InputParams, &params); err != nil {
+		log.Error().Err(err).Msg("[skill_executor] failed to parse skill parameters")
 		return e.failedResult("PARSE_ERROR", "failed to parse skill parameters", status.ErrorSeverityFatal), nil
 	}
 
+	log.Debug().
+		Str("skill_type", string(params.SkillType)).
+		Interface("options", params.Options).
+		Msg("[skill_executor] parsed skill parameters")
+
 	if params.SkillType == "" {
+		log.Error().Msg("[skill_executor] missing skill type")
 		return e.failedResult("MISSING_SKILL_TYPE", "skill_type is required", status.ErrorSeverityFatal), nil
 	}
 
 	if enabled, ok := e.skillEnabledByType[params.SkillType]; ok && !enabled {
+		log.Warn().Str("skill_type", string(params.SkillType)).Msg("[skill_executor] skill type is disabled")
 		return e.failedResult("SKILL_TYPE_DISABLED", fmt.Sprintf("skill %s is disabled", params.SkillType), status.ErrorSeverityFatal), nil
 	}
 

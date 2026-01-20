@@ -357,9 +357,10 @@ export function ThreadPageContent({
                           output: agentOutput,
                         });
 
-                        setTimeout(() => {
-                          sendMessage();
-                        }, 100);
+                        // Don't trigger another LLM call after agent completion
+                        // The agent's output (with download URLs) is already in the tool result
+                        // Calling sendMessage() here causes the model to generate
+                        // unnecessary follow-up messages after the plan is completed
                       });
 
                       return;

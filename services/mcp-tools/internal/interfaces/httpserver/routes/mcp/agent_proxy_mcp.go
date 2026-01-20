@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -143,6 +144,20 @@ func (a *AgentProxyMCP) handleRunAgent(ctx context.Context, req *mcpsdk.CallTool
 			IsError: true,
 			Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: "prompt is required"}},
 		}, nil, nil
+	}
+
+	if input.AgentType == "slide_generator" {
+		numSlides, ok := extractRequiredSlideCount(input.Options)
+		if !ok || numSlides < 1 {
+			return &mcpsdk.CallToolResult{
+				IsError: true,
+				Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: "options.num_slides is required for slide_generator"}},
+			}, nil, nil
+		}
+		if input.Options == nil {
+			input.Options = map[string]interface{}{}
+		}
+		input.Options["num_slides"] = numSlides
 	}
 
 	// Get tracking context
@@ -415,7 +430,8 @@ func (a *AgentProxyMCP) buildRunAgentDescription(agents []AgentMetadataCache) st
 	sb.WriteString("- agent_type (required): The type of agent to run\n")
 	sb.WriteString("- prompt (required): The task description for the agent\n")
 	sb.WriteString("- model (optional): The model to use. If not provided, uses the first available model\n")
-	sb.WriteString("- options (optional): Agent-specific options (e.g., research_depth, num_slides, format)\n\n")
+	sb.WriteString("- options (optional): Agent-specific options (e.g., research_depth, num_slides, format)\n")
+	sb.WriteString("- NOTE: slide_generator requires options.num_slides\n\n")
 	sb.WriteString("Available agents:\n")
 
 	for _, agent := range agents {
@@ -425,6 +441,57 @@ func (a *AgentProxyMCP) buildRunAgentDescription(agents []AgentMetadataCache) st
 	}
 
 	return sb.String()
+}
+
+func extractRequiredSlideCount(options map[string]interface{}) (int, bool) {
+	if options == nil {
+		return 0, false
+	}
+	if value, ok := options["num_slides"]; ok {
+		return parseIntFromInterface(value)
+	}
+	if value, ok := options["num_slide"]; ok {
+		return parseIntFromInterface(value)
+	}
+	return 0, false
+}
+
+func parseIntFromInterface(value interface{}) (int, bool) {
+	switch v := value.(type) {
+	case int:
+		return v, true
+	case int8:
+		return int(v), true
+	case int16:
+		return int(v), true
+	case int32:
+		return int(v), true
+	case int64:
+		return int(v), true
+	case uint:
+		return int(v), true
+	case uint8:
+		return int(v), true
+	case uint16:
+		return int(v), true
+	case uint32:
+		return int(v), true
+	case uint64:
+		return int(v), true
+	case float32:
+		return int(v), true
+	case float64:
+		return int(v), true
+	case json.Number:
+		if n, err := v.Int64(); err == nil {
+			return int(n), true
+		}
+	case string:
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			return n, true
+		}
+	}
+	return 0, false
 }
 
 // getEnabledAgentTypes returns a list of enabled agent type strings.

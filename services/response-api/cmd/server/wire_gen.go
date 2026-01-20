@@ -25,11 +25,11 @@ import (
 	"jan-server/services/response-api/internal/infrastructure/logger"
 	"jan-server/services/response-api/internal/infrastructure/mcp"
 	"jan-server/services/response-api/internal/infrastructure/media"
-	skillinfra "jan-server/services/response-api/internal/infrastructure/skill"
 	"jan-server/services/response-api/internal/infrastructure/repository/artifact"
 	"jan-server/services/response-api/internal/infrastructure/repository/conversation"
 	"jan-server/services/response-api/internal/infrastructure/repository/plan"
 	"jan-server/services/response-api/internal/infrastructure/repository/response"
+	skillinfra "jan-server/services/response-api/internal/infrastructure/skill"
 	"jan-server/services/response-api/internal/interfaces/httpserver"
 	"jan-server/services/response-api/internal/webhook"
 
@@ -179,8 +179,6 @@ func newAgentRegistry(planService plan2.Service, mcpClient tool.MCPClient, llmPr
 	codeFixer := llm.NewCodeFixer(llmProvider, cfg.CodeFixModel)
 
 	deepResearchExecutor := planners.NewDeepResearchExecutor(mcpClient, codeFixer)
-	_ = registry.RegisterExecutor(plan2.ActionTypeToolCall, deepResearchExecutor)
-	_ = registry.RegisterExecutor(plan2.ActionTypeLLMCall, deepResearchExecutor)
 
 	skillExecutor := planners.NewSkillExecutor(
 		mcpClient,
@@ -201,6 +199,9 @@ func newAgentRegistry(planService plan2.Service, mcpClient tool.MCPClient, llmPr
 
 	// Register the slide generator executor for artifact creation
 	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient, skillExecutor, cfg)
+	routingExecutor := planners.NewRoutingExecutor(deepResearchExecutor, slideGeneratorExecutor)
+	_ = registry.RegisterExecutor(plan2.ActionTypeToolCall, routingExecutor)
+	_ = registry.RegisterExecutor(plan2.ActionTypeLLMCall, routingExecutor)
 	_ = registry.RegisterExecutor(plan2.ActionTypeArtifactCreate, slideGeneratorExecutor)
 	_ = registry.RegisterExecutor(plan2.ActionTypeSkillExecute, skillExecutor)
 

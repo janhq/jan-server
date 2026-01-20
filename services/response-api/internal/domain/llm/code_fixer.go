@@ -210,3 +210,55 @@ func (cf *CodeFixer) GenerateWithSystemPrompt(ctx context.Context, systemPrompt 
 
 	return resp.Choices[0].Message.GetContentAsString(), nil
 }
+
+// GenerateWithStructuredOutput generates content using response_format json_schema.
+func (cf *CodeFixer) GenerateWithStructuredOutput(ctx context.Context, systemPrompt string, userPrompt string, model string, schema map[string]any) (string, error) {
+	if userPrompt == "" {
+		return "", fmt.Errorf("empty prompt provided")
+	}
+	if schema == nil {
+		return "", fmt.Errorf("schema is required for structured output")
+	}
+
+	useModel := cf.model
+	if model != "" {
+		useModel = model
+	}
+
+	messages := []ChatMessage{
+		{Role: "user", Content: userPrompt},
+	}
+	if systemPrompt != "" {
+		messages = []ChatMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		}
+	}
+
+	req := ChatCompletionRequest{
+		Model:       useModel,
+		Messages:    messages,
+		Temperature: floatPtr(0.2),
+		MaxTokens:   intPtr(8192),
+		Stream:      false,
+		ResponseFormat: &ResponseFormat{
+			Type: "json_schema",
+			JSONSchema: &JSONSchema{
+				Name:   "output_schema",
+				Schema: schema,
+				Strict: true,
+			},
+		},
+	}
+
+	resp, err := cf.provider.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("LLM call failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("LLM returned no choices")
+	}
+
+	return resp.Choices[0].Message.GetContentAsString(), nil
+}

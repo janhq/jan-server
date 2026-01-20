@@ -3,18 +3,22 @@ package planners
 
 import (
 	"context"
-	"embed"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
+	sliderenderer "jan-server/services/response-api/assets/slide_renderer"
 	"jan-server/services/response-api/internal/config"
 	"jan-server/services/response-api/internal/domain/agent"
+	"jan-server/services/response-api/internal/domain/agent/schemas"
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/plan"
 	"jan-server/services/response-api/internal/domain/status"
@@ -34,13 +38,10 @@ type SlideGeneratorPlanner struct {
 type SlideGeneratorConfig struct {
 	NumSlides     int    `json:"num_slides"`
 	Theme         string `json:"theme"`
-	Format        string `json:"format"`         // pptx, pdf, google_slides
+	Format        string `json:"format"`         // pptx, pdf
 	ResearchDepth string `json:"research_depth"` // minimal, standard, deep
 	OptionsCount  int    `json:"options_count"`
 }
-
-//go:embed templates/slide_template.json
-var slideTemplateFS embed.FS
 
 // DefaultSlideGeneratorConfig returns sensible defaults.
 func DefaultSlideGeneratorConfig() SlideGeneratorConfig {
@@ -84,18 +85,12 @@ func (p *SlideGeneratorPlanner) CanHandle(ctx context.Context, request *agent.Pl
 
 // CreatePlan analyzes the request and creates an execution plan for slide generation.
 func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.PlanRequest) (*agent.PlanResult, error) {
-	// Parse slide configuration from metadata
+	log.Debug().Interface("request", request).Msg("[slide_generator] CreatePlan started")
 	config := p.parseConfig(request)
-
-	// Determine steps based on research depth
+	log.Debug().Interface("config", config).Msg("[slide_generator] parsed config")
 	estimatedSteps := p.calculateEstimatedSteps(config)
+	log.Debug().Int("estimated_steps", estimatedSteps).Msg("[slide_generator] calculated estimated steps")
 
-	templateJSON, err := loadEmbeddedSlideTemplate()
-	if err != nil {
-		return nil, err
-	}
-
-	// Create the plan
 	createdPlan, err := p.planService.Create(ctx, plan.CreateParams{
 		ResponseID:     request.ResponseID,
 		Model:          request.Model,
@@ -105,7 +100,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 			MaxRetries:        5,
 			TimeoutPerStep:    300000000000, // 5 minutes in nanoseconds
 			EnableFallback:    true,
-			UserApproval:      config.OptionsCount > 1, // Require approval if multiple options
+			UserApproval:      config.OptionsCount > 1,
 			StreamProgress:    true,
 			ArtifactRetention: "session",
 		},
@@ -114,12 +109,8 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		return nil, err
 	}
 
-	// Track current task sequence
 	taskSequence := 1
 
-	// ============================================
-	// Task 0: User Selection (when multiple options)
-	// ============================================
 	if config.OptionsCount > 1 {
 		selectionTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
 			Sequence:    taskSequence,
@@ -151,10 +142,8 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		taskSequence++
 	}
 
-	// ============================================
-	// Task 1: Research (if research_depth != minimal)
-	// ============================================
 	if config.ResearchDepth != "minimal" {
+		log.Debug().Str("research_depth", config.ResearchDepth).Msg("[slide_generator] creating research task")
 		researchTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
 			Sequence:    taskSequence,
 			TaskType:    plan.TaskTypeResearch,
@@ -164,12 +153,12 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		if err != nil {
 			return nil, err
 		}
+		log.Debug().Str("task_id", researchTask.ID).Msg("[slide_generator] research task created")
 
-		// Step 1: Primary search
 		searchParams1, _ := json.Marshal(map[string]interface{}{
 			"tool":        "google_search",
 			"description": "Search for key ideas related to the topic for the presentation",
-			"q":           request.UserMessage, // Include user query for search
+			"q":           request.UserMessage,
 		})
 		_, err = p.planService.CreateStep(ctx, researchTask.ID, plan.CreateStepParams{
 			Sequence:    1,
@@ -181,12 +170,11 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 			return nil, err
 		}
 
-		// Additional research for deep mode
 		if config.ResearchDepth == "deep" {
 			searchParams2, _ := json.Marshal(map[string]interface{}{
 				"tool":        "google_search",
 				"description": "Secondary search for supporting data and examples",
-				"q":           request.UserMessage + " examples data statistics", // Extended query
+				"q":           request.UserMessage + " examples data statistics",
 			})
 			_, err = p.planService.CreateStep(ctx, researchTask.ID, plan.CreateStepParams{
 				Sequence:    2,
@@ -216,9 +204,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		taskSequence++
 	}
 
-	// ============================================
-	// Task 2: Outline & Structure
-	// ============================================
+	log.Debug().Int("task_sequence", taskSequence).Msg("[slide_generator] creating outline task")
 	outlineTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
 		Sequence:    taskSequence,
 		TaskType:    plan.TaskTypeValidation,
@@ -228,6 +214,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 	if err != nil {
 		return nil, err
 	}
+	log.Debug().Str("task_id", outlineTask.ID).Msg("[slide_generator] outline task created")
 
 	outlineParams, _ := json.Marshal(map[string]interface{}{
 		"action":      "reasoning",
@@ -249,33 +236,31 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 
 	taskSequence++
 
-	// ============================================
-	// Task 3: Slide JSON Generation
-	// ============================================
-	contentTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
+	log.Debug().Int("task_sequence", taskSequence).Msg("[slide_generator] creating plan & template task")
+	plannerTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
 		Sequence:    taskSequence,
 		TaskType:    plan.TaskTypeGeneration,
-		Title:       "Generate Slides JSON",
-		Description: strPtr("Generate structured slide JSON based on the template"),
+		Title:       "Plan & Template",
+		Description: strPtr("Create presentation plan and DeckSpec template structure"),
 	})
 	if err != nil {
 		return nil, err
 	}
+	log.Debug().Str("task_id", plannerTask.ID).Msg("[slide_generator] plan & template task created")
 
-	structureParams, _ := json.Marshal(map[string]interface{}{
-		"action":      "generate_slides_json",
-		"description": "Generate structured slide JSON format",
-		"template":    templateJSON,
+	plannerParams, _ := json.Marshal(map[string]interface{}{
+		"action":      "plan_and_template",
+		"description": "Generate slide plan and template using PlanAndTemplateSchema",
+		"schema":      schemas.PlanAndTemplateSchema,
 		"config": map[string]interface{}{
 			"num_slides": config.NumSlides,
 			"theme":      config.Theme,
-			"format":     config.Format,
 		},
 	})
-	_, err = p.planService.CreateStep(ctx, contentTask.ID, plan.CreateStepParams{
+	_, err = p.planService.CreateStep(ctx, plannerTask.ID, plan.CreateStepParams{
 		Sequence:    1,
 		Action:      plan.ActionTypeLLMCall,
-		InputParams: structureParams,
+		InputParams: plannerParams,
 		MaxRetries:  5,
 	})
 	if err != nil {
@@ -284,75 +269,86 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 
 	taskSequence++
 
-	// ============================================
-	// Task 4: Visual Enhancement (optional for rich themes)
-	// ============================================
-	if p.requiresVisualEnhancement(config.Theme) {
-		visualTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
-			Sequence:    taskSequence,
-			TaskType:    plan.TaskTypeTransform,
-			Title:       "Visual Enhancement",
-			Description: strPtr("Add visual elements and polish design"),
+	log.Debug().Int("task_sequence", taskSequence).Int("num_slides", config.NumSlides).Msg("[slide_generator] creating slide generation task")
+	slideGenTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
+		Sequence:    taskSequence,
+		TaskType:    plan.TaskTypeGeneration,
+		Title:       "Generate Slides",
+		Description: strPtr(fmt.Sprintf("Generate %d slides in parallel", config.NumSlides)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	log.Debug().Str("task_id", slideGenTask.ID).Int("num_slides", config.NumSlides).Msg("[slide_generator] slide generation task created")
+
+	for i := 1; i <= config.NumSlides; i++ {
+		log.Debug().Int("slide_index", i).Msg("[slide_generator] creating step for slide")
+		slideParams, _ := json.Marshal(map[string]interface{}{
+			"action":      "generate_single_slide",
+			"description": fmt.Sprintf("Generate slide %d content", i),
+			"slide_index": i,
+			"schema":      schemas.SlideGenResultSchema,
+			"parallel":    true,
+		})
+		_, err = p.planService.CreateStep(ctx, slideGenTask.ID, plan.CreateStepParams{
+			Sequence:    i,
+			Action:      plan.ActionTypeLLMCall,
+			InputParams: slideParams,
+			MaxRetries:  3,
 		})
 		if err != nil {
 			return nil, err
 		}
-
-		// Search for relevant images
-		imageSearchParams, _ := json.Marshal(map[string]interface{}{
-			"tool":        "google_search",
-			"description": "Search for relevant images and graphics",
-			"search_type": "images",
-			"q":           request.UserMessage + " images",
-		})
-		_, err = p.planService.CreateStep(ctx, visualTask.ID, plan.CreateStepParams{
-			Sequence:    1,
-			Action:      plan.ActionTypeToolCall,
-			InputParams: imageSearchParams,
-			MaxRetries:  2,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		taskSequence++
 	}
 
-	// ============================================
-	// Task 5: Skill Execution & Artifact Creation
-	// ============================================
+	taskSequence++
+
 	finalTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
 		Sequence:    taskSequence,
 		TaskType:    plan.TaskTypeFinalization,
 		Title:       "Generate Presentation",
-		Description: strPtr("Generate final presentation artifact"),
+		Description: strPtr("Render slide deck and store artifact"),
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// Execute slide rendering via code execution
-	compileParams, _ := json.Marshal(map[string]interface{}{
+	specPath := fmt.Sprintf("/home/gem/slide_specs/slide_spec_%s.json", request.ResponseID)
+	uploadParams, _ := json.Marshal(map[string]interface{}{
+		"action":      "upload_slide_spec",
+		"description": "Upload slide JSON to sandbox",
 		"tool":        "aio_code_execute",
 		"language":    "python",
-		"description": "Render PPTX from slide JSON",
-		"action":      "render_slides_json",
-		"spec_path":   fmt.Sprintf("/home/gem/slide_specs/slide_spec_%s.json", request.ResponseID),
-		"script_path": fmt.Sprintf("/home/gem/slide_execs/slide_exec_%s.py", request.ResponseID),
-		"output_path": fmt.Sprintf("/home/gem/slide_%s.pptx", request.ResponseID),
-		"image_url":   "https://www.jan.ai/_next/static/media/cute-robot-flying.1479447f.png",
+		"target_path": specPath,
 	})
 	_, err = p.planService.CreateStep(ctx, finalTask.ID, plan.CreateStepParams{
 		Sequence:    1,
 		Action:      plan.ActionTypeToolCall,
-		InputParams: compileParams,
+		InputParams: uploadParams,
 		MaxRetries:  3,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// Store artifact
+	outputPath := fmt.Sprintf("/home/gem/slide_%s.pptx", request.ResponseID)
+	renderParams, _ := json.Marshal(map[string]interface{}{
+		"action":      "render_deck",
+		"description": "Render PPTX from slide JSON",
+		"tool":        "aio_code_execute",
+		"language":    "python",
+		"output_path": outputPath,
+	})
+	_, err = p.planService.CreateStep(ctx, finalTask.ID, plan.CreateStepParams{
+		Sequence:    2,
+		Action:      plan.ActionTypeToolCall,
+		InputParams: renderParams,
+		MaxRetries:  3,
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	artifactParams, _ := json.Marshal(map[string]interface{}{
 		"action":        "store_artifact",
 		"description":   "Store presentation as downloadable artifact",
@@ -363,7 +359,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		},
 	})
 	_, err = p.planService.CreateStep(ctx, finalTask.ID, plan.CreateStepParams{
-		Sequence:    2,
+		Sequence:    3,
 		Action:      plan.ActionTypeArtifactCreate,
 		InputParams: artifactParams,
 		MaxRetries:  3,
@@ -372,13 +368,11 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		return nil, err
 	}
 
-	// Reload plan with tasks
 	planWithDetails, err := p.planService.GetPlanWithDetails(ctx, createdPlan.ID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Build result
 	result := &agent.PlanResult{
 		Plan:             planWithDetails,
 		Tasks:            make([]*plan.Task, len(planWithDetails.Tasks)),
@@ -410,15 +404,12 @@ func (p *SlideGeneratorPlanner) parseConfig(request *agent.PlanRequest) SlideGen
 		return config
 	}
 
-	// Parse top-level metadata fields first.
 	applySlideConfigFromMap(&config, request.Metadata)
 
-	// Parse options from metadata (tool choice options) last to allow overrides.
 	if options, ok := request.Metadata["options"].(map[string]interface{}); ok {
 		applySlideConfigFromMap(&config, options)
 	}
 
-	// Validate and clamp values
 	if config.NumSlides < 1 {
 		config.NumSlides = 1
 	}
@@ -439,8 +430,8 @@ func applySlideConfigFromMap(config *SlideGeneratorConfig, values map[string]int
 	if values == nil {
 		return
 	}
-	if numSlides, ok := values["num_slides"].(float64); ok {
-		config.NumSlides = int(numSlides)
+	if numSlides, ok := parseIntFromInterface(values["num_slides"]); ok {
+		config.NumSlides = numSlides
 	}
 	if theme, ok := values["theme"].(string); ok {
 		config.Theme = theme
@@ -451,9 +442,47 @@ func applySlideConfigFromMap(config *SlideGeneratorConfig, values map[string]int
 	if researchDepth, ok := values["research_depth"].(string); ok {
 		config.ResearchDepth = researchDepth
 	}
-	if optionsCount, ok := values["options_count"].(float64); ok {
-		config.OptionsCount = int(optionsCount)
+	if optionsCount, ok := parseIntFromInterface(values["options_count"]); ok {
+		config.OptionsCount = optionsCount
 	}
+}
+
+func parseIntFromInterface(value interface{}) (int, bool) {
+	switch v := value.(type) {
+	case int:
+		return v, true
+	case int8:
+		return int(v), true
+	case int16:
+		return int(v), true
+	case int32:
+		return int(v), true
+	case int64:
+		return int(v), true
+	case uint:
+		return int(v), true
+	case uint8:
+		return int(v), true
+	case uint16:
+		return int(v), true
+	case uint32:
+		return int(v), true
+	case uint64:
+		return int(v), true
+	case float32:
+		return int(v), true
+	case float64:
+		return int(v), true
+	case json.Number:
+		if n, err := v.Int64(); err == nil {
+			return int(n), true
+		}
+	case string:
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			return n, true
+		}
+	}
+	return 0, false
 }
 
 // calculateEstimatedSteps returns the expected number of steps based on configuration.
@@ -464,52 +493,23 @@ func (p *SlideGeneratorPlanner) calculateEstimatedSteps(config SlideGeneratorCon
 		steps++
 	}
 
-	// Research steps
 	switch config.ResearchDepth {
 	case "minimal":
 		steps += 0
 	case "standard":
-		steps += 1 // 1 search
-	case "deep":
-		steps += 3 // 2 searches + 1 scrape
-	}
-
-	// Outline step
-	steps += 1
-
-	// Content generation steps
-	steps += 1 // JSON generation
-
-	// Visual enhancement (for non-minimal themes)
-	if p.requiresVisualEnhancement(config.Theme) {
 		steps += 1
+	case "deep":
+		steps += 3
 	}
 
-	// Finalization steps
-	steps += 2 // compile + artifact
+	steps += 1 // outline
+	steps += 1 // plan & template
+	steps += config.NumSlides
+	steps += 1 // upload spec
+	steps += 1 // render
+	steps += 1 // artifact
 
 	return steps
-}
-
-// requiresVisualEnhancement checks if the theme needs image search.
-func (p *SlideGeneratorPlanner) requiresVisualEnhancement(theme string) bool {
-	// Themes that benefit from image search
-	enhancedThemes := []string{"modern", "corporate", "creative", "infographic"}
-	themeLower := strings.ToLower(theme)
-	for _, t := range enhancedThemes {
-		if strings.Contains(themeLower, t) {
-			return true
-		}
-	}
-	return false
-}
-
-func loadEmbeddedSlideTemplate() (string, error) {
-	data, err := slideTemplateFS.ReadFile("templates/slide_template.json")
-	if err != nil {
-		return "", fmt.Errorf("read slide template: %w", err)
-	}
-	return strings.TrimSpace(string(data)), nil
 }
 
 // Verify interface compliance at compile time
@@ -517,27 +517,47 @@ var _ agent.Planner = (*SlideGeneratorPlanner)(nil)
 
 // SlideGeneratorExecutor executes steps for slide generation plans.
 type SlideGeneratorExecutor struct {
-	mcpClient       MCPClient
-	llmProvider     LLMProvider
-	artifactService artifact.Service
-	mediaClient     *media.Client
-	skillExecutor   *SkillExecutor
-	aioBaseURL      string
+	mcpClient          MCPClient
+	llmProvider        LLMProvider
+	artifactService    artifact.Service
+	mediaClient        *media.Client
+	skillExecutor      *SkillExecutor
+	aioClient          *agent.AIOSandboxClient // Direct AIO sandbox client (bypasses MCP)
+	aioBaseURL         string
+	rendererScriptPath string
+	rendererEnabled    bool
+	temperature        float64 // LLM temperature for slide generation (default: 0.2)
 }
 
 // NewSlideGeneratorExecutor creates a new slide generator executor.
 func NewSlideGeneratorExecutor(mcpClient MCPClient, llmProvider LLMProvider, artifactService artifact.Service, mediaClient *media.Client, skillExecutor *SkillExecutor, cfg *config.Config) *SlideGeneratorExecutor {
 	aioBaseURL := ""
+	rendererScriptPath := ""
+	rendererEnabled := true
 	if cfg != nil {
 		aioBaseURL = strings.TrimSpace(cfg.AIOURL)
+		rendererScriptPath = strings.TrimSpace(cfg.SlideRendererScript)
+		rendererEnabled = cfg.SlideRendererEnabled
 	}
+
+	// Initialize direct AIO sandbox client (bypasses unstable MCP layer)
+	var aioClient *agent.AIOSandboxClient
+	if aioBaseURL != "" {
+		aioClient = agent.NewAIOSandboxClient(aioBaseURL, log.Logger)
+		log.Info().Str("aio_url", aioBaseURL).Msg("[slide_generator] Initialized direct AIO sandbox client")
+	}
+
 	return &SlideGeneratorExecutor{
-		mcpClient:       mcpClient,
-		llmProvider:     llmProvider,
-		artifactService: artifactService,
-		mediaClient:     mediaClient,
-		skillExecutor:   skillExecutor,
-		aioBaseURL:      aioBaseURL,
+		mcpClient:          mcpClient,
+		llmProvider:        llmProvider,
+		artifactService:    artifactService,
+		mediaClient:        mediaClient,
+		skillExecutor:      skillExecutor,
+		aioClient:          aioClient,
+		aioBaseURL:         aioBaseURL,
+		rendererScriptPath: rendererScriptPath,
+		rendererEnabled:    rendererEnabled,
+		temperature:        0.2, // Low temperature for deterministic, structured output
 	}
 }
 
@@ -553,10 +573,7 @@ func (e *SlideGeneratorExecutor) CanExecute(action plan.ActionType) bool {
 
 // Rollback attempts to undo a step's effects.
 func (e *SlideGeneratorExecutor) Rollback(ctx context.Context, step *plan.Step) error {
-	// Slide generation steps are generally not reversible
-	// Artifact creation could be rolled back by deleting the artifact
 	if step.Action == plan.ActionTypeArtifactCreate {
-		// Could implement artifact deletion here if needed
 		return nil
 	}
 	return nil
@@ -564,6 +581,7 @@ func (e *SlideGeneratorExecutor) Rollback(ctx context.Context, step *plan.Step) 
 
 // Execute runs a single step and returns the result.
 func (e *SlideGeneratorExecutor) Execute(ctx context.Context, step *plan.Step, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
+	log.Debug().Str("step_id", step.ID).Str("action", string(step.Action)).Int("sequence", step.Sequence).Msg("[slide_generator] Execute started")
 	switch step.Action {
 	case plan.ActionTypeToolCall:
 		return e.executeToolCall(ctx, step, input)
@@ -584,16 +602,15 @@ func (e *SlideGeneratorExecutor) Execute(ctx context.Context, step *plan.Step, i
 	case plan.ActionTypeArtifactCreate:
 		return e.executeArtifactCreation(ctx, step, input)
 	default:
-		return &agent.ExecutionResult{
-			Status: status.StatusCompleted,
-			Output: nil,
-		}, nil
+		return &agent.ExecutionResult{Status: status.StatusCompleted}, nil
 	}
 }
 
 func (e *SlideGeneratorExecutor) executeToolCall(ctx context.Context, step *plan.Step, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
+	log.Debug().Str("step_id", step.ID).Msg("[slide_generator] executeToolCall started")
 	var params map[string]interface{}
 	if err := json.Unmarshal(step.InputParams, &params); err != nil {
+		log.Error().Err(err).Msg("[slide_generator] failed to parse step parameters")
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
 			Error: &agent.ExecutionError{
@@ -604,8 +621,22 @@ func (e *SlideGeneratorExecutor) executeToolCall(ctx context.Context, step *plan
 		}, nil
 	}
 
+	action, _ := params["action"].(string)
+	switch action {
+	case "upload_slide_spec":
+		return e.executeUploadSlideSpec(ctx, params, input)
+	case "render_deck":
+		return e.executeRenderScript(ctx, params, input)
+	default:
+		return e.executeGenericToolCall(ctx, step, params, input)
+	}
+}
+
+func (e *SlideGeneratorExecutor) executeGenericToolCall(ctx context.Context, step *plan.Step, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
 	toolName, _ := params["tool"].(string)
+	log.Debug().Str("tool_name", toolName).Interface("params", params).Msg("[slide_generator] executeGenericToolCall started")
 	if toolName == "" {
+		log.Error().Msg("[slide_generator] no tool specified")
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
 			Error: &agent.ExecutionError{
@@ -617,40 +648,9 @@ func (e *SlideGeneratorExecutor) executeToolCall(ctx context.Context, step *plan
 	}
 
 	description, _ := params["description"].(string)
-
-	// Build actual tool arguments (strip metadata fields, validate per-tool requirements)
-	log.Info().
-		Str("tool", toolName).
-		Str("step_id", step.ID).
-		Msg("Preparing tool call arguments")
 	toolArgs, err := e.buildToolArguments(toolName, params, input, description)
 	if err != nil {
-		if toolName == "aio_code_execute" {
-			log.Warn().
-				Str("tool", toolName).
-				Err(err).
-				Msg("Tool arguments failed, attempting LLM repair")
-			if repairedArgs, repairErr := e.buildAioCodeArgsWithRepair(ctx, params, input); repairErr == nil {
-				toolArgs = repairedArgs
-				err = nil
-				log.Info().
-					Str("tool", toolName).
-					Msg("Tool arguments repaired successfully")
-			} else {
-				log.Error().
-					Str("tool", toolName).
-					Err(repairErr).
-					Msg("Tool argument repair failed")
-			}
-		}
-	}
-	if err != nil {
-		// For non-critical tools like search/scrape, return skipped result instead of failing
 		if isNonCriticalToolForSlides(toolName) {
-			log.Warn().
-				Str("tool", toolName).
-				Err(err).
-				Msg("Non-critical tool argument validation failed, skipping")
 			return buildSkippedToolResultForSlides(toolName, err.Error(), "invalid_arguments"), nil
 		}
 		return &agent.ExecutionResult{
@@ -663,96 +663,19 @@ func (e *SlideGeneratorExecutor) executeToolCall(ctx context.Context, step *plan
 		}, nil
 	}
 
-	// Extract context info
-	requestID := ""
-	conversationID := ""
+	callReq := tool.CallRequest{
+		Name:      toolName,
+		Arguments: toolArgs,
+	}
 	if input.PlanContext != nil {
-		requestID = input.PlanContext.ResponseID
-		conversationID = input.PlanContext.ConversationID
+		callReq.RequestID = input.PlanContext.ResponseID
+		callReq.ConversationID = input.PlanContext.ConversationID
 	}
 
-	log.Info().
-		Str("tool", toolName).
-		Interface("arguments", toolArgs).
-		Str("step_id", step.ID).
-		Msg("Executing tool call")
-
-	// Execute tool via MCP client
-	var result *tool.Result
-	if toolName == "aio_code_execute" {
-		var lastErr error
-		var lastResult *tool.Result
-		for attempt := 0; attempt < 5; attempt++ {
-			result, err = e.mcpClient.CallTool(ctx, tool.CallRequest{
-				Name:           toolName,
-				Arguments:      toolArgs,
-				RequestID:      requestID,
-				ConversationID: conversationID,
-			})
-			if result != nil {
-				lastResult = result
-			}
-			if err == nil && result != nil && !result.IsError {
-				lastErr = nil
-				break
-			}
-			if err != nil {
-				lastErr = err
-			} else if result != nil && result.IsError {
-				lastErr = fmt.Errorf(strings.TrimSpace(result.Error))
-			}
-			if attempt == 4 {
-				break
-			}
-
-			repairedArgs, repairErr := e.buildAioCodeArgsWithRepair(ctx, params, input)
-			if repairErr != nil {
-				break
-			}
-			toolArgs = repairedArgs
-		}
-		if lastErr != nil {
-			if lastResult != nil && toolName == "aio_code_execute" {
-				logAioCodeExecuteResult(step.ID, lastResult)
-			}
-			var outputBytes []byte
-			if lastResult != nil {
-				outputBytes, _ = json.Marshal(lastResult)
-			}
-			log.Error().
-				Err(lastErr).
-				Str("tool", toolName).
-				Interface("arguments", toolArgs).
-				Str("step_id", step.ID).
-				Msg("Tool call failed")
-			return &agent.ExecutionResult{
-				Status: status.StatusFailed,
-				Output: outputBytes,
-				Error: &agent.ExecutionError{
-					Code:     "TOOL_ERROR",
-					Message:  lastErr.Error(),
-					Severity: status.ErrorSeverityRetryable,
-				},
-			}, nil
-		}
-	} else {
-		result, err = e.mcpClient.CallTool(ctx, tool.CallRequest{
-			Name:           toolName,
-			Arguments:      toolArgs,
-			RequestID:      requestID,
-			ConversationID: conversationID,
-		})
-	}
-
+	log.Debug().Str("tool_name", toolName).Interface("arguments", toolArgs).Msg("[slide_generator] calling tool")
+	result, err := e.mcpClient.CallTool(ctx, callReq)
 	if err != nil {
-		log.Error().
-			Err(err).
-			Str("tool", toolName).
-			Interface("arguments", toolArgs).
-			Str("step_id", step.ID).
-			Msg("Tool call failed")
-
-		// For non-critical tools, return skipped result instead of failing
+		log.Error().Err(err).Str("tool_name", toolName).Msg("[slide_generator] tool call failed")
 		if isNonCriticalToolForSlides(toolName) {
 			return buildSkippedToolResultForSlides(toolName, err.Error(), "tool_call_failed"), nil
 		}
@@ -766,16 +689,6 @@ func (e *SlideGeneratorExecutor) executeToolCall(ctx context.Context, step *plan
 		}, nil
 	}
 
-	log.Info().
-		Str("tool", toolName).
-		Str("step_id", step.ID).
-		Bool("is_error", result.IsError).
-		Msg("Tool call completed")
-	if result != nil && result.IsError && toolName == "aio_code_execute" {
-		logAioCodeExecuteResult(step.ID, result)
-	}
-
-	// Handle tool errors for non-critical tools gracefully
 	if result != nil && result.IsError && isNonCriticalToolForSlides(toolName) {
 		return buildSkippedToolResultForSlides(toolName, "tool reported error", "tool_error"), nil
 	}
@@ -788,80 +701,66 @@ func (e *SlideGeneratorExecutor) executeToolCall(ctx context.Context, step *plan
 }
 
 func (e *SlideGeneratorExecutor) executeLLMCall(ctx context.Context, step *plan.Step, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
+	log.Debug().Str("step_id", step.ID).Msg("[slide_generator] executeLLMCall started")
 	var params map[string]interface{}
 	if err := json.Unmarshal(step.InputParams, &params); err != nil {
+		log.Error().Err(err).Msg("[slide_generator] failed to parse LLM call parameters")
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
 			Error:  &agent.ExecutionError{Message: err.Error(), Severity: status.ErrorSeverityRetryable},
 		}, nil
 	}
 
+	if requiresUser, ok := params["requires_user"].(bool); ok && requiresUser {
+		prompt, _ := params["prompt"].(string)
+		optionsCount := 0
+		if rawCount, ok := params["options_count"].(float64); ok {
+			optionsCount = int(rawCount)
+		}
+
+		options := make([]string, 0, optionsCount)
+		for i := 0; i < optionsCount; i++ {
+			options = append(options, fmt.Sprintf("option_%d", i+1))
+		}
+
+		outputBytes, _ := json.Marshal(map[string]interface{}{
+			"status":        "waiting_for_user",
+			"prompt":        prompt,
+			"options":       options,
+			"options_count": optionsCount,
+		})
+
+		return &agent.ExecutionResult{
+			Status:       status.StatusCompleted,
+			Output:       outputBytes,
+			RequiresUser: true,
+			UserPrompt:   &prompt,
+		}, nil
+	}
+
 	action, _ := params["action"].(string)
-	description, _ := params["description"].(string)
-
-	// Build context from accumulated outputs
-	contextData := e.buildAccumulatedContext(input)
-
-	// Build prompt based on action type
-	var prompt string
 	switch action {
+	case "plan_and_template":
+		return e.executePlanAndTemplate(ctx, params, input)
+	case "generate_single_slide":
+		return e.executeSingleSlide(ctx, params, input)
 	case "reasoning":
-		prompt = fmt.Sprintf(
-			"Analyze and plan the slide structure. %s\n\nResearch findings:\n%s\n\n"+
-				"Provide a clear, concise outline for the presentation.\n"+
-				"Return plain text only.",
-			description, contextData)
-	case "generate_slides_json":
-		config, _ := params["config"].(map[string]interface{})
-		numSlides := 10
-		if n, ok := config["num_slides"].(float64); ok {
-			numSlides = int(n)
-		}
-		theme, _ := config["theme"].(string)
-		template, _ := params["template"].(string)
-		if strings.TrimSpace(template) == "" {
-			if embedded, err := loadEmbeddedSlideTemplate(); err == nil {
-				template = embedded
-			}
-		}
-		prompt = fmt.Sprintf(
-			"Generate an exact %d-slide JSON deck with theme '%s'. %s\n\n"+
-				"Return a single JSON object only (no markdown, no backticks, no commentary).\n"+
-				"Do not include comments (// or /* */) anywhere in the JSON.\n"+
-				"Output must start with '{' and end with '}'.\n"+
-				"Top-level keys must be exactly: deck, slides.\n"+
-				"Do not use a top-level array. Do not add a 'presentation' wrapper.\n"+
-				"Use only slide types shown in the template and keep the same key structure.\n"+
-				"If the template has more slides than required, drop slides from the end.\n"+
-				"If it has fewer slides, duplicate the last slide structure and update its content.\n"+
-				"Each slide must include a 'type' plus all required keys for that type.\n"+
-				"Do not include images: omit image, image_pos, logo, icons, and any image URLs.\n"+
-				"If the content supports it, include at least one chart slide and one table slide.\n"+
-				"Omit optional fields when not used.\n"+
-				"Template:\n%s\n\nContext:\n%s",
-			numSlides,
-			theme,
-			description,
-			template,
-			contextData,
-		)
+		return e.executeReasoning(ctx, params, input)
 	default:
-		prompt = fmt.Sprintf("%s\n\nContext: %s", description, contextData)
+		return e.executeReasoning(ctx, params, input)
 	}
+}
 
-	// Get model from plan context
-	model := ""
-	if input.PlanContext != nil && input.PlanContext.Model != "" {
-		model = input.PlanContext.Model
-	}
+func (e *SlideGeneratorExecutor) executeReasoning(ctx context.Context, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
+	description, _ := params["description"].(string)
+	contextData := e.buildAccumulatedContext(input)
+	prompt := fmt.Sprintf(
+		"Analyze and plan the slide structure. %s\n\nResearch findings:\n%s\n\nProvide a clear, concise outline for the presentation.\nReturn plain text only.",
+		description,
+		contextData,
+	)
 
-	log.Info().
-		Str("action", action).
-		Str("step_id", step.ID).
-		Str("model", model).
-		Msg("Executing LLM call for slide generation")
-
-	// Call LLM provider
+	model := e.getModelFromContext(input)
 	if e.llmProvider == nil {
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
@@ -885,53 +784,9 @@ func (e *SlideGeneratorExecutor) executeLLMCall(ctx context.Context, step *plan.
 		}, nil
 	}
 
-	if action == "generate_slides_json" {
-		latest := response
-		var lastErr error
-		templateStr, _ := params["template"].(string)
-		for attempt := 0; attempt < 5; attempt++ {
-			if err := validateSlideTemplateSchema(latest, templateStr); err == nil {
-				response = latest
-				lastErr = nil
-				break
-			} else {
-				lastErr = err
-			}
-			if e.llmProvider == nil {
-				break
-			}
-			fixErrMsg := lastErr.Error()
-			if strings.TrimSpace(templateStr) != "" {
-				fixErrMsg = fmt.Sprintf("%s. Must match template: %s", fixErrMsg, templateStr)
-			}
-			fixed, fixErr := e.llmProvider.FixCode(ctx, latest, fixErrMsg, "json")
-			if fixErr != nil || strings.TrimSpace(fixed) == "" || fixed == latest {
-				break
-			}
-			latest = fixed
-		}
-		if lastErr != nil {
-			if converted, convErr := convertPresentationToTemplate(latest, params); convErr == nil {
-				response = converted
-				lastErr = nil
-			}
-		}
-		if lastErr != nil {
-			return &agent.ExecutionResult{
-				Status: status.StatusFailed,
-				Error: &agent.ExecutionError{
-					Code:     "SLIDE_JSON_INVALID",
-					Message:  lastErr.Error(),
-					Severity: status.ErrorSeverityRetryable,
-				},
-			}, nil
-		}
-	}
-
-	// Build output
 	output := map[string]interface{}{
 		"type":        "llm_response",
-		"action":      action,
+		"action":      "reasoning",
 		"description": description,
 		"content":     response,
 	}
@@ -943,9 +798,543 @@ func (e *SlideGeneratorExecutor) executeLLMCall(ctx context.Context, step *plan.
 	}, nil
 }
 
+func (e *SlideGeneratorExecutor) executePlanAndTemplate(ctx context.Context, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
+	log.Debug().Msg("[slide_generator] executePlanAndTemplate started")
+	contextData := e.buildAccumulatedContext(input)
+	log.Debug().Int("context_length", len(contextData)).Msg("[slide_generator] built accumulated context")
+
+	config, _ := params["config"].(map[string]interface{})
+	numSlides := 10
+	if n, ok := config["num_slides"].(float64); ok {
+		numSlides = int(n)
+	}
+	theme, _ := config["theme"].(string)
+
+	systemPrompt := fmt.Sprintf("%s\n%s", sizeGuardPrompt, plannerAndTemplatePrompt)
+	userPrompt := fmt.Sprintf("BRIEF:\n%s\n\nTARGET SLIDE COUNT:\n%d\n\nTHEME:\n%s", contextData, numSlides, theme)
+
+	model := e.getModelFromContext(input)
+	log.Debug().
+		Str("model", model).
+		Float64("temperature", e.temperature).
+		Int("system_prompt_length", len(systemPrompt)).
+		Int("user_prompt_length", len(userPrompt)).
+		Str("user_prompt_preview", truncateForLogString(userPrompt, 300)).
+		Msg("[slide_generator] plan_and_template prompt prepared")
+	if e.llmProvider == nil {
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Code:     "LLM_PROVIDER_MISSING",
+				Message:  "LLM provider not configured",
+				Severity: status.ErrorSeverityFatal,
+			},
+		}, nil
+	}
+
+	schema := cloneSchema(schemas.PlanAndTemplateSchema)
+	schemas.NormalizeSchemaForStructuredOutput(schema)
+
+	var lastErr error
+	var planAndTemplate schemas.PlanAndTemplate
+
+	// Enhanced retry strategy:
+	// Attempt 1-2: Use response_format with structured output (OpenAI enforced schema)
+	// Attempt 3: Fallback to schema in prompt (if structured output fails)
+	for attempt := 1; attempt <= 3; attempt++ {
+		useStructuredOutput := attempt <= 2
+		var result string
+		var err error
+
+		if useStructuredOutput {
+			log.Debug().
+				Int("attempt", attempt).
+				Str("model", model).
+				Str("method", "structured_output").
+				Msg("[slide_generator] plan_and_template LLM call started")
+			result, err = e.llmProvider.GenerateWithStructuredOutput(ctx, systemPrompt, userPrompt, model, schema)
+		} else {
+			// Fallback: append schema to prompt
+			log.Info().
+				Int("attempt", attempt).
+				Str("model", model).
+				Str("method", "schema_in_prompt").
+				Msg("[slide_generator] plan_and_template using fallback method (schema in prompt)")
+			schemaJSON, _ := json.MarshalIndent(schemas.PlanAndTemplateSchema, "", "  ")
+			enhancedUserPrompt := fmt.Sprintf("%s\n\nIMPORTANT: You MUST respond with valid JSON that strictly adheres to this schema:\n```json\n%s\n```\n\nReturn ONLY the JSON object, no markdown code blocks, no explanations.", userPrompt, string(schemaJSON))
+			result, err = e.llmProvider.GenerateWithSystemPrompt(ctx, systemPrompt, enhancedUserPrompt, model)
+			if err == nil {
+				// Extract JSON from potential markdown code blocks
+				result = extractJSONFromResponse(result)
+			}
+		}
+
+		if err != nil {
+			lastErr = err
+			log.Warn().
+				Err(err).
+				Int("attempt", attempt).
+				Bool("structured_output", useStructuredOutput).
+				Msg("[slide_generator] plan_and_template LLM call failed")
+			continue
+		}
+
+		log.Debug().
+			Int("attempt", attempt).
+			Bool("structured_output", useStructuredOutput).
+			Int("response_length", len(result)).
+			Str("response_preview", truncateForLogString(result, 300)).
+			Msg("[slide_generator] plan_and_template LLM response received")
+
+		if err := json.Unmarshal([]byte(result), &planAndTemplate); err != nil {
+			lastErr = err
+			log.Warn().
+				Err(err).
+				Int("attempt", attempt).
+				Bool("structured_output", useStructuredOutput).
+				Str("response_preview", truncateForLogString(result, 300)).
+				Msg("[slide_generator] failed to parse plan+template")
+			continue
+		}
+
+		log.Info().
+			Int("attempt", attempt).
+			Bool("structured_output", useStructuredOutput).
+			Msg("[slide_generator] plan_and_template successfully parsed")
+		lastErr = nil
+		break
+	}
+
+	if lastErr != nil {
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Code:     "PARSE_ERROR",
+				Message:  fmt.Sprintf("Failed to parse plan+template after retries: %v", lastErr),
+				Severity: status.ErrorSeverityRetryable,
+			},
+		}, nil
+	}
+
+	log.Debug().
+		Int("slide_count", len(planAndTemplate.Plan.Slides)).
+		Int("recommended_slides", planAndTemplate.Plan.RecommendedSlideCount).
+		Interface("template", planAndTemplate.Template).
+		Msg("[slide_generator] parsed plan and template")
+
+	output := map[string]interface{}{
+		"type":               "plan_and_template",
+		"plan":               planAndTemplate.Plan,
+		"template":           planAndTemplate.Template,
+		"recommended_slides": planAndTemplate.Plan.RecommendedSlideCount,
+	}
+	outputBytes, _ := json.Marshal(output)
+	log.Debug().Msg("[slide_generator] executePlanAndTemplate completed")
+
+	return &agent.ExecutionResult{
+		Status: status.StatusCompleted,
+		Output: outputBytes,
+	}, nil
+}
+
+func (e *SlideGeneratorExecutor) executeSingleSlide(ctx context.Context, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
+	slideIndex := 0
+	if raw, ok := params["slide_index"].(float64); ok {
+		slideIndex = int(raw)
+	}
+	log.Debug().Int("slide_index", slideIndex).Msg("[slide_generator] executeSingleSlide started")
+	if slideIndex <= 0 {
+		log.Error().Int("slide_index", slideIndex).Msg("[slide_generator] invalid slide index")
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Code:     "INVALID_SLIDE_INDEX",
+				Message:  "slide_index is required",
+				Severity: status.ErrorSeverityFatal,
+			},
+		}, nil
+	}
+
+	planAndTemplate := e.extractPlanAndTemplate(input)
+	if planAndTemplate == nil {
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Code:     "MISSING_CONTEXT",
+				Message:  "Plan and template not found in previous outputs",
+				Severity: status.ErrorSeverityFatal,
+			},
+		}, nil
+	}
+
+	// Use 1-based slideIndex to access 0-based array
+	// (LLM may use 0-based or 1-based Index field, so use array position instead)
+	arrayIndex := slideIndex - 1
+	if arrayIndex < 0 || arrayIndex >= len(planAndTemplate.Plan.Slides) {
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Code:     "PLAN_ENTRY_NOT_FOUND",
+				Message:  fmt.Sprintf("No plan entry for slide %d (array index %d out of range, plan has %d slides)", slideIndex, arrayIndex, len(planAndTemplate.Plan.Slides)),
+				Severity: status.ErrorSeverityFatal,
+			},
+		}, nil
+	}
+	planEntry := &planAndTemplate.Plan.Slides[arrayIndex]
+
+	contextData := e.buildAccumulatedContext(input)
+	templateJSON, _ := json.Marshal(planAndTemplate.Template)
+	planEntryJSON, _ := json.Marshal(planEntry)
+	themeJSON, _ := json.Marshal(planAndTemplate.Template.Theme)
+
+	systemPrompt := slideWriterPrompt(slideIndex)
+	userPrompt := fmt.Sprintf("BRIEF:\n%s\n\nLOCKED TEMPLATE:\n%s\n\nTHEME:\n%s\n\nPLAN ENTRY (slide %d):\n%s", contextData, string(templateJSON), string(themeJSON), slideIndex, string(planEntryJSON))
+
+	model := e.getModelFromContext(input)
+	log.Debug().
+		Int("slide_index", slideIndex).
+		Str("model", model).
+		Float64("temperature", e.temperature).
+		Int("system_prompt_length", len(systemPrompt)).
+		Int("user_prompt_length", len(userPrompt)).
+		Str("user_prompt_preview", truncateForLogString(userPrompt, 300)).
+		Msg("[slide_generator] slide prompt prepared")
+	if e.llmProvider == nil {
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Code:     "LLM_PROVIDER_MISSING",
+				Message:  "LLM provider not configured",
+				Severity: status.ErrorSeverityFatal,
+			},
+		}, nil
+	}
+
+	schema := cloneSchema(schemas.SlideGenResultSchema)
+	schemas.NormalizeSchemaForStructuredOutput(schema)
+
+	var lastErr error
+	var slideResult schemas.SlideGenResult
+
+	// Enhanced retry strategy:
+	// Attempt 1-2: Use response_format with structured output (OpenAI enforced schema)
+	// Attempt 3: Fallback to schema in prompt (if structured output fails)
+	for attempt := 1; attempt <= 3; attempt++ {
+		useStructuredOutput := attempt <= 2
+		var result string
+		var err error
+
+		if useStructuredOutput {
+			log.Debug().
+				Int("attempt", attempt).
+				Int("slide_index", slideIndex).
+				Str("model", model).
+				Str("method", "structured_output").
+				Msg("[slide_generator] slide LLM call started")
+			result, err = e.llmProvider.GenerateWithStructuredOutput(ctx, systemPrompt, userPrompt, model, schema)
+		} else {
+			// Fallback: append schema to prompt
+			log.Info().
+				Int("attempt", attempt).
+				Int("slide_index", slideIndex).
+				Str("model", model).
+				Str("method", "schema_in_prompt").
+				Msg("[slide_generator] slide using fallback method (schema in prompt)")
+			schemaJSON, _ := json.MarshalIndent(schemas.SlideGenResultSchema, "", "  ")
+			enhancedUserPrompt := fmt.Sprintf("%s\n\nIMPORTANT: You MUST respond with valid JSON that strictly adheres to this schema:\n```json\n%s\n```\n\nReturn ONLY the JSON object, no markdown code blocks, no explanations.", userPrompt, string(schemaJSON))
+			result, err = e.llmProvider.GenerateWithSystemPrompt(ctx, systemPrompt, enhancedUserPrompt, model)
+			if err == nil {
+				// Extract JSON from potential markdown code blocks
+				result = extractJSONFromResponse(result)
+			}
+		}
+
+		if err != nil {
+			lastErr = err
+			log.Warn().
+				Err(err).
+				Int("attempt", attempt).
+				Int("slide_index", slideIndex).
+				Bool("structured_output", useStructuredOutput).
+				Msg("[slide_generator] slide LLM call failed")
+			continue
+		}
+
+		log.Debug().
+			Int("attempt", attempt).
+			Int("slide_index", slideIndex).
+			Bool("structured_output", useStructuredOutput).
+			Int("response_length", len(result)).
+			Str("response_preview", truncateForLogString(result, 300)).
+			Msg("[slide_generator] slide LLM response received")
+
+		if err := json.Unmarshal([]byte(result), &slideResult); err != nil {
+			lastErr = err
+			log.Warn().
+				Err(err).
+				Int("attempt", attempt).
+				Int("slide_index", slideIndex).
+				Bool("structured_output", useStructuredOutput).
+				Str("response_preview", truncateForLogString(result, 300)).
+				Msg("[slide_generator] failed to parse slide result")
+			continue
+		}
+
+		log.Info().
+			Int("attempt", attempt).
+			Int("slide_index", slideIndex).
+			Bool("structured_output", useStructuredOutput).
+			Msg("[slide_generator] slide successfully parsed")
+		lastErr = nil
+		break
+	}
+
+	if lastErr != nil {
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Code:     "PARSE_ERROR",
+				Message:  fmt.Sprintf("Failed to parse slide %d after retries: %v", slideIndex, lastErr),
+				Severity: status.ErrorSeverityRetryable,
+			},
+		}, nil
+	}
+
+	log.Debug().
+		Int("slide_index", slideIndex).
+		Interface("slide", slideResult.Slide).
+		Interface("requires", slideResult.Requires).
+		Msg("[slide_generator] parsed slide result")
+
+	output := map[string]interface{}{
+		"type":        "slide_result",
+		"slide_index": slideIndex,
+		"slide":       slideResult.Slide,
+		"requires":    slideResult.Requires,
+	}
+	outputBytes, _ := json.Marshal(output)
+	log.Debug().Int("slide_index", slideIndex).Msg("[slide_generator] executeSingleSlide completed")
+
+	return &agent.ExecutionResult{
+		Status: status.StatusCompleted,
+		Output: outputBytes,
+	}, nil
+}
+
+func (e *SlideGeneratorExecutor) executeUploadSlideSpec(ctx context.Context, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
+	log.Debug().Msg("[slide_generator] executeUploadSlideSpec started")
+	deckJSON, err := e.assembleDeck(input)
+	if err != nil {
+		log.Error().Err(err).Msg("[slide_generator] failed to assemble deck")
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Code:     "ASSEMBLY_ERROR",
+				Message:  fmt.Sprintf("Failed to assemble deck: %v", err),
+				Severity: status.ErrorSeverityRetryable,
+			},
+		}, nil
+	}
+
+	targetPath, _ := params["target_path"].(string)
+	if targetPath == "" {
+		responseID := "slide_spec"
+		if input.PlanContext != nil && input.PlanContext.ResponseID != "" {
+			responseID = input.PlanContext.ResponseID
+		}
+		targetPath = fmt.Sprintf("/home/gem/slide_specs/slide_spec_%s.json", responseID)
+	}
+
+	code := fmt.Sprintf(`import json
+
+spec = json.loads(%s)
+
+with open(%q, "w", encoding="utf-8") as f:
+    json.dump(spec, f, indent=2)
+
+print(json.dumps({"success": True, "path": %q, "size": len(json.dumps(spec))}))
+`, strconv.Quote(string(deckJSON)), targetPath, targetPath)
+
+	callReq := tool.CallRequest{
+		Name: "aio_code_execute",
+		Arguments: map[string]interface{}{
+			"language": "python",
+			"code":     code,
+		},
+	}
+	if input.PlanContext != nil {
+		callReq.RequestID = input.PlanContext.ResponseID
+		callReq.ConversationID = input.PlanContext.ConversationID
+	}
+
+	log.Debug().Str("target_path", targetPath).Int("deck_size", len(deckJSON)).Msg("[slide_generator] uploading slide spec")
+	result, err := e.mcpClient.CallTool(ctx, callReq)
+	if err != nil || (result != nil && result.IsError) {
+		log.Error().Err(err).Bool("is_error", result != nil && result.IsError).Msg("[slide_generator] failed to upload slide spec")
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Code:     "UPLOAD_ERROR",
+				Message:  "Failed to upload slide spec to sandbox",
+				Severity: status.ErrorSeverityRetryable,
+			},
+		}, nil
+	}
+
+	log.Debug().Str("target_path", targetPath).Int("size", len(deckJSON)).Msg("[slide_generator] slide spec uploaded successfully")
+
+	output := map[string]interface{}{
+		"type": "file_uploaded",
+		"path": targetPath,
+		"size": len(deckJSON),
+		"json": string(deckJSON), // Include the DeckSpec JSON for the next step
+	}
+	outputBytes, _ := json.Marshal(output)
+	log.Debug().Msg("[slide_generator] executeUploadSlideSpec completed")
+
+	return &agent.ExecutionResult{
+		Status: status.StatusCompleted,
+		Output: outputBytes,
+	}, nil
+}
+
+func (e *SlideGeneratorExecutor) executeRenderScript(ctx context.Context, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
+	log.Info().Bool("renderer_enabled", e.rendererEnabled).Msg("[slide_generator] executeRenderScript started")
+
+	if !e.rendererEnabled {
+		log.Warn().Msg("[slide_generator] slide renderer is disabled")
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Code:     "RENDER_DISABLED",
+				Message:  "slide renderer is disabled",
+				Severity: status.ErrorSeverityFatal,
+			},
+		}, nil
+	}
+
+	// Check if AIO client is available
+	if e.aioClient == nil {
+		log.Error().Msg("[slide_generator] AIO sandbox client not initialized (AIO_URL not configured)")
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Code:     "AIO_NOT_CONFIGURED",
+				Message:  "AIO_URL environment variable not set",
+				Severity: status.ErrorSeverityFatal,
+			},
+		}, nil
+	}
+
+	renderScriptContent := e.loadRenderDeckScript()
+	if strings.TrimSpace(renderScriptContent) == "" {
+		log.Error().Msg("[slide_generator] render_deck.py script is empty")
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Code:     "RENDER_SCRIPT_MISSING",
+				Message:  "render_deck.py content is empty",
+				Severity: status.ErrorSeverityFatal,
+			},
+		}, nil
+	}
+
+	// Get DeckSpec JSON from previous step
+	var deckSpecJSON string
+	if input.PreviousOutput != nil {
+		var prevOutput map[string]interface{}
+		if err := json.Unmarshal(input.PreviousOutput, &prevOutput); err == nil {
+			// Try to get the JSON directly
+			if jsonStr, ok := prevOutput["json"].(string); ok {
+				deckSpecJSON = jsonStr
+			} else if data, ok := prevOutput["data"]; ok {
+				// Try to marshal the data object
+				if jsonBytes, err := json.Marshal(data); err == nil {
+					deckSpecJSON = string(jsonBytes)
+				}
+			}
+		}
+	}
+
+	if deckSpecJSON == "" {
+		log.Error().Msg("[slide_generator] No DeckSpec JSON from previous step")
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Code:     "MISSING_INPUT",
+				Message:  "No DeckSpec JSON from previous step",
+				Severity: status.ErrorSeverityFatal,
+			},
+		}, nil
+	}
+
+	// Get output path from params or use response ID
+	outputPath := "/home/gem/output.pptx"
+	if params != nil {
+		if path, ok := params["output_path"].(string); ok && path != "" {
+			outputPath = path
+		}
+	}
+
+	log.Info().
+		Int("deck_spec_size", len(deckSpecJSON)).
+		Int("render_script_size", len(renderScriptContent)).
+		Str("output_path", outputPath).
+		Msg("[slide_generator] Starting PPTX rendering via direct AIO sandbox")
+
+	// Use direct AIO sandbox client (bypasses unstable MCP layer)
+	// This executes everything in a single sandbox call with clear step-by-step logging
+	pptxData, err := e.aioClient.RenderSlidesPPTX(ctx, deckSpecJSON, renderScriptContent, outputPath)
+	if err != nil {
+		log.Error().Err(err).Msg("[slide_generator] PPTX rendering failed")
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Code:     "RENDER_ERROR",
+				Message:  fmt.Sprintf("Render failed: %v", err),
+				Severity: status.ErrorSeverityRetryable,
+			},
+		}, nil
+	}
+
+	// Encode to base64 for artifact storage
+	base64Content := base64.StdEncoding.EncodeToString(pptxData)
+
+	log.Info().
+		Int("pptx_size", len(pptxData)).
+		Int("base64_length", len(base64Content)).
+		Msg("[slide_generator] ✓ PPTX rendering completed successfully")
+
+	output := map[string]interface{}{
+		"type":      "render_output",
+		"base64":    base64Content,
+		"filename":  "presentation.pptx",
+		"mime_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+		"size":      len(pptxData),
+	}
+	outputBytes, _ := json.Marshal(output)
+
+	return &agent.ExecutionResult{
+		Status: status.StatusCompleted,
+		Output: outputBytes,
+	}, nil
+}
+
+func truncateForLogString(data string, maxLen int) string {
+	if data == "" {
+		return ""
+	}
+	if len(data) <= maxLen {
+		return data
+	}
+	return data[:maxLen] + "..."
+}
+
 func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, step *plan.Step, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
+	log.Debug().Str("step_id", step.ID).Msg("[slide_generator] executeArtifactCreation started")
 	var params map[string]interface{}
 	if err := json.Unmarshal(step.InputParams, &params); err != nil {
+		log.Error().Err(err).Msg("[slide_generator] failed to parse artifact parameters")
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
 			Error: &agent.ExecutionError{
@@ -956,7 +1345,6 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 		}, nil
 	}
 
-	// Extract artifact configuration
 	config, _ := params["config"].(map[string]interface{})
 	format, _ := config["format"].(string)
 	if format == "" {
@@ -974,35 +1362,16 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 			}
 			return e.uploadSkillArtifact(ctx, step, input, skillOutput, artifactType, retentionPolicy)
 		}
-		if renderOutput := extractSlideRenderOutput(input.PreviousOutput); renderOutput != nil {
+		if renderOutput := extractRenderOutput(input.PreviousOutput); renderOutput != nil {
 			retentionPolicy, _ := config["retention_policy"].(string)
 			if retentionPolicy == "" {
 				retentionPolicy = "session"
 			}
 			return e.uploadRenderedArtifact(ctx, step, input, renderOutput, artifactType, retentionPolicy)
-		}
-	}
-	if isSlideArtifact {
-		if renderOutput, err := e.renderSlidesFromSpec(ctx, input); err == nil && renderOutput != nil {
-			retentionPolicy, _ := config["retention_policy"].(string)
-			if retentionPolicy == "" {
-				retentionPolicy = "session"
-			}
-			return e.uploadRenderedArtifact(ctx, step, input, renderOutput, artifactType, retentionPolicy)
-		} else if err != nil {
-			return &agent.ExecutionResult{
-				Status: status.StatusFailed,
-				Error: &agent.ExecutionError{
-					Code:     "SLIDE_RENDER_FAILED",
-					Message:  fmt.Sprintf("render slides failed: %v", err),
-					Severity: status.ErrorSeverityRetryable,
-				},
-			}, nil
 		}
 	}
 
-	// Get content from previous step output
-	var content string
+	content := ""
 	if input.PreviousOutput != nil {
 		var prevOutput map[string]interface{}
 		if err := json.Unmarshal(input.PreviousOutput, &prevOutput); err == nil {
@@ -1010,17 +1379,14 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 				content = c
 			}
 		}
-		// If not a map, try string directly
 		if content == "" {
 			content = string(input.PreviousOutput)
 		}
 	}
-
 	if content == "" {
 		content = "Artifact content unavailable."
 	}
 
-	// Get context info
 	responseID := ""
 	conversationID := ""
 	userID := ""
@@ -1039,7 +1405,6 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 	title := resolveArtifactTitle(artifactType)
 	filename := resolveArtifactFilename(artifactType, format)
 
-	// Try to upload to media-api for persistent storage
 	var storagePath *string
 	var downloadURL string
 	var mediaID string
@@ -1067,10 +1432,8 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 		}
 	}
 
-	// Create artifact record (with inline content as fallback, or storage path if uploaded)
 	var contentPtr *string
 	if storagePath == nil {
-		// Fallback to inline content if media upload failed or client unavailable
 		contentPtr = &content
 	}
 
@@ -1083,7 +1446,6 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 		SizeBytes:       int64(len(content)),
 		RetentionPolicy: artifact.RetentionPolicy(retentionPolicy),
 	})
-
 	if err != nil {
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
@@ -1095,17 +1457,22 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 		}, nil
 	}
 
-	artifactID := createdArtifact.ID
-	// Always expose the response-api artifact endpoint for downloads.
-	downloadURL = fmt.Sprintf("/responses/v1/artifacts/%s/download", createdArtifact.ID)
-
-	// Create StepOutput with proper Artifact field for ExtractArtifacts to find
+	// Use media URL if available, otherwise fall back to artifact API path
+	if downloadURL == "" {
+		downloadURL = fmt.Sprintf("/responses/v1/artifacts/%s/download", createdArtifact.ID)
+	}
+	log.Debug().
+		Str("artifact_id", createdArtifact.ID).
+		Str("download_url", downloadURL).
+		Int64("size", int64(len(content))).
+		Str("content_type", string(contentType)).
+		Msg("[slide_generator] artifact created successfully")
 	stepOutput := &plan.StepOutput{
 		Status:    "completed",
 		Type:      "artifact_create",
 		CreatedAt: time.Now(),
 		Artifact: &plan.MediaArtifact{
-			ID:          artifactID,
+			ID:          createdArtifact.ID,
 			Type:        string(contentType),
 			Filename:    filename,
 			DownloadURL: downloadURL,
@@ -1123,6 +1490,11 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 }
 
 func (e *SlideGeneratorExecutor) uploadSkillArtifact(ctx context.Context, step *plan.Step, input agent.ExecutionInput, skillOutput SkillExecuteOutput, artifactType string, retentionPolicy string) (*agent.ExecutionResult, error) {
+	log.Debug().
+		Str("artifact_type", artifactType).
+		Str("filename", skillOutput.FileName).
+		Str("mime_type", skillOutput.MimeType).
+		Msg("[slide_generator] uploadSkillArtifact started")
 	if e.mediaClient == nil {
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
@@ -1230,6 +1602,12 @@ func (e *SlideGeneratorExecutor) uploadSkillArtifact(ctx context.Context, step *
 		}, nil
 	}
 
+	// Use media URL if available, otherwise fall back to artifact API path
+	downloadURL := mediaArtifact.DownloadURL
+	if downloadURL == "" {
+		downloadURL = fmt.Sprintf("/responses/v1/artifacts/%s/download", createdArtifact.ID)
+	}
+
 	stepOutput := &plan.StepOutput{
 		Status:    "completed",
 		Type:      "artifact_create",
@@ -1238,7 +1616,7 @@ func (e *SlideGeneratorExecutor) uploadSkillArtifact(ctx context.Context, step *
 			ID:          createdArtifact.ID,
 			Type:        string(contentType),
 			Filename:    fileName,
-			DownloadURL: fmt.Sprintf("/responses/v1/artifacts/%s/download", createdArtifact.ID),
+			DownloadURL: downloadURL,
 			Size:        int64(len(decoded)),
 			ContentType: mimeType,
 		},
@@ -1253,6 +1631,11 @@ func (e *SlideGeneratorExecutor) uploadSkillArtifact(ctx context.Context, step *
 }
 
 func (e *SlideGeneratorExecutor) uploadRenderedArtifact(ctx context.Context, step *plan.Step, input agent.ExecutionInput, renderOutput *slideRenderOutput, artifactType string, retentionPolicy string) (*agent.ExecutionResult, error) {
+	log.Debug().
+		Str("artifact_type", artifactType).
+		Str("filename", renderOutput.FileName).
+		Int("size", renderOutput.Size).
+		Msg("[slide_generator] uploadRenderedArtifact started")
 	if e.mediaClient == nil {
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
@@ -1356,6 +1739,12 @@ func (e *SlideGeneratorExecutor) uploadRenderedArtifact(ctx context.Context, ste
 		}, nil
 	}
 
+	// Use media URL if we uploaded to media-api
+	downloadURL := mediaArtifact.DownloadURL
+	if downloadURL == "" {
+		downloadURL = fmt.Sprintf("/responses/v1/artifacts/%s/download", createdArtifact.ID)
+	}
+
 	stepOutput := &plan.StepOutput{
 		Status:    "completed",
 		Type:      "artifact_create",
@@ -1364,7 +1753,7 @@ func (e *SlideGeneratorExecutor) uploadRenderedArtifact(ctx context.Context, ste
 			ID:          createdArtifact.ID,
 			Type:        string(contentType),
 			Filename:    fileName,
-			DownloadURL: fmt.Sprintf("/responses/v1/artifacts/%s/download", createdArtifact.ID),
+			DownloadURL: downloadURL,
 			Size:        int64(len(decoded)),
 			ContentType: mimeType,
 		},
@@ -1382,16 +1771,9 @@ func (e *SlideGeneratorExecutor) readBinaryFileFromSandbox(ctx context.Context, 
 	if strings.TrimSpace(e.aioBaseURL) != "" {
 		if payload, err := downloadAIOFile(ctx, e.aioBaseURL, path); err == nil {
 			return payload, nil
-		} else {
-			log.Debug().
-				Err(err).
-				Str("path", path).
-				Str("base_url", e.aioBaseURL).
-				Msg("AIO direct download failed; falling back to code execution")
 		}
 	}
 
-	// Use Python to read and base64-encode the file, which is more reliable than shell base64 for large binary files
 	code := fmt.Sprintf(`import base64
 import json
 import os
@@ -1438,7 +1820,6 @@ else:
 		return nil, fmt.Errorf("code execute returned empty content")
 	}
 
-	// Parse the code execution result
 	var execResult struct {
 		Stdout   string `json:"stdout"`
 		Stderr   string `json:"stderr"`
@@ -1453,7 +1834,6 @@ else:
 		return nil, fmt.Errorf("code execute status: %s, stderr: %s", execResult.Status, execResult.Stderr)
 	}
 
-	// Parse the Python script output
 	stdout := strings.TrimSpace(execResult.Stdout)
 	if stdout == "" {
 		return nil, fmt.Errorf("code execute returned empty stdout")
@@ -1472,7 +1852,6 @@ else:
 	if fileResult.Error != "" {
 		return nil, fmt.Errorf("file read error: %s (path: %s)", fileResult.Error, fileResult.Path)
 	}
-
 	if fileResult.Base64 == "" {
 		return nil, fmt.Errorf("file read returned empty base64")
 	}
@@ -1565,11 +1944,13 @@ func resolveArtifactFilename(artifactType string, format string) string {
 }
 
 // buildAccumulatedContext combines outputs from all previous tasks into a single context string.
-// This ensures LLM calls have full context from research and other preceding steps.
 func (e *SlideGeneratorExecutor) buildAccumulatedContext(input agent.ExecutionInput) string {
+	log.Debug().
+		Int("accumulated_outputs", len(input.AccumulatedOutputs)).
+		Int("previous_output_size", len(input.PreviousOutput)).
+		Msg("[slide_generator] buildAccumulatedContext started")
 	var contextParts []string
 
-	// Add accumulated outputs from previous tasks
 	for _, output := range input.AccumulatedOutputs {
 		if len(output) > 0 {
 			extracted := e.extractContextFromOutput(output)
@@ -1579,7 +1960,6 @@ func (e *SlideGeneratorExecutor) buildAccumulatedContext(input agent.ExecutionIn
 		}
 	}
 
-	// Add current task's previous output (if any)
 	if len(input.PreviousOutput) > 0 {
 		extracted := e.extractContextFromOutput(input.PreviousOutput)
 		if extracted != "" {
@@ -1588,22 +1968,25 @@ func (e *SlideGeneratorExecutor) buildAccumulatedContext(input agent.ExecutionIn
 	}
 
 	if len(contextParts) == 0 {
+		log.Debug().Msg("[slide_generator] no context available")
 		return "[No previous context available]"
 	}
 
-	return strings.Join(contextParts, "\n\n---\n\n")
+	result := strings.Join(contextParts, "\n\n---\n\n")
+	log.Debug().
+		Int("context_parts", len(contextParts)).
+		Int("context_length", len(result)).
+		Msg("[slide_generator] buildAccumulatedContext completed")
+	return result
 }
 
-// extractContextFromOutput extracts meaningful text content from a step output.
 func (e *SlideGeneratorExecutor) extractContextFromOutput(output json.RawMessage) string {
 	if len(output) == 0 {
 		return ""
 	}
 
-	// Try to parse as structured output
 	var parsed map[string]interface{}
 	if err := json.Unmarshal(output, &parsed); err == nil {
-		// Check for tool result format with "content" array
 		if content, ok := parsed["content"].([]interface{}); ok {
 			var texts []string
 			for _, item := range content {
@@ -1618,17 +2001,14 @@ func (e *SlideGeneratorExecutor) extractContextFromOutput(output json.RawMessage
 			}
 		}
 
-		// Check for LLM response format with "content" string
 		if content, ok := parsed["content"].(string); ok && content != "" {
 			return content
 		}
 
-		// Check for "text" field directly
 		if text, ok := parsed["text"].(string); ok && text != "" {
 			return text
 		}
 
-		// Check for tool output format
 		if toolName, ok := parsed["tool_name"].(string); ok {
 			if content, ok := parsed["content"].([]interface{}); ok {
 				var texts []string
@@ -1646,7 +2026,6 @@ func (e *SlideGeneratorExecutor) extractContextFromOutput(output json.RawMessage
 		}
 	}
 
-	// Fallback: return raw output if it's not too long
 	rawStr := string(output)
 	if len(rawStr) > 10000 {
 		return rawStr[:10000] + "... [truncated]"
@@ -1654,17 +2033,13 @@ func (e *SlideGeneratorExecutor) extractContextFromOutput(output json.RawMessage
 	return rawStr
 }
 
-// buildToolArguments constructs proper tool arguments from step params and context.
-// This mirrors the logic from DeepResearchExecutor for consistency.
 func (e *SlideGeneratorExecutor) buildToolArguments(toolName string, params map[string]interface{}, input agent.ExecutionInput, description string) (map[string]interface{}, error) {
 	switch toolName {
 	case "google_search":
-		// Priority: params["q"] > params["query"] > description > error
 		query := ""
 		if q, ok := params["q"].(string); ok && q != "" {
 			query = q
 		} else if q, ok := params["query"].(string); ok && q != "" {
-			// Backward compatibility
 			query = q
 		} else if description != "" {
 			query = description
@@ -1673,15 +2048,11 @@ func (e *SlideGeneratorExecutor) buildToolArguments(toolName string, params map[
 		if query == "" {
 			return nil, fmt.Errorf("no search query provided")
 		}
-		return map[string]interface{}{
-			"q": query,
-		}, nil
+		return map[string]interface{}{"q": query}, nil
 
 	case "scrape":
-		// Extract URLs from previous search results or params
 		urls := e.extractURLsFromPreviousOutput(input.PreviousOutput)
 		if len(urls) == 0 {
-			// Check if explicitly provided
 			if urlParam, ok := params["url"].(string); ok {
 				urls = []string{urlParam}
 			} else if urlsParam, ok := params["urls"].([]interface{}); ok {
@@ -1695,158 +2066,11 @@ func (e *SlideGeneratorExecutor) buildToolArguments(toolName string, params map[
 		if len(urls) == 0 {
 			return nil, fmt.Errorf("no URLs available to scrape from previous search results")
 		}
-		// MCP scrape tool expects single url parameter
-		return map[string]interface{}{
-			"url": urls[0],
-		}, nil
-
-	case "aio_code_execute":
-		action, _ := params["action"].(string)
-		log.Info().
-			Str("tool", "aio_code_execute").
-			Str("action", action).
-			Interface("params", params).
-			Msg("Preparing aio_code_execute arguments")
-		if action == "" {
-			if _, hasSpec := params["spec_path"]; hasSpec {
-				if _, hasOutput := params["output_path"]; hasOutput {
-					action = "render_slides_json"
-				}
-			}
-		}
-		var code string
-		if action == "render_slides_json" {
-			slideSpec := e.extractSlideSpecCandidate(input)
-			if strings.TrimSpace(slideSpec) == "" {
-				log.Error().
-					Str("tool", "aio_code_execute").
-					Str("action", action).
-					Msg("Slide spec missing for render")
-				return nil, fmt.Errorf("missing slide JSON in previous output")
-			}
-			if err := validateSlideTemplateJSON(slideSpec); err != nil {
-				if converted, convErr := convertPresentationToTemplate(slideSpec, nil); convErr == nil {
-					slideSpec = converted
-				} else {
-					log.Error().
-						Str("tool", "aio_code_execute").
-						Str("action", action).
-						Err(err).
-						Msg("Slide spec failed validation for render")
-					return nil, err
-				}
-			}
-			log.Info().
-				Str("tool", "aio_code_execute").
-				Int("slide_spec_len", len(slideSpec)).
-				Msg("Slide spec prepared for render")
-			specPath, _ := params["spec_path"].(string)
-			scriptPath, _ := params["script_path"].(string)
-			outputPath, _ := params["output_path"].(string)
-			imageURL, _ := params["image_url"].(string)
-			var err error
-			code, err = buildSlideRenderCode(slideSpec, specPath, scriptPath, outputPath, imageURL)
-			if err != nil {
-				return nil, err
-			}
-			log.Info().
-				Str("tool", "aio_code_execute").
-				Int("code_len", len(code)).
-				Msg("Slide render code built")
-		} else if _, hasSpec := params["spec_path"]; hasSpec {
-			if _, hasOutput := params["output_path"]; hasOutput {
-				slideSpec := e.extractSlideSpecCandidate(input)
-				if strings.TrimSpace(slideSpec) == "" {
-					return nil, fmt.Errorf("missing slide JSON in previous output")
-				}
-				if err := validateSlideTemplateJSON(slideSpec); err != nil {
-					if converted, convErr := convertPresentationToTemplate(slideSpec, nil); convErr == nil {
-						slideSpec = converted
-					} else {
-						return nil, err
-					}
-				}
-				specPath, _ := params["spec_path"].(string)
-				scriptPath, _ := params["script_path"].(string)
-				outputPath, _ := params["output_path"].(string)
-				imageURL, _ := params["image_url"].(string)
-				var err error
-				code, err = buildSlideRenderCode(slideSpec, specPath, scriptPath, outputPath, imageURL)
-				if err != nil {
-					return nil, err
-				}
-				log.Info().
-					Str("tool", "aio_code_execute").
-					Int("code_len", len(code)).
-					Msg("Slide render code built")
-			}
-		} else if codeParam, ok := params["code"].(string); ok {
-			code = codeParam
-		}
-		if strings.TrimSpace(code) == "" {
-			// Fallback: try to build render code from any JSON output we can find.
-			slideSpec := e.extractSlideSpecFromOutputs(input)
-			if strings.TrimSpace(slideSpec) == "" {
-				slideSpec = strings.TrimSpace(e.extractJSONFromOutputs(input))
-			}
-			if strings.TrimSpace(slideSpec) != "" {
-				specPath, _ := params["spec_path"].(string)
-				scriptPath, _ := params["script_path"].(string)
-				outputPath, _ := params["output_path"].(string)
-				imageURL, _ := params["image_url"].(string)
-				if strings.TrimSpace(specPath) == "" || strings.TrimSpace(outputPath) == "" {
-					responseID := ""
-					if input.PlanContext != nil {
-						responseID = input.PlanContext.ResponseID
-					}
-					if responseID == "" {
-						responseID = fmt.Sprintf("slide_%d", time.Now().Unix())
-					}
-					if strings.TrimSpace(specPath) == "" {
-						specPath = fmt.Sprintf("/home/gem/slide_specs/slide_spec_%s.json", responseID)
-					}
-					if strings.TrimSpace(scriptPath) == "" {
-						scriptPath = fmt.Sprintf("/home/gem/slide_execs/slide_exec_%s.py", responseID)
-					}
-					if strings.TrimSpace(outputPath) == "" {
-						outputPath = fmt.Sprintf("/home/gem/slide_%s.pptx", responseID)
-					}
-				}
-				if err := validateSlideTemplateJSON(slideSpec); err != nil {
-					if converted, convErr := convertPresentationToTemplate(slideSpec, nil); convErr == nil {
-						slideSpec = converted
-					}
-				}
-				if built, buildErr := buildSlideRenderCode(slideSpec, specPath, scriptPath, outputPath, imageURL); buildErr == nil {
-					code = built
-				}
-			}
-		}
-		if strings.TrimSpace(code) == "" {
-			log.Error().
-				Str("tool", "aio_code_execute").
-				Str("action", action).
-				Interface("params", params).
-				Msg("No code produced for aio_code_execute")
-			return nil, fmt.Errorf("no code provided for execution")
-		}
-
-		code = agent.NormalizeSandboxFilePaths(code)
-		language, _ := params["language"].(string)
-		if language == "" {
-			language = "python"
-		}
-
-		return map[string]interface{}{
-			"language": language,
-			"code":     code,
-		}, nil
+		return map[string]interface{}{"url": urls[0]}, nil
 
 	default:
-		// Generic tool: remove metadata fields
 		toolArgs := make(map[string]interface{})
 		for k, v := range params {
-			// Exclude known metadata fields
 			if k != "tool" && k != "description" {
 				toolArgs[k] = v
 			}
@@ -1855,1527 +2079,6 @@ func (e *SlideGeneratorExecutor) buildToolArguments(toolName string, params map[
 	}
 }
 
-func (e *SlideGeneratorExecutor) buildAioCodeArgsWithRepair(ctx context.Context, params map[string]interface{}, input agent.ExecutionInput) (map[string]interface{}, error) {
-	if e.llmProvider == nil {
-		return nil, fmt.Errorf("llm provider not configured")
-	}
-
-	action, _ := params["action"].(string)
-	if action == "" {
-		if _, hasSpec := params["spec_path"]; hasSpec {
-			if _, hasOutput := params["output_path"]; hasOutput {
-				action = "render_slides_json"
-			}
-		}
-	}
-	if action != "render_slides_json" {
-		return nil, fmt.Errorf("unsupported repair action: %s", action)
-	}
-
-	candidate := strings.TrimSpace(e.extractSlideSpecCandidate(input))
-	if candidate == "" {
-		return nil, fmt.Errorf("missing slide JSON in previous output")
-	}
-
-	templateJSON, templateErr := loadEmbeddedSlideTemplate()
-	if templateErr != nil {
-		return nil, templateErr
-	}
-
-	var lastErr error
-	for attempt := 0; attempt < 5; attempt++ {
-		if err := validateSlideTemplateJSON(candidate); err == nil {
-			lastErr = nil
-			break
-		} else {
-			lastErr = err
-		}
-
-		if converted, convErr := convertPresentationToTemplate(candidate, params); convErr == nil {
-			candidate = converted
-			lastErr = nil
-			break
-		}
-
-		fixErrMsg := lastErr.Error()
-		if strings.TrimSpace(templateJSON) != "" {
-			fixErrMsg = fmt.Sprintf("%s. Must match template: %s", fixErrMsg, templateJSON)
-		}
-		fixed, fixErr := e.llmProvider.FixCode(ctx, candidate, fixErrMsg, "json")
-		if fixErr != nil || strings.TrimSpace(fixed) == "" || fixed == candidate {
-			break
-		}
-		candidate = fixed
-	}
-
-	if lastErr != nil {
-		return nil, lastErr
-	}
-
-	specPath, _ := params["spec_path"].(string)
-	scriptPath, _ := params["script_path"].(string)
-	outputPath, _ := params["output_path"].(string)
-	imageURL, _ := params["image_url"].(string)
-	code, err := buildSlideRenderCode(candidate, specPath, scriptPath, outputPath, imageURL)
-	if err != nil {
-		return nil, err
-	}
-
-	language, _ := params["language"].(string)
-	if language == "" {
-		language = "python"
-	}
-	return map[string]interface{}{
-		"language": language,
-		"code":     agent.NormalizeSandboxFilePaths(code),
-	}, nil
-}
-
-func (e *SlideGeneratorExecutor) extractJSONFromPreviousOutput(previousOutput json.RawMessage) string {
-	if len(previousOutput) == 0 {
-		return ""
-	}
-	var parsed map[string]interface{}
-	if err := json.Unmarshal(previousOutput, &parsed); err != nil {
-		return ""
-	}
-	if content, ok := parsed["content"].(string); ok {
-		candidate := strings.TrimSpace(extractJSONFromMarkdown(content))
-		if candidate != "" && json.Valid([]byte(candidate)) {
-			return candidate
-		}
-		payload := extractJSONPayload(content)
-		return strings.TrimSpace(payload)
-	}
-	if content, ok := parsed["content"]; ok {
-		if raw, err := json.Marshal(content); err == nil {
-			candidate := strings.TrimSpace(string(raw))
-			if candidate != "" && json.Valid([]byte(candidate)) {
-				return candidate
-			}
-			payload := extractJSONPayload(candidate)
-			return strings.TrimSpace(payload)
-		}
-	}
-	return ""
-}
-
-func (e *SlideGeneratorExecutor) extractJSONFromOutputs(input agent.ExecutionInput) string {
-	if content := e.extractJSONFromPreviousOutput(input.PreviousOutput); strings.TrimSpace(content) != "" {
-		if isSlideSpecJSON(content) {
-			return content
-		}
-	}
-	for i := len(input.AccumulatedOutputs) - 1; i >= 0; i-- {
-		content := e.extractJSONFromPreviousOutput(input.AccumulatedOutputs[i])
-		if strings.TrimSpace(content) != "" && isSlideSpecJSON(content) {
-			return content
-		}
-	}
-	return ""
-}
-
-func (e *SlideGeneratorExecutor) extractSlideSpecFromOutputs(input agent.ExecutionInput) string {
-	candidates := make([]json.RawMessage, 0, 1+len(input.AccumulatedOutputs))
-	if len(input.PreviousOutput) > 0 {
-		candidates = append(candidates, input.PreviousOutput)
-	}
-	candidates = append(candidates, input.AccumulatedOutputs...)
-
-	for i := len(candidates) - 1; i >= 0; i-- {
-		content, action := extractOutputContentAndAction(candidates[i])
-		if action == "generate_slides_json" {
-			cleaned := strings.TrimSpace(extractJSONFromMarkdown(content))
-			if isSlideSpecJSON(cleaned) {
-				return cleaned
-			}
-			if payload := extractJSONPayload(content); payload != "" && isSlideSpecJSON(payload) {
-				return strings.TrimSpace(payload)
-			}
-		}
-	}
-	return ""
-}
-
-func (e *SlideGeneratorExecutor) extractSlideSpecCandidate(input agent.ExecutionInput) string {
-	if content := strings.TrimSpace(e.extractSlideSpecFromOutputs(input)); content != "" {
-		return content
-	}
-	return ""
-}
-
-func extractOutputContentAndAction(output json.RawMessage) (string, string) {
-	if len(output) == 0 {
-		return "", ""
-	}
-	var parsed map[string]interface{}
-	if err := json.Unmarshal(output, &parsed); err != nil {
-		return "", ""
-	}
-	action, _ := parsed["action"].(string)
-	if content, ok := parsed["content"].(string); ok {
-		return content, action
-	}
-	if content, ok := parsed["content"]; ok {
-		if raw, err := json.Marshal(content); err == nil {
-			return string(raw), action
-		}
-	}
-	return "", action
-}
-
-func isSlideSpecJSON(content string) bool {
-	cleaned := strings.TrimSpace(extractJSONFromMarkdown(content))
-	if !json.Valid([]byte(cleaned)) {
-		return false
-	}
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(cleaned), &payload); err != nil {
-		return false
-	}
-	if _, ok := payload["deck"]; ok {
-		if _, ok := payload["slides"]; ok {
-			return true
-		}
-	}
-	if _, ok := payload["presentation"]; ok {
-		return true
-	}
-	if rawSlides, ok := payload["slides"]; ok {
-		if slides, ok := rawSlides.([]interface{}); ok && len(slides) > 0 {
-			return true
-		}
-	}
-	return false
-}
-
-type slideRenderOutput struct {
-	OutputPath string `json:"output_path"`
-	FileName   string `json:"file_name"`
-	MimeType   string `json:"mime_type"`
-	Base64     string `json:"base64,omitempty"`
-}
-
-func extractSlideRenderOutput(previousOutput json.RawMessage) *slideRenderOutput {
-	if len(previousOutput) == 0 {
-		return nil
-	}
-	var result tool.Result
-	if err := json.Unmarshal(previousOutput, &result); err != nil {
-		return nil
-	}
-	for _, item := range result.Content {
-		if item.Text == "" {
-			continue
-		}
-		if parsed := parseSlideRenderOutputFromText(item.Text); parsed != nil {
-			return parsed
-		}
-	}
-	return nil
-}
-
-type codeExecuteResult struct {
-	Stdout   string `json:"stdout"`
-	Stderr   string `json:"stderr"`
-	ExitCode int    `json:"exit_code"`
-}
-
-func logAioCodeExecuteResult(stepID string, result *tool.Result) {
-	if result == nil {
-		return
-	}
-	if strings.TrimSpace(result.Error) != "" {
-		log.Error().
-			Str("tool", "aio_code_execute").
-			Str("step_id", stepID).
-			Str("error", result.Error).
-			Msg("AIO code execute tool error")
-	}
-	for _, item := range result.Content {
-		text := strings.TrimSpace(item.Text)
-		if text == "" {
-			continue
-		}
-		log.Info().
-			Str("tool", "aio_code_execute").
-			Str("step_id", stepID).
-			Str("raw", text).
-			Msg("AIO code execute output")
-		var execResult codeExecuteResult
-		if err := json.Unmarshal([]byte(text), &execResult); err == nil {
-			if strings.TrimSpace(execResult.Stdout) != "" {
-				log.Info().
-					Str("tool", "aio_code_execute").
-					Str("step_id", stepID).
-					Str("stdout", execResult.Stdout).
-					Msg("AIO code execute stdout")
-			}
-			if strings.TrimSpace(execResult.Stderr) != "" {
-				log.Error().
-					Str("tool", "aio_code_execute").
-					Str("step_id", stepID).
-					Str("stderr", execResult.Stderr).
-					Msg("AIO code execute stderr")
-			}
-		}
-	}
-}
-
-func parseSlideRenderOutputFromText(text string) *slideRenderOutput {
-	cleaned := strings.TrimSpace(extractJSONFromMarkdown(text))
-	if cleaned == "" {
-		return nil
-	}
-	if parsed := parseSlideRenderOutputJSON(cleaned); parsed != nil {
-		return parsed
-	}
-	var execResult codeExecuteResult
-	if err := json.Unmarshal([]byte(cleaned), &execResult); err == nil {
-		stdoutJSON := extractJSONPayload(execResult.Stdout)
-		if parsed := parseSlideRenderOutputJSON(stdoutJSON); parsed != nil {
-			return parsed
-		}
-		stderrJSON := extractJSONPayload(execResult.Stderr)
-		if parsed := parseSlideRenderOutputJSON(stderrJSON); parsed != nil {
-			return parsed
-		}
-	}
-	return nil
-}
-
-func parseSlideRenderOutputJSON(payload string) *slideRenderOutput {
-	payload = strings.TrimSpace(payload)
-	if payload == "" || !json.Valid([]byte(payload)) {
-		return nil
-	}
-	var parsed slideRenderOutput
-	if err := json.Unmarshal([]byte(payload), &parsed); err == nil && parsed.OutputPath != "" {
-		return &parsed
-	}
-	return nil
-}
-
-func extractJSONPayload(text string) string {
-	cleaned := strings.TrimSpace(stripJSONComments(text))
-	if cleaned == "" {
-		return ""
-	}
-	if json.Valid([]byte(cleaned)) {
-		return cleaned
-	}
-	start := strings.Index(cleaned, "{")
-	end := strings.LastIndex(cleaned, "}")
-	if start >= 0 && end > start {
-		candidate := strings.TrimSpace(cleaned[start : end+1])
-		if json.Valid([]byte(candidate)) {
-			return candidate
-		}
-	}
-	lastStart := strings.LastIndex(cleaned, "{")
-	if lastStart >= 0 {
-		candidate := strings.TrimSpace(cleaned[lastStart:])
-		if json.Valid([]byte(candidate)) {
-			return candidate
-		}
-	}
-	return ""
-}
-
-func (e *SlideGeneratorExecutor) renderSlidesFromSpec(ctx context.Context, input agent.ExecutionInput) (*slideRenderOutput, error) {
-	if e.mcpClient == nil {
-		return nil, fmt.Errorf("mcp client not configured")
-	}
-	slideSpec := e.extractSlideSpecCandidate(input)
-	if strings.TrimSpace(slideSpec) == "" {
-		return nil, fmt.Errorf("missing slide JSON in previous output")
-	}
-	templateJSON, tmplErr := loadEmbeddedSlideTemplate()
-	if tmplErr != nil {
-		return nil, tmplErr
-	}
-	if err := validateSlideTemplateSchema(slideSpec, templateJSON); err != nil {
-		if converted, convErr := convertPresentationToTemplate(slideSpec, map[string]interface{}{"template": templateJSON}); convErr == nil {
-			slideSpec = converted
-		} else {
-			return nil, err
-		}
-	}
-
-	responseID := ""
-	if input.PlanContext != nil {
-		responseID = input.PlanContext.ResponseID
-	}
-	if responseID == "" {
-		responseID = fmt.Sprintf("slide_%d", time.Now().Unix())
-	}
-	specPath := fmt.Sprintf("/home/gem/slide_specs/slide_spec_%s.json", responseID)
-	scriptPath := fmt.Sprintf("/home/gem/slide_execs/slide_exec_%s.py", responseID)
-	outputPath := fmt.Sprintf("/home/gem/slide_%s.pptx", responseID)
-	code, err := buildSlideRenderCode(slideSpec, specPath, scriptPath, outputPath, "")
-	if err != nil {
-		return nil, err
-	}
-
-	args := map[string]interface{}{
-		"language": "python",
-		"code":     agent.NormalizeSandboxFilePaths(code),
-	}
-	result, err := e.mcpClient.CallTool(ctx, tool.CallRequest{
-		Name:      "aio_code_execute",
-		Arguments: args,
-	})
-	if err != nil {
-		return nil, err
-	}
-	toolText := ""
-	for _, item := range result.Content {
-		if item.Text != "" {
-			if toolText == "" {
-				toolText = item.Text
-			} else {
-				toolText = toolText + "\n" + item.Text
-			}
-			log.Info().
-				Str("tool", "aio_code_execute").
-				Str("stdout", item.Text).
-				Msg("AIO code execute output")
-			var execResult codeExecuteResult
-			if err := json.Unmarshal([]byte(item.Text), &execResult); err == nil {
-				if strings.TrimSpace(execResult.Stderr) != "" {
-					log.Error().
-						Str("tool", "aio_code_execute").
-						Str("stderr", execResult.Stderr).
-						Msg("AIO code execute stderr")
-				}
-			}
-		}
-	}
-	if result.IsError {
-		if toolText != "" {
-			return nil, fmt.Errorf("aio_code_execute failed: %s", toolText)
-		}
-		if strings.TrimSpace(result.Error) != "" {
-			return nil, fmt.Errorf("aio_code_execute failed: %s", result.Error)
-		}
-		return nil, fmt.Errorf("aio_code_execute failed")
-	}
-	outputBytes, _ := json.Marshal(result)
-	renderOutput := extractSlideRenderOutput(outputBytes)
-	if renderOutput == nil {
-		if toolText != "" {
-			return nil, fmt.Errorf("render output missing; last tool output: %s", toolText)
-		}
-		return nil, fmt.Errorf("render output missing")
-	}
-	return renderOutput, nil
-}
-
-func validateSlideTemplateJSON(content string) error {
-	templateJSON, err := loadEmbeddedSlideTemplate()
-	if err != nil {
-		return err
-	}
-	return validateSlideTemplateSchema(content, templateJSON)
-}
-
-func convertPresentationToTemplate(content string, params map[string]interface{}) (string, error) {
-	cleaned := strings.TrimSpace(extractJSONFromMarkdown(content))
-	if !json.Valid([]byte(cleaned)) {
-		return "", fmt.Errorf("invalid JSON output")
-	}
-
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(cleaned), &payload); err != nil {
-		var rawSlides []interface{}
-		if err := json.Unmarshal([]byte(cleaned), &rawSlides); err == nil {
-			return convertSlidesToTemplate(rawSlides, "", params)
-		}
-		return "", fmt.Errorf("json parse error: %w", err)
-	}
-
-	if _, hasDeck := payload["deck"]; hasDeck {
-		if _, hasSlides := payload["slides"]; hasSlides {
-			return cleaned, nil
-		}
-	}
-
-	if rawSlides, ok := payload["slides"].([]interface{}); ok && len(rawSlides) > 0 {
-		presentationTitle := ""
-		if title, ok := payload["presentation_title"].(string); ok {
-			presentationTitle = title
-		} else if title, ok := payload["title"].(string); ok {
-			presentationTitle = title
-		}
-		return convertSlidesToTemplate(rawSlides, presentationTitle, params)
-	}
-
-	presentation, ok := payload["presentation"].(map[string]interface{})
-	if !ok {
-		return "", fmt.Errorf("unsupported slide JSON shape")
-	}
-
-	templateJSON := ""
-	if params != nil {
-		if templateStr, ok := params["template"].(string); ok {
-			templateJSON = strings.TrimSpace(templateStr)
-		}
-	}
-	if templateJSON == "" {
-		embedded, err := loadEmbeddedSlideTemplate()
-		if err != nil {
-			return "", err
-		}
-		templateJSON = embedded
-	}
-	if !json.Valid([]byte(templateJSON)) {
-		return "", fmt.Errorf("invalid template JSON")
-	}
-
-	var templatePayload map[string]interface{}
-	if err := json.Unmarshal([]byte(templateJSON), &templatePayload); err != nil {
-		return "", fmt.Errorf("template parse error: %w", err)
-	}
-
-	deck, _ := templatePayload["deck"].(map[string]interface{})
-
-	rawSlides, _ := presentation["slides"].([]interface{})
-	if len(rawSlides) == 0 {
-		return "", fmt.Errorf("presentation slides are empty")
-	}
-
-	presentationTitle, _ := presentation["title"].(string)
-	return convertSlidesToTemplateWithDeck(rawSlides, presentationTitle, params, deck)
-}
-
-func convertSlidesToTemplate(rawSlides []interface{}, presentationTitle string, params map[string]interface{}) (string, error) {
-	templateJSON := ""
-	if params != nil {
-		if templateStr, ok := params["template"].(string); ok {
-			templateJSON = strings.TrimSpace(templateStr)
-		}
-	}
-	if templateJSON == "" {
-		embedded, err := loadEmbeddedSlideTemplate()
-		if err != nil {
-			return "", err
-		}
-		templateJSON = embedded
-	}
-	if !json.Valid([]byte(templateJSON)) {
-		return "", fmt.Errorf("invalid template JSON")
-	}
-
-	var templatePayload map[string]interface{}
-	if err := json.Unmarshal([]byte(templateJSON), &templatePayload); err != nil {
-		return "", fmt.Errorf("template parse error: %w", err)
-	}
-
-	deck, _ := templatePayload["deck"].(map[string]interface{})
-	return convertSlidesToTemplateWithDeck(rawSlides, presentationTitle, params, deck)
-}
-
-func convertSlidesToTemplateWithDeck(rawSlides []interface{}, presentationTitle string, params map[string]interface{}, deck map[string]interface{}) (string, error) {
-	if len(rawSlides) == 0 {
-		return "", fmt.Errorf("presentation slides are empty")
-	}
-
-	numSlides := len(rawSlides)
-	if params != nil {
-		if config, ok := params["config"].(map[string]interface{}); ok {
-			if n, ok := config["num_slides"].(float64); ok && int(n) > 0 {
-				numSlides = int(n)
-			}
-		}
-	}
-
-	convertedSlides := make([]interface{}, 0, len(rawSlides))
-	for idx, raw := range rawSlides {
-		item, ok := raw.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		title, _ := item["title"].(string)
-		if title == "" {
-			title = fmt.Sprintf("Slide %d", idx+1)
-		}
-		if title == fmt.Sprintf("Slide %d", idx+1) && presentationTitle != "" {
-			title = presentationTitle
-		}
-
-		bullets := make([]string, 0)
-		if contentList, ok := item["content"].([]interface{}); ok {
-			for _, entry := range contentList {
-				bullets = append(bullets, fmt.Sprintf("%v", entry))
-			}
-		} else if contentStr, ok := item["content"].(string); ok && contentStr != "" {
-			bullets = append(bullets, contentStr)
-		}
-		if len(bullets) == 0 {
-			if focus, ok := item["contentFocus"].(string); ok && focus != "" {
-				bullets = append(bullets, focus)
-			}
-		}
-		if len(bullets) == 0 {
-			if keyContent, ok := item["key_content"].([]interface{}); ok {
-				for _, entry := range keyContent {
-					bullets = append(bullets, fmt.Sprintf("%v", entry))
-				}
-			} else if keyContentStr, ok := item["key_content"].(string); ok && keyContentStr != "" {
-				bullets = append(bullets, keyContentStr)
-			}
-		}
-		if visual, ok := item["visual_suggestion"].(string); ok && visual != "" {
-			bullets = append(bullets, "Visual: "+visual)
-		}
-		if len(bullets) == 0 {
-			if rationale, ok := item["flow_rationale"].(string); ok && rationale != "" {
-				bullets = append(bullets, rationale)
-			}
-		}
-		if len(bullets) == 0 {
-			if purpose, ok := item["purpose"].(string); ok && purpose != "" {
-				bullets = append(bullets, purpose)
-			}
-		}
-		if len(bullets) == 0 {
-			bullets = append(bullets, "TBD")
-		}
-
-		slide := map[string]interface{}{
-			"type":    "bullets",
-			"title":   title,
-			"bullets": bullets,
-		}
-		convertedSlides = append(convertedSlides, slide)
-	}
-
-	for len(convertedSlides) < numSlides {
-		convertedSlides = append(convertedSlides, map[string]interface{}{
-			"type":    "bullets",
-			"title":   fmt.Sprintf("Additional Slide %d", len(convertedSlides)+1),
-			"bullets": []string{"TBD"},
-		})
-	}
-	if numSlides > 0 && len(convertedSlides) > numSlides {
-		convertedSlides = convertedSlides[:numSlides]
-	}
-
-	convertedPayload := map[string]interface{}{
-		"deck":   deck,
-		"slides": convertedSlides,
-	}
-	convertedJSON, err := json.Marshal(convertedPayload)
-	if err != nil {
-		return "", fmt.Errorf("converted json marshal error: %w", err)
-	}
-	if err := validateSlideTemplateJSON(string(convertedJSON)); err != nil {
-		return "", err
-	}
-	return string(convertedJSON), nil
-}
-
-type schemaNode struct {
-	requiredKeys map[string]struct{}
-	children     map[string]*schemaNode
-	arrayItems   map[string]*schemaNode
-}
-
-var slideOptionalKeys = map[string]map[string]bool{
-	"title": {
-		"subtitle": true,
-		"logo":     true,
-	},
-	"section": {
-		"subtitle": true,
-		"icons":    true,
-	},
-	"bullets": {
-		"image":     true,
-		"image_pos": true,
-	},
-	"chart": {
-		"side_bullets": true,
-	},
-	"quote": {
-		"author":    true,
-		"image":     true,
-		"image_pos": true,
-	},
-	"closing": {
-		"logo": true,
-	},
-}
-
-func validateSlideTemplateSchema(content string, templateJSON string) error {
-	cleaned := strings.TrimSpace(extractJSONFromMarkdown(content))
-	if !json.Valid([]byte(cleaned)) {
-		return fmt.Errorf("invalid JSON output")
-	}
-
-	templateJSON = strings.TrimSpace(templateJSON)
-	if templateJSON == "" {
-		embedded, err := loadEmbeddedSlideTemplate()
-		if err != nil {
-			return err
-		}
-		templateJSON = embedded
-	}
-	if !json.Valid([]byte(templateJSON)) {
-		return fmt.Errorf("invalid template JSON")
-	}
-
-	var templatePayload map[string]interface{}
-	if err := json.Unmarshal([]byte(templateJSON), &templatePayload); err != nil {
-		return fmt.Errorf("template parse error: %w", err)
-	}
-
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(cleaned), &payload); err != nil {
-		var rawSlides []interface{}
-		if err := json.Unmarshal([]byte(cleaned), &rawSlides); err == nil {
-			deck, ok := templatePayload["deck"].(map[string]interface{})
-			if !ok {
-				return fmt.Errorf("template missing deck")
-			}
-			payload = map[string]interface{}{
-				"deck":   deck,
-				"slides": rawSlides,
-			}
-		} else {
-			return fmt.Errorf("json parse error: %w", err)
-		}
-	}
-
-	deck, ok := payload["deck"].(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("missing deck object in slide JSON")
-	}
-	slideSchemaMap, err := buildSlideSchemas(templatePayload)
-	if err != nil {
-		return err
-	}
-
-	if deckSchema, ok := slideSchemaMap["__deck__"]; ok {
-		if err := validateWithSchema(deck, deckSchema, "deck"); err != nil {
-			return err
-		}
-	}
-
-	rawSlides, ok := payload["slides"]
-	if !ok {
-		return fmt.Errorf("missing slides array in slide JSON")
-	}
-	slides, ok := rawSlides.([]interface{})
-	if !ok || len(slides) == 0 {
-		return fmt.Errorf("slides must be a non-empty array")
-	}
-
-	for i, slide := range slides {
-		obj, ok := slide.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("slide %d is not an object", i+1)
-		}
-		rawType, _ := obj["type"].(string)
-		if rawType == "" {
-			return fmt.Errorf("slide %d missing type", i+1)
-		}
-		schema, ok := slideSchemaMap[rawType]
-		if !ok {
-			return fmt.Errorf("slide %d has unsupported type %q", i+1, rawType)
-		}
-		if err := validateWithSchema(obj, schema, fmt.Sprintf("slides[%d]", i)); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func buildSlideSchemas(templatePayload map[string]interface{}) (map[string]*schemaNode, error) {
-	schemaMap := make(map[string]*schemaNode)
-
-	templateDeck, ok := templatePayload["deck"].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("template missing deck")
-	}
-	schemaMap["__deck__"] = buildSchemaFromTemplateMap(templateDeck, nil)
-
-	templateSlides, ok := templatePayload["slides"].([]interface{})
-	if !ok || len(templateSlides) == 0 {
-		return nil, fmt.Errorf("template missing slides")
-	}
-	for _, entry := range templateSlides {
-		slideTemplate, ok := entry.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		slideType, _ := slideTemplate["type"].(string)
-		if slideType == "" {
-			continue
-		}
-		optional := slideOptionalKeys[slideType]
-		schema := buildSchemaFromTemplateMap(slideTemplate, optional)
-		if slideType == "metrics" {
-			if metricsSchema, ok := schema.arrayItems["metrics"]; ok {
-				delete(metricsSchema.requiredKeys, "note")
-			}
-		}
-		schemaMap[slideType] = schema
-	}
-
-	return schemaMap, nil
-}
-
-func buildSchemaFromTemplateMap(template map[string]interface{}, optional map[string]bool) *schemaNode {
-	node := &schemaNode{
-		requiredKeys: map[string]struct{}{},
-		children:     map[string]*schemaNode{},
-		arrayItems:   map[string]*schemaNode{},
-	}
-	for key, value := range template {
-		if optional == nil || !optional[key] {
-			node.requiredKeys[key] = struct{}{}
-		}
-		switch typed := value.(type) {
-		case map[string]interface{}:
-			node.children[key] = buildSchemaFromTemplateMap(typed, nil)
-		case []interface{}:
-			if len(typed) == 0 {
-				continue
-			}
-			if itemMap, ok := typed[0].(map[string]interface{}); ok {
-				node.arrayItems[key] = buildSchemaFromTemplateMap(itemMap, nil)
-			}
-		}
-	}
-	return node
-}
-
-func validateWithSchema(value map[string]interface{}, schema *schemaNode, path string) error {
-	for key := range schema.requiredKeys {
-		if _, ok := value[key]; !ok {
-			return fmt.Errorf("%s missing required field %q", path, key)
-		}
-	}
-	for key, child := range schema.children {
-		childValue, ok := value[key]
-		if !ok {
-			continue
-		}
-		childMap, ok := childValue.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("%s.%s must be an object", path, key)
-		}
-		if err := validateWithSchema(childMap, child, path+"."+key); err != nil {
-			return err
-		}
-	}
-	for key, child := range schema.arrayItems {
-		childValue, ok := value[key]
-		if !ok {
-			continue
-		}
-		childSlice, ok := childValue.([]interface{})
-		if !ok {
-			return fmt.Errorf("%s.%s must be an array", path, key)
-		}
-		for idx, entry := range childSlice {
-			entryMap, ok := entry.(map[string]interface{})
-			if !ok {
-				return fmt.Errorf("%s.%s[%d] must be an object", path, key, idx)
-			}
-			if err := validateWithSchema(entryMap, child, fmt.Sprintf("%s.%s[%d]", path, key, idx)); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func buildSlideRenderCode(slideSpec string, specPath string, scriptPath string, outputPath string, imageURL string) (string, error) {
-	if !json.Valid([]byte(slideSpec)) {
-		return "", fmt.Errorf("invalid slide JSON")
-	}
-	if strings.TrimSpace(specPath) == "" {
-		return "", fmt.Errorf("missing spec_path for slide render")
-	}
-	if strings.TrimSpace(outputPath) == "" {
-		return "", fmt.Errorf("missing output_path for slide render")
-	}
-	if strings.TrimSpace(imageURL) == "" {
-		imageURL = "https://www.jan.ai/_next/static/media/cute-robot-flying.1479447f.png"
-	}
-
-pythonBodyTemplate := `import subprocess, sys
-import os, json, base64
-import urllib.request
-import shutil
-try:
-    from pptx import Presentation
-    from pptx.enum.shapes import MSO_SHAPE
-    from pptx.enum.chart import XL_CHART_TYPE
-    from pptx.chart.data import CategoryChartData
-    from pptx.enum.text import PP_ALIGN
-    from pptx.util import Inches, Pt
-    from pptx.dml.color import RGBColor
-except Exception:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "python-pptx"])
-    from pptx import Presentation
-    from pptx.enum.shapes import MSO_SHAPE
-    from pptx.enum.chart import XL_CHART_TYPE
-    from pptx.chart.data import CategoryChartData
-    from pptx.enum.text import PP_ALIGN
-    from pptx.util import Inches, Pt
-    from pptx.dml.color import RGBColor
-
-assets_dir = "/home/gem/slide_assets"
-os.makedirs(assets_dir, exist_ok=True)
-
-logo_path = os.path.join(assets_dir, "jan_logo.png")
-hero_path = os.path.join(assets_dir, "girl_sketch.png")
-
-image_url = "%s"
-try:
-    urllib.request.urlretrieve(image_url, logo_path)
-    shutil.copyfile(logo_path, hero_path)
-except Exception:
-    logo_path = ""
-    hero_path = ""
-
-spec_path = "%s"
-with open(spec_path, "r", encoding="utf-8") as f:
-    slide_spec = json.load(f)
-deck = slide_spec.get("deck", {})
-slides = slide_spec.get("slides", [])
-file_name = os.path.basename("%s")
-
-prs = Presentation()
-size = deck.get("size", {})
-width = size.get("width", 13.33)
-height = size.get("height", 7.5)
-prs.slide_width = Inches(float(width))
-prs.slide_height = Inches(float(height))
-
-navy = RGBColor(10, 18, 33)
-teal = RGBColor(18, 112, 124)
-cream = RGBColor(245, 241, 233)
-ink = RGBColor(20, 24, 32)
-
-def color_from_hex(value, fallback):
-    if not value or not isinstance(value, str):
-        return fallback
-    value = value.lstrip("#")
-    if len(value) != 6:
-        return fallback
-    try:
-        r = int(value[0:2], 16)
-        g = int(value[2:4], 16)
-        b = int(value[4:6], 16)
-        return RGBColor(r, g, b)
-    except Exception:
-        return fallback
-
-theme = deck.get("theme", {})
-title_bg = color_from_hex(theme.get("title_bg"), navy)
-title_text = color_from_hex(theme.get("title_text"), cream)
-header_bg = color_from_hex(theme.get("header_bg"), teal)
-header_text = color_from_hex(theme.get("header_text"), cream)
-body_bg = color_from_hex(theme.get("body_bg"), cream)
-body_text = color_from_hex(theme.get("body_text"), ink)
-closing_bg = color_from_hex(theme.get("closing_bg"), navy)
-closing_text = color_from_hex(theme.get("closing_text"), cream)
-
-asset_lookup = {}
-if logo_path:
-    asset_lookup["logo"] = logo_path
-if hero_path:
-    asset_lookup["hero"] = hero_path
-
-def resolve_asset(value):
-    if not value:
-        return ""
-    return asset_lookup.get(value, value)
-
-def set_bg(slide, color):
-    fill = slide.background.fill
-    fill.solid()
-    fill.fore_color.rgb = color
-
-def add_header(slide, title, color_bg, color_text):
-    bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(13.33), Inches(0.7))
-    bar.fill.solid()
-    bar.fill.fore_color.rgb = color_bg
-    bar.line.fill.background()
-    box = slide.shapes.add_textbox(Inches(0.6), Inches(0.1), Inches(11.5), Inches(0.5))
-    tf = box.text_frame
-    tf.clear()
-    p = tf.paragraphs[0]
-    run = p.add_run()
-    run.text = title
-    run.font.size = Pt(24)
-    run.font.bold = True
-    run.font.color.rgb = color_text
-
-def add_textbox(slide, text, x, y, w, h, size, color, bold=False, align="left"):
-    box = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
-    tf = box.text_frame
-    tf.clear()
-    p = tf.paragraphs[0]
-    run = p.add_run()
-    run.text = text
-    run.font.size = Pt(size)
-    run.font.bold = bold
-    run.font.color.rgb = color
-    if align == "center":
-        p.alignment = PP_ALIGN.CENTER
-    elif align == "right":
-        p.alignment = PP_ALIGN.RIGHT
-    else:
-        p.alignment = PP_ALIGN.LEFT
-    return tf
-
-def apply_text_color(paragraph, color):
-    if paragraph.runs:
-        for run in paragraph.runs:
-            run.font.color.rgb = color
-    else:
-        paragraph.font.color.rgb = color
-
-def apply_font_size(paragraph, size):
-    if paragraph.runs:
-        for run in paragraph.runs:
-            run.font.size = size
-    else:
-        paragraph.font.size = size
-
-def add_logo(slide, logo_key, default_x, default_y, default_w):
-    logo_value = resolve_asset(logo_key)
-    if not logo_value:
-        return
-    slide.shapes.add_picture(logo_value, Inches(default_x), Inches(default_y), width=Inches(default_w))
-
-def add_bullets_box(slide, bullets, x, y, w, h, size, color):
-    box = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
-    tf = box.text_frame
-    tf.clear()
-    for idx, bullet in enumerate(bullets):
-        # Handle both string bullets and object bullets with a "text" field
-        if isinstance(bullet, dict):
-            text = str(bullet.get("text", bullet.get("content", "")))
-        else:
-            text = str(bullet)
-        text = text.replace("{file_name}", file_name)
-        if idx == 0:
-            tf.text = text
-        else:
-            p = tf.add_paragraph()
-            p.text = text
-            p.level = 0
-    for paragraph in tf.paragraphs:
-        apply_font_size(paragraph, Pt(size))
-        apply_text_color(paragraph, color)
-    return tf
-
-def add_icon_row(slide, icons, x, y, size, gap, text_color):
-    if not icons:
-        return
-    for idx, icon in enumerate(icons):
-        icon_x = x + idx * (size + gap)
-        icon_color = color_from_hex(icon.get("color"), header_bg)
-        shape = slide.shapes.add_shape(
-            MSO_SHAPE.OVAL, Inches(icon_x), Inches(y), Inches(size), Inches(size)
-        )
-        shape.fill.solid()
-        shape.fill.fore_color.rgb = icon_color
-        shape.line.fill.background()
-        label = str(icon.get("text", ""))
-        if label:
-            tf = shape.text_frame
-            tf.clear()
-            p = tf.paragraphs[0]
-            run = p.add_run()
-            run.text = label
-            run.font.size = Pt(12)
-            run.font.bold = True
-            run.font.color.rgb = text_color
-            p.alignment = PP_ALIGN.CENTER
-
-def add_table(slide, table_spec, text_color):
-    headers = table_spec.get("headers", [])
-    rows = table_spec.get("rows", [])
-    cols = len(headers) if headers else (len(rows[0]) if rows else 0)
-    if cols == 0:
-        return
-    row_count = len(rows) + 1 if headers else len(rows)
-    x = float(table_spec.get("x", 0.8))
-    y = float(table_spec.get("y", 1.6))
-    w = float(table_spec.get("w", 11.5))
-    h = float(table_spec.get("h", 4.6))
-    table = slide.shapes.add_table(row_count, cols, Inches(x), Inches(y), Inches(w), Inches(h)).table
-    start_row = 0
-    if headers:
-        for col_idx, header in enumerate(headers):
-            cell = table.cell(0, col_idx)
-            cell.text = str(header)
-            for paragraph in cell.text_frame.paragraphs:
-                apply_font_size(paragraph, Pt(14))
-                apply_text_color(paragraph, text_color)
-                paragraph.runs[0].font.bold = True
-        start_row = 1
-    for row_idx, row in enumerate(rows):
-        for col_idx, value in enumerate(row):
-            cell = table.cell(start_row + row_idx, col_idx)
-            cell.text = str(value)
-            for paragraph in cell.text_frame.paragraphs:
-                apply_font_size(paragraph, Pt(12))
-                apply_text_color(paragraph, text_color)
-
-def add_chart(slide, chart_spec):
-    chart_type_map = {
-        "column": XL_CHART_TYPE.COLUMN_CLUSTERED,
-        "bar": XL_CHART_TYPE.BAR_CLUSTERED,
-        "line": XL_CHART_TYPE.LINE_MARKERS,
-        "pie": XL_CHART_TYPE.PIE,
-        "area": XL_CHART_TYPE.AREA,
-    }
-    chart_type = chart_type_map.get(str(chart_spec.get("type", "column")).lower(), XL_CHART_TYPE.COLUMN_CLUSTERED)
-    categories = chart_spec.get("categories", [])
-    series = chart_spec.get("series", [])
-    if not categories or not series:
-        return
-    chart_data = CategoryChartData()
-    chart_data.categories = categories
-    for entry in series:
-        chart_data.add_series(entry.get("name", "Series"), entry.get("values", []))
-    x = float(chart_spec.get("x", 0.9))
-    y = float(chart_spec.get("y", 1.6))
-    w = float(chart_spec.get("w", 6.5))
-    h = float(chart_spec.get("h", 4.2))
-    chart = slide.shapes.add_chart(chart_type, Inches(x), Inches(y), Inches(w), Inches(h), chart_data).chart
-    chart.has_legend = bool(chart_spec.get("show_legend", False))
-
-def normalize_bullets(item):
-    bullets = item.get("bullets")
-    if isinstance(bullets, list) and bullets:
-        return [str(b) for b in bullets]
-    if isinstance(bullets, str) and bullets:
-        return [bullets]
-    content = item.get("content")
-    if isinstance(content, list) and content:
-        return [str(b) for b in content]
-    if isinstance(content, str) and content:
-        return [content]
-    focus = item.get("contentFocus")
-    if isinstance(focus, str) and focus:
-        return [focus]
-    purpose = item.get("purpose")
-    if isinstance(purpose, str) and purpose:
-        return [purpose]
-    return []
-
-blank_layout = prs.slide_layouts[6]
-
-for item in slides:
-    slide = None
-    slide_type = str(item.get("type", "bullets")).lower()
-    if slide_type == "title":
-        title_layout = prs.slide_layouts[0]
-        slide = prs.slides.add_slide(title_layout)
-        set_bg(slide, color_from_hex(item.get("bg"), title_bg))
-        slide.shapes.title.text = item.get("title", "")
-        slide.placeholders[1].text = item.get("subtitle", "")
-        title_para = slide.shapes.title.text_frame.paragraphs[0]
-        subtitle_para = slide.placeholders[1].text_frame.paragraphs[0]
-        apply_text_color(title_para, color_from_hex(item.get("title_text"), title_text))
-        apply_text_color(subtitle_para, color_from_hex(item.get("subtitle_text"), title_text))
-        add_logo(slide, item.get("logo", "logo"), 11.2, 0.2, 1.6)
-        extra_lines = normalize_bullets(item)
-        if extra_lines:
-            add_textbox(
-                slide,
-                "\n".join(extra_lines),
-                1.0,
-                4.2,
-                11.0,
-                1.6,
-                18,
-                color_from_hex(item.get("text"), title_text),
-            )
-    elif slide_type == "section":
-        slide = prs.slides.add_slide(blank_layout)
-        set_bg(slide, color_from_hex(item.get("bg"), body_bg))
-        add_textbox(
-            slide,
-            item.get("title", ""),
-            1.0,
-            2.5,
-            11.3,
-            1.0,
-            48,
-            color_from_hex(item.get("title_text"), body_text),
-            bold=True,
-            align="center",
-        )
-        subtitle = item.get("subtitle", "")
-        if subtitle:
-            add_textbox(
-                slide,
-                subtitle,
-                2.0,
-                3.6,
-                9.3,
-                0.6,
-                22,
-                color_from_hex(item.get("subtitle_text"), body_text),
-                align="center",
-            )
-        extra_lines = normalize_bullets(item)
-        if extra_lines:
-            add_textbox(
-                slide,
-                "\n".join(extra_lines),
-                1.0,
-                4.4,
-                11.3,
-                1.3,
-                18,
-                color_from_hex(item.get("text"), body_text),
-                align="center",
-            )
-    elif slide_type == "bullets":
-        slide = prs.slides.add_slide(blank_layout)
-        set_bg(slide, color_from_hex(item.get("bg"), body_bg))
-        title_value = item.get("title", "")
-        if title_value:
-            add_header(
-                slide,
-                title_value,
-                color_from_hex(item.get("header_bg"), header_bg),
-                color_from_hex(item.get("header_text"), header_text),
-            )
-        add_bullets_box(
-            slide,
-            item.get("bullets", []),
-            float(item.get("bullets_x", 0.8)),
-            float(item.get("bullets_y", 1.3)),
-            float(item.get("bullets_w", 6.0)),
-            float(item.get("bullets_h", 5.5)),
-            int(item.get("bullets_size", 20)),
-            color_from_hex(item.get("text"), body_text),
-        )
-        image_key = resolve_asset(item.get("image", ""))
-        if image_key:
-            image_pos = item.get("image_pos", {})
-            image_x = float(image_pos.get("x", 7.2))
-            image_y = float(image_pos.get("y", 1.4))
-            image_w = float(image_pos.get("w", 5.4))
-            image_h = image_pos.get("h")
-            if image_h:
-                slide.shapes.add_picture(image_key, Inches(image_x), Inches(image_y), Inches(image_w), Inches(float(image_h)))
-            else:
-                slide.shapes.add_picture(image_key, Inches(image_x), Inches(image_y), width=Inches(image_w))
-    elif slide_type == "metrics":
-        slide = prs.slides.add_slide(blank_layout)
-        set_bg(slide, color_from_hex(item.get("bg"), body_bg))
-        title_value = item.get("title", "")
-        if title_value:
-            add_header(
-                slide,
-                title_value,
-                color_from_hex(item.get("header_bg"), header_bg),
-                color_from_hex(item.get("header_text"), header_text),
-            )
-        metrics = item.get("metrics", [])
-        box_w = float(item.get("metric_w", 3.6))
-        box_h = float(item.get("metric_h", 1.9))
-        start_x = float(item.get("metric_x", 0.8))
-        start_y = float(item.get("metric_y", 1.8))
-        gap = float(item.get("metric_gap", 0.4))
-        for idx, metric in enumerate(metrics):
-            x = start_x + idx * (box_w + gap)
-            shape = slide.shapes.add_shape(
-                MSO_SHAPE.ROUNDED_RECTANGLE, Inches(x), Inches(start_y), Inches(box_w), Inches(box_h)
-            )
-            shape.fill.solid()
-            shape.fill.fore_color.rgb = color_from_hex(metric.get("color"), header_bg)
-            shape.line.fill.background()
-            tf = shape.text_frame
-            tf.clear()
-            p_value = tf.paragraphs[0]
-            run_value = p_value.add_run()
-            run_value.text = str(metric.get("value", ""))
-            run_value.font.size = Pt(28)
-            run_value.font.bold = True
-            run_value.font.color.rgb = color_from_hex(metric.get("text"), title_text)
-            p_value.alignment = PP_ALIGN.CENTER
-            p_label = tf.add_paragraph()
-            p_label.text = str(metric.get("label", ""))
-            p_label.alignment = PP_ALIGN.CENTER
-            apply_font_size(p_label, Pt(14))
-            apply_text_color(p_label, color_from_hex(metric.get("text"), title_text))
-            note = str(metric.get("note", ""))
-            if note:
-                p_note = tf.add_paragraph()
-                p_note.text = note
-                p_note.alignment = PP_ALIGN.CENTER
-                apply_font_size(p_note, Pt(12))
-                apply_text_color(p_note, color_from_hex(metric.get("text"), title_text))
-    elif slide_type == "chart":
-        slide = prs.slides.add_slide(blank_layout)
-        set_bg(slide, color_from_hex(item.get("bg"), body_bg))
-        title_value = item.get("title", "")
-        if title_value:
-            add_header(
-                slide,
-                title_value,
-                color_from_hex(item.get("header_bg"), header_bg),
-                color_from_hex(item.get("header_text"), header_text),
-            )
-        add_chart(slide, item.get("chart", {}))
-        side_bullets = item.get("side_bullets", [])
-        if side_bullets:
-            add_bullets_box(
-                slide,
-                side_bullets,
-                float(item.get("side_x", 7.2)),
-                float(item.get("side_y", 1.6)),
-                float(item.get("side_w", 5.2)),
-                float(item.get("side_h", 4.2)),
-                int(item.get("side_size", 16)),
-                color_from_hex(item.get("text"), body_text),
-            )
-    elif slide_type == "table":
-        slide = prs.slides.add_slide(blank_layout)
-        set_bg(slide, color_from_hex(item.get("bg"), body_bg))
-        title_value = item.get("title", "")
-        if title_value:
-            add_header(
-                slide,
-                title_value,
-                color_from_hex(item.get("header_bg"), header_bg),
-                color_from_hex(item.get("header_text"), header_text),
-            )
-        add_table(slide, item.get("table", {}), color_from_hex(item.get("text"), body_text))
-    elif slide_type == "comparison":
-        slide = prs.slides.add_slide(blank_layout)
-        set_bg(slide, color_from_hex(item.get("bg"), body_bg))
-        title_value = item.get("title", "")
-        if title_value:
-            add_header(
-                slide,
-                title_value,
-                color_from_hex(item.get("header_bg"), header_bg),
-                color_from_hex(item.get("header_text"), header_text),
-            )
-        left = item.get("left", {})
-        right = item.get("right", {})
-        add_textbox(
-            slide,
-            left.get("title", ""),
-            0.9,
-            1.4,
-            5.6,
-            0.4,
-            18,
-            color_from_hex(item.get("text"), body_text),
-            bold=True,
-        )
-        add_bullets_box(
-            slide,
-            left.get("bullets", []),
-            0.9,
-            1.9,
-            5.6,
-            4.8,
-            16,
-            color_from_hex(item.get("text"), body_text),
-        )
-        add_textbox(
-            slide,
-            right.get("title", ""),
-            6.8,
-            1.4,
-            5.6,
-            0.4,
-            18,
-            color_from_hex(item.get("text"), body_text),
-            bold=True,
-        )
-        add_bullets_box(
-            slide,
-            right.get("bullets", []),
-            6.8,
-            1.9,
-            5.6,
-            4.8,
-            16,
-            color_from_hex(item.get("text"), body_text),
-        )
-    elif slide_type == "timeline":
-        slide = prs.slides.add_slide(blank_layout)
-        set_bg(slide, color_from_hex(item.get("bg"), body_bg))
-        title_value = item.get("title", "")
-        if title_value:
-            add_header(
-                slide,
-                title_value,
-                color_from_hex(item.get("header_bg"), header_bg),
-                color_from_hex(item.get("header_text"), header_text),
-            )
-        timeline = item.get("timeline", {})
-        items = timeline.get("items", [])
-        start_x = float(timeline.get("x", 1.0))
-        start_y = float(timeline.get("y", 3.6))
-        width = float(timeline.get("w", 11.0))
-        line_h = float(timeline.get("line_h", 0.05))
-        dot_size = float(timeline.get("dot_size", 0.2))
-        if items:
-            line = slide.shapes.add_shape(
-                MSO_SHAPE.RECTANGLE, Inches(start_x), Inches(start_y), Inches(width), Inches(line_h)
-            )
-            line.fill.solid()
-            line.fill.fore_color.rgb = color_from_hex(timeline.get("line_color"), header_bg)
-            line.line.fill.background()
-            spacing = width / max(len(items) - 1, 1)
-            for idx, entry in enumerate(items):
-                dot_x = start_x + idx * spacing - (dot_size / 2)
-                dot = slide.shapes.add_shape(
-                    MSO_SHAPE.OVAL, Inches(dot_x), Inches(start_y - (dot_size / 2)), Inches(dot_size), Inches(dot_size)
-                )
-                dot.fill.solid()
-                dot.fill.fore_color.rgb = color_from_hex(entry.get("color"), header_bg)
-                dot.line.fill.background()
-                label = str(entry.get("label", ""))
-                if label:
-                    add_textbox(
-                        slide,
-                        label,
-                        dot_x - 0.6,
-                        start_y + 0.3,
-                        1.2,
-                        0.4,
-                        12,
-                        color_from_hex(item.get("text"), body_text),
-                        align="center",
-                    )
-    elif slide_type == "quote":
-        slide = prs.slides.add_slide(blank_layout)
-        set_bg(slide, color_from_hex(item.get("bg"), body_bg))
-        title_value = item.get("title", "")
-        if title_value:
-            add_header(
-                slide,
-                title_value,
-                color_from_hex(item.get("header_bg"), header_bg),
-                color_from_hex(item.get("header_text"), header_text),
-            )
-        quote_text = item.get("quote", "")
-        if quote_text:
-            add_textbox(
-                slide,
-                quote_text,
-                0.9,
-                1.6,
-                8.0,
-                2.2,
-                26,
-                color_from_hex(item.get("text"), body_text),
-                bold=True,
-            )
-        author = item.get("author", "")
-        if author:
-            add_textbox(
-                slide,
-                author,
-                0.9,
-                3.9,
-                6.0,
-                0.4,
-                16,
-                color_from_hex(item.get("text"), body_text),
-            )
-        image_key = resolve_asset(item.get("image", ""))
-        if image_key:
-            image_pos = item.get("image_pos", {})
-            image_x = float(image_pos.get("x", 9.4))
-            image_y = float(image_pos.get("y", 1.6))
-            image_w = float(image_pos.get("w", 3.2))
-            slide.shapes.add_picture(image_key, Inches(image_x), Inches(image_y), width=Inches(image_w))
-    elif slide_type == "closing":
-        slide = prs.slides.add_slide(blank_layout)
-        set_bg(slide, color_from_hex(item.get("bg"), closing_bg))
-        header_value = item.get("header", "")
-        if header_value:
-            add_header(
-                slide,
-                header_value,
-                color_from_hex(item.get("header_bg"), closing_bg),
-                color_from_hex(item.get("header_text"), closing_text),
-            )
-        add_textbox(
-            slide,
-            item.get("body", ""),
-            1.0,
-            2.2,
-            9.5,
-            2.0,
-            36,
-            color_from_hex(item.get("text"), closing_text),
-            bold=True,
-        )
-        add_logo(slide, item.get("logo", "logo"), 10.8, 5.8, 2.0)
-
-    if slide is not None:
-        icons = item.get("icons", [])
-        if icons:
-            add_icon_row(
-                slide,
-                icons,
-                float(item.get("icons_x", 10.4)),
-                float(item.get("icons_y", 6.6)),
-                float(item.get("icons_size", 0.3)),
-                float(item.get("icons_gap", 0.12)),
-                color_from_hex(item.get("icons_text"), title_text),
-            )
-
-prs.save(r"%s")
-with open(r"%s", "rb") as f:
-    encoded = base64.b64encode(f.read()).decode("ascii")
-print(json.dumps({
-    "output_path": r"%s",
-    "file_name": file_name,
-    "mime_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    "base64": encoded
-}))
-`
-
-	codeBody := fmt.Sprintf(pythonBodyTemplate, imageURL, specPath, outputPath, outputPath, outputPath, outputPath)
-	specB64 := base64.StdEncoding.EncodeToString([]byte(slideSpec))
-	scriptB64 := base64.StdEncoding.EncodeToString([]byte(codeBody))
-	pythonExecTemplate := `import base64, os
-
-spec_b64 = "%s"
-script_b64 = "%s"
-spec_path = "%s"
-script_path = "%s"
-
-os.makedirs(os.path.dirname(spec_path), exist_ok=True)
-os.makedirs(os.path.dirname(script_path), exist_ok=True)
-
-spec_payload = base64.b64decode(spec_b64).decode("utf-8")
-with open(spec_path, "w", encoding="utf-8") as f:
-    f.write(spec_payload)
-
-with open(script_path, "wb") as f:
-    f.write(base64.b64decode(script_b64))
-
-%s
-`
-	return fmt.Sprintf(pythonExecTemplate, specB64, scriptB64, specPath, scriptPath, codeBody), nil
-}
-
-// extractURLsFromPreviousOutput extracts URLs from search results.
 func (e *SlideGeneratorExecutor) extractURLsFromPreviousOutput(previousOutput json.RawMessage) []string {
 	if len(previousOutput) == 0 {
 		return nil
@@ -3387,13 +2090,10 @@ func (e *SlideGeneratorExecutor) extractURLsFromPreviousOutput(previousOutput js
 	}
 
 	var urls []string
-
-	// Check for content array (MCP tool result format)
 	if content, ok := output["content"].([]interface{}); ok {
 		for _, item := range content {
 			if itemMap, ok := item.(map[string]interface{}); ok {
 				if text, ok := itemMap["text"].(string); ok {
-					// Parse the text as JSON to extract results
 					var textData map[string]interface{}
 					if err := json.Unmarshal([]byte(text), &textData); err == nil {
 						urls = append(urls, extractURLsFromData(textData)...)
@@ -3403,17 +2103,13 @@ func (e *SlideGeneratorExecutor) extractURLsFromPreviousOutput(previousOutput js
 		}
 	}
 
-	// Direct extraction from various result formats
 	urls = append(urls, extractURLsFromData(output)...)
-
 	return urls
 }
 
-// extractURLsFromData extracts URLs from various search result formats.
 func extractURLsFromData(data map[string]interface{}) []string {
 	var urls []string
 
-	// Serper format: organic[].link
 	if organic, ok := data["organic"].([]interface{}); ok {
 		for _, item := range organic {
 			if itemMap, ok := item.(map[string]interface{}); ok {
@@ -3424,7 +2120,6 @@ func extractURLsFromData(data map[string]interface{}) []string {
 		}
 	}
 
-	// Generic results format: results[].url or results[].link
 	if results, ok := data["results"].([]interface{}); ok {
 		for _, item := range results {
 			if itemMap, ok := item.(map[string]interface{}); ok {
@@ -3442,9 +2137,7 @@ func extractURLsFromData(data map[string]interface{}) []string {
 	return urls
 }
 
-// isNonCriticalToolForSlides determines if a tool failure should not fail the overall step.
 func isNonCriticalToolForSlides(toolName string) bool {
-	// Search and scrape are optional for slide generation - we can fall back to LLM knowledge
 	nonCriticalTools := map[string]bool{
 		"google_search": true,
 		"scrape":        true,
@@ -3452,7 +2145,6 @@ func isNonCriticalToolForSlides(toolName string) bool {
 	return nonCriticalTools[toolName]
 }
 
-// buildSkippedToolResultForSlides creates a result indicating a tool was skipped.
 func buildSkippedToolResultForSlides(toolName string, reason string, code string) *agent.ExecutionResult {
 	output, _ := json.Marshal(map[string]interface{}{
 		"skipped": true,
@@ -3466,9 +2158,487 @@ func buildSkippedToolResultForSlides(toolName string, reason string, code string
 	}
 }
 
-// Helper function
-func strPtrS(s string) *string {
-	return &s
+func (e *SlideGeneratorExecutor) getModelFromContext(input agent.ExecutionInput) string {
+	if input.PlanContext != nil && input.PlanContext.Model != "" {
+		return input.PlanContext.Model
+	}
+	return ""
+}
+
+func (e *SlideGeneratorExecutor) extractPlanAndTemplate(input agent.ExecutionInput) *schemas.PlanAndTemplate {
+	log.Debug().Msg("[slide_generator] extractPlanAndTemplate started")
+	candidates := make([]json.RawMessage, 0, len(input.AccumulatedOutputs)+1)
+	if len(input.PreviousOutput) > 0 {
+		candidates = append(candidates, input.PreviousOutput)
+	}
+	candidates = append(candidates, input.AccumulatedOutputs...)
+	log.Debug().Int("candidates_count", len(candidates)).Msg("[slide_generator] searching for plan and template")
+
+	for i := len(candidates) - 1; i >= 0; i-- {
+		var payload map[string]interface{}
+		if err := json.Unmarshal(candidates[i], &payload); err != nil {
+			continue
+		}
+		if payloadType, _ := payload["type"].(string); payloadType == "plan_and_template" {
+			planBytes, _ := json.Marshal(payload)
+			var planAndTemplate schemas.PlanAndTemplate
+			if err := json.Unmarshal(planBytes, &planAndTemplate); err == nil {
+				log.Debug().
+					Int("slide_count", len(planAndTemplate.Plan.Slides)).
+					Str("deck_title", planAndTemplate.Plan.DeckTitle).
+					Msg("[slide_generator] found plan and template from type=plan_and_template")
+				return &planAndTemplate
+			}
+		}
+		if planRaw, ok := payload["plan"]; ok {
+			if templateRaw, ok := payload["template"]; ok {
+				merged := map[string]interface{}{"plan": planRaw, "template": templateRaw}
+				planBytes, _ := json.Marshal(merged)
+				var planAndTemplate schemas.PlanAndTemplate
+				if err := json.Unmarshal(planBytes, &planAndTemplate); err == nil {
+					log.Debug().
+						Int("slide_count", len(planAndTemplate.Plan.Slides)).
+						Str("deck_title", planAndTemplate.Plan.DeckTitle).
+						Msg("[slide_generator] found plan and template from separate keys")
+					return &planAndTemplate
+				}
+			}
+		}
+	}
+	log.Warn().Msg("[slide_generator] plan and template not found in any output")
+	return nil
+}
+
+func (e *SlideGeneratorExecutor) assembleDeck(input agent.ExecutionInput) ([]byte, error) {
+	log.Debug().Int("accumulated_outputs", len(input.AccumulatedOutputs)).Msg("[slide_generator] assembleDeck started")
+	planAndTemplate := e.extractPlanAndTemplate(input)
+	if planAndTemplate == nil {
+		log.Error().Msg("[slide_generator] plan and template not found")
+		return nil, fmt.Errorf("plan and template not found")
+	}
+	log.Debug().Int("plan_slides", len(planAndTemplate.Plan.Slides)).Msg("[slide_generator] extracted plan and template")
+
+	slidesByIndex := map[int]any{}
+	var allAssets []any
+	var allDatasets []any
+
+	for _, output := range input.AccumulatedOutputs {
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(output, &parsed); err != nil {
+			continue
+		}
+		if parsed["type"] == "slide_result" {
+			if slideIndexRaw, ok := parsed["slide_index"].(float64); ok {
+				if slide, ok := parsed["slide"]; ok {
+					slidesByIndex[int(slideIndexRaw)] = slide
+				}
+				if requires, ok := parsed["requires"].(map[string]interface{}); ok {
+					if assets, ok := requires["assets"].([]any); ok {
+						allAssets = append(allAssets, assets...)
+					}
+					// Safely extract datasets - ignore invalid ones
+					if datasets, ok := requires["datasets"].([]any); ok {
+						for _, ds := range datasets {
+							if ds != nil {
+								allDatasets = append(allDatasets, ds)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	orderedSlides := make([]any, 0, len(slidesByIndex))
+	if len(planAndTemplate.Plan.Slides) > 0 {
+		for _, entry := range planAndTemplate.Plan.Slides {
+			if slide, ok := slidesByIndex[entry.Index]; ok {
+				orderedSlides = append(orderedSlides, slide)
+			}
+		}
+	} else {
+		indices := make([]int, 0, len(slidesByIndex))
+		for idx := range slidesByIndex {
+			indices = append(indices, idx)
+		}
+		sort.Ints(indices)
+		for _, idx := range indices {
+			orderedSlides = append(orderedSlides, slidesByIndex[idx])
+		}
+	}
+
+	metadata := map[string]any{
+		"title":    planAndTemplate.Plan.DeckTitle,
+		"language": "en",
+		"audience": planAndTemplate.Plan.Audience,
+		"purpose":  planAndTemplate.Plan.Purpose,
+		"tone":     planAndTemplate.Plan.Tone,
+	}
+
+	if tmplMeta, ok := planAndTemplate.Template.Metadata.(map[string]any); ok {
+		if _, hasLang := tmplMeta["language"]; hasLang {
+			for key, value := range tmplMeta {
+				metadata[key] = value
+			}
+			metadata["title"] = planAndTemplate.Plan.DeckTitle
+			if planAndTemplate.Plan.Audience != "" {
+				metadata["audience"] = planAndTemplate.Plan.Audience
+			}
+			if planAndTemplate.Plan.Purpose != "" {
+				metadata["purpose"] = planAndTemplate.Plan.Purpose
+			}
+			if planAndTemplate.Plan.Tone != "" {
+				metadata["tone"] = planAndTemplate.Plan.Tone
+			}
+		}
+	}
+
+	deck := map[string]any{
+		"version":    planAndTemplate.Template.Version,
+		"metadata":   metadata,
+		"theme":      planAndTemplate.Template.Theme,
+		"masters":    planAndTemplate.Template.Masters,
+		"layouts":    planAndTemplate.Template.Layouts,
+		"components": planAndTemplate.Template.Components,
+		"slides":     orderedSlides,
+		"assets":     e.normalizeAssets(allAssets),
+		"data":       e.normalizeDatasets(allDatasets),
+		"validation": map[string]any{"rules": []any{}},
+		"export":     planAndTemplate.Template.Export,
+	}
+
+	fixedDeck := e.fixCommonSchemaIssues(deck)
+	deckJSON, err := json.Marshal(fixedDeck)
+	if err != nil {
+		log.Error().Err(err).Msg("[slide_generator] failed to marshal deck")
+		return nil, err
+	}
+	log.Debug().
+		Int("slides_count", len(orderedSlides)).
+		Int("assets_count", len(allAssets)).
+		Int("datasets_count", len(allDatasets)).
+		Int("deck_json_size", len(deckJSON)).
+		Msg("[slide_generator] assembleDeck completed")
+	return deckJSON, nil
+}
+
+func (e *SlideGeneratorExecutor) normalizeAssets(allAssets []any) map[string]any {
+	normalizedImages := []any{}
+	for _, asset := range allAssets {
+		switch v := asset.(type) {
+		case string:
+			normalizedImages = append(normalizedImages, map[string]any{
+				"id": v,
+				"source": map[string]any{
+					"type":        "generated",
+					"url":         nil,
+					"filePath":    nil,
+					"prompt":      fmt.Sprintf("Image for %s", v),
+					"license":     nil,
+					"attribution": nil,
+				},
+				"altText": v,
+				"crop":    nil,
+			})
+		case map[string]any:
+			if _, hasID := v["id"]; !hasID {
+				v["id"] = fmt.Sprintf("asset_%d", len(normalizedImages)+1)
+			}
+			source, _ := v["source"].(map[string]any)
+			if source == nil {
+				source = map[string]any{}
+			}
+			if _, hasType := source["type"]; !hasType {
+				source["type"] = "generated"
+			}
+			if _, hasURL := source["url"]; !hasURL {
+				source["url"] = nil
+			}
+			if _, hasFilePath := source["filePath"]; !hasFilePath {
+				source["filePath"] = nil
+			}
+			if _, hasPrompt := source["prompt"]; !hasPrompt {
+				source["prompt"] = nil
+			}
+			if _, hasLicense := source["license"]; !hasLicense {
+				source["license"] = nil
+			}
+			if _, hasAttribution := source["attribution"]; !hasAttribution {
+				source["attribution"] = nil
+			}
+			v["source"] = source
+			if _, hasAltText := v["altText"]; !hasAltText {
+				v["altText"] = nil
+			}
+			if _, hasCrop := v["crop"]; !hasCrop {
+				v["crop"] = nil
+			}
+			normalizedImages = append(normalizedImages, v)
+		default:
+			normalizedImages = append(normalizedImages, map[string]any{
+				"id": fmt.Sprintf("asset_%d", len(normalizedImages)+1),
+				"source": map[string]any{
+					"type":        "generated",
+					"url":         nil,
+					"filePath":    nil,
+					"prompt":      nil,
+					"license":     nil,
+					"attribution": nil,
+				},
+				"altText": nil,
+				"crop":    nil,
+			})
+		}
+	}
+
+	return map[string]any{"images": normalizedImages}
+}
+
+func (e *SlideGeneratorExecutor) normalizeDatasets(allDatasets []any) map[string]any {
+	normalizedDatasets := []any{}
+	for i, dataset := range allDatasets {
+		// Use defer/recover to catch panics from invalid datasets
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Warn().
+						Int("dataset_index", i).
+						Interface("panic", r).
+						Msg("[slide_generator] panic while normalizing dataset, skipping")
+				}
+			}()
+
+			if dataset == nil {
+				log.Warn().Int("dataset_index", i).Msg("[slide_generator] nil dataset, skipping")
+				return
+			}
+
+			switch v := dataset.(type) {
+			case string:
+				// String reference - create placeholder (should be avoided with updated prompts)
+				log.Warn().Str("dataset_ref", v).Msg("[slide_generator] received string dataset reference instead of complete object, using placeholder")
+				normalizedDatasets = append(normalizedDatasets, map[string]any{
+					"id":   v,
+					"kind": "series",
+					"data": map[string]any{
+						"labels": []string{"Category A", "Category B", "Category C"},
+						"series": []any{map[string]any{"name": "Placeholder Data", "values": []float64{10, 20, 30}}},
+					},
+					"sourceNote": fmt.Sprintf("WARNING: Placeholder data for %s - real data not provided", v),
+				})
+			case map[string]any:
+				// Complete dataset object - validate and normalize
+				if _, hasID := v["id"]; !hasID {
+					v["id"] = fmt.Sprintf("dataset_%d", len(normalizedDatasets)+1)
+				}
+				if _, hasKind := v["kind"]; !hasKind {
+					v["kind"] = "series"
+				}
+				if _, hasData := v["data"]; !hasData {
+					// Missing data - create placeholder
+					datasetID := "unknown"
+					if id, ok := v["id"].(string); ok {
+						datasetID = id
+					}
+					log.Warn().Str("dataset_id", datasetID).Msg("[slide_generator] dataset missing data field, using placeholder")
+					v["data"] = map[string]any{
+						"labels": []string{"A", "B", "C"},
+						"series": []any{map[string]any{"name": "Data", "values": []float64{1, 2, 3}}},
+					}
+				}
+				kind, _ := v["kind"].(string)
+				dataMap, _ := v["data"].(map[string]any)
+				if dataMap == nil {
+					dataMap = map[string]any{}
+				}
+				if kind == "table" {
+					if _, ok := dataMap["columns"]; !ok {
+						dataMap["columns"] = []string{"placeholder"}
+					}
+					if _, ok := dataMap["rows"]; !ok {
+						dataMap["rows"] = [][]string{}
+					}
+				} else {
+					if _, ok := dataMap["labels"]; !ok {
+						dataMap["labels"] = []string{"A", "B", "C"}
+					}
+					if _, ok := dataMap["series"]; !ok {
+						dataMap["series"] = []any{map[string]any{"name": "Data", "values": []float64{1, 2, 3}}}
+					}
+				}
+				v["data"] = dataMap
+				if _, hasSourceNote := v["sourceNote"]; !hasSourceNote {
+					v["sourceNote"] = nil
+				}
+				normalizedDatasets = append(normalizedDatasets, v)
+			default:
+				log.Warn().
+					Int("dataset_index", i).
+					Str("type", fmt.Sprintf("%T", dataset)).
+					Msg("[slide_generator] invalid dataset type, skipping")
+			}
+		}()
+	}
+
+	return map[string]any{"datasets": normalizedDatasets}
+}
+
+func (e *SlideGeneratorExecutor) fixCommonSchemaIssues(deck map[string]any) map[string]any {
+	allowedTextStyleProps := map[string]bool{
+		"fontFamily": true, "fontSize": true, "bold": true, "italic": true,
+		"underline": true, "color": true, "align": true, "valign": true,
+		"lineHeight": true, "letterSpacing": true, "bullet": true,
+	}
+
+	allowedShapeStyleProps := map[string]bool{
+		"fill": true, "stroke": true, "cornerRadius": true, "shadow": true,
+	}
+
+	if slides, ok := deck["slides"].([]any); ok {
+		for _, slideAny := range slides {
+			slide, ok := slideAny.(map[string]any)
+			if !ok {
+				continue
+			}
+			if elements, ok := slide["elements"].([]any); ok {
+				for _, elemAny := range elements {
+					elem, ok := elemAny.(map[string]any)
+					if !ok {
+						continue
+					}
+					if text, ok := elem["text"].(map[string]any); ok {
+						if content, ok := text["content"].(string); ok {
+							if strings.Contains(content, "|") && !strings.Contains(content, "\n") {
+								text["content"] = strings.ReplaceAll(content, "|", "\n")
+							}
+						}
+						if v, ok := text["autoFit"]; !ok || v == nil {
+							text["autoFit"] = "shrink"
+						}
+						if style, ok := text["style"].(map[string]any); ok {
+							for _, k := range []string{"fontFamily", "fontSize", "bold", "italic", "underline", "color", "align", "valign", "lineHeight", "letterSpacing", "bullet"} {
+								if _, has := style[k]; !has {
+									style[k] = nil
+								}
+							}
+							if b, ok := style["bullet"].(map[string]any); ok {
+								for _, k := range []string{"enabled", "indent", "hanging"} {
+									if _, has := b[k]; !has {
+										b[k] = nil
+									}
+								}
+							}
+							fixStyleProperties(style, allowedTextStyleProps)
+						}
+					}
+
+					if shape, ok := elem["shape"].(map[string]any); ok {
+						allowedKinds := map[string]bool{"rect": true, "line": true, "arrow": true, "triangle": true, "diamond": true}
+						if kind, ok := shape["kind"].(string); ok {
+							if !allowedKinds[kind] {
+								shape["kind"] = "rect"
+							}
+						} else {
+							shape["kind"] = "rect"
+						}
+
+						style, _ := shape["style"].(map[string]any)
+						if style == nil {
+							style = map[string]any{}
+							shape["style"] = style
+						}
+						for _, k := range []string{"fill", "stroke", "cornerRadius", "shadow"} {
+							if _, has := style[k]; !has {
+								style[k] = nil
+							}
+						}
+						style["cornerRadius"] = nil
+						style["shadow"] = nil
+
+						fixStyleProperties(style, allowedShapeStyleProps)
+					}
+				}
+			}
+		}
+	}
+
+	return deck
+}
+
+func fixStyleProperties(style map[string]any, allowed map[string]bool) {
+	for key := range style {
+		if !allowed[key] {
+			delete(style, key)
+		}
+	}
+}
+
+func (e *SlideGeneratorExecutor) loadRenderDeckScript() string {
+	if e.rendererScriptPath != "" {
+		if payload, err := os.ReadFile(e.rendererScriptPath); err == nil {
+			return string(payload)
+		}
+		log.Warn().
+			Str("path", e.rendererScriptPath).
+			Msg("Failed to read SLIDE_RENDERER_SCRIPT, falling back to embedded script")
+	}
+	return sliderenderer.RenderDeckScript
+}
+
+func cloneSchema(schema map[string]any) map[string]any {
+	if schema == nil {
+		return nil
+	}
+	payload, _ := json.Marshal(schema)
+	var clone map[string]any
+	_ = json.Unmarshal(payload, &clone)
+	return clone
+}
+
+// extractJSONFromResponse extracts JSON from a response that may be wrapped in markdown code blocks
+func extractJSONFromResponse(response string) string {
+	response = strings.TrimSpace(response)
+
+	// Remove markdown code block markers if present
+	if strings.HasPrefix(response, "```json") {
+		response = strings.TrimPrefix(response, "```json")
+		if idx := strings.LastIndex(response, "```"); idx != -1 {
+			response = response[:idx]
+		}
+	} else if strings.HasPrefix(response, "```") {
+		response = strings.TrimPrefix(response, "```")
+		if idx := strings.LastIndex(response, "```"); idx != -1 {
+			response = response[:idx]
+		}
+	}
+
+	return strings.TrimSpace(response)
+}
+
+type slideRenderOutput struct {
+	FileName string `json:"filename"`
+	MimeType string `json:"mime_type"`
+	Base64   string `json:"base64"`
+	Size     int    `json:"size"`
+}
+
+func extractRenderOutput(previousOutput json.RawMessage) *slideRenderOutput {
+	if len(previousOutput) == 0 {
+		return nil
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(previousOutput, &parsed); err != nil {
+		return nil
+	}
+	if parsed["type"] != "render_output" {
+		return nil
+	}
+	payload, _ := json.Marshal(parsed)
+	var output slideRenderOutput
+	if err := json.Unmarshal(payload, &output); err != nil {
+		return nil
+	}
+	return &output
 }
 
 // Verify interface compliance at compile time

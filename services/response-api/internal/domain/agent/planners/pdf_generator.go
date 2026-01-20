@@ -7,6 +7,8 @@ import (
 	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/plan"
+
+	"github.com/rs/zerolog/log"
 )
 
 // PDFGeneratorPlanner creates execution plans for PDF generation.
@@ -60,7 +62,9 @@ func (p *PDFGeneratorPlanner) CanHandle(ctx context.Context, request *agent.Plan
 
 // CreatePlan creates a plan for PDF generation.
 func (p *PDFGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.PlanRequest) (*agent.PlanResult, error) {
+	log.Debug().Interface("request", request).Msg("[pdf_generator] CreatePlan started")
 	config := p.parseConfig(request)
+	log.Debug().Interface("config", config).Msg("[pdf_generator] parsed config")
 	estimatedSteps := 3
 
 	createdPlan, err := p.planService.Create(ctx, plan.CreateParams{

@@ -19,13 +19,14 @@ type Stream interface {
 
 // ChatCompletionRequest mirrors the OpenAI-compatible request shape exposed by llm-api.
 type ChatCompletionRequest struct {
-	Model       string           `json:"model"`
-	Messages    []ChatMessage    `json:"messages"`
-	Tools       []ToolDefinition `json:"tools,omitempty"`
-	ToolChoice  *ToolChoice      `json:"tool_choice,omitempty"`
-	Temperature *float64         `json:"temperature,omitempty"`
-	MaxTokens   *int             `json:"max_tokens,omitempty"`
-	Stream      bool             `json:"stream"`
+	Model          string           `json:"model"`
+	Messages       []ChatMessage    `json:"messages"`
+	Tools          []ToolDefinition `json:"tools,omitempty"`
+	ToolChoice     *ToolChoice      `json:"tool_choice,omitempty"`
+	ResponseFormat *ResponseFormat  `json:"response_format,omitempty"`
+	Temperature    *float64         `json:"temperature,omitempty"`
+	MaxTokens      *int             `json:"max_tokens,omitempty"`
+	Stream         bool             `json:"stream"`
 }
 
 // ChatMessage represents a single message in the conversation history.
@@ -83,6 +84,19 @@ type ToolChoice struct {
 	Function struct {
 		Name string `json:"name"`
 	} `json:"function"`
+}
+
+// ResponseFormat configures structured output for chat completions.
+type ResponseFormat struct {
+	Type       string      `json:"type"`
+	JSONSchema *JSONSchema `json:"json_schema,omitempty"`
+}
+
+// JSONSchema defines the schema for structured outputs.
+type JSONSchema struct {
+	Name   string         `json:"name"`
+	Schema map[string]any `json:"schema"`
+	Strict bool           `json:"strict"`
 }
 
 // ChatCompletionResponse captures the non-streaming completion payload.

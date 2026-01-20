@@ -7,6 +7,8 @@ import (
 	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/plan"
+
+	"github.com/rs/zerolog/log"
 )
 
 // DocGeneratorPlanner creates execution plans for document generation.
@@ -62,7 +64,9 @@ func (p *DocGeneratorPlanner) CanHandle(ctx context.Context, request *agent.Plan
 
 // CreatePlan creates a plan for document generation.
 func (p *DocGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.PlanRequest) (*agent.PlanResult, error) {
+	log.Debug().Interface("request", request).Msg("[doc_generator] CreatePlan started")
 	config := p.parseConfig(request)
+	log.Debug().Interface("config", config).Msg("[doc_generator] parsed config")
 	estimatedSteps := 3
 
 	createdPlan, err := p.planService.Create(ctx, plan.CreateParams{
@@ -82,8 +86,10 @@ func (p *DocGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	if err != nil {
 		return nil, err
 	}
+	log.Debug().Str("plan_id", createdPlan.ID).Msg("[doc_generator] plan created")
 
 	// Task 1: Content Generation
+	log.Debug().Msg("[doc_generator] creating content generation task")
 	contentTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
 		Sequence:    1,
 		TaskType:    plan.TaskTypeGeneration,
@@ -93,6 +99,7 @@ func (p *DocGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	if err != nil {
 		return nil, err
 	}
+	log.Debug().Str("task_id", contentTask.ID).Msg("[doc_generator] content task created")
 
 	contentParams, _ := json.Marshal(map[string]interface{}{
 		"action":      "generate_doc_json",
@@ -113,6 +120,7 @@ func (p *DocGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		return nil, err
 	}
 
+	log.Debug().Msg("[doc_generator] creating skill execution task")
 	// Task 2: Skill Execution
 	execTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
 		Sequence:    2,

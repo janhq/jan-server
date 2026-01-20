@@ -51,14 +51,17 @@ func (p *DeepResearchPlanner) CanHandle(ctx context.Context, request *agent.Plan
 
 // CreatePlan analyzes the request and creates an execution plan.
 func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.PlanRequest) (*agent.PlanResult, error) {
+	log.Debug().Interface("request", request).Msg("[deep_research] CreatePlan started")
 	// Check if the request involves code execution
 	requiresCodeExecution := p.detectCodeExecutionNeed(request)
+	log.Debug().Bool("requires_code_execution", requiresCodeExecution).Msg("[deep_research] detected code execution need")
 
 	// Determine estimated steps based on whether code execution is needed
 	estimatedSteps := 9
 	if requiresCodeExecution {
 		estimatedSteps = 11 // Add 2 more steps for code execution
 	}
+	log.Debug().Int("estimated_steps", estimatedSteps).Msg("[deep_research] calculated estimated steps")
 
 	// Create the plan
 	createdPlan, err := p.planService.Create(ctx, plan.CreateParams{
@@ -79,6 +82,7 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		return nil, err
 	}
 
+	log.Debug().Msg("[deep_research] creating research task")
 	// Create Task 1: Research
 	researchTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
 		Sequence:    1,
@@ -89,6 +93,7 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	if err != nil {
 		return nil, err
 	}
+	log.Debug().Str("task_id", researchTask.ID).Msg("[deep_research] research task created")
 
 	// Create research steps with actual user query
 	// Extract the user's question/query from the request
@@ -143,6 +148,7 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		return nil, err
 	}
 
+	log.Debug().Msg("[deep_research] creating synthesis task")
 	// Create Task 2: Synthesis
 	synthesisTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
 		Sequence:    2,
@@ -153,6 +159,7 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	if err != nil {
 		return nil, err
 	}
+	log.Debug().Str("task_id", synthesisTask.ID).Msg("[deep_research] synthesis task created")
 
 	synthesisParams, _ := json.Marshal(map[string]interface{}{
 		"action":      "reasoning",
@@ -173,6 +180,7 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 
 	// Create Task 3: Code Execution (conditional - only if code is requested)
 	if requiresCodeExecution {
+		log.Debug().Msg("[deep_research] creating code execution task")
 		codeTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
 			Sequence:    taskSequence,
 			TaskType:    plan.TaskTypeExecution,
@@ -182,6 +190,7 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		if err != nil {
 			return nil, err
 		}
+		log.Debug().Str("task_id", codeTask.ID).Msg("[deep_research] code execution task created")
 
 		// Step 1: Generate code based on research findings
 		codeGenParams, _ := json.Marshal(map[string]interface{}{
@@ -217,6 +226,7 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		taskSequence++
 	}
 
+	log.Debug().Int("task_sequence", taskSequence).Msg("[deep_research] creating report generation task")
 	// Create Task 4 (or 3): Report Generation
 	reportTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
 		Sequence:    taskSequence,
@@ -227,6 +237,7 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	if err != nil {
 		return nil, err
 	}
+	log.Debug().Str("task_id", reportTask.ID).Msg("[deep_research] report task created")
 
 	generateParams, _ := json.Marshal(map[string]interface{}{
 		"action":      "generate_content",
@@ -277,6 +288,14 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	for i := range planWithDetails.Tasks {
 		result.Tasks[i] = &planWithDetails.Tasks[i]
 	}
+
+	log.Info().
+		Str("plan_id", createdPlan.ID).
+		Str("response_id", request.ResponseID).
+		Int("num_tasks", len(result.Tasks)).
+		Bool("requires_code_execution", requiresCodeExecution).
+		Int("estimated_steps", estimatedSteps).
+		Msg("[deep_research] created deep research plan")
 
 	return result, nil
 }
@@ -333,6 +352,7 @@ type LLMProvider interface {
 	Generate(ctx context.Context, prompt string) (string, error)
 	GenerateWithModel(ctx context.Context, prompt string, model string) (string, error)
 	GenerateWithSystemPrompt(ctx context.Context, systemPrompt string, userPrompt string, model string) (string, error)
+	GenerateWithStructuredOutput(ctx context.Context, systemPrompt string, userPrompt string, model string, schema map[string]any) (string, error)
 }
 
 // MaxInstallRetries is the maximum number of package install retry attempts.
@@ -380,8 +400,15 @@ type codeExecutionState struct {
 
 // executeToolCallWithRetry executes a tool call with automatic package installation and LLM code fix retry.
 func (e *DeepResearchExecutor) executeToolCallWithRetry(ctx context.Context, step *plan.Step, input agent.ExecutionInput, installRetryCount int, installedPackages []string, currentCode *string, codeFixRetryCount int) (*agent.ExecutionResult, error) {
+	log.Debug().
+		Str("step_id", step.ID).
+		Int("install_retry_count", installRetryCount).
+		Int("code_fix_retry_count", codeFixRetryCount).
+		Int("installed_packages_count", len(installedPackages)).
+		Msg("[deep_research] executeToolCallWithRetry started")
 	var params map[string]interface{}
 	if err := json.Unmarshal(step.InputParams, &params); err != nil {
+		log.Error().Err(err).Msg("[deep_research] failed to parse step parameters")
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
 			Error:  &agent.ExecutionError{Message: err.Error(), Severity: status.ErrorSeverityRetryable},
@@ -403,9 +430,11 @@ func (e *DeepResearchExecutor) executeToolCallWithRetry(ctx context.Context, ste
 
 	description, _ := params["description"].(string)
 
+	log.Debug().Str("tool_name", toolName).Str("description", description).Msg("[deep_research] building tool arguments")
 	// Build actual tool arguments (strip metadata fields)
 	toolArgs, err := e.buildToolArguments(toolName, params, input, description, currentCode)
 	if err != nil {
+		log.Error().Err(err).Str("tool_name", toolName).Msg("[deep_research] failed to build tool arguments")
 		if isNonCriticalTool(toolName) {
 			return buildSkippedToolResult(toolName, err.Error(), "invalid_arguments"), nil
 		}
@@ -433,10 +462,11 @@ func (e *DeepResearchExecutor) executeToolCallWithRetry(ctx context.Context, ste
 		Str("tool", toolName).
 		Interface("arguments", toolArgs).
 		Str("step_id", step.ID).
-		Msg("Executing tool call")
+		Msg("[deep_research] executing tool call")
 
 	// Check if this is a code execution tool
 	isCodeExecTool := toolName == "aio_code_execute" || toolName == "aio_shell_exec"
+	log.Debug().Bool("is_code_exec_tool", isCodeExecTool).Msg("[deep_research] tool type determined")
 
 	// Execute the tool via MCP client
 	result, err := e.mcpClient.CallTool(ctx, callReq)
@@ -461,15 +491,17 @@ func (e *DeepResearchExecutor) executeToolCallWithRetry(ctx context.Context, ste
 		Str("tool", toolName).
 		Str("step_id", step.ID).
 		Bool("is_error", result.IsError).
-		Msg("Tool call completed")
+		Msg("[deep_research] tool call completed")
 
 	if isNonCriticalTool(toolName) && !isCodeExecTool && result != nil && result.IsError {
+		log.Debug().Str("tool", toolName).Msg("[deep_research] skipping non-critical tool error")
 		return buildSkippedToolResult(toolName, "tool reported error", "tool_error"), nil
 	}
 
 	// Check for errors in code execution results
 	// The tool might return is_error=false but still have errors in the content
 	hasError := result.IsError || (isCodeExecTool && e.hasErrorInResult(result))
+	log.Debug().Bool("has_error", hasError).Bool("is_code_exec_tool", isCodeExecTool).Msg("[deep_research] error check completed")
 
 	// Handle errors for code execution tools
 	if hasError && isCodeExecTool {
@@ -494,11 +526,12 @@ func (e *DeepResearchExecutor) executeToolCallWithRetry(ctx context.Context, ste
 					Str("module", codeErr.ModuleName).
 					Str("package", packageName).
 					Int("install_retry", installRetryCount+1).
-					Msg("Auto-installing missing package and retrying code execution")
+					Msg("[deep_research] auto-installing missing package and retrying code execution")
 
 				// Install the missing package (don't record as step output)
 				installResult, installErr := e.installPackage(ctx, packageName, input)
 				if installErr == nil && !installResult.IsError {
+					log.Debug().Str("package", packageName).Msg("[deep_research] package installed successfully, retrying")
 					// Package installed successfully, retry the original tool call
 					newInstalledPackages := append(installedPackages, packageName)
 					return e.executeToolCallWithRetry(ctx, step, input, installRetryCount+1, newInstalledPackages, currentCode, codeFixRetryCount)
@@ -506,7 +539,7 @@ func (e *DeepResearchExecutor) executeToolCallWithRetry(ctx context.Context, ste
 
 				log.Warn().
 					Str("package", packageName).
-					Msg("Package installation failed, trying LLM code fix")
+					Msg("[deep_research] package installation failed, trying LLM code fix")
 			}
 		}
 
@@ -532,7 +565,8 @@ func (e *DeepResearchExecutor) executeToolCallWithRetry(ctx context.Context, ste
 					Int("code_fix_retry", codeFixRetryCount+1).
 					Int("max_retries", MaxCodeFixRetries).
 					Str("error_type", errorType).
-					Msg("Attempting LLM-based code fix")
+					Int("original_code_length", len(originalCode)).
+					Msg("[deep_research] attempting LLM-based code fix")
 
 				fixedCode, fixErr := e.llmProvider.FixCode(ctx, originalCode, errorText, language)
 				if fixErr == nil && fixedCode != "" && fixedCode != originalCode {
@@ -540,7 +574,7 @@ func (e *DeepResearchExecutor) executeToolCallWithRetry(ctx context.Context, ste
 						Int("original_len", len(originalCode)).
 						Int("fixed_len", len(fixedCode)).
 						Str("error_type", errorType).
-						Msg("LLM generated fixed code, retrying execution")
+						Msg("[deep_research] LLM generated fixed code, retrying execution")
 
 					return e.executeToolCallWithRetry(ctx, step, input, installRetryCount, installedPackages, &fixedCode, codeFixRetryCount+1)
 				}
@@ -549,20 +583,20 @@ func (e *DeepResearchExecutor) executeToolCallWithRetry(ctx context.Context, ste
 					log.Warn().
 						Err(fixErr).
 						Int("retry", codeFixRetryCount+1).
-						Msg("LLM code fix attempt failed")
+						Msg("[deep_research] LLM code fix attempt failed")
 				} else if fixedCode == originalCode {
 					log.Warn().
 						Int("retry", codeFixRetryCount+1).
-						Msg("LLM returned same code, no fix applied")
+						Msg("[deep_research] LLM returned same code, no fix applied")
 				}
 			}
 		} else if e.llmProvider == nil {
-			log.Warn().Msg("LLM provider not configured, cannot attempt code fix")
+			log.Warn().Msg("[deep_research] LLM provider not configured, cannot attempt code fix")
 		} else {
 			log.Warn().
 				Int("code_fix_retries", codeFixRetryCount).
 				Int("max_retries", MaxCodeFixRetries).
-				Msg("Code fix retry limit reached")
+				Msg("[deep_research] code fix retry limit reached")
 		}
 	}
 

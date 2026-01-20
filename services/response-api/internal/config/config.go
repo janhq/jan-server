@@ -36,10 +36,12 @@ type Config struct {
 	AuthJWKSURL string `env:"AUTH_JWKS_URL"`
 
 	// External Services
-	LLMAPIURL   string `env:"RESPONSE_LLM_API_URL" envDefault:"http://localhost:8080"`
-	MCPToolsURL string `env:"RESPONSE_MCP_TOOLS_URL" envDefault:"http://localhost:8091"`
-	MediaAPIURL string `env:"RESPONSE_MEDIA_API_URL" envDefault:"http://media-api:8285"`
-	AIOURL      string `env:"AIO_URL" envDefault:""`
+	LLMAPIURL            string `env:"RESPONSE_LLM_API_URL" envDefault:"http://localhost:8080"`
+	MCPToolsURL          string `env:"RESPONSE_MCP_TOOLS_URL" envDefault:"http://localhost:8091"`
+	MediaAPIURL          string `env:"RESPONSE_MEDIA_API_URL" envDefault:"http://media-api:8285"`
+	AIOURL               string `env:"AIO_URL" envDefault:""`
+	SlideRendererScript  string `env:"SLIDE_RENDERER_SCRIPT" envDefault:""`
+	SlideRendererEnabled bool   `env:"SLIDE_RENDERER_ENABLED" envDefault:"true"`
 
 	// Tool Execution
 	MaxToolDepth int           `env:"RESPONSE_MAX_TOOL_DEPTH" envDefault:"50"`

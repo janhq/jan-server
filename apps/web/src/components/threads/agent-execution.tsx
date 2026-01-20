@@ -110,6 +110,20 @@ const AgentExecutionPanel = ({ toolState, responseId }: AgentExecutionPanelProps
         </AgentExecution>
       );
     }
+    if (execution.status === "completed") {
+      return (
+        <AgentExecution defaultOpen={false} lastItem={true}>
+          <AgentExecutionHeader status="complete">
+            Deep Research completed
+          </AgentExecutionHeader>
+          <AgentExecutionContent>
+            <p className="text-muted-foreground text-sm leading-relaxed ml-2">
+              Research task completed successfully.
+            </p>
+          </AgentExecutionContent>
+        </AgentExecution>
+      );
+    }
     return null;
   }
 

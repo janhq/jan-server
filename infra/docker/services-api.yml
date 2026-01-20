@@ -161,6 +161,10 @@ services:
       # Service URLs (with prefixes for clarity)
       RESPONSE_LLM_API_URL: ${RESPONSE_LLM_API_URL:-http://llm-api:8080}
       RESPONSE_MCP_TOOLS_URL: ${RESPONSE_MCP_TOOLS_URL:-http://mcp-tools:8091}
+      RESPONSE_MEDIA_API_URL: ${RESPONSE_MEDIA_API_URL:-http://media-api:8285}
+      
+      # AIO Sandbox (for slide rendering - bypasses MCP for stability)
+      AIO_URL: ${AIO_URL:-http://aio-sandbox:8080}
 
       # Tool Execution
       RESPONSE_MAX_TOOL_DEPTH: ${RESPONSE_MAX_TOOL_DEPTH:-8}
