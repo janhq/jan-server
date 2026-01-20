@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useState, useEffect } from "react";
 
 import {
   useRightSidebarStore,
@@ -15,10 +15,13 @@ import {
   LinkIcon,
   DownloadIcon,
   MaximizeIcon,
+  Loader2Icon,
+  EyeIcon,
 } from "lucide-react";
 import { cn, getArtifactIcon, formatFileSize } from "@/lib/utils";
 import { Favicon } from "@/components/misc/favicon";
 import { SlideViewer } from "@/components/misc/slide-viewer";
+import { MdViewer } from "@/components/misc/md-viewer";
 
 
 
@@ -76,48 +79,118 @@ const DUMMY_SLIDES_IMAGES = [
 // Preview component for bottom Panel content section
 const ArtifactPreview = ({ artifact }: { artifact: ArtifactItem }) => {
   const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const [mdContent, setMdContent] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Use dummy data if no slidesImages available (for testing)
-  const slides = artifact.slidesImages?.length ? artifact.slidesImages : DUMMY_SLIDES_IMAGES;
+  // Fetch markdown content when artifact is research type
+  useEffect(() => {
+    if (artifact.contentType === "research" && artifact.downloadUrl && !mdContent) {
+      setIsLoading(true);
+      fetch(artifact.downloadUrl)
+        .then((res) => res.text())
+        .then((text) => {
+          setMdContent(text);
+        })
+        .catch((err) => {
+          console.error("Failed to fetch markdown content:", err);
+          setMdContent("Failed to load content");
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+    }
+  }, [artifact.contentType, artifact.downloadUrl, mdContent]);
 
-  if (artifact.contentType !== "slides" || slides.length === 0) {
-    return null;
-  }
-
-  const currentSlide = slides[0];
-
-  return (
-    <>
-      <div className="h-full flex flex-col">
-        {/* Slide image - clickable to open full viewer */}
-        <div className="flex-1 flex items-center justify-center p-3">
-          <div
-            className="relative w-full rounded-lg border overflow-hidden bg-muted/50 cursor-pointer group"
-            onClick={() => setIsViewerOpen(true)}
-          >
-            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-              <MaximizeIcon className="size-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+  // Handle research/markdown content type
+  if (artifact.contentType === "research") {
+    return (
+      <>
+        <div className="h-full flex flex-col">
+          <div className="flex-1 flex items-start p-3">
+            <div
+              className="relative w-full rounded-lg border overflow-hidden bg-muted/30 cursor-pointer group"
+              onClick={() => !isLoading && setIsViewerOpen(true)}
+            >
+              {/* Document thumbnail preview - compact horizontal layout */}
+              <div className="p-3 flex items-center gap-3">
+                {(() => {
+                  const Icon = getArtifactIcon(artifact.contentType, artifact.mimeType);
+                  return (
+                    <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <Icon className="size-4 text-primary" />
+                    </div>
+                  );
+                })()}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium line-clamp-1">{artifact.filename}</p>
+                  <p className="text-xs text-muted-foreground">{formatFileSize(artifact.size)}</p>
+                </div>
+                <EyeIcon className="size-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+              </div>
+              {/* Loading overlay */}
+              {isLoading && (
+                <div className="absolute inset-0 bg-background/50 flex items-center justify-center">
+                  <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
+                </div>
+              )}
             </div>
-            <img
-              src={currentSlide.thumb}
-              alt={`Slide ${currentSlide.id}`}
-              className="w-full h-auto object-contain"
-            />
           </div>
         </div>
-      </div>
 
-      {/* Full slide viewer modal */}
-      {isViewerOpen && (
-        <SlideViewer
-          slides={slides}
-          initialIndex={0}
-          title={artifact.filename}
-          onClose={() => setIsViewerOpen(false)}
-        />
-      )}
-    </>
-  );
+        {/* Full markdown viewer modal */}
+        {isViewerOpen && mdContent && (
+          <MdViewer
+            content={mdContent}
+            title={artifact.filename}
+            downloadUrl={artifact.downloadUrl}
+            onClose={() => setIsViewerOpen(false)}
+          />
+        )}
+      </>
+    );
+  }
+
+  // Handle slides content type
+  if (artifact.contentType === "slides") {
+    // Use dummy data if no slidesImages available (for testing)
+    const slides = artifact.slidesImages?.length ? artifact.slidesImages : DUMMY_SLIDES_IMAGES;
+    const currentSlide = slides[0];
+    return (
+      <>
+        <div className="h-full flex flex-col">
+          {/* Slide image - clickable to open full viewer */}
+          <div className="flex-1 flex items-center justify-center p-3">
+            <div
+              className="relative w-full rounded-lg border overflow-hidden bg-muted/50 cursor-pointer group"
+              onClick={() => setIsViewerOpen(true)}
+            >
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center pointer-events-none">
+                <MaximizeIcon className="size-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+              <img
+                src={currentSlide.thumb}
+                alt={`Slide ${currentSlide.id}`}
+                className="w-full h-auto object-contain"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Full slide viewer modal */}
+        {isViewerOpen && (
+          <SlideViewer
+            slides={slides}
+            initialIndex={0}
+            title={artifact.filename}
+            downloadUrl={artifact.downloadUrl}
+            onClose={() => setIsViewerOpen(false)}
+          />
+        )}
+      </>
+    );
+  }
+
+  return null;
 };
 
 const SearchResult = ({
@@ -127,6 +200,7 @@ const SearchResult = ({
   result: SearchResultItem;
   isLast?: boolean;
 }) => {
+
 
   if (result.type === "link") {
     return (
@@ -219,7 +293,7 @@ const SearchResult = ({
 
   if (result.type === "artifact" && result.artifact) {
     return (
-    <ArtifactPreview artifact={result.artifact} />
+      <ArtifactPreview artifact={result.artifact} />
     );
   }
 
@@ -296,7 +370,6 @@ export const AppSidebarRight = memo(function AppSidebarRight() {
 
 
           {/* Panel artifact */}
-          
             <div className="flex flex-col mx-2 overflow-auto bg-background border rounded-lg">
               <div className="sticky top-0 z-10 bg-background border-b px-3 py-2">
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -346,16 +419,11 @@ export const AppSidebarRight = memo(function AppSidebarRight() {
                     <span className="line-clamp-1">{artifacts[0].filename}</span>
                   </div>
                 </div>
-                {/* Artifact Preview */}
-                <div className="flex-1">
-                  {/* <ArtifactPreview artifact={artifacts[0]} /> */}
-                  <p>Lorem ipsum dolor sit amet consectetur adipisicing elit. Architecto, vitae at labore nesciunt in quo ipsum porro id exercitationem odio impedit vel harum earum possimus tempore error minima illum voluptate.</p>
-                </div>
               </>
             ) : (
               <div className="flex items-center justify-center h-full">
                 <p className="text-muted-foreground text-sm text-center">
-                  Click on a step to view search results
+                  No tasks running
                 </p>
               </div>
             )}

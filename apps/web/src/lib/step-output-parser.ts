@@ -228,7 +228,6 @@ export function getStepLabel(step: StepResponse): string {
     }
 
     case "llm_call":
-      console.log(paramsObj.action)
       if (paramsObj.action  === "plan_and_template") return paramsObj.description as string
       if (paramsObj.action  === "generate_single_slide") return paramsObj.description as string
       return "AI Analysis";

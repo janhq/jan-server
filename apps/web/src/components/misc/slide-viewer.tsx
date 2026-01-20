@@ -5,18 +5,20 @@ import { cn } from "@/lib/utils";
 import {
   type SlideImage,
 } from "@/stores/right-sidebar-store";
-import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, XIcon, DownloadIcon } from "lucide-react";
 import { Button } from "@janhq/interfaces/button";
 
 export const SlideViewer = ({
   slides,
   initialIndex = 0,
   title,
+  downloadUrl,
   onClose,
 }: {
   slides: SlideImage[];
   initialIndex?: number;
   title?: string;
+  downloadUrl?: string;
   onClose: () => void;
 }) => {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
@@ -24,6 +26,12 @@ export const SlideViewer = ({
   const currentSlide = slides[currentIndex];
   const hasPrev = currentIndex > 0;
   const hasNext = currentIndex < slides.length - 1;
+
+  const handleDownload = () => {
+    if (downloadUrl) {
+      window.open(downloadUrl, "_blank");
+    }
+  };
 
   // Keyboard navigation
   useEffect(() => {
@@ -97,6 +105,14 @@ export const SlideViewer = ({
             >
               <ChevronRightIcon className="size-4 ml-1" />
             </Button>
+            {downloadUrl && (
+              <>
+                <div className="w-px h-6 bg-border mx-2" />
+                <Button variant="outline" size="icon-sm" onClick={handleDownload}>
+                  <DownloadIcon className="size-4" />
+                </Button>
+              </>
+            )}
             <div className="w-px h-6 bg-border mx-2" />
             <Button variant="ghost" size="icon-sm" onClick={onClose}>
               <XIcon className="size-4" />

@@ -4,18 +4,26 @@ import { SidebarInset, SidebarProvider } from "@/components/sidebar/sidebar";
 import { NavHeader } from "@/components/sidebar/nav-header";
 import ChatInput from "@/components/chat-input";
 import { usePrivateChat } from "./stores/private-chat-store";
+import { useCapabilities } from "./stores/capabilities-store";
 import { HatGlassesIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { useMemo } from "react";
 
 const newYearPhrases = ["How can I help you today?"];
+const agentPhrases = ["What should we build together?"];
 
 function AppPageContent() {
   const isPrivateChat = usePrivateChat((state) => state.isPrivateChat);
+  const agentModeEnabled = useCapabilities((state) => state.agentModeEnabled);
 
   const randomPhrase = useMemo(
     () => newYearPhrases[Math.floor(Math.random() * newYearPhrases.length)],
+    [],
+  );
+
+  const agentPhrase = useMemo(
+    () => agentPhrases[Math.floor(Math.random() * agentPhrases.length)],
     [],
   );
 
@@ -133,7 +141,7 @@ function AppPageContent() {
                     transition={{ duration: 0.4 }}
                     className="text-2xl font-medium mb-6 font-studio"
                   >
-                    {randomPhrase}
+                    {agentModeEnabled ? agentPhrase : randomPhrase}
                   </motion.h2>
                 </div>
               )}

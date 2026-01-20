@@ -11,12 +11,13 @@ export type SlideImage = {
 export type ArtifactItem = {
   id: string;
   filename: string;
-  contentType: string; // e.g., "slides", "document"
-  mimeType: string; // e.g., "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+  contentType: string; // e.g., "slides", "document", "research"
+  mimeType: string; // e.g., "application/vnd.openxmlformats-officedocument.presentationml.presentation", "text/markdown"
   size: number;
   downloadUrl: string;
   createdAt?: string;
   slidesImages?: SlideImage[];
+  content?: string; // markdown content for research artifacts
 };
 
 export type SearchResultItem = {
