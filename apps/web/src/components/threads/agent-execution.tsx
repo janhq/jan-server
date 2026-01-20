@@ -187,7 +187,7 @@ const AgentExecutionPanel = ({ toolState, responseId }: AgentExecutionPanelProps
                       <div className="bg-background z-20 relative flex shrink-0 items-center justify-center size-4">
                         {!isLast && <div className="absolute z-30 -bottom-4 h-full left-2 w-px bg-border transition-all last:hidden" />}
                         {mapStatus(step.status) === "complete" && (
-                          <CircleCheck className="size-3 text-green-600 dark:text-green-500" />
+                          <CircleCheck className="size-3 text-muted-foreground" />
                         )}
                         {mapStatus(step.status) === "pending" && (
                           <Circle className="size-3 text-muted-foreground fill-background" />
