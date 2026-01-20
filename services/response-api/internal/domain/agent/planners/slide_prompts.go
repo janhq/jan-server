@@ -47,6 +47,8 @@ DESIGN GUIDELINES:
 - Avoid drop shadows; use flat shapes
 - No circles/ovals as decorative containers
 - Use only square-corner rectangles (shape.kind:"rect") for boxes; keep cornerRadius:null and shadow:null
+- Use at most 6 colors total: background, text, mutedText, border, primary, accent. No gradients.
+- Indexing: plan.slides[i].index MUST equal i+1 exactly (1..TARGET SLIDE COUNT). No gaps. No duplicates.
 - If the BRIEF asks for a table or timeline, you MUST set suggestedLayout to TABLE or TIMELINE.
 - For TABLE or TIMELINE layouts, include intended column headers and row topics in keyPoints.
 - Do not default to TITLE_AND_BULLETS when a structured layout is requested.
@@ -57,10 +59,15 @@ LAYOUT TYPES (use for suggestedLayout):
 - TITLE_AND_BULLETS: Title with bullet points
 - TITLE_TWO_COLUMNS: Two column layout
 - TITLE_IMAGE: Title with image
+- FULL_BLEED_IMAGE: Full-bleed image slide
 - CHART: Data visualization
 - TABLE: Tabular data
 - QUOTE: Quote/testimonial
 - CLOSING: End slide with call to action
+- APPENDIX: Appendix/extra slide
+- DASHBOARD_3KPI_2COL: Dashboard layout with 3 KPI slots and 2-column content
+- CHART_AND_INSIGHTS: Chart with insight bullets
+- TABLE_AND_CALLOUTS: Table with key takeaways callouts
 
 TEMPLATE REQUIREMENTS:
 - version: "1.0"
@@ -68,10 +75,30 @@ TEMPLATE REQUIREMENTS:
 - theme: canvas, grid, colors (palette + semantic), typography (families, scale, lineHeights), defaults
 - masters: at least one master with id, name, background
 - layouts: define layouts for each suggestedLayout used in the plan
+- layout.id MUST equal the suggestedLayout enum (e.g., "TITLE", "TITLE_AND_BULLETS"). Do NOT prefix with "layout_".
 - components: reusable elements (footer, header, etc.)
 - export: format (pptx), fileName, includeSpeakerNotes
+- Template MUST define header and footer components. Every layout except TITLE/SECTION_HEADER/CLOSING must include them.
+- For each layout you create, you MUST define layouts[].slots[] with ids and grid positions.
+- Do NOT embed per-slide geometry rules into the plan; geometry is resolved by slots.
 
 Create a cohesive plan that flows logically from introduction to conclusion.
+`
+
+const dataBankPrompt = `
+You are the Data Bank Extractor for a slide-deck generation system.
+Given BRIEF, ASSETS, and RESEARCH, extract concrete facts and chart-ready datasets.
+
+OUTPUT FORMAT (STRICT):
+- Return ONLY valid JSON that matches the provided schema.
+- Do NOT wrap in markdown, code fences, or commentary.
+- Do NOT include any extra keys outside the schema.
+
+RULES:
+- Facts must be atomic, sourced, and include a date when available.
+- Datasets must be ready to use in charts (labels + numeric series).
+- Use ONLY data that appears in the provided research context.
+- If data is missing, leave the dataset list empty instead of inventing values.
 `
 
 func slideWriterPrompt(slideIndex int) string {
@@ -97,6 +124,10 @@ DESIGN RULES:
 - For titles or any text that might wrap: set text.autoFit="shrink" so it won't overlap other blocks
 - id: unique string like "slide_%d_title"
 - layoutId: must match a layout.id from the template
+- slide.order MUST equal slideIndex; slide.id MUST be slide_<slideIndex>.
+- useComponents MUST be an array (empty if unused).
+- If the selected layout has slots, you MUST use slotId for each element and OMIT rect.
+- Do not invent new slot ids; choose only from the layout's slot list.
 
 ELEMENT TYPES:
 - text: requires "text": {"content": "...", "style": {...}, "runs": [], "autoFit": "shrink"}
@@ -116,6 +147,8 @@ REQUIRED HEADER ELEMENT:
 - Header content: Single short label only (max 80 characters). Do NOT add a subheader/summary line in the header band.
 - Header style: fontSize: 11-12pt, color: muted/secondary color, align: left
 - This provides context separate from the main title; the main title should start below the header band.
+- Every content slide MUST also include a footer element (page number or brand line).
+- If the template provides header/footer components, include them via useComponents.
 
 TEXT LENGTH LIMITS:
 - Header text: max 80 characters (REQUIRED for content slides)
@@ -146,6 +179,7 @@ IMPORTANT:
 - requires.datasets must be an array of complete objects, NOT strings
 - Each dataset must have: id (string), kind ("series"), data (object with labels and series arrays)
 - The chart element's datasetRef must match a dataset id you provide
+- If you add an image element, it MUST reference an asset id that exists in ASSETS AVAILABLE.
 
 Create engaging, well-spaced content that fits the slide purpose.
 Follow the plan entry's suggestedLayout exactly when provided.

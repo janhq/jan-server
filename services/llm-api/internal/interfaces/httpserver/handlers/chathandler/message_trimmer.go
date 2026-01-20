@@ -42,18 +42,18 @@ const (
 	MaxToolArgumentTokens = 2000
 
 	// MaxUserContentTokens is max tokens per user message text content before truncation.
-	MaxUserContentTokens = 24000
+	MaxUserContentTokens = 240000
 
 	// MaxMultiContentTextTokens is max tokens per text part in multi-content arrays.
 	MaxMultiContentTextTokens = 6000
 
 	// Image limits to prevent context overflow
-	MaxToolImages = 6 // Maximum images across all tool messages
+	MaxToolImages = 6  // Maximum images across all tool messages
 	MaxUserImages = 15 // Maximum images across all user messages
 
 	// Image token estimates (conservative for safety)
-	ImageTokensLowRes  = 85   // Low resolution image
-	ImageTokensHighRes = 850  // High resolution image (average)
+	ImageTokensLowRes  = 85  // Low resolution image
+	ImageTokensHighRes = 850 // High resolution image (average)
 )
 
 // ===============================

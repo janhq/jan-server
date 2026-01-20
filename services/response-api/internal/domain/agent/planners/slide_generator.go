@@ -3,10 +3,13 @@ package planners
 
 import (
 	"context"
+	"crypto/sha1"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -244,6 +247,35 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		Sequence:    2,
 		Action:      plan.ActionTypeToolCall,
 		InputParams: imageSearchParams,
+		MaxRetries:  3,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	taskSequence++
+
+	log.Debug().Int("task_sequence", taskSequence).Msg("[slide_generator] creating data bank task")
+	dataBankTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
+		Sequence:    taskSequence,
+		TaskType:    plan.TaskTypeGeneration,
+		Title:       "Data Bank",
+		Description: strPtr("Extract structured facts and datasets from research"),
+	})
+	if err != nil {
+		return nil, err
+	}
+	log.Debug().Str("task_id", dataBankTask.ID).Msg("[slide_generator] data bank task created")
+
+	dataBankParams, _ := json.Marshal(map[string]interface{}{
+		"action":      "data_bank",
+		"description": "Extract facts and datasets using DataBankSchema",
+		"schema":      schemas.DataBankSchema,
+	})
+	_, err = p.planService.CreateStep(ctx, dataBankTask.ID, plan.CreateStepParams{
+		Sequence:    1,
+		Action:      plan.ActionTypeLLMCall,
+		InputParams: dataBankParams,
 		MaxRetries:  3,
 	})
 	if err != nil {
@@ -519,6 +551,7 @@ func (p *SlideGeneratorPlanner) calculateEstimatedSteps(config SlideGeneratorCon
 	}
 
 	steps += 2 // outline (reasoning + image_search)
+	steps += 1 // data bank
 	steps += 1 // plan & template
 	steps += config.NumSlides
 	steps += 1 // upload spec
@@ -543,6 +576,12 @@ type SlideGeneratorExecutor struct {
 	rendererScriptPath string
 	rendererEnabled    bool
 	temperature        float64 // LLM temperature for slide generation (default: 0.2)
+}
+
+type llmProviderWithTemperature interface {
+	GenerateWithModelWithTemperature(ctx context.Context, prompt string, model string, temperature float64) (string, error)
+	GenerateWithSystemPromptWithTemperature(ctx context.Context, systemPrompt string, userPrompt string, model string, temperature float64) (string, error)
+	GenerateWithStructuredOutputWithTemperature(ctx context.Context, systemPrompt string, userPrompt string, model string, schema map[string]any, temperature float64) (string, error)
 }
 
 // NewSlideGeneratorExecutor creates a new slide generator executor.
@@ -575,6 +614,27 @@ func NewSlideGeneratorExecutor(mcpClient MCPClient, llmProvider LLMProvider, art
 		rendererEnabled:    rendererEnabled,
 		temperature:        0.2, // Low temperature for deterministic, structured output
 	}
+}
+
+func (e *SlideGeneratorExecutor) generateWithModel(ctx context.Context, prompt string, model string) (string, error) {
+	if provider, ok := e.llmProvider.(llmProviderWithTemperature); ok {
+		return provider.GenerateWithModelWithTemperature(ctx, prompt, model, e.temperature)
+	}
+	return e.llmProvider.GenerateWithModel(ctx, prompt, model)
+}
+
+func (e *SlideGeneratorExecutor) generateWithSystemPrompt(ctx context.Context, systemPrompt string, userPrompt string, model string) (string, error) {
+	if provider, ok := e.llmProvider.(llmProviderWithTemperature); ok {
+		return provider.GenerateWithSystemPromptWithTemperature(ctx, systemPrompt, userPrompt, model, e.temperature)
+	}
+	return e.llmProvider.GenerateWithSystemPrompt(ctx, systemPrompt, userPrompt, model)
+}
+
+func (e *SlideGeneratorExecutor) generateWithStructuredOutput(ctx context.Context, systemPrompt string, userPrompt string, model string, schema map[string]any) (string, error) {
+	if provider, ok := e.llmProvider.(llmProviderWithTemperature); ok {
+		return provider.GenerateWithStructuredOutputWithTemperature(ctx, systemPrompt, userPrompt, model, schema, e.temperature)
+	}
+	return e.llmProvider.GenerateWithStructuredOutput(ctx, systemPrompt, userPrompt, model, schema)
 }
 
 // CanExecute checks if this executor can handle the given action type.
@@ -762,6 +822,8 @@ func (e *SlideGeneratorExecutor) executeLLMCall(ctx context.Context, step *plan.
 		return e.executeSingleSlide(ctx, params, input)
 	case "reasoning":
 		return e.executeReasoning(ctx, params, input)
+	case "data_bank":
+		return e.executeDataBank(ctx, params, input)
 	default:
 		return e.executeReasoning(ctx, params, input)
 	}
@@ -788,7 +850,7 @@ func (e *SlideGeneratorExecutor) executeReasoning(ctx context.Context, params ma
 		}, nil
 	}
 
-	response, err := e.llmProvider.GenerateWithModel(ctx, prompt, model)
+	response, err := e.generateWithModel(ctx, prompt, model)
 	if err != nil {
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
@@ -814,6 +876,91 @@ func (e *SlideGeneratorExecutor) executeReasoning(ctx context.Context, params ma
 	}, nil
 }
 
+func (e *SlideGeneratorExecutor) executeDataBank(ctx context.Context, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
+	log.Debug().Msg("[slide_generator] executeDataBank started")
+	contextData := e.buildAccumulatedContext(input)
+	assets := e.collectImageAssets(input)
+	assetsJSON, _ := json.Marshal(assets)
+
+	systemPrompt := dataBankPrompt
+	userPrompt := fmt.Sprintf("BRIEF:\n%s\n\nASSETS AVAILABLE:\n%s", contextData, string(assetsJSON))
+
+	model := e.getModelFromContext(input)
+	if e.llmProvider == nil {
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Code:     "LLM_PROVIDER_MISSING",
+				Message:  "LLM provider not configured",
+				Severity: status.ErrorSeverityFatal,
+			},
+		}, nil
+	}
+
+	schema := cloneSchema(schemas.DataBankSchema)
+	schemas.NormalizeSchemaForStructuredOutput(schema)
+
+	var lastErr error
+	var dataBank schemas.DataBank
+
+	for attempt := 1; attempt <= 3; attempt++ {
+		useStructuredOutput := attempt <= 2
+		var result string
+		var err error
+
+		if useStructuredOutput {
+			result, err = e.generateWithStructuredOutput(ctx, systemPrompt, userPrompt, model, schema)
+		} else {
+			schemaJSON, _ := json.MarshalIndent(schemas.DataBankSchema, "", "  ")
+			enhancedUserPrompt := fmt.Sprintf("%s\n\nIMPORTANT: You MUST respond with valid JSON that strictly adheres to this schema:\n```json\n%s\n```\n\nReturn ONLY the JSON object, no markdown code blocks, no explanations.", userPrompt, string(schemaJSON))
+			result, err = e.generateWithSystemPrompt(ctx, systemPrompt, enhancedUserPrompt, model)
+			if err == nil {
+				result = extractJSONFromResponse(result)
+			}
+		}
+
+		if err != nil {
+			lastErr = err
+			log.Warn().Err(err).Int("attempt", attempt).Msg("[slide_generator] data_bank LLM call failed")
+			continue
+		}
+
+		if err := json.Unmarshal([]byte(result), &dataBank); err != nil {
+			lastErr = err
+			log.Warn().Err(err).Int("attempt", attempt).Msg("[slide_generator] failed to parse data_bank result")
+			continue
+		}
+
+		lastErr = nil
+		break
+	}
+
+	if lastErr != nil {
+		return &agent.ExecutionResult{
+			Status: status.StatusFailed,
+			Error: &agent.ExecutionError{
+				Code:     "PARSE_ERROR",
+				Message:  fmt.Sprintf("Failed to parse data bank after retries: %v", lastErr),
+				Severity: status.ErrorSeverityRetryable,
+			},
+		}, nil
+	}
+
+	contentBytes, _ := json.Marshal(dataBank)
+	output := map[string]interface{}{
+		"type":    "data_bank",
+		"data":    dataBank,
+		"content": string(contentBytes),
+	}
+	outputBytes, _ := json.Marshal(output)
+	log.Debug().Msg("[slide_generator] executeDataBank completed")
+
+	return &agent.ExecutionResult{
+		Status: status.StatusCompleted,
+		Output: outputBytes,
+	}, nil
+}
+
 func (e *SlideGeneratorExecutor) executePlanAndTemplate(ctx context.Context, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
 	log.Debug().Msg("[slide_generator] executePlanAndTemplate started")
 	contextData := e.buildAccumulatedContext(input)
@@ -826,8 +973,11 @@ func (e *SlideGeneratorExecutor) executePlanAndTemplate(ctx context.Context, par
 	}
 	theme, _ := config["theme"].(string)
 
+	assets := e.collectImageAssets(input)
+	assetsJSON, _ := json.Marshal(assets)
+	dataBankText := e.collectDataBankText(input)
 	systemPrompt := fmt.Sprintf("%s\n%s", sizeGuardPrompt, plannerAndTemplatePrompt)
-	userPrompt := fmt.Sprintf("BRIEF:\n%s\n\nTARGET SLIDE COUNT:\n%d\n\nTHEME:\n%s", contextData, numSlides, theme)
+	userPrompt := fmt.Sprintf("BRIEF:\n%s\n\nTARGET SLIDE COUNT:\n%d\n\nTHEME:\n%s\n\nASSETS AVAILABLE:\n%s\n\nDATA BANK:\n%s", contextData, numSlides, theme, string(assetsJSON), dataBankText)
 
 	model := e.getModelFromContext(input)
 	log.Debug().
@@ -868,7 +1018,7 @@ func (e *SlideGeneratorExecutor) executePlanAndTemplate(ctx context.Context, par
 				Str("model", model).
 				Str("method", "structured_output").
 				Msg("[slide_generator] plan_and_template LLM call started")
-			result, err = e.llmProvider.GenerateWithStructuredOutput(ctx, systemPrompt, userPrompt, model, schema)
+			result, err = e.generateWithStructuredOutput(ctx, systemPrompt, userPrompt, model, schema)
 		} else {
 			// Fallback: append schema to prompt
 			log.Info().
@@ -878,7 +1028,7 @@ func (e *SlideGeneratorExecutor) executePlanAndTemplate(ctx context.Context, par
 				Msg("[slide_generator] plan_and_template using fallback method (schema in prompt)")
 			schemaJSON, _ := json.MarshalIndent(schemas.PlanAndTemplateSchema, "", "  ")
 			enhancedUserPrompt := fmt.Sprintf("%s\n\nIMPORTANT: You MUST respond with valid JSON that strictly adheres to this schema:\n```json\n%s\n```\n\nReturn ONLY the JSON object, no markdown code blocks, no explanations.", userPrompt, string(schemaJSON))
-			result, err = e.llmProvider.GenerateWithSystemPrompt(ctx, systemPrompt, enhancedUserPrompt, model)
+			result, err = e.generateWithSystemPrompt(ctx, systemPrompt, enhancedUserPrompt, model)
 			if err == nil {
 				// Extract JSON from potential markdown code blocks
 				result = extractJSONFromResponse(result)
@@ -937,6 +1087,10 @@ func (e *SlideGeneratorExecutor) executePlanAndTemplate(ctx context.Context, par
 		Int("recommended_slides", planAndTemplate.Plan.RecommendedSlideCount).
 		Interface("template", planAndTemplate.Template).
 		Msg("[slide_generator] parsed plan and template")
+
+	normalizePlanIndices(&planAndTemplate.Plan)
+	normalizeTemplateComponents(&planAndTemplate.Template)
+	normalizeTemplateLayouts(&planAndTemplate.Plan, &planAndTemplate.Template)
 
 	output := map[string]interface{}{
 		"type":               "plan_and_template",
@@ -999,12 +1153,15 @@ func (e *SlideGeneratorExecutor) executeSingleSlide(ctx context.Context, params 
 	planEntry := &planAndTemplate.Plan.Slides[arrayIndex]
 
 	contextData := e.buildAccumulatedContext(input)
+	assets := e.collectImageAssets(input)
+	assetsJSON, _ := json.Marshal(assets)
+	dataBankText := e.collectDataBankText(input)
 	templateJSON, _ := json.Marshal(planAndTemplate.Template)
 	planEntryJSON, _ := json.Marshal(planEntry)
 	themeJSON, _ := json.Marshal(planAndTemplate.Template.Theme)
 
 	systemPrompt := slideWriterPrompt(slideIndex)
-	userPrompt := fmt.Sprintf("BRIEF:\n%s\n\nLOCKED TEMPLATE:\n%s\n\nTHEME:\n%s\n\nPLAN ENTRY (slide %d):\n%s", contextData, string(templateJSON), string(themeJSON), slideIndex, string(planEntryJSON))
+	userPrompt := fmt.Sprintf("BRIEF:\n%s\n\nLOCKED TEMPLATE:\n%s\n\nTHEME:\n%s\n\nPLAN ENTRY (slide %d):\n%s\n\nASSETS AVAILABLE:\n%s\n\nDATA BANK:\n%s", contextData, string(templateJSON), string(themeJSON), slideIndex, string(planEntryJSON), string(assetsJSON), dataBankText)
 
 	model := e.getModelFromContext(input)
 	log.Debug().
@@ -1047,7 +1204,7 @@ func (e *SlideGeneratorExecutor) executeSingleSlide(ctx context.Context, params 
 				Str("model", model).
 				Str("method", "structured_output").
 				Msg("[slide_generator] slide LLM call started")
-			result, err = e.llmProvider.GenerateWithStructuredOutput(ctx, systemPrompt, userPrompt, model, schema)
+			result, err = e.generateWithStructuredOutput(ctx, systemPrompt, userPrompt, model, schema)
 		} else {
 			// Fallback: append schema to prompt
 			log.Info().
@@ -1058,7 +1215,7 @@ func (e *SlideGeneratorExecutor) executeSingleSlide(ctx context.Context, params 
 				Msg("[slide_generator] slide using fallback method (schema in prompt)")
 			schemaJSON, _ := json.MarshalIndent(schemas.SlideGenResultSchema, "", "  ")
 			enhancedUserPrompt := fmt.Sprintf("%s\n\nIMPORTANT: You MUST respond with valid JSON that strictly adheres to this schema:\n```json\n%s\n```\n\nReturn ONLY the JSON object, no markdown code blocks, no explanations.", userPrompt, string(schemaJSON))
-			result, err = e.llmProvider.GenerateWithSystemPrompt(ctx, systemPrompt, enhancedUserPrompt, model)
+			result, err = e.generateWithSystemPrompt(ctx, systemPrompt, enhancedUserPrompt, model)
 			if err == nil {
 				// Extract JSON from potential markdown code blocks
 				result = extractJSONFromResponse(result)
@@ -1096,9 +1253,58 @@ func (e *SlideGeneratorExecutor) executeSingleSlide(ctx context.Context, params 
 			continue
 		}
 
+		slideMap, ok := slideResult.Slide.(map[string]any)
+		if !ok {
+			lastErr = fmt.Errorf("slide result is not an object")
+			log.Warn().
+				Err(lastErr).
+				Int("attempt", attempt).
+				Int("slide_index", slideIndex).
+				Msg("[slide_generator] slide result has invalid type")
+			continue
+		}
+
+		ensureSlideOrderAndID(slideMap, slideIndex)
+		ensureSlideUseComponents(slideMap)
+
+		layoutIDs := templateLayoutIDs(planAndTemplate.Template.Layouts)
+		layoutID := slideLayoutID(slideResult.Slide)
+		if layoutID == "" || !layoutIDs[layoutID] {
+			lastErr = fmt.Errorf("layoutId %q not found in template layouts", layoutID)
+			log.Warn().
+				Err(lastErr).
+				Int("attempt", attempt).
+				Int("slide_index", slideIndex).
+				Str("layout_id", layoutID).
+				Msg("[slide_generator] slide layout missing from template")
+			continue
+		}
+
+		assetIDs := extractAssetIDs(slideResult.Requires.Assets)
+		datasetIDs := extractDatasetIDs(slideResult.Requires.Datasets)
+
+		if missing := validateChartDatasetRefs(slideMap, datasetIDs); missing != "" {
+			lastErr = fmt.Errorf("chart datasetRef %q missing from requires.datasets", missing)
+			log.Warn().
+				Err(lastErr).
+				Int("attempt", attempt).
+				Int("slide_index", slideIndex).
+				Msg("[slide_generator] chart datasetRef missing")
+			continue
+		}
+
+		if missing := validateImageAssetRefs(slideMap, assetIDs); missing != "" {
+			lastErr = fmt.Errorf("image ref %q missing from requires.assets", missing)
+			log.Warn().
+				Err(lastErr).
+				Int("attempt", attempt).
+				Int("slide_index", slideIndex).
+				Msg("[slide_generator] image asset ref missing")
+			continue
+		}
+
 		if suggestedLayout := strings.TrimSpace(planEntry.SuggestedLayout); suggestedLayout != "" {
-			layoutID := slideLayoutID(slideResult.Slide)
-			if layoutID != suggestedLayout {
+			if !layoutIDMatchesSuggestedLayout(layoutID, suggestedLayout, planAndTemplate.Template.Layouts) {
 				lastErr = fmt.Errorf("layoutId %q does not match suggestedLayout %q", layoutID, suggestedLayout)
 				log.Warn().
 					Err(lastErr).
@@ -1197,6 +1403,185 @@ func slideHasElementType(slide any, elementType string) bool {
 		}
 	}
 	return false
+}
+
+func ensureSlideOrderAndID(slide map[string]any, slideIndex int) {
+	slide["order"] = slideIndex
+	expectedID := fmt.Sprintf("slide_%d", slideIndex)
+	if id, ok := slide["id"].(string); !ok || strings.TrimSpace(id) == "" || id != expectedID {
+		slide["id"] = expectedID
+	}
+}
+
+func ensureSlideUseComponents(slide map[string]any) {
+	if _, ok := slide["useComponents"]; !ok {
+		slide["useComponents"] = []any{}
+	}
+}
+
+func templateLayoutIDs(layouts any) map[string]bool {
+	result := map[string]bool{}
+	if layoutsSlice, ok := layouts.([]any); ok {
+		for _, layout := range layoutsSlice {
+			if layoutMap, ok := layout.(map[string]any); ok {
+				if id, ok := layoutMap["id"].(string); ok && strings.TrimSpace(id) != "" {
+					result[strings.TrimSpace(id)] = true
+				}
+			}
+		}
+	}
+	return result
+}
+
+func layoutIDMatchesSuggestedLayout(layoutID string, suggestedLayout string, layouts any) bool {
+	if layoutID == "" || suggestedLayout == "" {
+		return false
+	}
+	if strings.EqualFold(layoutID, suggestedLayout) {
+		return true
+	}
+	normalized := normalizeLayoutToken(layoutID)
+	if normalized == suggestedLayout {
+		return true
+	}
+
+	nameMap := layoutNameByID(layouts)
+	if name, ok := nameMap[layoutID]; ok {
+		nameNormalized := normalizeLayoutToken(name)
+		if nameNormalized == suggestedLayout {
+			return true
+		}
+	}
+
+	if alias, ok := layoutAliasMap()[normalized]; ok {
+		return alias == suggestedLayout
+	}
+
+	return false
+}
+
+func layoutNameByID(layouts any) map[string]string {
+	result := map[string]string{}
+	if layoutsSlice, ok := layouts.([]any); ok {
+		for _, layout := range layoutsSlice {
+			if layoutMap, ok := layout.(map[string]any); ok {
+				id, _ := layoutMap["id"].(string)
+				name, _ := layoutMap["name"].(string)
+				if id != "" && name != "" {
+					result[id] = name
+				}
+			}
+		}
+	}
+	return result
+}
+
+func normalizeLayoutToken(raw string) string {
+	value := strings.TrimSpace(raw)
+	value = strings.TrimPrefix(value, "layout_")
+	value = strings.TrimPrefix(value, "layout-")
+	value = strings.ReplaceAll(value, "-", "_")
+	value = strings.ReplaceAll(value, " ", "_")
+	value = strings.ToUpper(value)
+	return value
+}
+
+func layoutAliasMap() map[string]string {
+	return map[string]string{
+		"TITLE_BULLETS":        "TITLE_AND_BULLETS",
+		"TITLE_AND_BULLETS":    "TITLE_AND_BULLETS",
+		"TITLE_TWO_COLUMNS":    "TITLE_TWO_COLUMNS",
+		"TITLE_IMAGE":          "TITLE_IMAGE",
+		"FULL_BLEED_IMAGE":     "FULL_BLEED_IMAGE",
+		"SECTION_HEADER":       "SECTION_HEADER",
+		"TABLE":                "TABLE",
+		"CHART":                "CHART",
+		"QUOTE":                "QUOTE",
+		"TIMELINE":             "TIMELINE",
+		"CLOSING":              "CLOSING",
+		"APPENDIX":             "APPENDIX",
+		"DASHBOARD_3KPI_2COL":  "DASHBOARD_3KPI_2COL",
+		"CHART_AND_INSIGHTS":   "CHART_AND_INSIGHTS",
+		"TABLE_AND_CALLOUTS":   "TABLE_AND_CALLOUTS",
+		"TITLE":                "TITLE",
+		"TITLE_SLIDE":          "TITLE",
+		"TITLE_AND_BULLETS_V1": "TITLE_AND_BULLETS",
+	}
+}
+
+func extractAssetIDs(assets []any) map[string]bool {
+	ids := map[string]bool{}
+	for _, asset := range assets {
+		switch v := asset.(type) {
+		case string:
+			if v != "" {
+				ids[v] = true
+			}
+		case map[string]any:
+			if id, ok := v["id"].(string); ok && id != "" {
+				ids[id] = true
+			}
+		}
+	}
+	return ids
+}
+
+func extractDatasetIDs(datasets []any) map[string]bool {
+	ids := map[string]bool{}
+	for _, dataset := range datasets {
+		if v, ok := dataset.(map[string]any); ok {
+			if id, ok := v["id"].(string); ok && id != "" {
+				ids[id] = true
+			}
+		}
+	}
+	return ids
+}
+
+func validateChartDatasetRefs(slide map[string]any, datasetIDs map[string]bool) string {
+	elements, _ := slide["elements"].([]any)
+	for _, elemAny := range elements {
+		elem, ok := elemAny.(map[string]any)
+		if !ok {
+			continue
+		}
+		if elemType, _ := elem["type"].(string); elemType != "chart" {
+			continue
+		}
+		chart, _ := elem["chart"].(map[string]any)
+		if chart == nil {
+			continue
+		}
+		if ref, ok := chart["datasetRef"].(string); ok && ref != "" {
+			if !datasetIDs[ref] {
+				return ref
+			}
+		}
+	}
+	return ""
+}
+
+func validateImageAssetRefs(slide map[string]any, assetIDs map[string]bool) string {
+	elements, _ := slide["elements"].([]any)
+	for _, elemAny := range elements {
+		elem, ok := elemAny.(map[string]any)
+		if !ok {
+			continue
+		}
+		if elemType, _ := elem["type"].(string); elemType != "image" {
+			continue
+		}
+		image, _ := elem["image"].(map[string]any)
+		if image == nil {
+			continue
+		}
+		if ref, ok := image["ref"].(string); ok && ref != "" {
+			if !assetIDs[ref] {
+				return ref
+			}
+		}
+	}
+	return ""
 }
 
 func (e *SlideGeneratorExecutor) executeUploadSlideSpec(ctx context.Context, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
@@ -2065,6 +2450,16 @@ func (e *SlideGeneratorExecutor) extractContextFromOutput(output json.RawMessage
 
 	var parsed map[string]interface{}
 	if err := json.Unmarshal(output, &parsed); err == nil {
+		if payloadType, _ := parsed["type"].(string); payloadType == "data_bank" {
+			if content, ok := parsed["content"].(string); ok && content != "" {
+				return fmt.Sprintf("[data_bank]: %s", content)
+			}
+			if data, ok := parsed["data"]; ok {
+				if raw, err := json.Marshal(data); err == nil {
+					return fmt.Sprintf("[data_bank]: %s", string(raw))
+				}
+			}
+		}
 		if content, ok := parsed["content"].([]interface{}); ok {
 			var texts []string
 			for _, item := range content {
@@ -2319,6 +2714,476 @@ func (e *SlideGeneratorExecutor) extractPlanAndTemplate(input agent.ExecutionInp
 	return nil
 }
 
+func normalizePlanIndices(plan *schemas.SlidePlan) {
+	if plan == nil {
+		return
+	}
+	for i := range plan.Slides {
+		plan.Slides[i].Index = i + 1
+	}
+	plan.RecommendedSlideCount = len(plan.Slides)
+}
+
+func normalizeTemplateComponents(template *schemas.SlideTemplate) {
+	if template == nil {
+		return
+	}
+	components, ok := template.Components.([]any)
+	if !ok {
+		return
+	}
+	normalized := make([]any, 0, len(components))
+	for _, compAny := range components {
+		comp, ok := compAny.(map[string]any)
+		if !ok {
+			continue
+		}
+		if _, hasElements := comp["elements"]; hasElements {
+			normalized = append(normalized, comp)
+			continue
+		}
+		compID, _ := comp["id"].(string)
+		compType, _ := comp["type"].(string)
+		rect, _ := comp["rect"].(map[string]any)
+		style, _ := comp["style"].(map[string]any)
+
+		if compType == "" {
+			compType = "text"
+		}
+
+		element := map[string]any{
+			"id":   compID,
+			"type": compType,
+			"rect": rect,
+		}
+
+		switch compType {
+		case "text":
+			content := ""
+			if compID == "header" {
+				content = "{{title}}"
+			} else if compID == "footer" {
+				content = "{page}/{total_pages}"
+			}
+			element["text"] = map[string]any{
+				"content": content,
+				"runs":    []any{},
+				"autoFit": "shrink",
+				"style":   style,
+			}
+		case "shape":
+			element["shape"] = map[string]any{
+				"kind":  "rect",
+				"style": map[string]any{"fill": map[string]any{"type": "solid", "color": "#FFFFFF"}},
+			}
+		case "image":
+			if image, ok := comp["image"].(map[string]any); ok {
+				element["image"] = image
+			}
+		}
+
+		normalized = append(normalized, map[string]any{
+			"id":       compID,
+			"elements": []any{element},
+		})
+	}
+	template.Components = normalized
+}
+
+func normalizeTemplateLayouts(plan *schemas.SlidePlan, template *schemas.SlideTemplate) {
+	if template == nil {
+		return
+	}
+	layoutsSlice, ok := template.Layouts.([]any)
+	if !ok {
+		layoutsSlice = []any{}
+	}
+
+	allowed := layoutEnumSet()
+	usedIDs := map[string]bool{}
+	normalizedLayouts := make([]any, 0, len(layoutsSlice))
+
+	for _, layoutAny := range layoutsSlice {
+		layout, ok := layoutAny.(map[string]any)
+		if !ok {
+			continue
+		}
+		rawID, _ := layout["id"].(string)
+		rawName, _ := layout["name"].(string)
+		candidateID := normalizeLayoutToken(rawID)
+		if candidateID == "" {
+			candidateID = normalizeLayoutToken(rawName)
+		}
+		if allowed[candidateID] && !usedIDs[candidateID] {
+			layout["id"] = candidateID
+			usedIDs[candidateID] = true
+			normalizedLayouts = append(normalizedLayouts, layout)
+			continue
+		}
+		if rawID != "" && !usedIDs[rawID] {
+			usedIDs[rawID] = true
+		} else if rawID == "" {
+			rawID = fmt.Sprintf("CUSTOM_%d", len(usedIDs)+1)
+			layout["id"] = rawID
+			usedIDs[rawID] = true
+		}
+		normalizedLayouts = append(normalizedLayouts, layout)
+	}
+
+	for _, entry := range plan.Slides {
+		layoutID := strings.TrimSpace(entry.SuggestedLayout)
+		if layoutID == "" {
+			continue
+		}
+		if usedIDs[layoutID] {
+			continue
+		}
+		normalizedLayouts = append(normalizedLayouts, defaultLayoutForType(layoutID))
+		usedIDs[layoutID] = true
+	}
+
+	template.Layouts = normalizedLayouts
+}
+
+func layoutEnumSet() map[string]bool {
+	return map[string]bool{
+		"TITLE":               true,
+		"SECTION_HEADER":      true,
+		"TITLE_AND_BULLETS":   true,
+		"TITLE_TWO_COLUMNS":   true,
+		"TITLE_IMAGE":         true,
+		"FULL_BLEED_IMAGE":    true,
+		"CHART":               true,
+		"TABLE":               true,
+		"QUOTE":               true,
+		"TIMELINE":            true,
+		"CLOSING":             true,
+		"APPENDIX":            true,
+		"DASHBOARD_3KPI_2COL": true,
+		"CHART_AND_INSIGHTS":  true,
+		"TABLE_AND_CALLOUTS":  true,
+	}
+}
+
+func defaultLayoutForType(layoutID string) map[string]any {
+	left := 36.0
+	top := 36.0
+	right := 36.0
+	bottom := 36.0
+	usableW := 960.0 - left - right
+	usableH := 540.0 - top - bottom
+
+	titleRect := map[string]any{"x": left, "y": 72.0, "w": usableW, "h": 48.0}
+	bodyRect := map[string]any{"x": left, "y": 140.0, "w": usableW, "h": 320.0}
+	headerRect := map[string]any{"x": left, "y": top, "w": 700.0, "h": 20.0}
+	footerRect := map[string]any{"x": left, "y": 540.0 - bottom - 18.0, "w": usableW, "h": 18.0}
+
+	slots := []any{}
+	switch layoutID {
+	case "TITLE":
+		slots = []any{
+			map[string]any{"id": "title", "rect": map[string]any{"x": 120.0, "y": 200.0, "w": 720.0, "h": 80.0}},
+			map[string]any{"id": "subtitle", "rect": map[string]any{"x": 120.0, "y": 290.0, "w": 720.0, "h": 60.0}},
+		}
+	case "SECTION_HEADER":
+		slots = []any{
+			map[string]any{"id": "title", "rect": map[string]any{"x": 120.0, "y": 220.0, "w": 720.0, "h": 80.0}},
+			map[string]any{"id": "subtitle", "rect": map[string]any{"x": 120.0, "y": 300.0, "w": 720.0, "h": 50.0}},
+		}
+	case "TITLE_TWO_COLUMNS":
+		colW := (usableW - 24.0) / 2
+		slots = []any{
+			map[string]any{"id": "header", "rect": headerRect},
+			map[string]any{"id": "footer", "rect": footerRect},
+			map[string]any{"id": "title", "rect": titleRect},
+			map[string]any{"id": "left", "rect": map[string]any{"x": left, "y": 140.0, "w": colW, "h": 320.0}},
+			map[string]any{"id": "right", "rect": map[string]any{"x": left + colW + 24.0, "y": 140.0, "w": colW, "h": 320.0}},
+		}
+	case "TITLE_IMAGE":
+		imageW := 320.0
+		slots = []any{
+			map[string]any{"id": "header", "rect": headerRect},
+			map[string]any{"id": "footer", "rect": footerRect},
+			map[string]any{"id": "title", "rect": titleRect},
+			map[string]any{"id": "body", "rect": map[string]any{"x": left, "y": 140.0, "w": usableW - imageW - 24.0, "h": 320.0}},
+			map[string]any{"id": "image", "rect": map[string]any{"x": left + usableW - imageW, "y": 140.0, "w": imageW, "h": 320.0}},
+		}
+	case "FULL_BLEED_IMAGE":
+		slots = []any{
+			map[string]any{"id": "image", "rect": map[string]any{"x": 0.0, "y": 0.0, "w": 960.0, "h": 540.0}},
+			map[string]any{"id": "title", "rect": map[string]any{"x": left, "y": 72.0, "w": usableW, "h": 60.0}},
+		}
+	case "CHART":
+		slots = []any{
+			map[string]any{"id": "header", "rect": headerRect},
+			map[string]any{"id": "footer", "rect": footerRect},
+			map[string]any{"id": "title", "rect": titleRect},
+			map[string]any{"id": "chart", "rect": bodyRect},
+		}
+	case "TABLE":
+		slots = []any{
+			map[string]any{"id": "header", "rect": headerRect},
+			map[string]any{"id": "footer", "rect": footerRect},
+			map[string]any{"id": "title", "rect": titleRect},
+			map[string]any{"id": "table", "rect": bodyRect},
+		}
+	case "QUOTE":
+		slots = []any{
+			map[string]any{"id": "header", "rect": headerRect},
+			map[string]any{"id": "footer", "rect": footerRect},
+			map[string]any{"id": "quote", "rect": bodyRect},
+		}
+	case "TIMELINE":
+		slots = []any{
+			map[string]any{"id": "header", "rect": headerRect},
+			map[string]any{"id": "footer", "rect": footerRect},
+			map[string]any{"id": "title", "rect": titleRect},
+			map[string]any{"id": "timeline", "rect": bodyRect},
+		}
+	case "CLOSING":
+		slots = []any{
+			map[string]any{"id": "title", "rect": map[string]any{"x": 120.0, "y": 200.0, "w": 720.0, "h": 80.0}},
+			map[string]any{"id": "body", "rect": map[string]any{"x": 120.0, "y": 290.0, "w": 720.0, "h": 120.0}},
+		}
+	case "APPENDIX":
+		slots = []any{
+			map[string]any{"id": "header", "rect": headerRect},
+			map[string]any{"id": "footer", "rect": footerRect},
+			map[string]any{"id": "title", "rect": titleRect},
+			map[string]any{"id": "body", "rect": bodyRect},
+		}
+	case "DASHBOARD_3KPI_2COL":
+		slots = []any{
+			map[string]any{"id": "header", "rect": headerRect},
+			map[string]any{"id": "footer", "rect": footerRect},
+			map[string]any{"id": "title", "rect": titleRect},
+			map[string]any{"id": "kpi1", "rect": map[string]any{"x": left, "y": 128.0, "w": 288.0, "h": 80.0}},
+			map[string]any{"id": "kpi2", "rect": map[string]any{"x": left + 300.0, "y": 128.0, "w": 288.0, "h": 80.0}},
+			map[string]any{"id": "kpi3", "rect": map[string]any{"x": left + 600.0, "y": 128.0, "w": 288.0, "h": 80.0}},
+			map[string]any{"id": "chart_left", "rect": map[string]any{"x": left, "y": 224.0, "w": 548.0, "h": 260.0}},
+			map[string]any{"id": "table_right", "rect": map[string]any{"x": left + 564.0, "y": 224.0, "w": 324.0, "h": 260.0}},
+		}
+	case "CHART_AND_INSIGHTS":
+		slots = []any{
+			map[string]any{"id": "header", "rect": headerRect},
+			map[string]any{"id": "footer", "rect": footerRect},
+			map[string]any{"id": "title", "rect": titleRect},
+			map[string]any{"id": "chart_left", "rect": map[string]any{"x": left, "y": 140.0, "w": 560.0, "h": 320.0}},
+			map[string]any{"id": "insights_right", "rect": map[string]any{"x": left + 580.0, "y": 140.0, "w": 308.0, "h": 320.0}},
+		}
+	case "TABLE_AND_CALLOUTS":
+		slots = []any{
+			map[string]any{"id": "header", "rect": headerRect},
+			map[string]any{"id": "footer", "rect": footerRect},
+			map[string]any{"id": "title", "rect": titleRect},
+			map[string]any{"id": "table_left", "rect": map[string]any{"x": left, "y": 140.0, "w": 560.0, "h": 320.0}},
+			map[string]any{"id": "callouts_right", "rect": map[string]any{"x": left + 580.0, "y": 140.0, "w": 308.0, "h": 320.0}},
+		}
+	default:
+		slots = []any{
+			map[string]any{"id": "header", "rect": headerRect},
+			map[string]any{"id": "footer", "rect": footerRect},
+			map[string]any{"id": "title", "rect": titleRect},
+			map[string]any{"id": "body", "rect": bodyRect},
+		}
+	}
+
+	if len(slots) == 0 {
+		slots = []any{map[string]any{"id": "body", "rect": map[string]any{"x": left, "y": top, "w": usableW, "h": usableH}}}
+	}
+
+	return map[string]any{
+		"id":       layoutID,
+		"name":     layoutID,
+		"masterId": "master_default",
+		"slots":    slots,
+	}
+}
+
+func (e *SlideGeneratorExecutor) collectDataBankText(input agent.ExecutionInput) string {
+	outputs := make([]json.RawMessage, 0, len(input.AccumulatedOutputs)+1)
+	outputs = append(outputs, input.AccumulatedOutputs...)
+	if len(input.PreviousOutput) > 0 {
+		outputs = append(outputs, input.PreviousOutput)
+	}
+	for i := len(outputs) - 1; i >= 0; i-- {
+		var payload map[string]any
+		if err := json.Unmarshal(outputs[i], &payload); err != nil {
+			continue
+		}
+		if payloadType, _ := payload["type"].(string); payloadType == "data_bank" {
+			if content, ok := payload["content"].(string); ok && content != "" {
+				return content
+			}
+			if data, ok := payload["data"]; ok {
+				if raw, err := json.Marshal(data); err == nil {
+					return string(raw)
+				}
+			}
+		}
+	}
+	return "[No data bank available]"
+}
+
+func (e *SlideGeneratorExecutor) collectDataBankDatasets(input agent.ExecutionInput) []any {
+	outputs := make([]json.RawMessage, 0, len(input.AccumulatedOutputs)+1)
+	outputs = append(outputs, input.AccumulatedOutputs...)
+	if len(input.PreviousOutput) > 0 {
+		outputs = append(outputs, input.PreviousOutput)
+	}
+	for i := len(outputs) - 1; i >= 0; i-- {
+		var payload map[string]any
+		if err := json.Unmarshal(outputs[i], &payload); err != nil {
+			continue
+		}
+		if payloadType, _ := payload["type"].(string); payloadType == "data_bank" {
+			if data, ok := payload["data"].(map[string]any); ok {
+				if datasets, ok := data["datasets"].([]any); ok {
+					return datasets
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (e *SlideGeneratorExecutor) collectImageAssets(input agent.ExecutionInput) []map[string]any {
+	outputs := make([]json.RawMessage, 0, len(input.AccumulatedOutputs)+1)
+	outputs = append(outputs, input.AccumulatedOutputs...)
+	if len(input.PreviousOutput) > 0 {
+		outputs = append(outputs, input.PreviousOutput)
+	}
+
+	assetsByID := map[string]map[string]any{}
+	for _, output := range outputs {
+		for _, asset := range extractImageAssetsFromOutput(output) {
+			id, _ := asset["id"].(string)
+			if id == "" {
+				continue
+			}
+			if _, exists := assetsByID[id]; !exists {
+				assetsByID[id] = asset
+			}
+		}
+	}
+
+	assets := make([]map[string]any, 0, len(assetsByID))
+	for _, asset := range assetsByID {
+		assets = append(assets, asset)
+	}
+	sort.Slice(assets, func(i, j int) bool {
+		return fmt.Sprint(assets[i]["id"]) < fmt.Sprint(assets[j]["id"])
+	})
+	return assets
+}
+
+func extractImageAssetsFromOutput(output json.RawMessage) []map[string]any {
+	if len(output) == 0 {
+		return nil
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(output, &parsed); err != nil {
+		return nil
+	}
+
+	results := []map[string]any{}
+	if content, ok := parsed["content"].([]any); ok {
+		for _, item := range content {
+			if itemMap, ok := item.(map[string]any); ok {
+				if text, ok := itemMap["text"].(string); ok && text != "" {
+					var nested map[string]any
+					if err := json.Unmarshal([]byte(text), &nested); err == nil {
+						results = append(results, extractImageAssetsFromMap(nested)...)
+					}
+				}
+			}
+		}
+	}
+
+	results = append(results, extractImageAssetsFromMap(parsed)...)
+	return results
+}
+
+func extractImageAssetsFromMap(data map[string]any) []map[string]any {
+	results := []map[string]any{}
+	for _, key := range []string{"images", "results", "items", "data"} {
+		if arr, ok := data[key].([]any); ok {
+			results = append(results, extractImageAssetsFromArray(arr)...)
+		}
+	}
+	for _, value := range data {
+		switch typed := value.(type) {
+		case map[string]any:
+			results = append(results, extractImageAssetsFromMap(typed)...)
+		case []any:
+			results = append(results, extractImageAssetsFromArray(typed)...)
+		}
+	}
+	return results
+}
+
+func extractImageAssetsFromArray(arr []any) []map[string]any {
+	results := []map[string]any{}
+	for _, item := range arr {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if asset := assetFromImageResult(itemMap); asset != nil {
+			results = append(results, asset)
+		}
+	}
+	return results
+}
+
+func assetFromImageResult(item map[string]any) map[string]any {
+	urlStr := firstString(item, "imageUrl", "image_url", "url", "link", "thumbnail", "thumbnailUrl", "source_url")
+	if urlStr == "" {
+		return nil
+	}
+	parsed, _ := url.Parse(urlStr)
+	host := ""
+	if parsed != nil {
+		host = parsed.Host
+	}
+	altText := firstString(item, "title", "alt", "altText", "snippet", "description")
+	if altText == "" {
+		altText = host
+	}
+	license := firstString(item, "license")
+	attribution := firstString(item, "attribution", "source")
+	if attribution == "" {
+		attribution = host
+	}
+	id := assetIDFromURL(urlStr)
+	return map[string]any{
+		"id":   id,
+		"kind": "image",
+		"source": map[string]any{
+			"type": "url",
+			"url":  urlStr,
+		},
+		"altText":     altText,
+		"license":     license,
+		"attribution": attribution,
+	}
+}
+
+func assetIDFromURL(urlStr string) string {
+	hasher := sha1.New()
+	hasher.Write([]byte(urlStr))
+	return "img_" + hex.EncodeToString(hasher.Sum(nil))[:12]
+}
+
+func firstString(item map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if val, ok := item[key].(string); ok && strings.TrimSpace(val) != "" {
+			return strings.TrimSpace(val)
+		}
+	}
+	return ""
+}
+
 func (e *SlideGeneratorExecutor) assembleDeck(input agent.ExecutionInput) ([]byte, error) {
 	log.Debug().Int("accumulated_outputs", len(input.AccumulatedOutputs)).Msg("[slide_generator] assembleDeck started")
 	planAndTemplate := e.extractPlanAndTemplate(input)
@@ -2331,6 +3196,11 @@ func (e *SlideGeneratorExecutor) assembleDeck(input agent.ExecutionInput) ([]byt
 	slidesByIndex := map[int]any{}
 	var allAssets []any
 	var allDatasets []any
+	lockedAssets := e.collectImageAssets(input)
+	for _, asset := range lockedAssets {
+		allAssets = append(allAssets, asset)
+	}
+	allDatasets = append(allDatasets, e.collectDataBankDatasets(input)...)
 
 	for _, output := range input.AccumulatedOutputs {
 		var parsed map[string]interface{}
@@ -2359,12 +3229,15 @@ func (e *SlideGeneratorExecutor) assembleDeck(input agent.ExecutionInput) ([]byt
 		}
 	}
 
-	orderedSlides := make([]any, 0, len(slidesByIndex))
-	if len(planAndTemplate.Plan.Slides) > 0 {
-		for _, entry := range planAndTemplate.Plan.Slides {
-			if slide, ok := slidesByIndex[entry.Index]; ok {
-				orderedSlides = append(orderedSlides, slide)
+	expected := len(planAndTemplate.Plan.Slides)
+	orderedSlides := make([]any, 0, expected)
+	if expected > 0 {
+		for i := 1; i <= expected; i++ {
+			slide, ok := slidesByIndex[i]
+			if !ok {
+				return nil, fmt.Errorf("missing slide %d during assembly", i)
 			}
+			orderedSlides = append(orderedSlides, slide)
 		}
 	} else {
 		indices := make([]int, 0, len(slidesByIndex))
@@ -2403,6 +3276,15 @@ func (e *SlideGeneratorExecutor) assembleDeck(input agent.ExecutionInput) ([]byt
 		}
 	}
 
+	assets, err := e.normalizeAssets(allAssets)
+	if err != nil {
+		return nil, err
+	}
+	data, err := e.normalizeDatasets(allDatasets)
+	if err != nil {
+		return nil, err
+	}
+
 	deck := map[string]any{
 		"version":    planAndTemplate.Template.Version,
 		"metadata":   metadata,
@@ -2411,13 +3293,16 @@ func (e *SlideGeneratorExecutor) assembleDeck(input agent.ExecutionInput) ([]byt
 		"layouts":    planAndTemplate.Template.Layouts,
 		"components": planAndTemplate.Template.Components,
 		"slides":     orderedSlides,
-		"assets":     e.normalizeAssets(allAssets),
-		"data":       e.normalizeDatasets(allDatasets),
+		"assets":     assets,
+		"data":       data,
 		"validation": map[string]any{"rules": []any{}},
 		"export":     planAndTemplate.Template.Export,
 	}
 
 	fixedDeck := e.fixCommonSchemaIssues(deck)
+	if err := validateDeck(fixedDeck, expected); err != nil {
+		return nil, err
+	}
 	deckJSON, err := json.Marshal(fixedDeck)
 	if err != nil {
 		log.Error().Err(err).Msg("[slide_generator] failed to marshal deck")
@@ -2432,165 +3317,155 @@ func (e *SlideGeneratorExecutor) assembleDeck(input agent.ExecutionInput) ([]byt
 	return deckJSON, nil
 }
 
-func (e *SlideGeneratorExecutor) normalizeAssets(allAssets []any) map[string]any {
+func (e *SlideGeneratorExecutor) normalizeAssets(allAssets []any) (map[string]any, error) {
 	normalizedImages := []any{}
+	seen := map[string]bool{}
 	for _, asset := range allAssets {
+		if asset == nil {
+			continue
+		}
 		switch v := asset.(type) {
-		case string:
-			normalizedImages = append(normalizedImages, map[string]any{
-				"id": v,
-				"source": map[string]any{
-					"type":        "generated",
-					"url":         nil,
-					"filePath":    nil,
-					"prompt":      fmt.Sprintf("Image for %s", v),
-					"license":     nil,
-					"attribution": nil,
-				},
-				"altText": v,
-				"crop":    nil,
-			})
 		case map[string]any:
-			if _, hasID := v["id"]; !hasID {
-				v["id"] = fmt.Sprintf("asset_%d", len(normalizedImages)+1)
+			id, _ := v["id"].(string)
+			if id == "" {
+				id = fmt.Sprintf("asset_%d", len(normalizedImages)+1)
+				v["id"] = id
 			}
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+
+			if _, ok := v["kind"].(string); !ok {
+				v["kind"] = "image"
+			}
+
 			source, _ := v["source"].(map[string]any)
 			if source == nil {
 				source = map[string]any{}
 			}
+
 			if _, hasType := source["type"]; !hasType {
-				source["type"] = "generated"
+				if urlStr, ok := source["url"].(string); ok && urlStr != "" {
+					source["type"] = "url"
+				} else if filePath, ok := source["filePath"].(string); ok && filePath != "" {
+					source["type"] = "file"
+				} else if base64Str, ok := source["base64"].(string); ok && base64Str != "" {
+					source["type"] = "base64"
+				} else if urlStr, ok := v["url"].(string); ok && urlStr != "" {
+					source["type"] = "url"
+					source["url"] = urlStr
+				} else if filePath, ok := v["filePath"].(string); ok && filePath != "" {
+					source["type"] = "file"
+					source["filePath"] = filePath
+				} else if base64Str, ok := v["base64"].(string); ok && base64Str != "" {
+					source["type"] = "base64"
+					source["base64"] = base64Str
+				}
 			}
-			if _, hasURL := source["url"]; !hasURL {
-				source["url"] = nil
+
+			sourceType, _ := source["type"].(string)
+			switch sourceType {
+			case "url":
+				if urlStr, ok := source["url"].(string); !ok || urlStr == "" {
+					return nil, fmt.Errorf("asset %s missing source.url", id)
+				}
+			case "file":
+				if pathStr, ok := source["filePath"].(string); !ok || pathStr == "" {
+					return nil, fmt.Errorf("asset %s missing source.filePath", id)
+				}
+			case "base64":
+				if base64Str, ok := source["base64"].(string); !ok || base64Str == "" {
+					return nil, fmt.Errorf("asset %s missing source.base64", id)
+				}
+			default:
+				return nil, fmt.Errorf("asset %s has unsupported source type %q", id, sourceType)
 			}
-			if _, hasFilePath := source["filePath"]; !hasFilePath {
-				source["filePath"] = nil
-			}
-			if _, hasPrompt := source["prompt"]; !hasPrompt {
-				source["prompt"] = nil
-			}
-			if _, hasLicense := source["license"]; !hasLicense {
-				source["license"] = nil
-			}
-			if _, hasAttribution := source["attribution"]; !hasAttribution {
-				source["attribution"] = nil
-			}
+
 			v["source"] = source
 			if _, hasAltText := v["altText"]; !hasAltText {
-				v["altText"] = nil
+				v["altText"] = id
 			}
-			if _, hasCrop := v["crop"]; !hasCrop {
-				v["crop"] = nil
+			if _, hasLicense := v["license"]; !hasLicense {
+				v["license"] = nil
+			}
+			if _, hasAttribution := v["attribution"]; !hasAttribution {
+				v["attribution"] = nil
 			}
 			normalizedImages = append(normalizedImages, v)
+		case string:
+			return nil, fmt.Errorf("asset %q must be an object, not a string", v)
 		default:
-			normalizedImages = append(normalizedImages, map[string]any{
-				"id": fmt.Sprintf("asset_%d", len(normalizedImages)+1),
-				"source": map[string]any{
-					"type":        "generated",
-					"url":         nil,
-					"filePath":    nil,
-					"prompt":      nil,
-					"license":     nil,
-					"attribution": nil,
-				},
-				"altText": nil,
-				"crop":    nil,
-			})
+			return nil, fmt.Errorf("unsupported asset type %T", asset)
 		}
 	}
 
-	return map[string]any{"images": normalizedImages}
+	return map[string]any{"images": normalizedImages}, nil
 }
 
-func (e *SlideGeneratorExecutor) normalizeDatasets(allDatasets []any) map[string]any {
+func (e *SlideGeneratorExecutor) normalizeDatasets(allDatasets []any) (map[string]any, error) {
 	normalizedDatasets := []any{}
+	seen := map[string]bool{}
 	for i, dataset := range allDatasets {
-		// Use defer/recover to catch panics from invalid datasets
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					log.Warn().
-						Int("dataset_index", i).
-						Interface("panic", r).
-						Msg("[slide_generator] panic while normalizing dataset, skipping")
-				}
-			}()
+		if dataset == nil {
+			return nil, fmt.Errorf("dataset %d is nil", i)
+		}
+		switch v := dataset.(type) {
+		case string:
+			return nil, fmt.Errorf("dataset %q must be an object, not a string", v)
+		case map[string]any:
+			id, _ := v["id"].(string)
+			if id == "" {
+				return nil, fmt.Errorf("dataset missing id at index %d", i)
+			}
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
 
-			if dataset == nil {
-				log.Warn().Int("dataset_index", i).Msg("[slide_generator] nil dataset, skipping")
-				return
+			kind, _ := v["kind"].(string)
+			if kind == "" {
+				kind = "series"
+				v["kind"] = "series"
+			}
+			if kind != "series" {
+				return nil, fmt.Errorf("dataset %s has unsupported kind %q", id, kind)
 			}
 
-			switch v := dataset.(type) {
-			case string:
-				// String reference - create placeholder (should be avoided with updated prompts)
-				log.Warn().Str("dataset_ref", v).Msg("[slide_generator] received string dataset reference instead of complete object, using placeholder")
-				normalizedDatasets = append(normalizedDatasets, map[string]any{
-					"id":   v,
-					"kind": "series",
-					"data": map[string]any{
-						"labels": []string{"Category A", "Category B", "Category C"},
-						"series": []any{map[string]any{"name": "Placeholder Data", "values": []float64{10, 20, 30}}},
-					},
-					"sourceNote": fmt.Sprintf("WARNING: Placeholder data for %s - real data not provided", v),
-				})
-			case map[string]any:
-				// Complete dataset object - validate and normalize
-				if _, hasID := v["id"]; !hasID {
-					v["id"] = fmt.Sprintf("dataset_%d", len(normalizedDatasets)+1)
-				}
-				if _, hasKind := v["kind"]; !hasKind {
-					v["kind"] = "series"
-				}
-				if _, hasData := v["data"]; !hasData {
-					// Missing data - create placeholder
-					datasetID := "unknown"
-					if id, ok := v["id"].(string); ok {
-						datasetID = id
-					}
-					log.Warn().Str("dataset_id", datasetID).Msg("[slide_generator] dataset missing data field, using placeholder")
-					v["data"] = map[string]any{
-						"labels": []string{"A", "B", "C"},
-						"series": []any{map[string]any{"name": "Data", "values": []float64{1, 2, 3}}},
-					}
-				}
-				kind, _ := v["kind"].(string)
-				dataMap, _ := v["data"].(map[string]any)
-				if dataMap == nil {
-					dataMap = map[string]any{}
-				}
-				if kind == "table" {
-					if _, ok := dataMap["columns"]; !ok {
-						dataMap["columns"] = []string{"placeholder"}
-					}
-					if _, ok := dataMap["rows"]; !ok {
-						dataMap["rows"] = [][]string{}
-					}
-				} else {
-					if _, ok := dataMap["labels"]; !ok {
-						dataMap["labels"] = []string{"A", "B", "C"}
-					}
-					if _, ok := dataMap["series"]; !ok {
-						dataMap["series"] = []any{map[string]any{"name": "Data", "values": []float64{1, 2, 3}}}
-					}
-				}
-				v["data"] = dataMap
-				if _, hasSourceNote := v["sourceNote"]; !hasSourceNote {
-					v["sourceNote"] = nil
-				}
-				normalizedDatasets = append(normalizedDatasets, v)
-			default:
-				log.Warn().
-					Int("dataset_index", i).
-					Str("type", fmt.Sprintf("%T", dataset)).
-					Msg("[slide_generator] invalid dataset type, skipping")
+			dataMap, _ := v["data"].(map[string]any)
+			if dataMap == nil {
+				return nil, fmt.Errorf("dataset %s missing data", id)
 			}
-		}()
+
+			labels, _ := dataMap["labels"].([]any)
+			if len(labels) == 0 {
+				return nil, fmt.Errorf("dataset %s missing labels", id)
+			}
+			series, _ := dataMap["series"].([]any)
+			if len(series) == 0 {
+				return nil, fmt.Errorf("dataset %s missing series", id)
+			}
+			for _, seriesAny := range series {
+				seriesMap, ok := seriesAny.(map[string]any)
+				if !ok {
+					return nil, fmt.Errorf("dataset %s has invalid series entry", id)
+				}
+				values, _ := seriesMap["values"].([]any)
+				if len(values) != len(labels) {
+					return nil, fmt.Errorf("dataset %s has mismatched labels/values length", id)
+				}
+			}
+			v["data"] = dataMap
+			if _, hasSourceNote := v["sourceNote"]; !hasSourceNote {
+				v["sourceNote"] = nil
+			}
+			normalizedDatasets = append(normalizedDatasets, v)
+		default:
+			return nil, fmt.Errorf("invalid dataset type %T", dataset)
+		}
 	}
 
-	return map[string]any{"datasets": normalizedDatasets}
+	return map[string]any{"datasets": normalizedDatasets}, nil
 }
 
 func (e *SlideGeneratorExecutor) fixCommonSchemaIssues(deck map[string]any) map[string]any {
@@ -2604,17 +3479,50 @@ func (e *SlideGeneratorExecutor) fixCommonSchemaIssues(deck map[string]any) map[
 		"fill": true, "stroke": true, "cornerRadius": true, "shadow": true,
 	}
 
+	layoutSlots := buildLayoutSlotMap(deck["layouts"])
+	componentIDs := buildComponentIDSet(deck["components"])
+	theme, _ := deck["theme"].(map[string]any)
+	safeMargins := extractSafeMargins(theme)
+
 	if slides, ok := deck["slides"].([]any); ok {
 		for _, slideAny := range slides {
 			slide, ok := slideAny.(map[string]any)
 			if !ok {
 				continue
 			}
+			ensureSlideUseComponents(slide)
+			layoutID, _ := slide["layoutId"].(string)
+			slotsForLayout := layoutSlots[layoutID]
+
+			if isContentSlide(layoutID) {
+				if componentIDs["header"] {
+					appendComponentID(slide, "header")
+				}
+				if componentIDs["footer"] {
+					appendComponentID(slide, "footer")
+				}
+				if !componentIDs["header"] && !hasSlotOrElement(slide, "header") {
+					addHeaderElement(slide, slotsForLayout, theme, safeMargins)
+				}
+				if !componentIDs["footer"] && !hasSlotOrElement(slide, "footer") {
+					addFooterElement(slide, slotsForLayout, theme, safeMargins)
+				}
+			}
+
 			if elements, ok := slide["elements"].([]any); ok {
 				for _, elemAny := range elements {
 					elem, ok := elemAny.(map[string]any)
 					if !ok {
 						continue
+					}
+					if slotID, ok := elem["slotId"].(string); ok && slotID != "" {
+						if _, hasRect := elem["rect"].(map[string]any); !hasRect {
+							if slot := slotsForLayout[slotID]; slot != nil {
+								if rect, ok := rectFromSlot(slot, theme); ok {
+									elem["rect"] = rect
+								}
+							}
+						}
 					}
 					if text, ok := elem["text"].(map[string]any); ok {
 						if content, ok := text["content"].(string); ok {
@@ -2681,6 +3589,427 @@ func fixStyleProperties(style map[string]any, allowed map[string]bool) {
 			delete(style, key)
 		}
 	}
+}
+
+func buildLayoutSlotMap(layouts any) map[string]map[string]map[string]any {
+	result := map[string]map[string]map[string]any{}
+	layoutSlice, ok := layouts.([]any)
+	if !ok {
+		return result
+	}
+	for _, layoutAny := range layoutSlice {
+		layout, ok := layoutAny.(map[string]any)
+		if !ok {
+			continue
+		}
+		layoutID, _ := layout["id"].(string)
+		if layoutID == "" {
+			continue
+		}
+		slots := map[string]map[string]any{}
+		if slotList, ok := layout["slots"].([]any); ok {
+			for _, slotAny := range slotList {
+				if slotMap, ok := slotAny.(map[string]any); ok {
+					if slotID, ok := slotMap["id"].(string); ok && slotID != "" {
+						slots[slotID] = slotMap
+					}
+				}
+			}
+		}
+		result[layoutID] = slots
+	}
+	return result
+}
+
+func buildComponentIDSet(components any) map[string]bool {
+	result := map[string]bool{}
+	componentsSlice, ok := components.([]any)
+	if !ok {
+		return result
+	}
+	for _, compAny := range componentsSlice {
+		comp, ok := compAny.(map[string]any)
+		if !ok {
+			continue
+		}
+		if id, ok := comp["id"].(string); ok && id != "" {
+			result[id] = true
+		}
+	}
+	return result
+}
+
+func appendComponentID(slide map[string]any, componentID string) {
+	useComponents, _ := slide["useComponents"].([]any)
+	if useComponents == nil {
+		useComponents = []any{}
+	}
+	for _, existing := range useComponents {
+		if existingID, ok := existing.(string); ok && existingID == componentID {
+			return
+		}
+	}
+	slide["useComponents"] = append(useComponents, componentID)
+}
+
+func isContentSlide(layoutID string) bool {
+	switch strings.TrimSpace(layoutID) {
+	case "TITLE", "SECTION_HEADER", "CLOSING":
+		return false
+	default:
+		return true
+	}
+}
+
+func hasSlotOrElement(slide map[string]any, target string) bool {
+	elements, _ := slide["elements"].([]any)
+	for _, elemAny := range elements {
+		elem, ok := elemAny.(map[string]any)
+		if !ok {
+			continue
+		}
+		if slotID, ok := elem["slotId"].(string); ok && slotID == target {
+			return true
+		}
+		if id, ok := elem["id"].(string); ok && strings.Contains(strings.ToLower(id), target) {
+			return true
+		}
+	}
+	return false
+}
+
+func addHeaderElement(slide map[string]any, slots map[string]map[string]any, theme map[string]any, safeMargins map[string]float64) {
+	headerText := ""
+	if title, ok := slide["title"].(string); ok {
+		headerText = title
+	}
+	elem := map[string]any{
+		"id":   fmt.Sprintf("%v_header", slide["id"]),
+		"type": "text",
+		"text": map[string]any{
+			"content": headerText,
+			"runs":    []any{},
+			"autoFit": "shrink",
+			"style": map[string]any{
+				"fontSize": 12,
+				"color":    themeMutedText(theme),
+				"align":    "left",
+			},
+		},
+	}
+	if slot, ok := slots["header"]; ok {
+		elem["slotId"] = "header"
+		if rect, ok := rectFromSlot(slot, theme); ok {
+			elem["rect"] = rect
+		}
+	} else {
+		elem["rect"] = map[string]any{
+			"x": safeMargins["left"],
+			"y": safeMargins["top"],
+			"w": 700.0,
+			"h": 20.0,
+		}
+	}
+	appendSlideElement(slide, elem)
+}
+
+func addFooterElement(slide map[string]any, slots map[string]map[string]any, theme map[string]any, safeMargins map[string]float64) {
+	elem := map[string]any{
+		"id":   fmt.Sprintf("%v_footer", slide["id"]),
+		"type": "text",
+		"text": map[string]any{
+			"content": "{page}/{total_pages}",
+			"runs":    []any{},
+			"autoFit": "shrink",
+			"style": map[string]any{
+				"fontSize": 10,
+				"color":    themeMutedText(theme),
+				"align":    "right",
+			},
+		},
+	}
+	if slot, ok := slots["footer"]; ok {
+		elem["slotId"] = "footer"
+		if rect, ok := rectFromSlot(slot, theme); ok {
+			elem["rect"] = rect
+		}
+	} else {
+		elem["rect"] = map[string]any{
+			"x": safeMargins["left"],
+			"y": 540.0 - safeMargins["bottom"] - 18.0,
+			"w": 960.0 - safeMargins["left"] - safeMargins["right"],
+			"h": 18.0,
+		}
+	}
+	appendSlideElement(slide, elem)
+}
+
+func appendSlideElement(slide map[string]any, elem map[string]any) {
+	elements, _ := slide["elements"].([]any)
+	slide["elements"] = append(elements, elem)
+}
+
+func themeMutedText(theme map[string]any) string {
+	if theme == nil {
+		return "#6B7280"
+	}
+	if colors, ok := theme["colors"].(map[string]any); ok {
+		if semantic, ok := colors["semantic"].(map[string]any); ok {
+			if muted, ok := semantic["mutedText"].(string); ok && muted != "" {
+				return muted
+			}
+		}
+	}
+	return "#6B7280"
+}
+
+func extractSafeMargins(theme map[string]any) map[string]float64 {
+	margins := map[string]float64{"top": 36, "right": 36, "bottom": 36, "left": 36}
+	if theme == nil {
+		return margins
+	}
+	canvas, _ := theme["canvas"].(map[string]any)
+	if canvas == nil {
+		return margins
+	}
+	safe, _ := canvas["safeMargins"].(map[string]any)
+	if safe == nil {
+		return margins
+	}
+	if v, ok := safe["top"].(float64); ok {
+		margins["top"] = v
+	}
+	if v, ok := safe["right"].(float64); ok {
+		margins["right"] = v
+	}
+	if v, ok := safe["bottom"].(float64); ok {
+		margins["bottom"] = v
+	}
+	if v, ok := safe["left"].(float64); ok {
+		margins["left"] = v
+	}
+	return margins
+}
+
+func rectFromSlot(slot map[string]any, theme map[string]any) (map[string]any, bool) {
+	if slot == nil {
+		return nil, false
+	}
+	if theme == nil {
+		theme = map[string]any{}
+	}
+	if rect, ok := slot["rect"].(map[string]any); ok {
+		return rect, true
+	}
+	gridSpec, _ := slot["grid"].(map[string]any)
+	if gridSpec == nil {
+		return nil, false
+	}
+	col := int(asFloat(gridSpec["col"]))
+	span := int(asFloat(gridSpec["span"]))
+	if col <= 0 || span <= 0 {
+		return nil, false
+	}
+
+	themeGrid, _ := theme["grid"].(map[string]any)
+	columns := int(asFloat(themeGrid["columns"]))
+	if columns <= 0 {
+		columns = 12
+	}
+	gutter := asFloat(themeGrid["gutter"])
+	baseline := asFloat(themeGrid["baseline"])
+	if baseline <= 0 {
+		baseline = 8
+	}
+	snapOn := true
+	if snapRaw, ok := themeGrid["snap"].(bool); ok {
+		snapOn = snapRaw
+	}
+
+	margins := extractSafeMargins(theme)
+	usableW := 960.0 - margins["left"] - margins["right"]
+	colW := (usableW - gutter*float64(columns-1)) / float64(columns)
+	x := margins["left"] + float64(col-1)*(colW+gutter)
+	w := float64(span)*colW + float64(span-1)*gutter
+	y := asFloat(slot["y"])
+	h := asFloat(slot["h"])
+	if snapOn {
+		y = math.Round(y/baseline) * baseline
+		h = math.Round(h/baseline) * baseline
+	}
+	return map[string]any{"x": x, "y": y, "w": w, "h": h}, true
+}
+
+func asFloat(val any) float64 {
+	switch v := val.(type) {
+	case float64:
+		return v
+	case float32:
+		return float64(v)
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
+	case json.Number:
+		if f, err := v.Float64(); err == nil {
+			return f
+		}
+	}
+	return 0
+}
+
+func validateDeck(deck map[string]any, expectedSlides int) error {
+	var issues []string
+	slides, _ := deck["slides"].([]any)
+	if expectedSlides > 0 && len(slides) != expectedSlides {
+		issues = append(issues, fmt.Sprintf("expected %d slides, got %d", expectedSlides, len(slides)))
+	}
+
+	layoutIDs := templateLayoutIDs(deck["layouts"])
+	componentIDs := buildComponentIDSet(deck["components"])
+	theme, _ := deck["theme"].(map[string]any)
+	safeMargins := extractSafeMargins(theme)
+	layoutSlots := buildLayoutSlotMap(deck["layouts"])
+
+	assetIDs := map[string]bool{}
+	if assets, ok := deck["assets"].(map[string]any); ok {
+		if images, ok := assets["images"].([]any); ok {
+			for _, imgAny := range images {
+				if img, ok := imgAny.(map[string]any); ok {
+					if id, ok := img["id"].(string); ok && id != "" {
+						assetIDs[id] = true
+					}
+				}
+			}
+		}
+	}
+
+	datasetIDs := map[string]bool{}
+	if data, ok := deck["data"].(map[string]any); ok {
+		if datasets, ok := data["datasets"].([]any); ok {
+			for _, dsAny := range datasets {
+				if ds, ok := dsAny.(map[string]any); ok {
+					if id, ok := ds["id"].(string); ok && id != "" {
+						datasetIDs[id] = true
+					}
+				}
+			}
+		}
+	}
+
+	orderSeen := map[int]bool{}
+	idSeen := map[string]bool{}
+
+	for idx, slideAny := range slides {
+		slide, ok := slideAny.(map[string]any)
+		if !ok {
+			issues = append(issues, fmt.Sprintf("slide %d is not an object", idx+1))
+			continue
+		}
+		order, _ := parseIntFromInterface(slide["order"])
+		if order <= 0 {
+			issues = append(issues, fmt.Sprintf("slide %d has invalid order", idx+1))
+		} else {
+			orderSeen[order] = true
+		}
+		if id, ok := slide["id"].(string); ok && id != "" {
+			if idSeen[id] {
+				issues = append(issues, fmt.Sprintf("duplicate slide id %s", id))
+			}
+			idSeen[id] = true
+		} else {
+			issues = append(issues, fmt.Sprintf("slide %d missing id", idx+1))
+		}
+
+		layoutID, _ := slide["layoutId"].(string)
+		if layoutID == "" || !layoutIDs[layoutID] {
+			issues = append(issues, fmt.Sprintf("slide %d has unknown layoutId %q", idx+1, layoutID))
+		}
+
+		if isContentSlide(layoutID) {
+			useComponents, _ := slide["useComponents"].([]any)
+			hasHeaderComponent := false
+			hasFooterComponent := false
+			for _, comp := range useComponents {
+				if compID, ok := comp.(string); ok {
+					if compID == "header" {
+						hasHeaderComponent = true
+					}
+					if compID == "footer" {
+						hasFooterComponent = true
+					}
+				}
+			}
+			if componentIDs["header"] && !hasHeaderComponent && !hasSlotOrElement(slide, "header") {
+				issues = append(issues, fmt.Sprintf("slide %d missing header", idx+1))
+			}
+			if componentIDs["footer"] && !hasFooterComponent && !hasSlotOrElement(slide, "footer") {
+				issues = append(issues, fmt.Sprintf("slide %d missing footer", idx+1))
+			}
+			if !componentIDs["header"] && !hasSlotOrElement(slide, "header") {
+				issues = append(issues, fmt.Sprintf("slide %d missing header", idx+1))
+			}
+			if !componentIDs["footer"] && !hasSlotOrElement(slide, "footer") {
+				issues = append(issues, fmt.Sprintf("slide %d missing footer", idx+1))
+			}
+		}
+
+		elements, _ := slide["elements"].([]any)
+		for _, elemAny := range elements {
+			elem, ok := elemAny.(map[string]any)
+			if !ok {
+				continue
+			}
+			if slotID, ok := elem["slotId"].(string); ok && slotID != "" {
+				if slotsForLayout, ok := layoutSlots[layoutID]; ok {
+					if _, exists := slotsForLayout[slotID]; !exists {
+						issues = append(issues, fmt.Sprintf("slide %d uses unknown slotId %q", idx+1, slotID))
+					}
+				}
+			}
+			if rect, ok := elem["rect"].(map[string]any); ok {
+				x := asFloat(rect["x"])
+				y := asFloat(rect["y"])
+				w := asFloat(rect["w"])
+				h := asFloat(rect["h"])
+				if x < 0 || y < 0 || x+w > 960 || y+h > 540 {
+					issues = append(issues, fmt.Sprintf("slide %d element %v out of bounds", idx+1, elem["id"]))
+				}
+				if elemType, _ := elem["type"].(string); elemType == "text" {
+					if x < safeMargins["left"] || y < safeMargins["top"] || x+w > 960-safeMargins["right"] || y+h > 540-safeMargins["bottom"] {
+						issues = append(issues, fmt.Sprintf("slide %d text element %v violates safe margins", idx+1, elem["id"]))
+					}
+				}
+			}
+			if elemType, _ := elem["type"].(string); elemType == "chart" {
+				chart, _ := elem["chart"].(map[string]any)
+				if chart != nil {
+					if ref, ok := chart["datasetRef"].(string); ok && ref != "" && !datasetIDs[ref] {
+						issues = append(issues, fmt.Sprintf("slide %d chart datasetRef %q missing", idx+1, ref))
+					}
+				}
+			}
+			if elemType, _ := elem["type"].(string); elemType == "image" {
+				image, _ := elem["image"].(map[string]any)
+				if image != nil {
+					if ref, ok := image["ref"].(string); ok && ref != "" && !assetIDs[ref] {
+						issues = append(issues, fmt.Sprintf("slide %d image ref %q missing", idx+1, ref))
+					}
+				}
+			}
+		}
+	}
+
+	for i := 1; i <= len(slides); i++ {
+		if !orderSeen[i] {
+			issues = append(issues, fmt.Sprintf("missing slide order %d", i))
+		}
+	}
+
+	if len(issues) > 0 {
+		return fmt.Errorf("deck validation failed: %s", strings.Join(issues, "; "))
+	}
+	return nil
 }
 
 func (e *SlideGeneratorExecutor) loadRenderDeckScript() string {

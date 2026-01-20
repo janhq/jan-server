@@ -126,6 +126,40 @@ func (cf *CodeFixer) GenerateWithModel(ctx context.Context, prompt string, model
 	return content, nil
 }
 
+// GenerateWithModelWithTemperature generates content using the specified temperature.
+func (cf *CodeFixer) GenerateWithModelWithTemperature(ctx context.Context, prompt string, model string, temperature float64) (string, error) {
+	if prompt == "" {
+		return "", fmt.Errorf("empty prompt provided")
+	}
+
+	useModel := cf.model
+	if model != "" {
+		useModel = model
+	}
+
+	req := ChatCompletionRequest{
+		Model: useModel,
+		Messages: []ChatMessage{
+			{Role: "user", Content: prompt},
+		},
+		Temperature: floatPtr(temperature),
+		MaxTokens:   intPtr(4096),
+		Stream:      false,
+	}
+
+	resp, err := cf.provider.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("LLM call failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("LLM returned no choices")
+	}
+
+	content := resp.Choices[0].Message.GetContentAsString()
+	return content, nil
+}
+
 // extractCodeFromResponse extracts code from an LLM response that may contain markdown.
 func extractCodeFromResponse(response string, language string) string {
 	if response == "" {
@@ -211,6 +245,47 @@ func (cf *CodeFixer) GenerateWithSystemPrompt(ctx context.Context, systemPrompt 
 	return resp.Choices[0].Message.GetContentAsString(), nil
 }
 
+// GenerateWithSystemPromptWithTemperature generates content using a system prompt and temperature override.
+func (cf *CodeFixer) GenerateWithSystemPromptWithTemperature(ctx context.Context, systemPrompt string, userPrompt string, model string, temperature float64) (string, error) {
+	if userPrompt == "" {
+		return "", fmt.Errorf("empty prompt provided")
+	}
+
+	useModel := cf.model
+	if model != "" {
+		useModel = model
+	}
+
+	messages := []ChatMessage{
+		{Role: "user", Content: userPrompt},
+	}
+	if systemPrompt != "" {
+		messages = []ChatMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		}
+	}
+
+	req := ChatCompletionRequest{
+		Model:       useModel,
+		Messages:    messages,
+		Temperature: floatPtr(temperature),
+		MaxTokens:   intPtr(8192),
+		Stream:      false,
+	}
+
+	resp, err := cf.provider.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("LLM call failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("LLM returned no choices")
+	}
+
+	return resp.Choices[0].Message.GetContentAsString(), nil
+}
+
 // GenerateWithStructuredOutput generates content using response_format json_schema.
 func (cf *CodeFixer) GenerateWithStructuredOutput(ctx context.Context, systemPrompt string, userPrompt string, model string, schema map[string]any) (string, error) {
 	if userPrompt == "" {
@@ -239,6 +314,58 @@ func (cf *CodeFixer) GenerateWithStructuredOutput(ctx context.Context, systemPro
 		Model:       useModel,
 		Messages:    messages,
 		Temperature: floatPtr(0.2),
+		MaxTokens:   intPtr(8192),
+		Stream:      false,
+		ResponseFormat: &ResponseFormat{
+			Type: "json_schema",
+			JSONSchema: &JSONSchema{
+				Name:   "output_schema",
+				Schema: schema,
+				Strict: true,
+			},
+		},
+	}
+
+	resp, err := cf.provider.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("LLM call failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("LLM returned no choices")
+	}
+
+	return resp.Choices[0].Message.GetContentAsString(), nil
+}
+
+// GenerateWithStructuredOutputWithTemperature generates content using response_format json_schema and a temperature override.
+func (cf *CodeFixer) GenerateWithStructuredOutputWithTemperature(ctx context.Context, systemPrompt string, userPrompt string, model string, schema map[string]any, temperature float64) (string, error) {
+	if userPrompt == "" {
+		return "", fmt.Errorf("empty prompt provided")
+	}
+	if schema == nil {
+		return "", fmt.Errorf("schema is required for structured output")
+	}
+
+	useModel := cf.model
+	if model != "" {
+		useModel = model
+	}
+
+	messages := []ChatMessage{
+		{Role: "user", Content: userPrompt},
+	}
+	if systemPrompt != "" {
+		messages = []ChatMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		}
+	}
+
+	req := ChatCompletionRequest{
+		Model:       useModel,
+		Messages:    messages,
+		Temperature: floatPtr(temperature),
 		MaxTokens:   intPtr(8192),
 		Stream:      false,
 		ResponseFormat: &ResponseFormat{

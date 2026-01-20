@@ -56,7 +56,7 @@ var PlanAndTemplateSchema = map[string]any{
 							"suggestedLayout": map[string]any{
 								"type":        "string",
 								"description": "Suggested layout type",
-								"enum":        []string{"TITLE", "SECTION_HEADER", "TITLE_AND_BULLETS", "TITLE_TWO_COLUMNS", "TITLE_IMAGE", "FULL_BLEED_IMAGE", "CHART", "TABLE", "QUOTE", "TIMELINE", "CLOSING", "APPENDIX"},
+								"enum":        []string{"TITLE", "SECTION_HEADER", "TITLE_AND_BULLETS", "TITLE_TWO_COLUMNS", "TITLE_IMAGE", "FULL_BLEED_IMAGE", "CHART", "TABLE", "QUOTE", "TIMELINE", "CLOSING", "APPENDIX", "DASHBOARD_3KPI_2COL", "CHART_AND_INSIGHTS", "TABLE_AND_CALLOUTS"},
 							},
 							"visualIdeas": map[string]any{
 								"type":        "array",
@@ -349,6 +349,10 @@ var SlideGenResultSchema = map[string]any{
 								"description": "Element type",
 								"enum":        []string{"text", "image", "shape", "table", "chart", "group"},
 							},
+							"slotId": map[string]any{
+								"type":        "string",
+								"description": "Optional slot ID for layouts that define slots. Use slotId instead of rect when available.",
+							},
 							"rect": map[string]any{
 								"type":        "object",
 								"description": "Position and size (x, y, w, h) in pt. For WIDE_16x9: coordinate plane is 960pt x 540pt.",
@@ -357,6 +361,18 @@ var SlideGenResultSchema = map[string]any{
 									"y": map[string]any{"type": "number", "minimum": 0, "maximum": 540, "description": "Y position"},
 									"w": map[string]any{"type": "number", "exclusiveMinimum": 0, "maximum": 960, "description": "Width"},
 									"h": map[string]any{"type": "number", "exclusiveMinimum": 0, "maximum": 540, "description": "Height"},
+								},
+								"required":             []string{"x", "y", "w", "h"},
+								"additionalProperties": false,
+							},
+							"rel": map[string]any{
+								"type":        "object",
+								"description": "Relative placement (0..1) when inside a group. Only used for group children.",
+								"properties": map[string]any{
+									"x": map[string]any{"type": "number", "minimum": 0, "maximum": 1},
+									"y": map[string]any{"type": "number", "minimum": 0, "maximum": 1},
+									"w": map[string]any{"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+									"h": map[string]any{"type": "number", "exclusiveMinimum": 0, "maximum": 1},
 								},
 								"required":             []string{"x", "y", "w", "h"},
 								"additionalProperties": false,
@@ -484,6 +500,7 @@ var SlideGenResultSchema = map[string]any{
 												"additionalProperties": false,
 											},
 											"cornerRadius": map[string]any{"type": "number"},
+											"shadow":       map[string]any{"type": "object"},
 										},
 										"required":             []string{"fill"},
 										"additionalProperties": false,
@@ -492,23 +509,70 @@ var SlideGenResultSchema = map[string]any{
 								"required":             []string{"kind", "style"},
 								"additionalProperties": false,
 							},
+							"table": map[string]any{
+								"type":        "object",
+								"description": "Table definition (for type='table')",
+								"properties": map[string]any{
+									"columns": map[string]any{
+										"type":        "array",
+										"description": "Table column headers",
+										"items":       map[string]any{"type": "string"},
+									},
+									"rows": map[string]any{
+										"type":        "array",
+										"description": "Table rows",
+										"items": map[string]any{
+											"type":  "array",
+											"items": map[string]any{"type": "string"},
+										},
+									},
+									"style": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"headerTextStyle": map[string]any{"type": "object"},
+											"cellTextStyle":   map[string]any{"type": "object"},
+										},
+										"additionalProperties": false,
+									},
+								},
+								"required":             []string{"columns", "rows"},
+								"additionalProperties": false,
+							},
 							"chart": map[string]any{
 								"type":        "object",
 								"description": "Chart definition (for type='chart')",
 								"properties": map[string]any{
-									"chartType":  map[string]any{"type": "string", "enum": []string{"bar", "line", "pie", "area", "scatter"}},
+									"chartType":  map[string]any{"type": "string", "enum": []string{"bar", "line", "pie"}},
 									"datasetRef": map[string]any{"type": "string", "description": "Reference to dataset ID"},
 								},
 								"required":             []string{"chartType", "datasetRef"},
 								"additionalProperties": false,
 							},
+							"group": map[string]any{
+								"type":        "object",
+								"description": "Group definition (for type='group')",
+								"properties": map[string]any{
+									"children": map[string]any{
+										"type":  "array",
+										"items": map[string]any{"type": "object"},
+									},
+								},
+								"required":             []string{"children"},
+								"additionalProperties": true,
+							},
 						},
-						"required":             []string{"id", "type", "rect"},
+						"required":             []string{"id", "type"},
+						"anyOf":                []any{map[string]any{"required": []string{"rect"}}, map[string]any{"required": []string{"slotId"}}},
 						"additionalProperties": true,
 					},
 				},
+				"useComponents": map[string]any{
+					"type":        "array",
+					"description": "Component IDs to apply from template.components",
+					"items":       map[string]any{"type": "string"},
+				},
 			},
-			"required":             []string{"id", "order", "title", "layoutId", "speakerNotes", "elements"},
+			"required":             []string{"id", "order", "title", "layoutId", "speakerNotes", "elements", "useComponents"},
 			"additionalProperties": false,
 		},
 		"requires": map[string]any{
@@ -517,8 +581,30 @@ var SlideGenResultSchema = map[string]any{
 			"properties": map[string]any{
 				"assets": map[string]any{
 					"type":        "array",
-					"description": "Asset IDs or definitions required",
-					"items":       map[string]any{"type": "string"},
+					"description": "Asset objects required",
+					"items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"id":   map[string]any{"type": "string"},
+							"kind": map[string]any{"type": "string", "enum": []string{"image"}},
+							"source": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"type":     map[string]any{"type": "string", "enum": []string{"url", "file", "base64"}},
+									"url":      map[string]any{"type": "string"},
+									"filePath": map[string]any{"type": "string"},
+									"base64":   map[string]any{"type": "string"},
+								},
+								"required":             []string{"type"},
+								"additionalProperties": false,
+							},
+							"altText":     map[string]any{"type": "string"},
+							"license":     map[string]any{"type": "string"},
+							"attribution": map[string]any{"type": "string"},
+						},
+						"required":             []string{"id", "kind", "source", "altText", "license", "attribution"},
+						"additionalProperties": false,
+					},
 				},
 				"datasets": map[string]any{
 					"type":        "array",
@@ -614,6 +700,65 @@ var IssuesReportSchema = map[string]any{
 		},
 	},
 	"required":             []string{"issues"},
+	"additionalProperties": false,
+}
+
+// DataBankSchema is the JSON schema for extracted facts and datasets.
+var DataBankSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"facts": map[string]any{
+			"type":        "array",
+			"description": "Atomic facts with sources",
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"claim":     map[string]any{"type": "string"},
+					"value":     map[string]any{"type": "string"},
+					"unit":      map[string]any{"type": "string"},
+					"sourceUrl": map[string]any{"type": "string"},
+					"date":      map[string]any{"type": "string"},
+				},
+				"required":             []string{"claim", "value", "unit", "sourceUrl", "date"},
+				"additionalProperties": false,
+			},
+		},
+		"datasets": map[string]any{
+			"type":        "array",
+			"description": "Ready-to-use datasets for charts/tables",
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":   map[string]any{"type": "string"},
+					"kind": map[string]any{"type": "string", "enum": []string{"series"}},
+					"data": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"labels": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+							"series": map[string]any{
+								"type": "array",
+								"items": map[string]any{
+									"type": "object",
+									"properties": map[string]any{
+										"name":   map[string]any{"type": "string"},
+										"values": map[string]any{"type": "array", "items": map[string]any{"type": "number"}},
+									},
+									"required":             []string{"name", "values"},
+									"additionalProperties": false,
+								},
+							},
+						},
+						"required":             []string{"labels", "series"},
+						"additionalProperties": false,
+					},
+					"sourceNote": map[string]any{"type": "string"},
+				},
+				"required":             []string{"id", "kind", "data", "sourceNote"},
+				"additionalProperties": false,
+			},
+		},
+	},
+	"required":             []string{"facts", "datasets"},
 	"additionalProperties": false,
 }
 
