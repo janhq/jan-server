@@ -12,5 +12,6 @@ func registerResponseRoutes(router gin.IRoutes, handler *handlers.ResponseHandle
 	router.GET("/responses/:response_id/full", handler.GetFull)
 	router.DELETE("/responses/:response_id", handler.Delete)
 	router.POST("/responses/:response_id/cancel", handler.Cancel)
+	router.POST("/responses/:response_id/retry", handler.Retry)
 	router.GET("/responses/:response_id/input_items", handler.ListInputItems)
 }

@@ -610,14 +610,40 @@ def add_table(slide, el, theme_defaults_text, slide_number: int):
     table_shape = slide.shapes.add_table(nrows, ncols, left, top, width, height)
     table = table_shape.table
 
+    def _col_header(col):
+        if isinstance(col, dict):
+            for key in ("header", "title", "name", "label", "text"):
+                val = col.get(key)
+                if val is not None:
+                    return str(val)
+            return ""
+        if col is None:
+            return ""
+        return str(col)
+
+    def _col_width(col):
+        if isinstance(col, dict):
+            width_val = col.get("width")
+            if isinstance(width_val, (int, float)):
+                return float(width_val)
+        return None
+
     for c in range(ncols):
         hdr = cols[c] if c < len(cols) else ""
-        table.cell(0, c).text = hdr
+        table.cell(0, c).text = _col_header(hdr)
+        col_width = _col_width(hdr)
+        if col_width is not None:
+            table.columns[c].width = Pt(col_width)
 
     for r_i, row in enumerate(rows, start=1):
         for c in range(ncols):
             val = row[c] if c < len(row) else ""
-            table.cell(r_i, c).text = str(val)
+            if isinstance(val, dict):
+                for key in ("text", "value", "label", "name"):
+                    if key in val:
+                        val = val[key]
+                        break
+            table.cell(r_i, c).text = "" if val is None else str(val)
 
     style = t.get("style", {})
     hdr_style = style.get("headerTextStyle", {})

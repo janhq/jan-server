@@ -120,6 +120,8 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		_, err = p.planService.CreateStep(ctx, selectionTask.ID, plan.CreateStepParams{
 			Sequence:    1,
 			Action:      plan.ActionTypeLLMCall,
+			Title:       "Request User Selection",
+			Description: strPtr("Wait for user to select a presentation option"),
 			InputParams: selectionParams,
 			MaxRetries:  3,
 		})
@@ -151,6 +153,8 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		_, err = p.planService.CreateStep(ctx, researchTask.ID, plan.CreateStepParams{
 			Sequence:    1,
 			Action:      plan.ActionTypeToolCall,
+			Title:       "Primary Research",
+			Description: strPtr("Search for key ideas related to the topic for the presentation"),
 			InputParams: searchParams1,
 			MaxRetries:  3,
 		})
@@ -167,6 +171,8 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 			_, err = p.planService.CreateStep(ctx, researchTask.ID, plan.CreateStepParams{
 				Sequence:    2,
 				Action:      plan.ActionTypeToolCall,
+				Title:       "Secondary Research",
+				Description: strPtr("Secondary search for supporting data and examples"),
 				InputParams: searchParams2,
 				MaxRetries:  3,
 			})
@@ -181,6 +187,8 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 			_, err = p.planService.CreateStep(ctx, researchTask.ID, plan.CreateStepParams{
 				Sequence:    3,
 				Action:      plan.ActionTypeToolCall,
+				Title:       "Scrape Sources",
+				Description: strPtr("Extract detailed content from top sources"),
 				InputParams: scrapeParams,
 				MaxRetries:  3,
 			})
@@ -215,6 +223,8 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 	_, err = p.planService.CreateStep(ctx, outlineTask.ID, plan.CreateStepParams{
 		Sequence:    1,
 		Action:      plan.ActionTypeLLMCall,
+		Title:       "Outline Reasoning",
+		Description: strPtr("Plan slide structure, key messages, and flow"),
 		InputParams: outlineParams,
 		MaxRetries:  5,
 	})
@@ -232,6 +242,8 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 	_, err = p.planService.CreateStep(ctx, outlineTask.ID, plan.CreateStepParams{
 		Sequence:    2,
 		Action:      plan.ActionTypeToolCall,
+		Title:       "Image Search",
+		Description: strPtr("Search for relevant images to illustrate the presentation slides"),
 		InputParams: imageSearchParams,
 		MaxRetries:  3,
 	})
@@ -261,6 +273,8 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 	_, err = p.planService.CreateStep(ctx, dataBankTask.ID, plan.CreateStepParams{
 		Sequence:    1,
 		Action:      plan.ActionTypeLLMCall,
+		Title:       "Extract Data Bank",
+		Description: strPtr("Extract structured facts and datasets from research"),
 		InputParams: dataBankParams,
 		MaxRetries:  3,
 	})
@@ -294,6 +308,8 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 	_, err = p.planService.CreateStep(ctx, plannerTask.ID, plan.CreateStepParams{
 		Sequence:    1,
 		Action:      plan.ActionTypeLLMCall,
+		Title:       "Plan & Template",
+		Description: strPtr("Generate slide plan and template structure"),
 		InputParams: plannerParams,
 		MaxRetries:  5,
 	})
@@ -327,6 +343,8 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		_, err = p.planService.CreateStep(ctx, slideGenTask.ID, plan.CreateStepParams{
 			Sequence:    i,
 			Action:      plan.ActionTypeLLMCall,
+			Title:       fmt.Sprintf("Generate Slide %d", i),
+			Description: strPtr(fmt.Sprintf("Generate slide %d content", i)),
 			InputParams: slideParams,
 			MaxRetries:  3,
 		})
@@ -358,6 +376,8 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 	_, err = p.planService.CreateStep(ctx, finalTask.ID, plan.CreateStepParams{
 		Sequence:    1,
 		Action:      plan.ActionTypeToolCall,
+		Title:       "Upload Slide Spec",
+		Description: strPtr("Upload slide JSON to sandbox"),
 		InputParams: uploadParams,
 		MaxRetries:  3,
 	})
@@ -376,6 +396,8 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 	_, err = p.planService.CreateStep(ctx, finalTask.ID, plan.CreateStepParams{
 		Sequence:    2,
 		Action:      plan.ActionTypeToolCall,
+		Title:       "Render Deck",
+		Description: strPtr("Render PPTX from slide JSON"),
 		InputParams: renderParams,
 		MaxRetries:  3,
 	})
@@ -395,6 +417,8 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 	_, err = p.planService.CreateStep(ctx, finalTask.ID, plan.CreateStepParams{
 		Sequence:    3,
 		Action:      plan.ActionTypeArtifactCreate,
+		Title:       "Store Artifact",
+		Description: strPtr("Store presentation as downloadable artifact"),
 		InputParams: artifactParams,
 		MaxRetries:  3,
 	})

@@ -15,3 +15,6 @@ func firstTextContent(contents []tool.MCPContent) string {
 	return ""
 }
 
+func intPtr(value int) *int {
+	return &value
+}

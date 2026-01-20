@@ -168,38 +168,23 @@ func (o *DefaultOrchestrator) ExecuteNextStep(ctx context.Context, planID string
 			}
 		}
 
-		// If NO steps succeeded, fail the task
-		if completedCount == 0 && len(currentTask.Steps) > 0 {
-			errMsg := fmt.Sprintf("all %d steps in task failed", len(currentTask.Steps))
+		// If ANY steps failed, fail the task and the plan
+		if failedCount > 0 {
+			errMsg := fmt.Sprintf("task %s has %d failed steps", currentTask.ID, failedCount)
 			if err := o.planService.FailTask(ctx, currentTask.ID, errMsg); err != nil {
 				return nil, err
 			}
-
-			// For critical research tasks, fail the entire plan
-			if currentTask.TaskType == plan.TaskTypeResearch {
-				if err := o.planService.UpdateStatus(ctx, p.ID, status.StatusFailed, &errMsg); err != nil {
-					return nil, err
-				}
-				return &ExecutionResult{
-					Status: status.StatusFailed,
-					Error: &ExecutionError{
-						Code:     "research_task_failed",
-						Message:  errMsg,
-						Severity: status.ErrorSeverityFatal,
-					},
-				}, nil
-			}
-
-			// For non-critical tasks, continue to next task
-			nextTask, err := o.planService.StartNextTask(ctx, planID)
-			if err != nil {
+			if err := o.planService.UpdateStatus(ctx, p.ID, status.StatusFailed, &errMsg); err != nil {
 				return nil, err
 			}
-			if nextTask == nil {
-				// No more tasks - complete with partial results
-				return o.completePlan(ctx, p)
-			}
-			return o.ExecuteNextStep(ctx, planID)
+			return &ExecutionResult{
+				Status: status.StatusFailed,
+				Error: &ExecutionError{
+					Code:     "task_failed",
+					Message:  errMsg,
+					Severity: status.ErrorSeverityFatal,
+				},
+			}, nil
 		}
 
 		// At least one step succeeded - complete task
@@ -328,6 +313,11 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 			if err := o.planService.UpdateStatus(ctx, p.ID, status.StatusFailed, &errMsg); err != nil {
 				return nil, err
 			}
+		} else {
+			errMsg := execErr.Message
+			if err := o.planService.UpdateStatus(ctx, p.ID, status.StatusFailed, &errMsg); err != nil {
+				return nil, err
+			}
 		}
 
 		return &ExecutionResult{
@@ -372,6 +362,11 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 		}
 
 		if execErr.IsFatal() {
+			errMsg := execErr.Message
+			if err := o.planService.UpdateStatus(ctx, p.ID, status.StatusFailed, &errMsg); err != nil {
+				return nil, err
+			}
+		} else {
 			errMsg := execErr.Message
 			if err := o.planService.UpdateStatus(ctx, p.ID, status.StatusFailed, &errMsg); err != nil {
 				return nil, err

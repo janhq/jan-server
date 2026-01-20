@@ -214,130 +214,137 @@ func layoutEnumSet() map[string]bool {
 }
 
 func defaultLayoutForType(layoutID string) map[string]any {
-	left := 36.0
-	top := 36.0
-	right := 36.0
-	bottom := 36.0
-	usableW := 960.0 - left - right
-	usableH := 540.0 - top - bottom
+	// P2 fix: Use grid specs instead of absolute rect values for consistent layout
+	// Grid-based positioning allows the theme to control column widths and gutters
+	// Format: {"id": "slotName", "grid": {"col": 1, "span": 12}, "y": 140, "h": 320}
 
-	titleRect := map[string]any{"x": left, "y": 72.0, "w": usableW, "h": 48.0}
-	bodyRect := map[string]any{"x": left, "y": 140.0, "w": usableW, "h": 320.0}
-	headerRect := map[string]any{"x": left, "y": top, "w": 700.0, "h": 20.0}
-	footerRect := map[string]any{"x": left, "y": 540.0 - bottom - 18.0, "w": usableW, "h": 18.0}
+	top := 36.0
+	bottom := 36.0
+
+	// Header and footer use absolute positioning (outside main content area)
+	headerSlot := map[string]any{"id": "header", "grid": map[string]any{"col": 1, "span": 9}, "y": top, "h": 20.0}
+	footerSlot := map[string]any{"id": "footer", "grid": map[string]any{"col": 1, "span": 12}, "y": 540.0 - bottom - 18.0, "h": 18.0}
+	titleSlot := map[string]any{"id": "title", "grid": map[string]any{"col": 1, "span": 12}, "y": 72.0, "h": 48.0}
+	bodySlot := map[string]any{"id": "body", "grid": map[string]any{"col": 1, "span": 12}, "y": 140.0, "h": 320.0}
 
 	slots := []any{}
 	switch layoutID {
 	case "TITLE":
 		slots = []any{
-			map[string]any{"id": "title", "rect": map[string]any{"x": 120.0, "y": 200.0, "w": 720.0, "h": 80.0}},
-			map[string]any{"id": "subtitle", "rect": map[string]any{"x": 120.0, "y": 290.0, "w": 720.0, "h": 60.0}},
+			map[string]any{"id": "title", "grid": map[string]any{"col": 2, "span": 10}, "y": 200.0, "h": 80.0},
+			map[string]any{"id": "subtitle", "grid": map[string]any{"col": 2, "span": 10}, "y": 290.0, "h": 60.0},
 		}
 	case "SECTION_HEADER":
 		slots = []any{
-			map[string]any{"id": "title", "rect": map[string]any{"x": 120.0, "y": 220.0, "w": 720.0, "h": 80.0}},
-			map[string]any{"id": "subtitle", "rect": map[string]any{"x": 120.0, "y": 300.0, "w": 720.0, "h": 50.0}},
+			map[string]any{"id": "title", "grid": map[string]any{"col": 2, "span": 10}, "y": 220.0, "h": 80.0},
+			map[string]any{"id": "subtitle", "grid": map[string]any{"col": 2, "span": 10}, "y": 300.0, "h": 50.0},
+		}
+	case "TITLE_AND_BULLETS":
+		slots = []any{
+			headerSlot,
+			footerSlot,
+			titleSlot,
+			bodySlot,
 		}
 	case "TITLE_TWO_COLUMNS":
-		colW := (usableW - 24.0) / 2
 		slots = []any{
-			map[string]any{"id": "header", "rect": headerRect},
-			map[string]any{"id": "footer", "rect": footerRect},
-			map[string]any{"id": "title", "rect": titleRect},
-			map[string]any{"id": "left", "rect": map[string]any{"x": left, "y": 140.0, "w": colW, "h": 320.0}},
-			map[string]any{"id": "right", "rect": map[string]any{"x": left + colW + 24.0, "y": 140.0, "w": colW, "h": 320.0}},
+			headerSlot,
+			footerSlot,
+			titleSlot,
+			map[string]any{"id": "left", "grid": map[string]any{"col": 1, "span": 6}, "y": 140.0, "h": 320.0},
+			map[string]any{"id": "right", "grid": map[string]any{"col": 7, "span": 6}, "y": 140.0, "h": 320.0},
 		}
 	case "TITLE_IMAGE":
-		imageW := 320.0
 		slots = []any{
-			map[string]any{"id": "header", "rect": headerRect},
-			map[string]any{"id": "footer", "rect": footerRect},
-			map[string]any{"id": "title", "rect": titleRect},
-			map[string]any{"id": "body", "rect": map[string]any{"x": left, "y": 140.0, "w": usableW - imageW - 24.0, "h": 320.0}},
-			map[string]any{"id": "image", "rect": map[string]any{"x": left + usableW - imageW, "y": 140.0, "w": imageW, "h": 320.0}},
+			headerSlot,
+			footerSlot,
+			titleSlot,
+			map[string]any{"id": "body", "grid": map[string]any{"col": 1, "span": 8}, "y": 140.0, "h": 320.0},
+			map[string]any{"id": "image", "grid": map[string]any{"col": 9, "span": 4}, "y": 140.0, "h": 320.0},
 		}
 	case "FULL_BLEED_IMAGE":
+		// Full bleed uses absolute rect for full canvas coverage
 		slots = []any{
 			map[string]any{"id": "image", "rect": map[string]any{"x": 0.0, "y": 0.0, "w": 960.0, "h": 540.0}},
-			map[string]any{"id": "title", "rect": map[string]any{"x": left, "y": 72.0, "w": usableW, "h": 60.0}},
+			map[string]any{"id": "title", "grid": map[string]any{"col": 1, "span": 12}, "y": 72.0, "h": 60.0},
 		}
 	case "CHART":
 		slots = []any{
-			map[string]any{"id": "header", "rect": headerRect},
-			map[string]any{"id": "footer", "rect": footerRect},
-			map[string]any{"id": "title", "rect": titleRect},
-			map[string]any{"id": "chart", "rect": bodyRect},
+			headerSlot,
+			footerSlot,
+			titleSlot,
+			map[string]any{"id": "chart", "grid": map[string]any{"col": 1, "span": 12}, "y": 140.0, "h": 320.0},
 		}
 	case "TABLE":
 		slots = []any{
-			map[string]any{"id": "header", "rect": headerRect},
-			map[string]any{"id": "footer", "rect": footerRect},
-			map[string]any{"id": "title", "rect": titleRect},
-			map[string]any{"id": "table", "rect": bodyRect},
+			headerSlot,
+			footerSlot,
+			titleSlot,
+			map[string]any{"id": "table", "grid": map[string]any{"col": 1, "span": 12}, "y": 140.0, "h": 320.0},
 		}
 	case "QUOTE":
 		slots = []any{
-			map[string]any{"id": "header", "rect": headerRect},
-			map[string]any{"id": "footer", "rect": footerRect},
-			map[string]any{"id": "quote", "rect": bodyRect},
+			headerSlot,
+			footerSlot,
+			map[string]any{"id": "quote", "grid": map[string]any{"col": 2, "span": 10}, "y": 140.0, "h": 320.0},
 		}
 	case "TIMELINE":
 		slots = []any{
-			map[string]any{"id": "header", "rect": headerRect},
-			map[string]any{"id": "footer", "rect": footerRect},
-			map[string]any{"id": "title", "rect": titleRect},
-			map[string]any{"id": "timeline", "rect": bodyRect},
+			headerSlot,
+			footerSlot,
+			titleSlot,
+			map[string]any{"id": "timeline", "grid": map[string]any{"col": 1, "span": 12}, "y": 140.0, "h": 320.0},
 		}
 	case "CLOSING":
 		slots = []any{
-			map[string]any{"id": "title", "rect": map[string]any{"x": 120.0, "y": 200.0, "w": 720.0, "h": 80.0}},
-			map[string]any{"id": "body", "rect": map[string]any{"x": 120.0, "y": 290.0, "w": 720.0, "h": 120.0}},
+			map[string]any{"id": "title", "grid": map[string]any{"col": 2, "span": 10}, "y": 200.0, "h": 80.0},
+			map[string]any{"id": "body", "grid": map[string]any{"col": 2, "span": 10}, "y": 290.0, "h": 120.0},
 		}
 	case "APPENDIX":
 		slots = []any{
-			map[string]any{"id": "header", "rect": headerRect},
-			map[string]any{"id": "footer", "rect": footerRect},
-			map[string]any{"id": "title", "rect": titleRect},
-			map[string]any{"id": "body", "rect": bodyRect},
+			headerSlot,
+			footerSlot,
+			titleSlot,
+			bodySlot,
 		}
 	case "DASHBOARD_3KPI_2COL":
 		slots = []any{
-			map[string]any{"id": "header", "rect": headerRect},
-			map[string]any{"id": "footer", "rect": footerRect},
-			map[string]any{"id": "title", "rect": titleRect},
-			map[string]any{"id": "kpi1", "rect": map[string]any{"x": left, "y": 128.0, "w": 288.0, "h": 80.0}},
-			map[string]any{"id": "kpi2", "rect": map[string]any{"x": left + 300.0, "y": 128.0, "w": 288.0, "h": 80.0}},
-			map[string]any{"id": "kpi3", "rect": map[string]any{"x": left + 600.0, "y": 128.0, "w": 288.0, "h": 80.0}},
-			map[string]any{"id": "chart_left", "rect": map[string]any{"x": left, "y": 224.0, "w": 548.0, "h": 260.0}},
-			map[string]any{"id": "table_right", "rect": map[string]any{"x": left + 564.0, "y": 224.0, "w": 324.0, "h": 260.0}},
+			headerSlot,
+			footerSlot,
+			titleSlot,
+			map[string]any{"id": "kpi1", "grid": map[string]any{"col": 1, "span": 4}, "y": 128.0, "h": 80.0},
+			map[string]any{"id": "kpi2", "grid": map[string]any{"col": 5, "span": 4}, "y": 128.0, "h": 80.0},
+			map[string]any{"id": "kpi3", "grid": map[string]any{"col": 9, "span": 4}, "y": 128.0, "h": 80.0},
+			map[string]any{"id": "chart_left", "grid": map[string]any{"col": 1, "span": 7}, "y": 224.0, "h": 260.0},
+			map[string]any{"id": "table_right", "grid": map[string]any{"col": 8, "span": 5}, "y": 224.0, "h": 260.0},
 		}
 	case "CHART_AND_INSIGHTS":
 		slots = []any{
-			map[string]any{"id": "header", "rect": headerRect},
-			map[string]any{"id": "footer", "rect": footerRect},
-			map[string]any{"id": "title", "rect": titleRect},
-			map[string]any{"id": "chart_left", "rect": map[string]any{"x": left, "y": 140.0, "w": 560.0, "h": 320.0}},
-			map[string]any{"id": "insights_right", "rect": map[string]any{"x": left + 580.0, "y": 140.0, "w": 308.0, "h": 320.0}},
+			headerSlot,
+			footerSlot,
+			titleSlot,
+			map[string]any{"id": "chart_left", "grid": map[string]any{"col": 1, "span": 7}, "y": 140.0, "h": 320.0},
+			map[string]any{"id": "insights_right", "grid": map[string]any{"col": 8, "span": 5}, "y": 140.0, "h": 320.0},
 		}
 	case "TABLE_AND_CALLOUTS":
 		slots = []any{
-			map[string]any{"id": "header", "rect": headerRect},
-			map[string]any{"id": "footer", "rect": footerRect},
-			map[string]any{"id": "title", "rect": titleRect},
-			map[string]any{"id": "table_left", "rect": map[string]any{"x": left, "y": 140.0, "w": 560.0, "h": 320.0}},
-			map[string]any{"id": "callouts_right", "rect": map[string]any{"x": left + 580.0, "y": 140.0, "w": 308.0, "h": 320.0}},
+			headerSlot,
+			footerSlot,
+			titleSlot,
+			map[string]any{"id": "table_left", "grid": map[string]any{"col": 1, "span": 7}, "y": 140.0, "h": 320.0},
+			map[string]any{"id": "callouts_right", "grid": map[string]any{"col": 8, "span": 5}, "y": 140.0, "h": 320.0},
 		}
 	default:
 		slots = []any{
-			map[string]any{"id": "header", "rect": headerRect},
-			map[string]any{"id": "footer", "rect": footerRect},
-			map[string]any{"id": "title", "rect": titleRect},
-			map[string]any{"id": "body", "rect": bodyRect},
+			headerSlot,
+			footerSlot,
+			titleSlot,
+			bodySlot,
 		}
 	}
 
 	if len(slots) == 0 {
-		slots = []any{map[string]any{"id": "body", "rect": map[string]any{"x": left, "y": top, "w": usableW, "h": usableH}}}
+		slots = []any{map[string]any{"id": "body", "grid": map[string]any{"col": 1, "span": 12}, "y": top, "h": 468.0}}
 	}
 
 	return map[string]any{
@@ -347,4 +354,3 @@ func defaultLayoutForType(layoutID string) map[string]any {
 		"slots":    slots,
 	}
 }
-

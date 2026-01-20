@@ -267,6 +267,27 @@ func (h *ResponseHandler) Cancel(c *gin.Context) {
 	c.JSON(http.StatusOK, responses.FromDomain(resp))
 }
 
+// Retry handles POST /v1/responses/:id/retry
+// @Summary Retry the last failed plan step for a response
+// @Tags Responses
+// @Produce json
+// @Param response_id path string true "Response ID"
+// @Success 200 {object} responses.ResponsePayload
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /v1/responses/{response_id}/retry [post]
+func (h *ResponseHandler) Retry(c *gin.Context) {
+	id := c.Param("response_id")
+	resp, err := h.service.Retry(c.Request.Context(), id)
+	if err != nil {
+		h.log.Error().Err(err).Str("response_id", id).Msg("response retry failed")
+		responses.HandleError(c, err, "failed to retry response")
+		return
+	}
+	c.JSON(http.StatusOK, responses.FromDomain(resp))
+}
+
 // Delete handles DELETE /v1/responses/:id
 // @Summary Delete/Cancel a response
 // @Tags Responses

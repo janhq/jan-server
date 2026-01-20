@@ -351,8 +351,11 @@ type LLMProvider interface {
 	FixCode(ctx context.Context, code string, errorMsg string, language string) (string, error)
 	Generate(ctx context.Context, prompt string) (string, error)
 	GenerateWithModel(ctx context.Context, prompt string, model string) (string, error)
+	GenerateWithModelWithMaxTokens(ctx context.Context, prompt string, model string, maxTokens *int) (string, error)
 	GenerateWithSystemPrompt(ctx context.Context, systemPrompt string, userPrompt string, model string) (string, error)
+	GenerateWithSystemPromptWithMaxTokens(ctx context.Context, systemPrompt string, userPrompt string, model string, maxTokens *int) (string, error)
 	GenerateWithStructuredOutput(ctx context.Context, systemPrompt string, userPrompt string, model string, schema map[string]any) (string, error)
+	GenerateWithStructuredOutputWithMaxTokens(ctx context.Context, systemPrompt string, userPrompt string, model string, schema map[string]any, maxTokens *int) (string, error)
 }
 
 // MaxInstallRetries is the maximum number of package install retry attempts.

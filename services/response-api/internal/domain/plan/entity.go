@@ -113,6 +113,8 @@ type Step struct {
 	Sequence      int                  `json:"sequence"`
 	Action        ActionType           `json:"action"`
 	Status        status.Status        `json:"status"`
+	Title         string               `json:"title"`
+	Description   *string              `json:"description,omitempty"`
 	PlannedParams json.RawMessage      `json:"planned_params,omitempty"` // Original planned parameters
 	ActualParams  json.RawMessage      `json:"actual_params,omitempty"`  // Actual execution parameters (may differ if agent changed tool)
 	InputParams   json.RawMessage      `json:"input_params,omitempty"`   // Deprecated: use PlannedParams

@@ -389,6 +389,113 @@ func (s *ServiceImpl) Cancel(ctx context.Context, publicID string) (*Response, e
 	return resp, nil
 }
 
+// Retry retries the last failed step for a response plan and resumes execution.
+func (s *ServiceImpl) Retry(ctx context.Context, publicID string) (*Response, error) {
+	if s.agentOrchestrator == nil {
+		s.log.Error().Msg("retry requested but agent orchestrator not configured")
+		return nil, errors.New("agent orchestrator not configured")
+	}
+
+	resp, err := s.responses.FindByPublicID(ctx, publicID)
+	if err != nil {
+		s.log.Error().Err(err).Str("response_id", publicID).Msg("retry failed to load response")
+		return nil, err
+	}
+
+	planModel, err := s.planService.GetByResponseID(ctx, publicID)
+	if err != nil {
+		s.log.Error().Err(err).Str("response_id", publicID).Msg("retry failed to load plan")
+		return nil, err
+	}
+
+	planDetails, err := s.planService.GetPlanWithDetails(ctx, planModel.ID)
+	if err != nil {
+		s.log.Error().Err(err).Str("plan_id", planModel.ID).Msg("retry failed to load plan details")
+		return nil, err
+	}
+
+	if !planDetails.Status.IsRetryable() {
+		s.log.Warn().
+			Str("response_id", publicID).
+			Str("plan_id", planDetails.ID).
+			Str("plan_status", string(planDetails.Status)).
+			Msg("retry rejected due to plan status")
+		return nil, fmt.Errorf("plan status %q does not allow retry", planDetails.Status)
+	}
+
+	task, step := findFirstFailedStep(planDetails)
+	if task == nil || step == nil {
+		s.log.Warn().
+			Str("response_id", publicID).
+			Str("plan_id", planDetails.ID).
+			Msg("retry requested but no failed steps found")
+		return nil, errors.New("no failed steps to retry")
+	}
+	if !step.CanRetry() {
+		s.log.Warn().
+			Str("response_id", publicID).
+			Str("plan_id", planDetails.ID).
+			Str("step_id", step.ID).
+			Int("retry_count", step.RetryCount).
+			Int("max_retries", step.MaxRetries).
+			Str("error_severity", string(step.ErrorSeverity)).
+			Msg("retry rejected because step is not retryable")
+		return nil, errors.New("step is not retryable")
+	}
+
+	if task.Status == status.StatusFailed || task.Status == status.StatusCompleted {
+		if err := s.planService.ResetTaskForRetry(ctx, task.ID); err != nil {
+			s.log.Error().Err(err).Str("task_id", task.ID).Msg("retry failed to reset task")
+			return nil, err
+		}
+	}
+
+	if task.TaskType == plan.TaskTypeFinalization && step.Sequence > 1 {
+		if err := s.planService.ResetTaskStepsForRetry(ctx, task.ID, step.Sequence); err != nil {
+			s.log.Error().Err(err).Str("task_id", task.ID).Msg("retry failed to reset task steps")
+			return nil, err
+		}
+	}
+
+	if _, err := s.planService.RetryStep(ctx, step.ID); err != nil {
+		s.log.Error().Err(err).Str("step_id", step.ID).Msg("retry failed to reset step")
+		return nil, err
+	}
+
+	if err := s.planService.UpdateStatus(ctx, planDetails.ID, status.StatusInProgress, nil); err != nil {
+		s.log.Error().Err(err).Str("plan_id", planDetails.ID).Msg("retry failed to update plan status")
+		return nil, err
+	}
+
+	now := time.Now()
+	resp.Status = StatusInProgress
+	resp.Error = nil
+	resp.FailedAt = nil
+	resp.CompletedAt = nil
+	resp.UpdatedAt = now
+	if resp.StartedAt == nil {
+		resp.StartedAt = &now
+	}
+	if err := s.responses.Update(ctx, resp); err != nil {
+		s.log.Error().Err(err).Str("response_id", publicID).Msg("retry failed to update response status")
+		return nil, err
+	}
+
+	s.log.Info().
+		Str("response_id", publicID).
+		Str("plan_id", planDetails.ID).
+		Str("task_id", task.ID).
+		Str("step_id", step.ID).
+		Msg("retrying plan from last failed step")
+
+	if err := s.executePlanRetry(ctx, resp, planDetails); err != nil {
+		s.log.Error().Err(err).Str("response_id", publicID).Str("plan_id", planDetails.ID).Msg("retry execution failed")
+		return nil, err
+	}
+
+	return s.responses.FindByPublicID(ctx, publicID)
+}
+
 // ListConversationItems returns the textual conversation history for the response.
 func (s *ServiceImpl) ListConversationItems(ctx context.Context, publicID string) ([]ConversationItem, error) {
 	resp, err := s.responses.FindByPublicID(ctx, publicID)
@@ -428,6 +535,128 @@ func (s *ServiceImpl) failResponse(ctx context.Context, resp *Response, failure 
 		s.log.Error().Err(err).Str("response_id", resp.PublicID).Msg("update failed response")
 	}
 	return nil, failure
+}
+
+func (s *ServiceImpl) executePlanRetry(ctx context.Context, resp *Response, planDetails *plan.Plan) error {
+	maxIterations := planDetails.EstimatedSteps * 2
+	if maxIterations <= 0 {
+		maxIterations = 50
+	}
+
+	var lastOutput interface{}
+
+	for i := 0; i < maxIterations; i++ {
+		result, err := s.agentOrchestrator.ExecuteNextStep(ctx, planDetails.ID)
+		if err != nil {
+			now := time.Now()
+			resp.Status = StatusFailed
+			resp.Error = &ErrorDetails{Message: err.Error()}
+			resp.CompletedAt = &now
+			resp.UpdatedAt = now
+			if updateErr := s.responses.Update(ctx, resp); updateErr != nil {
+				s.log.Error().Err(updateErr).Msg("failed to update response after step failure")
+			}
+			return err
+		}
+
+		if result != nil && len(result.Output) > 0 {
+			var decoded interface{}
+			if unmarshalErr := json.Unmarshal(result.Output, &decoded); unmarshalErr == nil {
+				lastOutput = decoded
+			} else {
+				lastOutput = string(result.Output)
+			}
+		}
+
+		planStatus, statusErr := s.agentOrchestrator.GetStatus(ctx, planDetails.ID)
+		if statusErr != nil {
+			s.log.Warn().Err(statusErr).Str("plan_id", planDetails.ID).Msg("failed to get plan status")
+			continue
+		}
+
+		switch planStatus.Status {
+		case status.StatusCompleted:
+			now := time.Now()
+			resp.Status = StatusCompleted
+			resp.CompletedAt = &now
+			resp.UpdatedAt = now
+
+			finalOutput := s.generatePlanOutput(ctx, planDetails.ID)
+			if finalOutput == "" {
+				if lastOutput != nil {
+					finalOutput = lastOutput
+				} else {
+					finalOutput = "plan completed"
+				}
+			}
+			resp.Output = finalOutput
+			s.populateArtifactsAndCitations(ctx, resp, &planDetails.ID)
+			if err := s.responses.Update(ctx, resp); err != nil {
+				return fmt.Errorf("failed to update response: %w", err)
+			}
+			s.log.Info().
+				Str("response_id", resp.PublicID).
+				Str("plan_id", planDetails.ID).
+				Msg("plan retry completed successfully")
+			return nil
+		case status.StatusFailed:
+			now := time.Now()
+			resp.Status = StatusFailed
+			errMsg := "plan execution failed"
+			if planStatus.LastError != nil {
+				errMsg = *planStatus.LastError
+			}
+			resp.Error = &ErrorDetails{Message: errMsg}
+			resp.CompletedAt = &now
+			resp.UpdatedAt = now
+			if err := s.responses.Update(ctx, resp); err != nil {
+				return fmt.Errorf("failed to update response after failure: %w", err)
+			}
+			return fmt.Errorf("plan failed: %s", errMsg)
+		case status.StatusWaitForUser:
+			resp.Status = Status(status.StatusWaitForUser)
+			resp.UpdatedAt = time.Now()
+			if err := s.responses.Update(ctx, resp); err != nil {
+				return fmt.Errorf("failed to update response while waiting for user: %w", err)
+			}
+			s.log.Info().
+				Str("response_id", resp.PublicID).
+				Str("plan_id", planDetails.ID).
+				Msg("plan retry paused waiting for user input")
+			return nil
+		}
+	}
+
+	return fmt.Errorf("plan execution exceeded maximum iterations (%d)", maxIterations)
+}
+
+func findFirstFailedStep(planDetails *plan.Plan) (*plan.Task, *plan.Step) {
+	if planDetails == nil {
+		return nil, nil
+	}
+
+	var firstTask *plan.Task
+	var firstStep *plan.Step
+	firstTaskSeq := int(^uint(0) >> 1)
+	firstStepSeq := int(^uint(0) >> 1)
+
+	for tIdx := range planDetails.Tasks {
+		task := &planDetails.Tasks[tIdx]
+		for sIdx := range task.Steps {
+			step := &task.Steps[sIdx]
+			if step.Status != status.StatusFailed {
+				continue
+			}
+			if task.Sequence < firstTaskSeq || (task.Sequence == firstTaskSeq && step.Sequence < firstStepSeq) {
+				firstTask = task
+				firstStep = step
+				firstTaskSeq = task.Sequence
+				firstStepSeq = step.Sequence
+			}
+		}
+	}
+
+	return firstTask, firstStep
 }
 
 func (s *ServiceImpl) buildBaseMessages(systemPrompt *string, items []conversation.Item) ([]llm.ChatMessage, error) {

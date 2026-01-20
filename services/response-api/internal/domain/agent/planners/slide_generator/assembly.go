@@ -3,7 +3,9 @@ package slide_generator
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"sort"
+	"strings"
 
 	"jan-server/services/response-api/internal/domain/agent"
 
@@ -193,8 +195,18 @@ func (e *SlideGeneratorExecutor) normalizeAssets(allAssets []any) (map[string]an
 			sourceType, _ := source["type"].(string)
 			switch sourceType {
 			case "url":
-				if urlStr, ok := source["url"].(string); !ok || urlStr == "" {
+				urlStr, ok := source["url"].(string)
+				if !ok || urlStr == "" {
 					return nil, fmt.Errorf("asset %s missing source.url", id)
+				}
+				// P1 fix: Validate URL scheme is http or https
+				parsedURL, err := url.Parse(urlStr)
+				if err != nil {
+					return nil, fmt.Errorf("asset %s has invalid URL: %v", id, err)
+				}
+				scheme := strings.ToLower(parsedURL.Scheme)
+				if scheme != "http" && scheme != "https" {
+					return nil, fmt.Errorf("asset %s has unsupported URL scheme %q (must be http or https)", id, parsedURL.Scheme)
 				}
 			case "file":
 				if pathStr, ok := source["filePath"].(string); !ok || pathStr == "" {
@@ -293,4 +305,3 @@ func (e *SlideGeneratorExecutor) normalizeDatasets(allDatasets []any) (map[strin
 
 	return map[string]any{"datasets": normalizedDatasets}, nil
 }
-

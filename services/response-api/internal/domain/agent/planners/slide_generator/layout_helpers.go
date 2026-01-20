@@ -230,4 +230,3 @@ func validateImageAssetRefs(slide map[string]any, assetIDs map[string]bool) stri
 	}
 	return ""
 }
-
