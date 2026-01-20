@@ -12,7 +12,6 @@ import { CreateProject } from "@/components/projects/create-project";
 import { SearchDialog } from "@/components/search/search-dialog";
 import { useAuth } from "@/stores/auth-store";
 import { useRightSidebarStore } from "@/stores/right-sidebar-store";
-import { useCapabilities } from "@/stores/capabilities-store";
 import { ThemeProvider } from "@/components/themes/theme-provider";
 import { Toaster } from "@janhq/interfaces/sonner";
 import {
