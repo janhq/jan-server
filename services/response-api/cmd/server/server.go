@@ -14,6 +14,7 @@ import (
 	"jan-server/services/response-api/internal/config"
 	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/agent/planners"
+	slide_generator "jan-server/services/response-api/internal/domain/agent/planners/slide_generator"
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/llm"
 	"jan-server/services/response-api/internal/domain/plan"
@@ -142,7 +143,7 @@ func main() {
 	}
 
 	// Register slide generator planner
-	slideGeneratorPlanner := planners.NewSlideGeneratorPlanner(planService, artifactService)
+	slideGeneratorPlanner := slide_generator.NewSlideGeneratorPlanner(planService, artifactService)
 	if err := agentRegistry.RegisterPlanner(slideGeneratorPlanner); err != nil {
 		log.Warn().Err(err).Msg("failed to register slide generator planner")
 	}
@@ -185,7 +186,7 @@ func main() {
 			skill.SkillTypeSpreadsheets: cfg.SkillSpreadsheetsEnabled,
 		},
 	)
-	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient, skillExecutor, cfg)
+	slideGeneratorExecutor := slide_generator.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient, skillExecutor, cfg)
 	routingExecutor := planners.NewRoutingExecutor(deepResearchExecutor, slideGeneratorExecutor)
 	if err := agentRegistry.RegisterExecutor(plan.ActionTypeToolCall, routingExecutor); err != nil {
 		log.Warn().Err(err).Msg("failed to register tool call executor")

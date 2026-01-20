@@ -1,5 +1,5 @@
-// Package planners contains agent planner implementations.
-package planners
+// Package slide_generator contains slide generation planner/executor implementations.
+package slide_generator
 
 import (
 	"context"
@@ -21,7 +21,8 @@ import (
 	sliderenderer "jan-server/services/response-api/assets/slide_renderer"
 	"jan-server/services/response-api/internal/config"
 	"jan-server/services/response-api/internal/domain/agent"
-	"jan-server/services/response-api/internal/domain/agent/schemas"
+	"jan-server/services/response-api/internal/domain/agent/planners"
+	"jan-server/services/response-api/internal/domain/agent/planners/slide_generator/schemas"
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/plan"
 	"jan-server/services/response-api/internal/domain/status"
@@ -242,6 +243,7 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		"tool":        "image_search",
 		"description": "Search for relevant images to illustrate the presentation slides",
 		"q":           request.UserMessage,
+		"num":         8,
 	})
 	_, err = p.planService.CreateStep(ctx, outlineTask.ID, plan.CreateStepParams{
 		Sequence:    2,
@@ -566,11 +568,11 @@ var _ agent.Planner = (*SlideGeneratorPlanner)(nil)
 
 // SlideGeneratorExecutor executes steps for slide generation plans.
 type SlideGeneratorExecutor struct {
-	mcpClient          MCPClient
-	llmProvider        LLMProvider
+	mcpClient          planners.MCPClient
+	llmProvider        planners.LLMProvider
 	artifactService    artifact.Service
 	mediaClient        *media.Client
-	skillExecutor      *SkillExecutor
+	skillExecutor      *planners.SkillExecutor
 	aioClient          *agent.AIOSandboxClient // Direct AIO sandbox client (bypasses MCP)
 	aioBaseURL         string
 	rendererScriptPath string
@@ -585,7 +587,7 @@ type llmProviderWithTemperature interface {
 }
 
 // NewSlideGeneratorExecutor creates a new slide generator executor.
-func NewSlideGeneratorExecutor(mcpClient MCPClient, llmProvider LLMProvider, artifactService artifact.Service, mediaClient *media.Client, skillExecutor *SkillExecutor, cfg *config.Config) *SlideGeneratorExecutor {
+func NewSlideGeneratorExecutor(mcpClient planners.MCPClient, llmProvider planners.LLMProvider, artifactService artifact.Service, mediaClient *media.Client, skillExecutor *planners.SkillExecutor, cfg *config.Config) *SlideGeneratorExecutor {
 	aioBaseURL := ""
 	rendererScriptPath := ""
 	rendererEnabled := true
@@ -879,7 +881,7 @@ func (e *SlideGeneratorExecutor) executeReasoning(ctx context.Context, params ma
 func (e *SlideGeneratorExecutor) executeDataBank(ctx context.Context, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
 	log.Debug().Msg("[slide_generator] executeDataBank started")
 	contextData := e.buildAccumulatedContext(input)
-	assets := e.collectImageAssets(input)
+	assets := limitImageAssets(e.collectImageAssets(input), 4)
 	assetsJSON, _ := json.Marshal(assets)
 
 	systemPrompt := dataBankPrompt
@@ -973,7 +975,7 @@ func (e *SlideGeneratorExecutor) executePlanAndTemplate(ctx context.Context, par
 	}
 	theme, _ := config["theme"].(string)
 
-	assets := e.collectImageAssets(input)
+	assets := limitImageAssets(e.collectImageAssets(input), 4)
 	assetsJSON, _ := json.Marshal(assets)
 	dataBankText := e.collectDataBankText(input)
 	systemPrompt := fmt.Sprintf("%s\n%s", sizeGuardPrompt, plannerAndTemplatePrompt)
@@ -1153,7 +1155,7 @@ func (e *SlideGeneratorExecutor) executeSingleSlide(ctx context.Context, params 
 	planEntry := &planAndTemplate.Plan.Slides[arrayIndex]
 
 	contextData := e.buildAccumulatedContext(input)
-	assets := e.collectImageAssets(input)
+	assets := limitImageAssets(e.collectImageAssets(input), 4)
 	assetsJSON, _ := json.Marshal(assets)
 	dataBankText := e.collectDataBankText(input)
 	templateJSON, _ := json.Marshal(planAndTemplate.Template)
@@ -1817,7 +1819,7 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 	isSlideArtifact := artifactType == "slides" || format == "pptx" || format == "pdf"
 
 	if isSlideArtifact && input.PreviousOutput != nil {
-		var skillOutput SkillExecuteOutput
+		var skillOutput planners.SkillExecuteOutput
 		if err := json.Unmarshal(input.PreviousOutput, &skillOutput); err == nil && skillOutput.Success {
 			retentionPolicy, _ := config["retention_policy"].(string)
 			if retentionPolicy == "" {
@@ -1952,7 +1954,7 @@ func (e *SlideGeneratorExecutor) executeArtifactCreation(ctx context.Context, st
 	}, nil
 }
 
-func (e *SlideGeneratorExecutor) uploadSkillArtifact(ctx context.Context, step *plan.Step, input agent.ExecutionInput, skillOutput SkillExecuteOutput, artifactType string, retentionPolicy string) (*agent.ExecutionResult, error) {
+func (e *SlideGeneratorExecutor) uploadSkillArtifact(ctx context.Context, step *plan.Step, input agent.ExecutionInput, skillOutput planners.SkillExecuteOutput, artifactType string, retentionPolicy string) (*agent.ExecutionResult, error) {
 	log.Debug().
 		Str("artifact_type", artifactType).
 		Str("filename", skillOutput.FileName).
@@ -3045,6 +3047,13 @@ func (e *SlideGeneratorExecutor) collectDataBankDatasets(input agent.ExecutionIn
 		}
 	}
 	return nil
+}
+
+func limitImageAssets(assets []map[string]any, max int) []map[string]any {
+	if max <= 0 || len(assets) <= max {
+		return assets
+	}
+	return assets[:max]
 }
 
 func (e *SlideGeneratorExecutor) collectImageAssets(input agent.ExecutionInput) []map[string]any {

@@ -1,4 +1,4 @@
-package planners
+package slide_generator
 
 import "fmt"
 
