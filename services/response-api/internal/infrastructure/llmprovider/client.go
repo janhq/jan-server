@@ -147,6 +147,7 @@ func convertToAPIRequest(ctx context.Context, req llm.ChatCompletionRequest) map
 func setAuthHeaders(ctx context.Context, setHeader func(string, string)) {
 	// Mark request as coming from response-api so downstream services can skip tracking
 	setHeader("X-JAN-SRC", "RESPONSE")
+	setHeader("X-REQUEST-SRC", "Response API")
 
 	token := strings.TrimSpace(llm.AuthTokenFromContext(ctx))
 	if token == "" {

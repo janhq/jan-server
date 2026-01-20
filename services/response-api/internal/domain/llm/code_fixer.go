@@ -65,7 +65,7 @@ Provide the fixed code:`, language, "```"+language+"\n", code, "```", errorMsg)
 			{Role: "user", Content: userPrompt},
 		},
 		Temperature: floatPtr(0.2), // Low temperature for more deterministic fixes
-		MaxTokens:   intPtr(4096),
+		MaxTokens:   intPtr(40000),
 		Stream:      false,
 	}
 
@@ -109,7 +109,7 @@ func (cf *CodeFixer) GenerateWithModel(ctx context.Context, prompt string, model
 			{Role: "user", Content: prompt},
 		},
 		Temperature: floatPtr(0.7), // Moderate temperature for balanced creativity
-		MaxTokens:   intPtr(4096),
+		MaxTokens:   intPtr(40000),
 		Stream:      false,
 	}
 
@@ -143,7 +143,7 @@ func (cf *CodeFixer) GenerateWithModelWithMaxTokens(ctx context.Context, prompt 
 			{Role: "user", Content: prompt},
 		},
 		Temperature: floatPtr(0.7),
-		MaxTokens:   resolveMaxTokens(4096, maxTokens),
+		MaxTokens:   resolveMaxTokens(40000, maxTokens),
 		Stream:      false,
 	}
 
@@ -176,7 +176,7 @@ func (cf *CodeFixer) GenerateWithModelWithTemperature(ctx context.Context, promp
 			{Role: "user", Content: prompt},
 		},
 		Temperature: floatPtr(temperature),
-		MaxTokens:   intPtr(4096),
+		MaxTokens:   intPtr(40000),
 		Stream:      false,
 	}
 
@@ -210,7 +210,7 @@ func (cf *CodeFixer) GenerateWithModelWithTemperatureAndMaxTokens(ctx context.Co
 			{Role: "user", Content: prompt},
 		},
 		Temperature: floatPtr(temperature),
-		MaxTokens:   resolveMaxTokens(4096, maxTokens),
+		MaxTokens:   resolveMaxTokens(40000, maxTokens),
 		Stream:      false,
 	}
 

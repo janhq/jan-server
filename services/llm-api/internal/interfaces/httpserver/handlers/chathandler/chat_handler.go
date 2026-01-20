@@ -104,6 +104,11 @@ func (h *ChatHandler) CreateChatCompletion(
 	var projectInstruction string
 	var err error
 	newMessages := append([]openai.ChatCompletionMessage(nil), request.Messages...)
+	skipPromptCustomization := shouldBypassPromptCustomization(reqCtx)
+
+	if skipPromptCustomization {
+		observability.AddSpanEvent(ctx, "bypassing_prompt_customization")
+	}
 
 	// Extract referrer from context or query parameters
 	referrer := strings.TrimSpace(reqCtx.GetString(ConversationReferrerContextKey))
@@ -133,7 +138,9 @@ func (h *ChatHandler) CreateChatCompletion(
 		request.Messages = h.prependConversationItems(conv, request.Messages)
 
 		// Load project instruction for this conversation (if any)
-		projectInstruction = h.getProjectInstruction(ctx, userID, conv)
+		if !skipPromptCustomization {
+			projectInstruction = h.getProjectInstruction(ctx, userID, conv)
+		}
 	}
 	// If no conversation.id exists, bypass as non-conversation completion
 
@@ -145,23 +152,26 @@ func (h *ChatHandler) CreateChatCompletion(
 	}
 
 	// Load memory context (best-effort) when a conversation is present
-	loadedMemory := h.collectPromptMemory(conv, reqCtx)
-
-	// Load user settings once for prompt orchestration and m	emory (best-effort)
+	var loadedMemory []string
 	var userSettings *usersettings.UserSettings
-	if h.userSettingsService != nil {
-		userSettings, err = h.userSettingsService.GetOrCreateSettings(ctx, userID)
-		if err != nil {
-			userSettings = nil
-		}
-	}
+	if !skipPromptCustomization {
+		loadedMemory = h.collectPromptMemory(conv, reqCtx)
 
-	// Load memory using memory_handler (respects MEMORY_ENABLED and user settings)
-	// Memory injection is controlled by PROMPT_ORCHESTRATION_MEMORY in the prompt processor
-	if h.memoryHandler != nil && conversationID != "" {
-		memoryContext, memErr := h.memoryHandler.LoadMemoryContext(ctx, userID, conversationID, conv, newMessages, userSettings)
-		if memErr == nil && len(memoryContext) > 0 {
-			loadedMemory = append(loadedMemory, memoryContext...)
+		// Load user settings once for prompt orchestration and memory (best-effort)
+		if h.userSettingsService != nil {
+			userSettings, err = h.userSettingsService.GetOrCreateSettings(ctx, userID)
+			if err != nil {
+				userSettings = nil
+			}
+		}
+
+		// Load memory using memory_handler (respects MEMORY_ENABLED and user settings)
+		// Memory injection is controlled by PROMPT_ORCHESTRATION_MEMORY in the prompt processor
+		if h.memoryHandler != nil && conversationID != "" {
+			memoryContext, memErr := h.memoryHandler.LoadMemoryContext(ctx, userID, conversationID, conv, newMessages, userSettings)
+			if memErr == nil && len(memoryContext) > 0 {
+				loadedMemory = append(loadedMemory, memoryContext...)
+			}
 		}
 	}
 
@@ -227,12 +237,12 @@ func (h *ChatHandler) CreateChatCompletion(
 	}
 
 	// Ensure project instruction is the first system message when available
-	if projectInstruction != "" {
+	if projectInstruction != "" && !skipPromptCustomization {
 		request.Messages = prompt.PrependProjectInstruction(request.Messages, projectInstruction)
 	}
 
 	// Apply prompt orchestration (if enabled)
-	if h.promptProcessor != nil {
+	if h.promptProcessor != nil && !skipPromptCustomization {
 		observability.AddSpanEvent(ctx, "processing_prompts")
 
 		preferences := make(map[string]interface{})
@@ -1629,6 +1639,19 @@ func (h *ChatHandler) writeSSEData(reqCtx *gin.Context, data string) error {
 	}
 	reqCtx.Writer.Flush()
 	return nil
+}
+
+func shouldBypassPromptCustomization(reqCtx *gin.Context) bool {
+	if reqCtx == nil {
+		return false
+	}
+	if src := strings.TrimSpace(reqCtx.GetHeader("X-REQUEST-SRC")); strings.EqualFold(src, "Response API") {
+		return true
+	}
+	if src := strings.TrimSpace(reqCtx.GetHeader("X-JAN-SRC")); strings.EqualFold(src, "RESPONSE") {
+		return true
+	}
+	return false
 }
 
 // min returns the minimum of two integers

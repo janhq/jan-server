@@ -85,8 +85,32 @@ func ExecuteSingleSlide(ctx context.Context, deps ExecutorDeps, params map[strin
 	// Reduce prompt size: avoid sending the full template object. Provide only the
 	// locked layout id, its slot ids, and a slim theme digest.
 	suggestedLayout := strings.TrimSpace(planEntry.SuggestedLayout)
+
+	// DEFENSIVE LAYER 0: Ensure suggestedLayout exists in template (fallback safety)
+	// If template was generated without this layout, add it now to prevent validation failures
+	if suggestedLayout != "" && deps.TemplateLayoutIDs != nil {
+		layoutIDs := deps.TemplateLayoutIDs(planAndTemplate.Template.Layouts)
+		if !layoutIDs[suggestedLayout] {
+			log.Warn().
+				Str("missing_layout", suggestedLayout).
+				Int("slide_index", slideIndex).
+				Msg("[slide_generator] suggestedLayout missing from template, adding fallback layout")
+
+			// Add the missing layout to template
+			if layouts, ok := planAndTemplate.Template.Layouts.([]any); ok {
+				fallbackLayout := createFallbackLayout(suggestedLayout)
+				planAndTemplate.Template.Layouts = append(layouts, fallbackLayout)
+			}
+		}
+	}
+
 	slotIDs := extractLayoutSlotIDs(planAndTemplate.Template.Layouts, suggestedLayout)
 	componentIDs := extractComponentIDs(planAndTemplate.Template.Components)
+
+	// DEFENSIVE LAYER 2: Extract available layout IDs for prompt injection
+	availableLayoutIDs := schemas.ExtractLayoutIDsFromTemplate(planAndTemplate.Template.Layouts)
+	layoutIDsPrompt := schemas.FormatAvailableLayoutsForPrompt(availableLayoutIDs)
+
 	lockedLayoutJSON, _ := json.Marshal(map[string]any{
 		"layoutId": suggestedLayout,
 		"slotIds":  slotIDs,
@@ -97,7 +121,7 @@ func ExecuteSingleSlide(ctx context.Context, deps ExecutorDeps, params map[strin
 
 	systemPrompt := slideWriterPrompt(slideIndex)
 	userPrompt := fmt.Sprintf(
-		"BRIEF:\n%s\n\nLOCKED_LAYOUT (use this exact layoutId + slotIds):\n%s\n\nAVAILABLE_COMPONENT_IDS (useComponents):\n%s\n\nTHEME_DIGEST:\n%s\n\nPLAN ENTRY (slide %d):\n%s\n\nASSETS AVAILABLE:\n%s\n\nDATA BANK:\n%s",
+		"BRIEF:\n%s\n\nLOCKED_LAYOUT (use this exact layoutId + slotIds):\n%s\n\nAVAILABLE_COMPONENT_IDS (useComponents):\n%s\n\nTHEME_DIGEST:\n%s\n\nPLAN ENTRY (slide %d):\n%s\n\nASSETS AVAILABLE:\n%s\n\nDATA BANK:\n%s%s",
 		contextData,
 		string(lockedLayoutJSON),
 		string(componentIDsJSON),
@@ -106,6 +130,7 @@ func ExecuteSingleSlide(ctx context.Context, deps ExecutorDeps, params map[strin
 		string(planEntryJSON),
 		string(assetsJSON),
 		dataBankText,
+		layoutIDsPrompt, // DEFENSIVE LAYER 2: Include available layouts in prompt
 	)
 
 	model := getModelFromContext(input)
@@ -128,7 +153,9 @@ func ExecuteSingleSlide(ctx context.Context, deps ExecutorDeps, params map[strin
 		}, nil
 	}
 
+	// DEFENSIVE LAYER 1: Inject available layout IDs into schema as enum
 	schema := prepareSlideSchema(schemas.SlideGenResultSchema, suggestedLayout, slotIDs)
+	schema = schemas.InjectLayoutIDsIntoSchema(schema, availableLayoutIDs)
 
 	var lastErr error
 	var slideResult schemas.SlideGenResult
@@ -236,15 +263,35 @@ func ExecuteSingleSlide(ctx context.Context, deps ExecutorDeps, params map[strin
 			layoutID = deps.SlideLayoutID(slideResult.Slide)
 		}
 		if layoutID == "" || !layoutIDs[layoutID] {
-			lastErr = fmt.Errorf("layoutId %q not found in template layouts", layoutID)
-			retryErrors = append(retryErrors, fmt.Sprintf("attempt %d missing layoutId %q", attempt, layoutID))
-			log.Warn().
-				Err(lastErr).
-				Int("attempt", attempt).
-				Int("slide_index", slideIndex).
-				Str("layout_id", layoutID).
-				Msg("[slide_generator] slide layout missing from template")
-			continue
+			// DEFENSIVE LAYER 3: Attempt to map invalid layoutID to closest match
+			if layoutID != "" && len(availableLayoutIDs) > 0 {
+				closestLayout := schemas.FindClosestLayoutID(layoutID, availableLayoutIDs)
+				log.Warn().
+					Str("invalid_layout", layoutID).
+					Str("closest_match", closestLayout).
+					Int("attempt", attempt).
+					Int("slide_index", slideIndex).
+					Msg("[slide_generator] invalid layoutId detected, attempting auto-fix")
+
+				// Update the slide with the corrected layoutId
+				if slideMap, ok := slideResult.Slide.(map[string]any); ok {
+					slideMap["layoutId"] = closestLayout
+					layoutID = closestLayout
+				}
+			}
+
+			// Check again after potential fix
+			if layoutID == "" || !layoutIDs[layoutID] {
+				lastErr = fmt.Errorf("layoutId %q not found in template layouts", layoutID)
+				retryErrors = append(retryErrors, fmt.Sprintf("attempt %d missing layoutId %q", attempt, layoutID))
+				log.Warn().
+					Err(lastErr).
+					Int("attempt", attempt).
+					Int("slide_index", slideIndex).
+					Str("layout_id", layoutID).
+					Msg("[slide_generator] slide layout missing from template")
+				continue
+			}
 		}
 
 		assetIDs := map[string]bool{}
@@ -453,6 +500,44 @@ func calculateRichnessScore(slide map[string]any, layoutID string) int {
 	}
 
 	return score
+}
+
+// createFallbackLayout generates a minimal layout structure for missing layouts
+// to prevent validation failures when template doesn't include plan's suggestedLayout
+func createFallbackLayout(layoutID string) map[string]any {
+	top := 36.0
+	bottom := 36.0
+	headerSlot := map[string]any{"id": "header", "grid": map[string]any{"col": 1, "span": 9}, "y": top, "h": 20.0}
+	footerSlot := map[string]any{"id": "footer", "grid": map[string]any{"col": 1, "span": 12}, "y": 540.0 - bottom - 18.0, "h": 18.0}
+	titleSlot := map[string]any{"id": "title", "grid": map[string]any{"col": 1, "span": 12}, "y": 72.0, "h": 48.0}
+	bodySlot := map[string]any{"id": "body", "grid": map[string]any{"col": 1, "span": 12}, "y": 140.0, "h": 320.0}
+
+	var slots []any
+	switch layoutID {
+	case "TITLE_AND_BULLETS", "CHART", "TABLE", "QUOTE":
+		slots = []any{headerSlot, footerSlot, titleSlot, bodySlot}
+	case "TITLE_TWO_COLUMNS":
+		slots = []any{
+			headerSlot, footerSlot, titleSlot,
+			map[string]any{"id": "left", "grid": map[string]any{"col": 1, "span": 6}, "y": 140.0, "h": 320.0},
+			map[string]any{"id": "right", "grid": map[string]any{"col": 7, "span": 6}, "y": 140.0, "h": 320.0},
+		}
+	case "TITLE_IMAGE":
+		slots = []any{
+			headerSlot, footerSlot, titleSlot,
+			map[string]any{"id": "body", "grid": map[string]any{"col": 1, "span": 8}, "y": 140.0, "h": 320.0},
+			map[string]any{"id": "image", "grid": map[string]any{"col": 9, "span": 4}, "y": 140.0, "h": 320.0},
+		}
+	default:
+		// Generic fallback with title and body
+		slots = []any{headerSlot, footerSlot, titleSlot, bodySlot}
+	}
+
+	return map[string]any{
+		"id":    layoutID,
+		"name":  layoutID,
+		"slots": slots,
+	}
 }
 
 // getMinRichnessScore returns the minimum richness score for a layout type

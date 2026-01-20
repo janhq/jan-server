@@ -7,6 +7,7 @@ import (
 	"jan-server/services/response-api/internal/config"
 	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/agent/planners"
+	"jan-server/services/response-api/internal/domain/agent/planners/slide_generator/schemas"
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/llm"
 	"jan-server/services/response-api/internal/domain/plan"
@@ -128,14 +129,18 @@ func (e *SlideGeneratorExecutor) generateWithSystemPromptWithMaxTokens(ctx conte
 
 func (e *SlideGeneratorExecutor) generateWithStructuredOutput(ctx context.Context, systemPrompt string, userPrompt string, model string, schema map[string]any) (string, error) {
 	if provider, ok := e.llmProvider.(llmProviderWithTemperature); ok {
-		return provider.GenerateWithStructuredOutputWithTemperature(ctx, systemPrompt, userPrompt, model, schema, e.temperature)
+		// Use schema-specific temperature for optimal results
+		temp := schemas.GetRecommendedTemperature(schema)
+		return provider.GenerateWithStructuredOutputWithTemperature(ctx, systemPrompt, userPrompt, model, schema, temp)
 	}
 	return e.llmProvider.GenerateWithStructuredOutput(ctx, systemPrompt, userPrompt, model, schema)
 }
 
 func (e *SlideGeneratorExecutor) generateWithStructuredOutputWithMaxTokens(ctx context.Context, systemPrompt string, userPrompt string, model string, schema map[string]any, maxTokens *int) (string, error) {
 	if provider, ok := e.llmProvider.(llmProviderWithTemperatureAndMaxTokens); ok {
-		return provider.GenerateWithStructuredOutputWithTemperatureAndMaxTokens(ctx, systemPrompt, userPrompt, model, schema, e.temperature, maxTokens)
+		// Use schema-specific temperature for optimal results
+		temp := schemas.GetRecommendedTemperature(schema)
+		return provider.GenerateWithStructuredOutputWithTemperatureAndMaxTokens(ctx, systemPrompt, userPrompt, model, schema, temp, maxTokens)
 	}
 	if provider, ok := e.llmProvider.(llmProviderWithMaxTokens); ok {
 		return provider.GenerateWithStructuredOutputWithMaxTokens(ctx, systemPrompt, userPrompt, model, schema, maxTokens)
@@ -147,7 +152,9 @@ func (e *SlideGeneratorExecutor) generateWithStructuredOutputWithMaxTokens(ctx c
 func (e *SlideGeneratorExecutor) generateWithStructuredOutputWithMaxTokensAndUsage(ctx context.Context, systemPrompt string, userPrompt string, model string, schema map[string]any, maxTokens *int) (*llm.LLMResult, error) {
 	// Try the usage-returning interface first
 	if provider, ok := e.llmProvider.(llmProviderWithUsage); ok {
-		return provider.GenerateWithStructuredOutputWithTemperatureAndMaxTokensAndUsage(ctx, systemPrompt, userPrompt, model, schema, e.temperature, maxTokens)
+		// Use schema-specific temperature for optimal results
+		temp := schemas.GetRecommendedTemperature(schema)
+		return provider.GenerateWithStructuredOutputWithTemperatureAndMaxTokensAndUsage(ctx, systemPrompt, userPrompt, model, schema, temp, maxTokens)
 	}
 	// Fallback to non-usage returning call
 	content, err := e.generateWithStructuredOutputWithMaxTokens(ctx, systemPrompt, userPrompt, model, schema, maxTokens)
