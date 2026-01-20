@@ -290,6 +290,13 @@ export function extractArtifactsFromTasks(
           const downloadUrl = artifact.download_url as string;
           const resolvedUrl = resolveArtifactUrl(downloadUrl);
 
+          // Extract slides images if available
+          const rawSlidesImages = artifact.slides_images as Array<Record<string, unknown>> | undefined;
+          const slidesImages = rawSlidesImages?.map((img, idx) => ({
+            id: (img.id as string) || String(idx + 1),
+            thumb: img.thumb as string || img.url as string || "",
+          })).filter(img => img.thumb);
+
           artifacts.push({
             id: id || "",
             filename: artifact.filename as string || "artifact",
@@ -298,6 +305,7 @@ export function extractArtifactsFromTasks(
             size: artifact.size as number || 0,
             downloadUrl: resolvedUrl || "",
             createdAt: artifact.created_at as string,
+            slidesImages: slidesImages && slidesImages.length > 0 ? slidesImages : undefined,
           });
         }
       }

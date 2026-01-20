@@ -3,6 +3,11 @@ import { persist, createJSONStorage } from "zustand/middleware";
 
 type SidebarVariant = "sidebar" | "floating";
 
+export type SlideImage = {
+  id: string;
+  thumb: string;
+};
+
 export type ArtifactItem = {
   id: string;
   filename: string;
@@ -11,6 +16,7 @@ export type ArtifactItem = {
   size: number;
   downloadUrl: string;
   createdAt?: string;
+  slidesImages?: SlideImage[];
 };
 
 export type SearchResultItem = {

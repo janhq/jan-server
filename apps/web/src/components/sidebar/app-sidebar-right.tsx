@@ -1,4 +1,5 @@
 import { memo, useState } from "react";
+
 import {
   useRightSidebarStore,
   type SearchResultItem,
@@ -13,30 +14,13 @@ import {
   ExternalLinkIcon,
   LinkIcon,
   DownloadIcon,
-  FileIcon,
-  PresentationIcon,
-  FileTextIcon,
+  MaximizeIcon,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import DocViewer, { DocViewerRenderers } from "react-doc-viewer";
+import { cn, getArtifactIcon, formatFileSize } from "@/lib/utils";
+import { Favicon } from "@/components/misc/favicon";
+import { SlideViewer } from "@/components/misc/slide-viewer";
 
-const formatFileSize = (bytes: number): string => {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-};
 
-const getArtifactIcon = (contentType: string, mimeType: string) => {
-  if (contentType === "slides" || mimeType.includes("presentation")) {
-    return PresentationIcon;
-  }
-  if (contentType === "document" || mimeType.includes("document") || mimeType.includes("pdf")) {
-    return FileTextIcon;
-  }
-  return FileIcon;
-};
 
 // Download-only card for Artifacts section
 const ArtifactCard = ({ artifact }: { artifact: ArtifactItem }) => {
@@ -44,9 +28,7 @@ const ArtifactCard = ({ artifact }: { artifact: ArtifactItem }) => {
     if (!artifact.downloadUrl) return;
     window.open(artifact.downloadUrl, "_blank");
   };
-
   const Icon = getArtifactIcon(artifact.contentType, artifact.mimeType);
-
   return (
     <div className="p-3 hover:bg-secondary/50 transition-colors">
       <div className="flex items-start gap-3">
@@ -78,48 +60,64 @@ const ArtifactCard = ({ artifact }: { artifact: ArtifactItem }) => {
   );
 };
 
+// Dummy slide images for testing
+const DUMMY_SLIDES_IMAGES = [
+  { id: "1", thumb: "https://files.manuscdn.com/slides_screenshots/310519663212496132/rZfjoEjb3h1vrw6L90coS5/b9445299-1de3-4f3b-b736-c7542a4eea40/e37ecaef-605e-42f4-8663-9a42633dcb23_11.png" },
+  { id: "2", thumb: "https://files.manuscdn.com/slides_screenshots/310519663212496132/rZfjoEjb3h1vrw6L90coS5/b9445299-1de3-4f3b-b736-c7542a4eea40/759a6306-915d-4da0-b5dd-7f3e71b916d1_7.png"},
+  { id: "3", thumb: "https://files.manuscdn.com/slides_screenshots/310519663212496132/rZfjoEjb3h1vrw6L90coS5/b9445299-1de3-4f3b-b736-c7542a4eea40/3650de89-7890-41eb-a84c-ebb356b4d01e_6.png", },
+  { id: "4", thumb: "https://files.manuscdn.com/slides_screenshots/310519663212496132/rZfjoEjb3h1vrw6L90coS5/b9445299-1de3-4f3b-b736-c7542a4eea40/1c5440cd-af7a-4aeb-b9aa-60d0b5e9792c_10.png", },
+  { id: "5", thumb: "https://files.manuscdn.com/slides_screenshots/310519663212496132/rZfjoEjb3h1vrw6L90coS5/b9445299-1de3-4f3b-b736-c7542a4eea40/8969efd3-cd35-4063-bad3-9307256d3953_8.png"},
+  { id: "6", thumb: "https://files.manuscdn.com/slides_screenshots/310519663212496132/rZfjoEjb3h1vrw6L90coS5/b9445299-1de3-4f3b-b736-c7542a4eea40/4ad2c86a-e431-46e5-adc6-0ef9af243fd8_4.png"},
+  { id: "7", thumb: "https://files.manuscdn.com/slides_screenshots/310519663212496132/rZfjoEjb3h1vrw6L90coS5/b9445299-1de3-4f3b-b736-c7542a4eea40/df1b06d2-9f73-4769-bbaa-a4b4e49300ed_3.png"},
+  { id: "8", thumb: "https://files.manuscdn.com/slides_screenshots/310519663212496132/rZfjoEjb3h1vrw6L90coS5/b9445299-1de3-4f3b-b736-c7542a4eea40/28cb1382-3f03-45f5-8d75-9a4a4d8263a5_1.png"},
+];
+
+
 // Preview component for bottom Panel content section
 const ArtifactPreview = ({ artifact }: { artifact: ArtifactItem }) => {
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
 
+  // Use dummy data if no slidesImages available (for testing)
+  const slides = artifact.slidesImages?.length ? artifact.slidesImages : DUMMY_SLIDES_IMAGES;
+
+  if (artifact.contentType !== "slides" || slides.length === 0) {
+    return null;
+  }
+
+  const currentSlide = slides[0];
 
   return (
-    <div className="h-full flex flex-col">
-      <DocViewer
-        documents={[{ uri: artifact.downloadUrl, fileType: artifact.mimeType }]}
-        pluginRenderers={DocViewerRenderers}
-        config={{
-          header: {
-            disableHeader: true,
-            disableFileName: true,
-          },
-        }}
-        style={{ flex: 1, backgroundColor: "transparent" }}
-      />
+    <>
+      <div className="h-full flex flex-col">
+        {/* Slide image - clickable to open full viewer */}
+        <div className="flex-1 flex items-center justify-center p-3">
+          <div
+            className="relative w-full rounded-lg border overflow-hidden bg-muted/50 cursor-pointer group"
+            onClick={() => setIsViewerOpen(true)}
+          >
+            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+              <MaximizeIcon className="size-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
+            <img
+              src={currentSlide.thumb}
+              alt={`Slide ${currentSlide.id}`}
+              className="w-full h-auto object-contain"
+            />
+          </div>
+        </div>
+      </div>
 
-    </div>
+      {/* Full slide viewer modal */}
+      {isViewerOpen && (
+        <SlideViewer
+          slides={slides}
+          initialIndex={0}
+          title={artifact.filename}
+          onClose={() => setIsViewerOpen(false)}
+        />
+      )}
+    </>
   );
-};
-
-const Favicon = ({ url }: { url: string }) => {
-  const [error, setError] = useState(false);
-  if (error) {
-    return <LinkIcon className="size-4 shrink-0 mt-0.5 text-muted-foreground" />;
-  }
-  try {
-    const domain = new URL(url).hostname;
-    const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
-
-    return (
-      <img
-        src={faviconUrl}
-        alt=""
-        className="size-4 shrink-0 mt-0.5 rounded-full"
-        onError={() => setError(true)}
-      />
-    );
-  } catch {
-    return <LinkIcon className="size-4 shrink-0 mt-0.5 text-muted-foreground" />;
-  }
 };
 
 const SearchResult = ({
@@ -221,14 +219,7 @@ const SearchResult = ({
 
   if (result.type === "artifact" && result.artifact) {
     return (
-      <div>
-        {/* <ArtifactCard artifact={result.artifact} /> */}
-        <div className="p-3">
-          <div className="rounded-lg border bg-muted/50 overflow-hidden" style={{ height: 400 }}>
-            <ArtifactPreview artifact={result.artifact} />
-          </div>
-        </div>
-      </div>
+    <ArtifactPreview artifact={result.artifact} />
     );
   }
 
@@ -366,7 +357,8 @@ export const AppSidebarRight = memo(function AppSidebarRight() {
                 </div>
                 {/* Artifact Preview */}
                 <div className="flex-1">
-                  <ArtifactPreview artifact={artifacts[0]} />
+                  {/* <ArtifactPreview artifact={artifacts[0]} /> */}
+                  <p>Lorem ipsum dolor sit amet consectetur adipisicing elit. Architecto, vitae at labore nesciunt in quo ipsum porro id exercitationem odio impedit vel harum earum possimus tempore error minima illum voluptate.</p>
                 </div>
               </>
             ) : (

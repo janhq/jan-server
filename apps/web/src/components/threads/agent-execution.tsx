@@ -178,6 +178,12 @@ const AgentExecutionPanel = ({ toolState, responseId }: AgentExecutionPanelProps
                 </p>
               )}
               {task.steps?.map((step: StepResponse, stepIndex: number) => (
+                taskSteps[stepIndex]?.results.length === 0 ? 
+                  <>
+                    <AgentExecutionContent className="text-muted-foreground">
+                      {getStepLabel(step)}
+                    </AgentExecutionContent>
+                  </> : (
                 <AgentExecutionStep
                   key={step.id}
                   icon={getToolIcon(getStepToolName(step))}
@@ -186,7 +192,7 @@ const AgentExecutionPanel = ({ toolState, responseId }: AgentExecutionPanelProps
                   searchResults={taskSteps[stepIndex]?.results || []}
                   onStepClick={() => handleStepClick(step.id)}
                 />
-              ))}
+              )))}
             </AgentExecutionContent>
           </AgentExecution>
         );
