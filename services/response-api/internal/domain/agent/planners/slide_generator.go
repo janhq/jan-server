@@ -234,6 +234,22 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 		return nil, err
 	}
 
+	// Add image search step after outline reasoning to find relevant images for slides
+	imageSearchParams, _ := json.Marshal(map[string]interface{}{
+		"tool":        "image_search",
+		"description": "Search for relevant images to illustrate the presentation slides",
+		"q":           request.UserMessage,
+	})
+	_, err = p.planService.CreateStep(ctx, outlineTask.ID, plan.CreateStepParams{
+		Sequence:    2,
+		Action:      plan.ActionTypeToolCall,
+		InputParams: imageSearchParams,
+		MaxRetries:  3,
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	taskSequence++
 
 	log.Debug().Int("task_sequence", taskSequence).Msg("[slide_generator] creating plan & template task")
@@ -502,7 +518,7 @@ func (p *SlideGeneratorPlanner) calculateEstimatedSteps(config SlideGeneratorCon
 		steps += 3
 	}
 
-	steps += 1 // outline
+	steps += 2 // outline (reasoning + image_search)
 	steps += 1 // plan & template
 	steps += config.NumSlides
 	steps += 1 // upload spec
@@ -755,7 +771,7 @@ func (e *SlideGeneratorExecutor) executeReasoning(ctx context.Context, params ma
 	description, _ := params["description"].(string)
 	contextData := e.buildAccumulatedContext(input)
 	prompt := fmt.Sprintf(
-		"Analyze and plan the slide structure. %s\n\nResearch findings:\n%s\n\nProvide a clear, concise outline for the presentation.\nReturn plain text only.",
+		"Analyze and plan the slide structure. %s\n\nResearch findings:\n%s\n\nExtract concrete data for any requested tables (column headers + row entries) and include them in the outline.\nProvide a clear, concise outline for the presentation.\nReturn plain text only.",
 		description,
 		contextData,
 	)
@@ -1080,6 +1096,30 @@ func (e *SlideGeneratorExecutor) executeSingleSlide(ctx context.Context, params 
 			continue
 		}
 
+		if suggestedLayout := strings.TrimSpace(planEntry.SuggestedLayout); suggestedLayout != "" {
+			layoutID := slideLayoutID(slideResult.Slide)
+			if layoutID != suggestedLayout {
+				lastErr = fmt.Errorf("layoutId %q does not match suggestedLayout %q", layoutID, suggestedLayout)
+				log.Warn().
+					Err(lastErr).
+					Int("attempt", attempt).
+					Int("slide_index", slideIndex).
+					Str("layout_id", layoutID).
+					Str("suggested_layout", suggestedLayout).
+					Msg("[slide_generator] slide layout mismatch")
+				continue
+			}
+			if suggestedLayout == "TABLE" && !slideHasElementType(slideResult.Slide, "table") {
+				lastErr = fmt.Errorf("missing table element for TABLE layout")
+				log.Warn().
+					Err(lastErr).
+					Int("attempt", attempt).
+					Int("slide_index", slideIndex).
+					Msg("[slide_generator] required table element missing")
+				continue
+			}
+		}
+
 		log.Info().
 			Int("attempt", attempt).
 			Int("slide_index", slideIndex).
@@ -1119,6 +1159,44 @@ func (e *SlideGeneratorExecutor) executeSingleSlide(ctx context.Context, params 
 		Status: status.StatusCompleted,
 		Output: outputBytes,
 	}, nil
+}
+
+func slideLayoutID(slide any) string {
+	if slide == nil {
+		return ""
+	}
+	slideMap, ok := slide.(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	if layoutID, ok := slideMap["layoutId"].(string); ok {
+		return strings.TrimSpace(layoutID)
+	}
+	return ""
+}
+
+func slideHasElementType(slide any, elementType string) bool {
+	if slide == nil {
+		return false
+	}
+	slideMap, ok := slide.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	rawElements, ok := slideMap["elements"].([]interface{})
+	if !ok {
+		return false
+	}
+	for _, raw := range rawElements {
+		el, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if t, ok := el["type"].(string); ok && t == elementType {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *SlideGeneratorExecutor) executeUploadSlideSpec(ctx context.Context, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
@@ -2050,6 +2128,37 @@ func (e *SlideGeneratorExecutor) buildToolArguments(toolName string, params map[
 		}
 		return map[string]interface{}{"q": query}, nil
 
+	case "image_search":
+		query := ""
+		if q, ok := params["q"].(string); ok && q != "" {
+			query = q
+		} else if q, ok := params["query"].(string); ok && q != "" {
+			query = q
+		} else if description != "" {
+			query = description
+		}
+
+		if query == "" {
+			return nil, fmt.Errorf("no image search query provided")
+		}
+
+		args := map[string]interface{}{"q": query}
+		// Optional: set number of results
+		if num, ok := params["num"].(float64); ok && num > 0 {
+			args["num"] = int(num)
+		} else {
+			args["num"] = 10 // Default to 10 images
+		}
+		// Optional: geographic location
+		if gl, ok := params["gl"].(string); ok && gl != "" {
+			args["gl"] = gl
+		}
+		// Optional: language
+		if hl, ok := params["hl"].(string); ok && hl != "" {
+			args["hl"] = hl
+		}
+		return args, nil
+
 	case "scrape":
 		urls := e.extractURLsFromPreviousOutput(input.PreviousOutput)
 		if len(urls) == 0 {
@@ -2140,6 +2249,7 @@ func extractURLsFromData(data map[string]interface{}) []string {
 func isNonCriticalToolForSlides(toolName string) bool {
 	nonCriticalTools := map[string]bool{
 		"google_search": true,
+		"image_search":  true,
 		"scrape":        true,
 	}
 	return nonCriticalTools[toolName]

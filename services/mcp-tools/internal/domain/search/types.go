@@ -82,3 +82,37 @@ type FetchWebpageResponse struct {
 	Status   string         `json:"status,omitempty"` // "success", "partial", or "failed"
 	Error    string         `json:"error,omitempty"`  // Error message if scrape failed
 }
+
+// ImageSearchRequest represents an image search query to Serper API
+type ImageSearchRequest struct {
+	Q           string  `json:"q"`
+	GL          *string `json:"gl,omitempty"`          // Region code (ISO 3166-1 alpha-2)
+	HL          *string `json:"hl,omitempty"`          // Language code (ISO 639-1)
+	Num         *int    `json:"num,omitempty"`         // Number of results (default: 10, max: 100)
+	Autocorrect *bool   `json:"autocorrect,omitempty"` // Enable autocorrect
+	OfflineMode *bool   `json:"offline_mode,omitempty"`
+}
+
+// ImageSearchResult represents a single image result from the search
+type ImageSearchResult struct {
+	Title           string `json:"title"`
+	ImageURL        string `json:"imageUrl"`
+	ImageWidth      int    `json:"imageWidth"`
+	ImageHeight     int    `json:"imageHeight"`
+	ThumbnailURL    string `json:"thumbnailUrl"`
+	ThumbnailWidth  int    `json:"thumbnailWidth,omitempty"`
+	ThumbnailHeight int    `json:"thumbnailHeight,omitempty"`
+	Source          string `json:"source"`
+	Domain          string `json:"domain"`
+	Link            string `json:"link"`
+	GoogleURL       string `json:"googleUrl,omitempty"`
+	Creator         string `json:"creator,omitempty"`
+	Credit          string `json:"credit,omitempty"`
+	Position        int    `json:"position"`
+}
+
+// ImageSearchResponse contains image search results from Serper API
+type ImageSearchResponse struct {
+	SearchParameters map[string]any      `json:"searchParameters"`
+	Images           []ImageSearchResult `json:"images"`
+}

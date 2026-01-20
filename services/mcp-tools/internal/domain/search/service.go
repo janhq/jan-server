@@ -6,6 +6,7 @@ import "context"
 type SearchClient interface {
 	Search(ctx context.Context, query SearchRequest) (*SearchResponse, error)
 	FetchWebpage(ctx context.Context, query FetchWebpageRequest) (*FetchWebpageResponse, error)
+	ImageSearch(ctx context.Context, query ImageSearchRequest) (*ImageSearchResponse, error)
 }
 
 // SearchService orchestrates MCP operations across pluggable search engines while remaining transport-agnostic.
@@ -28,4 +29,9 @@ func (s *SearchService) Search(ctx context.Context, query SearchRequest) (*Searc
 // FetchWebpage scrapes a webpage using Serper API
 func (s *SearchService) FetchWebpage(ctx context.Context, query FetchWebpageRequest) (*FetchWebpageResponse, error) {
 	return s.client.FetchWebpage(ctx, query)
+}
+
+// ImageSearch performs an image search using Serper API
+func (s *SearchService) ImageSearch(ctx context.Context, query ImageSearchRequest) (*ImageSearchResponse, error) {
+	return s.client.ImageSearch(ctx, query)
 }

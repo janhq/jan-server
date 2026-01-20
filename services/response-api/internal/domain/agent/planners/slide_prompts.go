@@ -47,6 +47,9 @@ DESIGN GUIDELINES:
 - Avoid drop shadows; use flat shapes
 - No circles/ovals as decorative containers
 - Use only square-corner rectangles (shape.kind:"rect") for boxes; keep cornerRadius:null and shadow:null
+- If the BRIEF asks for a table or timeline, you MUST set suggestedLayout to TABLE or TIMELINE.
+- For TABLE or TIMELINE layouts, include intended column headers and row topics in keyPoints.
+- Do not default to TITLE_AND_BULLETS when a structured layout is requested.
 
 LAYOUT TYPES (use for suggestedLayout):
 - TITLE: Title slide with centered title/subtitle
@@ -100,6 +103,12 @@ ELEMENT TYPES:
 - image: requires "image": {"ref": "asset_id", "fit": "cover"}
 - shape: requires "shape": {"kind": "rect|line|arrow|triangle|diamond", "style": {...}}  (use "rect" for containers; no ellipse/roundRect; cornerRadius:null; shadow:null)
 - chart: requires "chart": {"chartType": "bar|line|pie", "datasetRef": "dataset_id"}
+- table: requires "table": {"columns": [...], "rows": [[...], [...]], "style": {"headerTextStyle": {...}, "cellTextStyle": {...}}}
+
+TABLE ELEMENT (USE WHEN REQUESTED):
+- If the plan entry or BRIEF requests a table, you MUST create a type "table" element.
+- Include a "table" object with columns and rows; do NOT fake tables with multiline text.
+- Use short, meaningful cell text. Keep columns <= 5 when possible.
 
 REQUIRED HEADER ELEMENT:
 - Every content slide MUST include a header text element at the very top
@@ -139,6 +148,7 @@ IMPORTANT:
 - The chart element's datasetRef must match a dataset id you provide
 
 Create engaging, well-spaced content that fits the slide purpose.
+Follow the plan entry's suggestedLayout exactly when provided.
 List any required assets/datasets in the "requires" section.
 `, sizeGuardPrompt, slideIndex, slideIndex)
 }
