@@ -299,7 +299,7 @@ export const AppSidebarRight = memo(function AppSidebarRight() {
           
             <div className="flex flex-col mx-2 overflow-auto bg-background border rounded-lg">
               <div className="sticky top-0 z-10 bg-background border-b px-3 py-2">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   <span className="shrink-0">Artifacts</span>
                   <span className="text-muted-foreground/60">({artifacts.length})</span>
                 </div>
@@ -307,7 +307,7 @@ export const AppSidebarRight = memo(function AppSidebarRight() {
               <div className="divide-y">
                 {hasArtifacts ?  artifacts.map((artifact) => (
                   <ArtifactCard key={artifact.id} artifact={artifact} />
-                )) : <div className="p-2">lorem</div>}
+                )) : <div className="p-3 text-xs text-muted-foreground">Outputs created during the task land here.</div>}
               </div>
             </div>
 
