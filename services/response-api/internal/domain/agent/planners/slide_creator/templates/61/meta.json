@@ -1,0 +1,14 @@
+{
+  "id": 61,
+  "dir": "61",
+  "name": "Campaign Studio",
+  "tone": "Marketing Vibrant",
+  "description": "Top band + punchy accents; campaign and brand stories.",
+  "variants": {
+    "base": 4,
+    "bullets": 1,
+    "split": 3,
+    "hero": 1,
+    "title": 1
+  }
+}

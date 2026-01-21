@@ -1,0 +1,14 @@
+{
+  "id": 85,
+  "dir": "85",
+  "name": "Horizon",
+  "tone": "Gradient Modern",
+  "description": "Band gradient + modern spacing; works with gradient palettes.",
+  "variants": {
+    "base": 4,
+    "bullets": 5,
+    "split": 1,
+    "hero": 2,
+    "title": 1
+  }
+}

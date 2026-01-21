@@ -268,7 +268,16 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 	}
 
 	// Execute
-	result, err := executor.Execute(ctx, step, input)
+	execCtx := ctx
+	var cancel context.CancelFunc
+	if p.PlanningConfig.TimeoutPerStep > 0 {
+		execCtx, cancel = context.WithTimeout(ctx, p.PlanningConfig.TimeoutPerStep)
+	}
+	if cancel != nil {
+		defer cancel()
+	}
+
+	result, err := executor.Execute(execCtx, step, input)
 	if err != nil {
 		// Handle execution error
 		execErr, ok := err.(*ExecutionError)

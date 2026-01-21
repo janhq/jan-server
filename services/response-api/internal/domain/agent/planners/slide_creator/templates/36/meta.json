@@ -1,0 +1,14 @@
+{
+  "id": 36,
+  "dir": "36",
+  "name": "Onyx Luxe",
+  "tone": "Luxury Elegant",
+  "description": "Rounded stage, premium spacing, gallery-like feel.",
+  "variants": {
+    "base": 10,
+    "bullets": 1,
+    "split": 3,
+    "hero": 1,
+    "title": 1
+  }
+}

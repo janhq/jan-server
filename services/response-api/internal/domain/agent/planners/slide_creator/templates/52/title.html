@@ -1,0 +1,15 @@
+{{define "body"}}
+<section style="height:100%; display:flex; align-items:center; justify-content:flex-start; overflow:hidden;">
+  <div style="display:flex; align-items:flex-start; gap:26px; width:100%;">
+    <div style="width:10px; align-self:stretch; border-radius:999px; background:linear-gradient(180deg, {{.Theme.AccentColor}} 0%, rgba(0,0,0,0) 100%);"></div>
+    <div style="max-width:1220px; min-width:0;">
+      <div style="font-size:14px; font-weight:900; letter-spacing:0.18em; text-transform:uppercase; color:{{.Theme.AccentColor}};">Slide {{.Index}} / {{.Total}}</div>
+      <h1 style="margin:18px 0 0 0; font-size:82px; line-height:1.03; font-weight:950; letter-spacing:-0.02em; color:{{.Theme.TextColor}}; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Slide.Title 130}}</h1>
+      {{if .Slide.Subtitle}}<p style="margin:22px 0 0 0; font-size:30px; line-height:1.25; font-weight:650; color:{{.Muted}}; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Slide.Subtitle 240}}</p>{{end}}
+      {{if .Title.Notes}}<div style="margin-top:28px; display:flex; gap:14px; flex-wrap:wrap;">
+        <span style="font-size:14px; font-weight:850; color:{{.Theme.TextColor}}; background:{{withAlpha .Theme.AccentColor 0.10}}; border:1px solid {{withAlpha .Theme.AccentColor 0.28}}; padding:10px 14px; border-radius:999px;">{{trimToRunes .Title.Notes 80}}</span>
+      </div>{{end}}
+    </div>
+  </div>
+</section>
+{{end}}

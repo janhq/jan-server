@@ -14,6 +14,7 @@ import (
 	"jan-server/services/response-api/internal/config"
 	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/agent/planners"
+	slide_creator "jan-server/services/response-api/internal/domain/agent/planners/slide_creator"
 	slide_generator "jan-server/services/response-api/internal/domain/agent/planners/slide_generator"
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/llm"
@@ -148,6 +149,12 @@ func main() {
 		log.Warn().Err(err).Msg("failed to register slide generator planner")
 	}
 
+	// Register slide creator planner
+	slideCreatorPlanner := slide_creator.NewSlideCreatorPlanner(planService, artifactService)
+	if err := agentRegistry.RegisterPlanner(slideCreatorPlanner); err != nil {
+		log.Warn().Err(err).Msg("failed to register slide creator planner")
+	}
+
 	docGeneratorPlanner := planners.NewDocGeneratorPlanner(planService, artifactService)
 	if err := agentRegistry.RegisterPlanner(docGeneratorPlanner); err != nil {
 		log.Warn().Err(err).Msg("failed to register doc generator planner")
@@ -187,15 +194,20 @@ func main() {
 		},
 	)
 	slideGeneratorExecutor := slide_generator.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient, skillExecutor, cfg)
-	routingExecutor := planners.NewRoutingExecutor(deepResearchExecutor, slideGeneratorExecutor)
+	slideCreatorExecutor := slide_creator.NewSlideCreatorExecutor(mcpClient, codeFixer, artifactService, mediaClient, cfg)
+	routingExecutor := planners.NewRoutingExecutor(deepResearchExecutor, slideGeneratorExecutor, slideCreatorExecutor)
+	artifactRoutingExecutor := planners.NewRoutingExecutor(slideGeneratorExecutor, slideGeneratorExecutor, slideCreatorExecutor)
 	if err := agentRegistry.RegisterExecutor(plan.ActionTypeToolCall, routingExecutor); err != nil {
 		log.Warn().Err(err).Msg("failed to register tool call executor")
 	}
 	if err := agentRegistry.RegisterExecutor(plan.ActionTypeLLMCall, routingExecutor); err != nil {
 		log.Warn().Err(err).Msg("failed to register llm call executor")
 	}
-	if err := agentRegistry.RegisterExecutor(plan.ActionTypeArtifactCreate, slideGeneratorExecutor); err != nil {
+	if err := agentRegistry.RegisterExecutor(plan.ActionTypeArtifactCreate, artifactRoutingExecutor); err != nil {
 		log.Warn().Err(err).Msg("failed to register artifact create executor")
+	}
+	if err := agentRegistry.RegisterExecutor(plan.ActionTypeTransform, slideCreatorExecutor); err != nil {
+		log.Warn().Err(err).Msg("failed to register transform executor")
 	}
 	if err := agentRegistry.RegisterExecutor(plan.ActionTypeSkillExecute, skillExecutor); err != nil {
 		log.Warn().Err(err).Msg("failed to register skill execute executor")

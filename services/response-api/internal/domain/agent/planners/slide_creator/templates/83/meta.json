@@ -1,0 +1,14 @@
+{
+  "id": 83,
+  "dir": "83",
+  "name": "Aurora Modern",
+  "tone": "Gradient Modern",
+  "description": "Band gradient + modern spacing; works with gradient palettes.",
+  "variants": {
+    "base": 4,
+    "bullets": 3,
+    "split": 4,
+    "hero": 3,
+    "title": 3
+  }
+}

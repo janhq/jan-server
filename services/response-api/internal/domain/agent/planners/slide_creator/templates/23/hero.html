@@ -1,0 +1,15 @@
+{{define "body"}}
+<section style="height:100%; display:grid; grid-template-columns:repeat(12, 1fr); gap:32px; align-items:stretch;">
+  <figure style="grid-column:1 / span 12; margin:0; height:100%; border-radius:30px; overflow:hidden; border:1px solid {{.BodyBorder}}; position:relative; background:{{withAlpha .Theme.TextColor 0.06}};">
+    <img src="{{.Hero.Image.Src}}" alt="{{.Hero.ImageAlt}}" style="width:100%; height:100%; display:block; object-fit:cover;"/>
+    <div style="position:absolute; inset:0; background:linear-gradient(to bottom, rgba(0,0,0,0.70) 0%, rgba(0,0,0,0.18) 45%, rgba(0,0,0,0.62) 100%);"></div>
+
+    <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:0 80px; text-align:center; color:#FFFFFF;">
+      <div style="font-size:14px; font-weight:900; letter-spacing:0.18em; text-transform:uppercase; color:rgba(255,255,255,0.82);">{{trimToRunes .Hero.Kicker 80}}</div>
+      <div style="margin-top:16px; font-size:76px; line-height:1.02; font-weight:950; letter-spacing:-0.02em; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Slide.Title 90}}</div>
+      <div style="margin-top:18px; font-size:26px; line-height:1.25; font-weight:700; color:rgba(255,255,255,0.86); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Hero.ImageCaption 150}}</div>
+      <div style="margin-top:22px; font-size:14px; font-weight:850; color:rgba(255,255,255,0.88); background:rgba(0,0,0,0.34); border:1px solid rgba(255,255,255,0.18); padding:10px 14px; border-radius:999px;">{{trimToRunes .Hero.Badge 80}}</div>
+    </div>
+  </figure>
+</section>
+{{end}}

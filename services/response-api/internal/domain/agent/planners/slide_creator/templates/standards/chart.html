@@ -1,0 +1,66 @@
+{{define "body"}}
+<section style="height:100%; display:grid; grid-template-columns:repeat(12, 1fr); gap:24px; overflow:hidden;">
+  <div style="grid-column:1 / span 4; display:flex; flex-direction:column; overflow:hidden;">
+    <div style="font-size:14px; font-weight:900; letter-spacing:0.18em; text-transform:uppercase; color:{{.Theme.AccentColor}};">Chart View</div>
+    <h1 style="margin:12px 0 0 0; font-size:48px; line-height:1.06; font-weight:900; letter-spacing:-0.02em; color:{{.Theme.TextColor}}; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Slide.Title 80}}</h1>
+    {{if .Bullets.Subtitle}}<p style="margin:12px 0 0 0; font-size:22px; line-height:1.28; font-weight:650; color:{{.Muted}}; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Bullets.Subtitle 160}}</p>{{end}}
+
+    {{if .Bullets.Bullets}}
+    <div style="margin-top:18px; border-top:1px solid {{.BodyBorder}}; padding-top:16px; overflow:hidden;">
+      <ul style="margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:10px; overflow:hidden;">
+        {{range .Bullets.Bullets}}
+        <li style="display:flex; gap:12px; align-items:flex-start;">
+          <div style="margin-top:9px; width:8px; height:8px; border-radius:999px; background:{{$.Theme.AccentColor}}; flex:0 0 auto;"></div>
+          <div style="font-size:22px; line-height:1.28; font-weight:650; color:{{$.Theme.TextColor}}; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes . 120}}</div>
+        </li>
+        {{end}}
+      </ul>
+    </div>
+    {{end}}
+  </div>
+
+  <div style="grid-column:5 / span 8; display:flex; flex-direction:column; overflow:hidden; border:1px solid {{.BodyBorder}}; border-radius:20px; background:{{withAlpha .Theme.TextColor 0.03}}; padding:18px 20px; box-sizing:border-box;">
+    {{if .Chart.Title}}<div style="font-size:16px; font-weight:800; color:{{.Theme.TextColor}}; margin-bottom:10px;">{{trimToRunes .Chart.Title 90}}</div>{{end}}
+
+    {{if .Chart.Has}}
+    {{if eq .Chart.Type "bar"}}
+    <svg viewBox="0 0 1000 460" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+      {{range .Chart.Bars}}
+      <rect x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}" fill="{{.Color}}" rx="8" />
+      <text x="{{.X}}" y="{{.Y}}" dx="2" dy="-6" font-size="16" font-weight="700" fill="#E2E8F0">{{printf "%.1f" .Value}}</text>
+      {{end}}
+    </svg>
+    {{end}}
+
+    {{if eq .Chart.Type "line"}}
+    <svg viewBox="0 0 1000 460" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+      {{range $i, $path := .Chart.LinePaths}}
+      <path d="{{$path}}" fill="none" stroke="{{index $.Chart.Colors $i}}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+      {{end}}
+      {{range $i, $series := .Chart.Points}}
+        {{range $j, $pt := $series}}
+        <circle cx="{{$pt.X}}" cy="{{$pt.Y}}" r="8" fill="#0F172A" opacity="0.25" />
+        <circle cx="{{$pt.X}}" cy="{{$pt.Y}}" r="5" fill="{{index $.Chart.Colors $i}}" />
+        <text x="{{$pt.X}}" y="{{$pt.Y}}" dx="6" dy="-8" font-size="14" font-weight="700" fill="#E2E8F0">{{printf "%.1f" $pt.Value}}</text>
+        {{end}}
+      {{end}}
+    </svg>
+    {{end}}
+
+    {{if eq .Chart.Type "pie"}}
+    <svg viewBox="0 0 480 480" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+      {{range .Chart.Slices}}
+      <path d="{{.Path}}" fill="{{.Color}}" />
+      {{end}}
+      <circle cx="240" cy="240" r="120" fill="#0F172A" opacity="0.15" />
+    </svg>
+    {{end}}
+
+    {{else}}
+    <div style="font-size:18px; font-weight:700; color:{{.Muted}};">No chart data available.</div>
+    {{end}}
+
+    {{if .Chart.Notes}}<div style="margin-top:10px; font-size:13px; font-weight:700; color:{{.Muted}};">{{trimToRunes .Chart.Notes 120}}</div>{{end}}
+  </div>
+</section>
+{{end}}

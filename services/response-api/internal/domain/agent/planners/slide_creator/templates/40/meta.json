@@ -1,0 +1,14 @@
+{
+  "id": 40,
+  "dir": "40",
+  "name": "Gold Accent",
+  "tone": "Luxury Elegant",
+  "description": "Rounded stage, premium spacing, gallery-like feel.",
+  "variants": {
+    "base": 10,
+    "bullets": 5,
+    "split": 2,
+    "hero": 2,
+    "title": 1
+  }
+}

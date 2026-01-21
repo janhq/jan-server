@@ -1,0 +1,14 @@
+{
+  "id": 72,
+  "dir": "72",
+  "name": "Cassette",
+  "tone": "Retro",
+  "description": "Dot pattern + playful framing; retro/nostalgia tone.",
+  "variants": {
+    "base": 7,
+    "bullets": 2,
+    "split": 1,
+    "hero": 2,
+    "title": 2
+  }
+}

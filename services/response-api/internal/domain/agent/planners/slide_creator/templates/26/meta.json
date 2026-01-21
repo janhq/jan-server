@@ -1,0 +1,14 @@
+{
+  "id": 26,
+  "dir": "26",
+  "name": "Cotton Candy",
+  "tone": "Playful Pastel",
+  "description": "Soft patterns and friendly shapes; great for consumer topics.",
+  "variants": {
+    "base": 7,
+    "bullets": 1,
+    "split": 1,
+    "hero": 1,
+    "title": 1
+  }
+}

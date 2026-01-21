@@ -2,6 +2,7 @@
 package plan
 
 import (
+	"bytes"
 	"encoding/json"
 	"time"
 
@@ -35,12 +36,13 @@ type Plan struct {
 type AgentType string
 
 const (
-	AgentTypeSlideGenerator AgentType = "slide_generator"
-	AgentTypeDeepResearch   AgentType = "deep_research"
-	AgentTypeDocGenerator   AgentType = "doc_generator"
-	AgentTypePDFGenerator   AgentType = "pdf_generator"
+	AgentTypeSlideCreator         AgentType = "slide_creator"
+	AgentTypeSlideGenerator       AgentType = "slide_generator"
+	AgentTypeDeepResearch         AgentType = "deep_research"
+	AgentTypeDocGenerator         AgentType = "doc_generator"
+	AgentTypePDFGenerator         AgentType = "pdf_generator"
 	AgentTypeSpreadsheetGenerator AgentType = "spreadsheet_generator"
-	AgentTypeCustom         AgentType = "custom"
+	AgentTypeCustom               AgentType = "custom"
 )
 
 // String returns the string representation of the agent type.
@@ -281,13 +283,20 @@ func (s *Step) SetActualParams(params json.RawMessage) {
 
 // GetEffectiveParams returns the actual params if set, otherwise planned params.
 func (s *Step) GetEffectiveParams() json.RawMessage {
-	if len(s.ActualParams) > 0 {
+	if len(s.ActualParams) > 0 && !isJSONNull(s.ActualParams) {
 		return s.ActualParams
 	}
-	if len(s.PlannedParams) > 0 {
+	if len(s.PlannedParams) > 0 && !isJSONNull(s.PlannedParams) {
 		return s.PlannedParams
 	}
 	return s.InputParams
+}
+
+func isJSONNull(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return true
+	}
+	return bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
 }
 
 // HasOutputData returns true if the step has output data set.

@@ -1,0 +1,14 @@
+{
+  "id": 37,
+  "dir": "37",
+  "name": "Silk Gallery",
+  "tone": "Luxury Elegant",
+  "description": "Rounded stage, premium spacing, gallery-like feel.",
+  "variants": {
+    "base": 10,
+    "bullets": 2,
+    "split": 4,
+    "hero": 2,
+    "title": 2
+  }
+}

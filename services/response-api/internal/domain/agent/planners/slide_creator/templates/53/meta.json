@@ -1,0 +1,14 @@
+{
+  "id": 53,
+  "dir": "53",
+  "name": "Capital Ledger",
+  "tone": "Finance Professional",
+  "description": "Structured, conservative frames for finance/strategy decks.",
+  "variants": {
+    "base": 9,
+    "bullets": 3,
+    "split": 3,
+    "hero": 3,
+    "title": 3
+  }
+}

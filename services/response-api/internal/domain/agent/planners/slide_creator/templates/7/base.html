@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0; padding:0; background:#000;">
+<div style="width:100vw; aspect-ratio:16 / 9; max-width:{{.SlideW}}px; margin:0; background:{{.Background}}; color:{{.Theme.TextColor}}; font-family:{{.Theme.FontFamily}}; display:flex; flex-direction:column; box-sizing:border-box; position:relative; overflow:hidden;">
+  <header style="height:84px; padding:0 88px; display:flex; align-items:center; justify-content:space-between; box-sizing:border-box; border-bottom:1px solid {{.Line}};">
+    <div style="display:flex; align-items:center; gap:14px; min-width:0;">
+      <div style="width:10px; height:10px; border-radius:999px; background:{{.Theme.AccentColor}}; flex:0 0 auto;"></div>
+      <div style="font-size:20px; font-weight:850; letter-spacing:0.2px; color:{{.Theme.TextColor}}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:980px;">{{.Plan.Title}}</div>
+    </div>
+    <div style="font-size:13px; font-weight:750; color:{{.Muted}}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:760px;">{{.Slide.Title}}</div>
+  </header>
+
+  <main style="flex:1; padding:56px 88px; box-sizing:border-box; overflow:hidden;">
+    <div style="height:100%; border:1px solid {{.CardBorder}}; border-radius:26px; background:{{.CardBg}}; box-shadow:0 18px 48px {{.Shadow}}; padding:46px 50px; box-sizing:border-box; overflow:hidden;">
+      {{template "body" .}}
+    </div>
+  </main>
+
+  <footer style="height:60px; padding:0 88px; display:flex; align-items:center; justify-content:space-between; box-sizing:border-box; border-top:1px solid {{.Line}};">
+    <div style="font-size:13px; font-weight:750; color:{{.Muted}};">{{.Index}} / {{.Total}}</div>
+    <div style="font-size:13px; font-weight:750; color:{{.Muted}}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:760px;">{{.Plan.Title}}</div>
+  </footer>
+</div>
+</body>
+</html>

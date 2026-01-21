@@ -1,0 +1,14 @@
+{
+  "id": 73,
+  "dir": "73",
+  "name": "Polaroid",
+  "tone": "Retro",
+  "description": "Dot pattern + playful framing; retro/nostalgia tone.",
+  "variants": {
+    "base": 7,
+    "bullets": 3,
+    "split": 2,
+    "hero": 3,
+    "title": 3
+  }
+}

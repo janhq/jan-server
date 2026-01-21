@@ -1,0 +1,14 @@
+{
+  "id": 93,
+  "dir": "93",
+  "name": "Moodboard",
+  "tone": "Creative Studio",
+  "description": "Gallery/glass composition for portfolios and creative pitches.",
+  "variants": {
+    "base": 1,
+    "bullets": 3,
+    "split": 1,
+    "hero": 3,
+    "title": 3
+  }
+}

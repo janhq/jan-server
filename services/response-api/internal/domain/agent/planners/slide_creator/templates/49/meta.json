@@ -1,0 +1,14 @@
+{
+  "id": 49,
+  "dir": "49",
+  "name": "Study Buddy",
+  "tone": "Education Friendly",
+  "description": "Sidebar guidance + structured body; classroom/learning friendly.",
+  "variants": {
+    "base": 3,
+    "bullets": 4,
+    "split": 3,
+    "hero": 1,
+    "title": 4
+  }
+}

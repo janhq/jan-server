@@ -1,0 +1,14 @@
+{
+  "id": 7,
+  "dir": "7",
+  "name": "Stone Minimal",
+  "tone": "Minimal Clean",
+  "description": "Whitespace-forward, neutral framing, restrained accents.",
+  "variants": {
+    "base": 2,
+    "bullets": 2,
+    "split": 3,
+    "hero": 2,
+    "title": 2
+  }
+}

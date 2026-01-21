@@ -11,6 +11,7 @@ import (
 	"jan-server/services/response-api/internal/config"
 	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/agent/planners"
+	slide_creator "jan-server/services/response-api/internal/domain/agent/planners/slide_creator"
 	slide_generator "jan-server/services/response-api/internal/domain/agent/planners/slide_generator"
 	artifact2 "jan-server/services/response-api/internal/domain/artifact"
 	conversation2 "jan-server/services/response-api/internal/domain/conversation"
@@ -161,6 +162,12 @@ func newAgentRegistry(planService plan2.Service, mcpClient tool.MCPClient, llmPr
 		_ = err
 	}
 
+	// Register the slide creator planner
+	slideCreatorPlanner := slide_creator.NewSlideCreatorPlanner(planService, artifactService)
+	if err := registry.RegisterPlanner(slideCreatorPlanner); err != nil {
+		_ = err
+	}
+
 	docGeneratorPlanner := planners.NewDocGeneratorPlanner(planService, artifactService)
 	if err := registry.RegisterPlanner(docGeneratorPlanner); err != nil {
 		_ = err
@@ -200,10 +207,13 @@ func newAgentRegistry(planService plan2.Service, mcpClient tool.MCPClient, llmPr
 
 	// Register the slide generator executor for artifact creation
 	slideGeneratorExecutor := slide_generator.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient, skillExecutor, cfg)
-	routingExecutor := planners.NewRoutingExecutor(deepResearchExecutor, slideGeneratorExecutor)
+	slideCreatorExecutor := slide_creator.NewSlideCreatorExecutor(mcpClient, codeFixer, artifactService, mediaClient, cfg)
+	routingExecutor := planners.NewRoutingExecutor(deepResearchExecutor, slideGeneratorExecutor, slideCreatorExecutor)
+	artifactRoutingExecutor := planners.NewRoutingExecutor(slideGeneratorExecutor, slideGeneratorExecutor, slideCreatorExecutor)
 	_ = registry.RegisterExecutor(plan2.ActionTypeToolCall, routingExecutor)
 	_ = registry.RegisterExecutor(plan2.ActionTypeLLMCall, routingExecutor)
-	_ = registry.RegisterExecutor(plan2.ActionTypeArtifactCreate, slideGeneratorExecutor)
+	_ = registry.RegisterExecutor(plan2.ActionTypeArtifactCreate, artifactRoutingExecutor)
+	_ = registry.RegisterExecutor(plan2.ActionTypeTransform, slideCreatorExecutor)
 	_ = registry.RegisterExecutor(plan2.ActionTypeSkillExecute, skillExecutor)
 
 	return registry

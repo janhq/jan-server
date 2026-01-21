@@ -1,0 +1,14 @@
+{
+  "id": 1,
+  "dir": "1",
+  "name": "Neon City",
+  "tone": "Neon Cyberpunk",
+  "description": "Aurora glows + high-energy composition for futuristic themes.",
+  "variants": {
+    "base": 1,
+    "bullets": 1,
+    "split": 1,
+    "hero": 1,
+    "title": 1
+  }
+}

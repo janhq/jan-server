@@ -1,0 +1,14 @@
+{
+  "id": 80,
+  "dir": "80",
+  "name": "Charcoal",
+  "tone": "Monochrome",
+  "description": "Minimal frame tuned for black/white/gray palettes.",
+  "variants": {
+    "base": 2,
+    "bullets": 5,
+    "split": 5,
+    "hero": 2,
+    "title": 1
+  }
+}

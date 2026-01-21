@@ -1,0 +1,14 @@
+{
+  "id": 64,
+  "dir": "64",
+  "name": "Creative Ad",
+  "tone": "Marketing Vibrant",
+  "description": "Top band + punchy accents; campaign and brand stories.",
+  "variants": {
+    "base": 4,
+    "bullets": 4,
+    "split": 1,
+    "hero": 1,
+    "title": 4
+  }
+}

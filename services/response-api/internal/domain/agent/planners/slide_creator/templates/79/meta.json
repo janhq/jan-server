@@ -1,0 +1,14 @@
+{
+  "id": 79,
+  "dir": "79",
+  "name": "Ink",
+  "tone": "Monochrome",
+  "description": "Minimal frame tuned for black/white/gray palettes.",
+  "variants": {
+    "base": 2,
+    "bullets": 4,
+    "split": 4,
+    "hero": 1,
+    "title": 4
+  }
+}

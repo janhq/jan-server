@@ -119,6 +119,27 @@ func SlideGeneratorMetadata() AgentMetadata {
 	}
 }
 
+// SlideCreatorMetadata returns metadata for the slide creator agent.
+func SlideCreatorMetadata() AgentMetadata {
+	return AgentMetadata{
+		Type:        "slide_creator",
+		Name:        "Slide Creator Agent",
+		Description: "Builds HTML-based slide decks and exports them to editable PPTX with research-backed content.",
+		Keywords: []string{
+			"slides", "presentation", "powerpoint", "deck", "pitch",
+			"pptx", "html slides", "editable slides",
+		},
+		Capabilities: []string{
+			"research", "outline", "html_slide_generation", "template_selection",
+			"pptx_export", "theme_customization",
+		},
+		OutputFormats:     []string{"pptx", "html"},
+		EstimatedDuration: "3-15 minutes",
+		UseWhen:           "User wants an editable PPTX generated from HTML slide layouts with template control",
+		Enabled:           true,
+	}
+}
+
 // DocGeneratorMetadata returns metadata for the document generator agent.
 func DocGeneratorMetadata() AgentMetadata {
 	return AgentMetadata{
@@ -269,6 +290,79 @@ func SlideGeneratorInputSchema() *AgentInputSchema {
 	}
 }
 
+// SlideCreatorInputSchema returns the input schema for slide creation.
+func SlideCreatorInputSchema() *AgentInputSchema {
+	min3 := 3
+	max50 := 50
+	return &AgentInputSchema{
+		Type: "object",
+		Properties: map[string]SchemaProperty{
+			"prompt": {
+				Type:        "string",
+				Description: "Description of the presentation to create",
+			},
+			"num_slides": {
+				Type:        "integer",
+				Description: "Target number of slides",
+				Default:     10,
+				Minimum:     &min3,
+				Maximum:     &max50,
+			},
+			"theme": {
+				Type:        "string",
+				Description: "Visual theme for the presentation",
+				Enum:        []string{"modern", "corporate", "minimal", "creative", "dark"},
+				Default:     "modern",
+			},
+			"format": {
+				Type:        "string",
+				Description: "Output format for the presentation",
+				Enum:        []string{"pptx"},
+				Default:     "pptx",
+			},
+			"research_depth": {
+				Type:        "string",
+				Description: "How much web research to perform",
+				Enum:        []string{"minimal", "standard", "deep"},
+				Default:     "standard",
+			},
+			"options_count": {
+				Type:        "integer",
+				Description: "Number of variations to generate for user selection",
+				Default:     1,
+			},
+			"template_dir": {
+				Type:        "string",
+				Description: "Override template directory (absolute path for custom templates)",
+			},
+			"template_catalog": {
+				Type:        "string",
+				Description: "Template catalog JSON path (defaults to embedded catalog)",
+			},
+			"template_id": {
+				Type:        "integer",
+				Description: "Force a specific template ID",
+			},
+			"tone": {
+				Type:        "string",
+				Description: "Preferred tone for template selection",
+			},
+			"body_mode": {
+				Type:        "string",
+				Description: "Slide body rendering mode",
+				Enum:        []string{"template", "llm"},
+				Default:     "template",
+			},
+			"debug": {
+				Type:        "boolean",
+				Description: "Write debug outputs into the HTML bundle",
+				Default:     false,
+			},
+		},
+		Required: []string{"prompt"},
+	}
+}
+
 // DocGeneratorInputSchema returns the input schema for document generation.
 func DocGeneratorInputSchema() *AgentInputSchema {
 	return &AgentInputSchema{
@@ -390,6 +484,39 @@ func SlideGeneratorOutputSchema() *AgentOutputSchema {
 	}
 }
 
+// SlideCreatorOutputSchema returns the output schema for slide creation.
+func SlideCreatorOutputSchema() *AgentOutputSchema {
+	return &AgentOutputSchema{
+		Type: "object",
+		Properties: map[string]SchemaProperty{
+			"pptx_artifact_id": {
+				Type:        "string",
+				Description: "ID of the generated PPTX artifact",
+			},
+			"html_artifact_id": {
+				Type:        "string",
+				Description: "ID of the generated HTML bundle artifact",
+			},
+			"images_artifact_id": {
+				Type:        "string",
+				Description: "ID of the slide images artifact (if available)",
+			},
+			"slides_count": {
+				Type:        "integer",
+				Description: "Number of slides generated",
+			},
+			"download_url": {
+				Type:        "string",
+				Description: "URL to download the presentation",
+			},
+			"preview_url": {
+				Type:        "string",
+				Description: "URL to preview the HTML slides",
+			},
+		},
+	}
+}
+
 // DocGeneratorOutputSchema returns the output schema for document generation.
 func DocGeneratorOutputSchema() *AgentOutputSchema {
 	return &AgentOutputSchema{
@@ -469,6 +596,20 @@ func SlideGeneratorExamples() []AgentExample {
 	}
 }
 
+// SlideCreatorExamples returns usage examples for slide creation.
+func SlideCreatorExamples() []AgentExample {
+	return []AgentExample{
+		{
+			Input:       json.RawMessage(`{"prompt": "Create a pitch deck for a SaaS startup", "num_slides": 12, "theme": "modern", "body_mode": "template"}`),
+			Description: "Creates a 12-slide PPTX using HTML templates for layout",
+		},
+		{
+			Input:       json.RawMessage(`{"prompt": "Make slides about AI safety for executives", "template_id": 12, "tone": "corporate"}`),
+			Description: "Uses a specific template pack and tone to guide selection",
+		},
+	}
+}
+
 // DocGeneratorExamples returns usage examples for document generation.
 func DocGeneratorExamples() []AgentExample {
 	return []AgentExample{
@@ -516,6 +657,13 @@ func GetAgentDetail(agentType string) *AgentDetail {
 			OutputSchema:  SlideGeneratorOutputSchema(),
 			Examples:      SlideGeneratorExamples(),
 		}
+	case "slide_creator":
+		return &AgentDetail{
+			AgentMetadata: SlideCreatorMetadata(),
+			InputSchema:   SlideCreatorInputSchema(),
+			OutputSchema:  SlideCreatorOutputSchema(),
+			Examples:      SlideCreatorExamples(),
+		}
 	case "doc_generator":
 		return &AgentDetail{
 			AgentMetadata: DocGeneratorMetadata(),
@@ -547,6 +695,7 @@ func GetAllAgentMetadata() []AgentMetadata {
 	return []AgentMetadata{
 		DeepResearchMetadata(),
 		SlideGeneratorMetadata(),
+		SlideCreatorMetadata(),
 		DocGeneratorMetadata(),
 		PDFGeneratorMetadata(),
 		SpreadsheetGeneratorMetadata(),

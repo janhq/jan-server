@@ -1,0 +1,14 @@
+{
+  "id": 33,
+  "dir": "33",
+  "name": "Pressroom",
+  "tone": "Editorial Serif",
+  "description": "Paper/grid editorial vibe; strong reading flow.",
+  "variants": {
+    "base": 6,
+    "bullets": 3,
+    "split": 4,
+    "hero": 3,
+    "title": 3
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "id": 20,
+  "dir": "20",
+  "name": "Midnight Grid",
+  "tone": "Tech Dark",
+  "description": "Dark glass + glow, strong contrast, product/engineering feel.",
+  "variants": {
+    "base": 5,
+    "bullets": 5,
+    "split": 3,
+    "hero": 2,
+    "title": 1
+  }
+}

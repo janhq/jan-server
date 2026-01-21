@@ -1,0 +1,14 @@
+{
+  "id": 31,
+  "dir": "31",
+  "name": "Magazine Serif",
+  "tone": "Editorial Serif",
+  "description": "Paper/grid editorial vibe; strong reading flow.",
+  "variants": {
+    "base": 6,
+    "bullets": 1,
+    "split": 2,
+    "hero": 1,
+    "title": 1
+  }
+}

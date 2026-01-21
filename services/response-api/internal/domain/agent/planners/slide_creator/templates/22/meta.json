@@ -1,0 +1,14 @@
+{
+  "id": 22,
+  "dir": "22",
+  "name": "Venture Bold",
+  "tone": "Startup Bold",
+  "description": "Accent band + bold rhythm, pitch-deck energy.",
+  "variants": {
+    "base": 4,
+    "bullets": 2,
+    "split": 1,
+    "hero": 2,
+    "title": 2
+  }
+}

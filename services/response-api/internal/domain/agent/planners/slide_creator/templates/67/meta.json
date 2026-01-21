@@ -1,0 +1,14 @@
+{
+  "id": 67,
+  "dir": "67",
+  "name": "Gridline",
+  "tone": "Data Analyst",
+  "description": "Grid-forward layout for charts/tables and analytic narratives.",
+  "variants": {
+    "base": 6,
+    "bullets": 2,
+    "split": 5,
+    "hero": 2,
+    "title": 2
+  }
+}

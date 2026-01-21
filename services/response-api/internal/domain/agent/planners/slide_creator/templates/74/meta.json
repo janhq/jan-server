@@ -1,0 +1,14 @@
+{
+  "id": 74,
+  "dir": "74",
+  "name": "Arcade",
+  "tone": "Retro",
+  "description": "Dot pattern + playful framing; retro/nostalgia tone.",
+  "variants": {
+    "base": 7,
+    "bullets": 4,
+    "split": 3,
+    "hero": 1,
+    "title": 4
+  }
+}
