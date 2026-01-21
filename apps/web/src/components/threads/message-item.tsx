@@ -397,7 +397,7 @@ export const MessageItem = memo(
       const toolName = part.type.split("-").slice(1).join("-");
 
       // For run_agent tool, render AgentExecutionPanel instead of normal tool block
-      if (toolName === "run_agent" && conversationId) {
+      if (toolName === "run_agent") {
         let responseId: string | undefined;
 
         if (part.output && Array.isArray(part.output)) {

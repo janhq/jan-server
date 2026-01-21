@@ -2,6 +2,7 @@ import type { UIMessage } from "ai";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { TOOL_STATE, CONTENT_TYPE, MESSAGE_ROLE } from "@/constants";
+import { FileIcon, FileTextIcon, PresentationIcon } from "lucide-react";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -146,4 +147,22 @@ export const convertToUIMessages = (items: ConversationItem[]): UIMessage[] => {
         parts: sortedParts,
       } as UIMessage;
     });
+};
+
+export const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+};
+
+export const getArtifactIcon = (contentType: string, mimeType: string) => {
+  if (contentType === "slides" || mimeType.includes("presentation")) {
+    return PresentationIcon;
+  }
+  if (contentType === "document" || mimeType.includes("document") || mimeType.includes("pdf")) {
+    return FileTextIcon;
+  }
+  return FileIcon;
 };

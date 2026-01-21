@@ -1,5 +1,5 @@
 import type { StepResponse } from "@/services/response-api-service";
-import type { SearchResultItem, StepWithResults } from "@/stores/right-sidebar-store";
+import type { ArtifactItem, SearchResultItem, StepWithResults } from "@/stores/right-sidebar-store";
 
 declare const JAN_API_BASE_URL: string;
 
@@ -128,19 +128,32 @@ function parseArtifactOutput(output: Record<string, unknown>): SearchResultItem[
 
   const artifact = output.artifact as Record<string, unknown>;
   if (artifact) {
+    const id = artifact.id as string || "";
     const filename = artifact.filename as string || "artifact";
-    const type = artifact.type as string || "file";
+    const contentType = artifact.type as string || "file";
+    const mimeType = artifact.content_type as string || "application/octet-stream";
+    const size = artifact.size as number || 0;
     const downloadUrl = artifact.download_url as string;
+    const createdAt = artifact.created_at as string;
     const resolvedUrl = resolveArtifactUrl(downloadUrl);
 
     results.push({
-      type: "link",
+      type: "artifact",
       title: filename,
-      description: `${type} artifact created`,
+      description: `${contentType} artifact created`,
       url: resolvedUrl || "",
       downloadUrl: resolvedUrl || "",
       filename,
       requiresAuth: true,
+      artifact: {
+        id,
+        filename,
+        contentType,
+        mimeType,
+        size,
+        downloadUrl: resolvedUrl || "",
+        createdAt,
+      },
     });
   }
 
@@ -200,6 +213,8 @@ export function getStepLabel(step: StepResponse): string {
   const params = step.actual_params || step.planned_params || inputParams;
   const paramsObj = params as Record<string, unknown>;
 
+  
+
   switch (step.action) {
     case "tool_call": {
       const toolName = (paramsObj.tool as string) || (paramsObj.tool_name as string) || "Tool";
@@ -211,8 +226,12 @@ export function getStepLabel(step: StepResponse): string {
       }
       return query ? `${toolName}: ${query.substring(0, 50)}${query.length > 50 ? "..." : ""}` : toolName;
     }
+
     case "llm_call":
+      if (paramsObj.action  === "plan_and_template") return paramsObj.description as string
+      if (paramsObj.action  === "generate_single_slide") return paramsObj.description as string
       return "AI Analysis";
+    
     case "artifact_create":
       return "Creating Report";
     case "file_operation": {
@@ -257,4 +276,47 @@ export function convertTaskToStepWithResults(
     stepTitle: getStepLabel(step),
     results: parseStepOutputToResults(step),
   }));
+}
+
+export function extractArtifactsFromTasks(
+  tasks: { steps?: StepResponse[] }[],
+): ArtifactItem[] {
+  const artifacts: ArtifactItem[] = [];
+
+  for (const task of tasks) {
+    if (!task.steps) continue;
+
+    for (const step of task.steps) {
+      if (step.action === "artifact_create" && step.output_data) {
+        const output = step.output_data as Record<string, unknown>;
+        const artifact = output.artifact as Record<string, unknown>;
+
+        if (artifact) {
+          const id = artifact.id as string;
+          const downloadUrl = artifact.download_url as string;
+          const resolvedUrl = resolveArtifactUrl(downloadUrl);
+
+          // Extract slides images if available
+          const rawSlidesImages = artifact.slides_images as Array<Record<string, unknown>> | undefined;
+          const slidesImages = rawSlidesImages?.map((img, idx) => ({
+            id: (img.id as string) || String(idx + 1),
+            thumb: img.thumb as string || img.url as string || "",
+          })).filter(img => img.thumb);
+
+          artifacts.push({
+            id: id || "",
+            filename: artifact.filename as string || "artifact",
+            contentType: artifact.type as string || "file",
+            mimeType: artifact.content_type as string || "application/octet-stream",
+            size: artifact.size as number || 0,
+            downloadUrl: resolvedUrl || "",
+            createdAt: artifact.created_at as string,
+            slidesImages: slidesImages && slidesImages.length > 0 ? slidesImages : undefined,
+          });
+        }
+      }
+    }
+  }
+
+  return artifacts;
 }

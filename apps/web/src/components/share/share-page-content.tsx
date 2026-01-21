@@ -8,6 +8,7 @@ import {
 import { AlertCircleIcon, LockIcon } from "lucide-react";
 import { MessageItem } from "@/components/threads/message-item";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
+import { AppSidebarRight } from "@/components/sidebar/app-sidebar-right";
 import { SidebarInset } from "@/components/sidebar/sidebar";
 import { NavHeader } from "@/components/sidebar/nav-header";
 import ChatInput from "@/components/chat-input";
@@ -199,6 +200,7 @@ export function SharePageContent({ slug }: SharePageContentProps) {
           </div>
         )}
       </SidebarInset>
+      <AppSidebarRight />
     </>
   );
 }

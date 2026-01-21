@@ -92,8 +92,26 @@ export const useAgentExecutionStore = create<AgentExecutionState>((set, get) => 
       if (isStillRunning) {
         startPolling(responseId, set, get);
       }
-    } catch {
-      startPolling(responseId, set, get);
+    } catch (error) {
+      const isAuthError = error instanceof Error &&
+        (error.message.includes("401") || error.message.includes("Session expired") || error.message.includes("Unauthorized"));
+
+      if (isAuthError) {
+        set((state) => ({
+          executions: {
+            ...state.executions,
+            [responseId]: {
+              responseId,
+              status: "completed",
+              progress: 100,
+              planDetails: null,
+              isPolling: false,
+            },
+          },
+        }));
+      } else {
+        startPolling(responseId, set, get);
+      }
     }
   },
 

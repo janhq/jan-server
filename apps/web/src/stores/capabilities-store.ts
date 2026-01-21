@@ -140,6 +140,10 @@ export const useCapabilities = create<CapabilitiesState>()(
               enable_thinking: false,
               enable_image_generation: false,
             });
+            // Open right sidebar when agent mode is enabled
+            import("./right-sidebar-store").then(({ useRightSidebarStore }) => {
+              useRightSidebarStore.getState().setSidebarOpen(true);
+            });
             return {
               agentModeEnabled: newValue,
               searchEnabled: false,
@@ -149,6 +153,10 @@ export const useCapabilities = create<CapabilitiesState>()(
               imageGenerationEnabled: false,
             };
           }
+          // Close right sidebar when agent mode is disabled
+          import("./right-sidebar-store").then(({ useRightSidebarStore }) => {
+            useRightSidebarStore.getState().setSidebarOpen(false);
+          });
           updatePreferencesInBackground({ enable_agent_mode: newValue });
           return { agentModeEnabled: newValue };
         }),
