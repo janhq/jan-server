@@ -212,33 +212,39 @@ export function getStepLabel(step: StepResponse): string {
   const inputParams = (stepAny.input_params as Record<string, unknown>) || {};
   const params = step.actual_params || step.planned_params || inputParams;
   const paramsObj = params as Record<string, unknown>;
-
-  
+  const stepTitle = typeof step.title === "string" ? step.title.trim() : "";
+  const stepDescription =
+    typeof step.description === "string" ? step.description.trim() : "";
+  const paramsDescription =
+    typeof paramsObj.description === "string" ? (paramsObj.description as string).trim() : "";
+  const preferredLabel = stepTitle || stepDescription || paramsDescription;
+  if (preferredLabel) {
+    return preferredLabel.length > 80
+      ? `${preferredLabel.substring(0, 80)}...`
+      : preferredLabel;
+  }
 
   switch (step.action) {
     case "tool_call": {
       const toolName = (paramsObj.tool as string) || (paramsObj.tool_name as string) || "Tool";
       const query = (paramsObj.q as string) || (paramsObj.query as string) || (paramsObj.input as string) || (paramsObj.url as string) || "";
-      const description = paramsObj.description as string;
-
-      if (description) {
-        return description.substring(0, 60) + (description.length > 60 ? "..." : "");
-      }
       return query ? `${toolName}: ${query.substring(0, 50)}${query.length > 50 ? "..." : ""}` : toolName;
     }
 
     case "llm_call":
-      if (paramsObj.action  === "plan_and_template") return paramsObj.description as string
-      if (paramsObj.action  === "generate_single_slide") return paramsObj.description as string
-      return "AI Analysis";
+      if (paramsObj.action === "plan_and_template" && paramsDescription) return paramsDescription;
+      if (paramsObj.action === "generate_single_slide" && paramsDescription) return paramsDescription;
+      return "Draft Notes";
     
     case "artifact_create":
-      return "Creating Report";
+      return "Save Output";
     case "file_operation": {
       const op = paramsObj.operation as string || "file";
       const filename = paramsObj.filename as string || "";
       return filename ? `${op}: ${filename}` : op;
     }
+    case "transform":
+      return "Process Content";
     default:
       return step.action || "Step";
   }

@@ -76,6 +76,8 @@ type StepResponse struct {
 	Sequence      int             `json:"sequence"`
 	Action        string          `json:"action"`
 	Status        string          `json:"status"`
+	Title         string          `json:"title,omitempty"`
+	Description   *string         `json:"description,omitempty"`
 	RetryCount    int             `json:"retry_count"`
 	MaxRetries    int             `json:"max_retries"`
 	Error         *string         `json:"error,omitempty"`
@@ -235,6 +237,8 @@ func MapStepToResponse(s *plan.Step) StepResponse {
 		Sequence:      s.Sequence,
 		Action:        string(s.Action),
 		Status:        string(s.Status),
+		Title:         s.Title,
+		Description:   s.Description,
 		RetryCount:    s.RetryCount,
 		MaxRetries:    s.MaxRetries,
 		Error:         s.ErrorMessage,
