@@ -250,12 +250,20 @@ type StepOutput struct {
 // MediaArtifact represents an artifact uploaded to media-api.
 // These are accessible files with jan_file_* IDs and download URLs.
 type MediaArtifact struct {
-	ID          string `json:"id"`   // jan_file_xxx format
-	Type        string `json:"type"` // code, image, document, etc.
-	Filename    string `json:"filename"`
-	DownloadURL string `json:"download_url"` // Pre-signed or permanent URL
-	Size        int64  `json:"size"`
-	ContentType string `json:"content_type"` // MIME type
+	ID           string               `json:"id"`   // jan_file_xxx format
+	Type         string               `json:"type"` // code, image, document, etc.
+	Filename     string               `json:"filename"`
+	DownloadURL  string               `json:"download_url"` // Pre-signed or permanent URL
+	Size         int64                `json:"size"`
+	ContentType  string               `json:"content_type"` // MIME type
+	SlidesImages []MediaArtifactImage `json:"slides_images,omitempty"`
+}
+
+// MediaArtifactImage represents a slide preview image.
+type MediaArtifactImage struct {
+	ID    string `json:"id"`
+	URL   string `json:"url"`
+	Thumb string `json:"thumb,omitempty"`
 }
 
 // Citation represents a source citation from research steps.

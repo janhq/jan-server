@@ -240,11 +240,15 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		return nil, err
 	}
 
+	imageSearchNum := 8
+	if config.NumSlides == 1 {
+		imageSearchNum = 4
+	}
 	imageSearchParams, _ := json.Marshal(map[string]interface{}{
 		"tool":        "image_search",
 		"description": "Find visual references for the presentation",
 		"q":           request.UserMessage,
-		"num":         8,
+		"num":         imageSearchNum,
 	})
 	_, err = p.planService.CreateStep(ctx, outlineTask.ID, plan.CreateStepParams{
 		Sequence:    2,
@@ -277,6 +281,9 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		"description": "Extract facts, figures, and datasets",
 		"brief":       request.UserMessage,
 		"schema":      schemas.DataBankSchema,
+		"config": map[string]interface{}{
+			"num_slides": config.NumSlides,
+		},
 	})
 	_, err = p.planService.CreateStep(ctx, dataBankTask.ID, plan.CreateStepParams{
 		Sequence:    1,
@@ -353,11 +360,15 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	for i := 1; i <= config.NumSlides; i++ {
 		stepTitle := fmt.Sprintf("Find Images for Slide %d", i)
 		stepDescription := fmt.Sprintf("Find images for slide %d", i)
+		perSlideNum := 6
+		if config.NumSlides == 1 {
+			perSlideNum = 4
+		}
 		imageParams, _ := json.Marshal(map[string]interface{}{
 			"action":      "image_search_slide",
 			"description": stepDescription,
 			"slide_index": i,
-			"num":         6,
+			"num":         perSlideNum,
 		})
 		_, err = p.planService.CreateStep(ctx, htmlTask.ID, plan.CreateStepParams{
 			Sequence:    stepSequence,
@@ -711,10 +722,10 @@ func (p *SlideCreatorPlanner) calculateEstimatedSteps(config SlideCreatorConfig)
 		steps += 3
 	}
 
-	steps += 2 // outline (reasoning + image_search)
-	steps += 1 // data bank
+	steps += 2                    // outline (reasoning + image_search)
+	steps += 1                    // data bank
 	steps += 6 + config.NumSlides // html generation: select templates, plan, per-slide search, normalize, render, write, artifact
-	steps += 3 // pptx export + artifacts
+	steps += 3                    // pptx export + artifacts
 
 	log.Debug().
 		Int("num_slides", config.NumSlides).

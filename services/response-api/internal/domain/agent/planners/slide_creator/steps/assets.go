@@ -41,11 +41,35 @@ func collectDataBankText(input agent.ExecutionInput) string {
 	return ""
 }
 
+const (
+	slidePlanImageAssetLimitSingle   = 4
+	slidePlanImageAssetLimitPerSlide = 3
+	slidePlanImageAssetMaxTotal      = 12
+)
+
 func limitImageAssets(assets []map[string]any, max int) []map[string]any {
 	if max <= 0 || len(assets) <= max {
 		return assets
 	}
 	return assets[:max]
+}
+
+func limitSlidePlanImageAssets(assets []map[string]any, numSlides int) []map[string]any {
+	if len(assets) == 0 {
+		return assets
+	}
+	limitPerSlide := slidePlanImageAssetLimitPerSlide
+	if numSlides <= 1 {
+		limitPerSlide = slidePlanImageAssetLimitSingle
+	}
+	if numSlides <= 0 {
+		numSlides = 1
+	}
+	maxTotal := limitPerSlide * numSlides
+	if maxTotal > slidePlanImageAssetMaxTotal {
+		maxTotal = slidePlanImageAssetMaxTotal
+	}
+	return limitImageAssets(assets, maxTotal)
 }
 
 func compactImageAssetsForPrompt(assets []map[string]any) []map[string]any {

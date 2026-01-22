@@ -111,6 +111,16 @@ function parseToolCallOutput(step: StepResponse, output: Record<string, unknown>
 function parseLLMOutput(output: Record<string, unknown>): SearchResultItem[] {
   const results: SearchResultItem[] = [];
 
+  const dataBank = extractDataBank(output);
+  if (dataBank) {
+    results.push({
+      type: "text",
+      title: "Data Bank",
+      content: formatDataBankMarkdown(dataBank),
+    });
+    return results;
+  }
+
   const content = output.content as string || output.text as string || output.response as string;
   if (content) {
     results.push({
@@ -136,6 +146,11 @@ function parseArtifactOutput(output: Record<string, unknown>): SearchResultItem[
     const downloadUrl = artifact.download_url as string;
     const createdAt = artifact.created_at as string;
     const resolvedUrl = resolveArtifactUrl(downloadUrl);
+    const rawSlidesImages = artifact.slides_images as Array<Record<string, unknown>> | undefined;
+    const slidesImages = rawSlidesImages?.map((img, idx) => ({
+      id: (img.id as string) || String(idx + 1),
+      thumb: img.thumb as string || img.url as string || "",
+    })).filter(img => img.thumb);
 
     results.push({
       type: "artifact",
@@ -153,6 +168,7 @@ function parseArtifactOutput(output: Record<string, unknown>): SearchResultItem[
         size,
         downloadUrl: resolvedUrl || "",
         createdAt,
+        slidesImages: slidesImages && slidesImages.length > 0 ? slidesImages : undefined,
       },
     });
   }
@@ -248,6 +264,139 @@ export function getStepLabel(step: StepResponse): string {
     default:
       return step.action || "Step";
   }
+}
+
+type DataBankFact = {
+  claim?: string;
+  value?: string | number;
+  unit?: string;
+  sourceUrl?: string;
+  date?: string;
+};
+
+type DataBankSeries = {
+  name?: string;
+  values?: Array<number | string>;
+};
+
+type DataBankDataset = {
+  id?: string;
+  kind?: string;
+  data?: {
+    labels?: string[];
+    series?: DataBankSeries[];
+  };
+  sourceNote?: string;
+};
+
+type DataBank = {
+  facts?: DataBankFact[];
+  datasets?: DataBankDataset[];
+};
+
+function extractDataBank(output: Record<string, unknown>): DataBank | null {
+  const data = output.data as Record<string, unknown> | undefined;
+  if (data && (Array.isArray(data.facts) || Array.isArray(data.datasets))) {
+    return data as DataBank;
+  }
+
+  const content = output.content;
+  if (typeof content === "string" && content.trim()) {
+    try {
+      const parsed = JSON.parse(content) as DataBank;
+      if (parsed && (Array.isArray(parsed.facts) || Array.isArray(parsed.datasets))) {
+        return parsed;
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+function formatDataBankMarkdown(data: DataBank): string {
+  const lines: string[] = [];
+
+  if (Array.isArray(data.facts) && data.facts.length > 0) {
+    lines.push("### Facts");
+    const facts = data.facts.slice(0, 12);
+    for (const fact of facts) {
+      const claim = fact.claim?.trim() || "Fact";
+      const valueParts: string[] = [];
+      if (fact.value !== undefined && fact.value !== null && `${fact.value}`.trim()) {
+        valueParts.push(`${fact.value}`);
+      }
+      if (fact.unit && fact.unit.trim()) {
+        valueParts.push(fact.unit.trim());
+      }
+      const valueText = valueParts.length > 0 ? ` — ${valueParts.join(" ")}` : "";
+      const dateText = fact.date && fact.date.trim() ? ` (${fact.date.trim()})` : "";
+      const sourceText = fact.sourceUrl && fact.sourceUrl.trim()
+        ? ` ([source](${fact.sourceUrl.trim()}))`
+        : "";
+      lines.push(`- **${claim}**${valueText}${dateText}${sourceText}`);
+    }
+  }
+
+  if (Array.isArray(data.datasets) && data.datasets.length > 0) {
+    if (lines.length > 0) {
+      lines.push("");
+    }
+    lines.push("### Datasets");
+    const datasets = data.datasets.slice(0, 6);
+    for (let i = 0; i < datasets.length; i++) {
+      const dataset = datasets[i];
+      const title = dataset.id?.trim() || `Dataset ${i + 1}`;
+      lines.push(`#### ${title}`);
+      if (dataset.sourceNote && dataset.sourceNote.trim()) {
+        lines.push(`*${dataset.sourceNote.trim()}*`);
+      }
+      const table = buildDatasetTable(dataset);
+      if (table) {
+        lines.push(table);
+      }
+      if (i < datasets.length - 1) {
+        lines.push("");
+      }
+    }
+  }
+
+  if (lines.length === 0) {
+    return "No facts or datasets available.";
+  }
+
+  return lines.join("\n");
+}
+
+function buildDatasetTable(dataset: DataBankDataset): string | null {
+  const labels = dataset.data?.labels ?? [];
+  const series = dataset.data?.series ?? [];
+  if (!Array.isArray(labels) || !Array.isArray(series) || labels.length === 0 || series.length === 0) {
+    return null;
+  }
+
+  const maxRows = 10;
+  const rowLabels = labels.slice(0, maxRows);
+  const header = ["Label", ...series.map((s, idx) => s.name?.trim() || `Series ${idx + 1}`)];
+  const rows = rowLabels.map((label, rowIndex) => {
+    const row: string[] = [label];
+    for (const s of series) {
+      const value = s.values?.[rowIndex];
+      row.push(value === undefined || value === null || value === "" ? "-" : String(value));
+    }
+    return row;
+  });
+
+  return toMarkdownTable(header, rows);
+}
+
+function toMarkdownTable(headers: string[], rows: string[][]): string {
+  const escapeCell = (value: string) => value.replace(/\|/g, "\\|");
+  const headerLine = `| ${headers.map(escapeCell).join(" | ")} |`;
+  const separatorLine = `| ${headers.map(() => "---").join(" | ")} |`;
+  const rowLines = rows.map((row) => `| ${row.map(escapeCell).join(" | ")} |`);
+  return [headerLine, separatorLine, ...rowLines].join("\n");
 }
 
 export function getStepToolName(step: StepResponse): string {

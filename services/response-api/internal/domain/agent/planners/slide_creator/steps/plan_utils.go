@@ -73,6 +73,9 @@ func normalizeDeckPlan(plan DeckPlan, wantSlides int) DeckPlan {
 		if layout == "chart" && !hasChart {
 			layout = ""
 		}
+		if layout == "title" {
+			layout = ""
+		}
 		if layout == "" {
 			layout = chooseLayout(plan.Slides[i])
 		}
@@ -141,7 +144,7 @@ func chooseLayout(slide SlidePlan) string {
 	if hasBul {
 		return "bullets"
 	}
-	return "title"
+	return "bullets"
 }
 
 func clampBullets(in []string, max int) []string {

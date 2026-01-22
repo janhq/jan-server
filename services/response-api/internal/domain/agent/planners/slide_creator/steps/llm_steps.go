@@ -30,7 +30,10 @@ RULES:
 - If data is missing, leave the dataset list empty instead of inventing values.
 `
 
-const dataBankImageAssetLimit = 2
+const (
+	dataBankImageAssetLimit            = 2
+	dataBankImageAssetLimitSingleSlide = 1
+)
 
 func (e *SlideCreatorExecutor) executeLLMCall(ctx context.Context, step *plan.Step, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
 	var params map[string]interface{}
@@ -87,15 +90,25 @@ func (e *SlideCreatorExecutor) executeLLMCall(ctx context.Context, step *plan.St
 func (e *SlideCreatorExecutor) executeOutlineReasoning(ctx context.Context, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
 	description, _ := params["description"].(string)
 	brief, _ := params["brief"].(string)
+	config, _ := params["config"].(map[string]interface{})
+	numSlides, _ := parseIntFromInterface(config["num_slides"])
 	contextData := buildAccumulatedContext(input)
 	if strings.TrimSpace(contextData) == "" {
 		contextData = "[No previous context available]"
 	}
+	if numSlides == 1 && len(contextData) > slidePlanContextPerSlideLimit {
+		contextData = truncateWithSuffix(contextData, slidePlanContextPerSlideLimit)
+	}
+	singleSlideNote := ""
+	if numSlides == 1 {
+		singleSlideNote = "\n\nFor single-slide requests, avoid listing full URLs; summarize sources by publisher name only."
+	}
 	prompt := fmt.Sprintf(
-		"Analyze and plan the slide structure. %s\n\nBrief:\n%s\n\nResearch findings:\n%s\n\nExtract concrete data for any requested tables (column headers + row entries) and include them in the outline.\nProvide a clear, concise outline for the presentation.\nReturn plain text only.",
+		"Analyze and plan the slide structure. %s\n\nBrief:\n%s\n\nResearch findings:\n%s%s\n\nExtract concrete data for any requested tables (column headers + row entries) and include them in the outline.\nProvide a clear, concise outline for the presentation.\nReturn plain text only.",
 		description,
 		brief,
 		contextData,
+		singleSlideNote,
 	)
 
 	log.Debug().
@@ -146,9 +159,18 @@ func (e *SlideCreatorExecutor) executeOutlineReasoning(ctx context.Context, para
 
 func (e *SlideCreatorExecutor) executeDataBank(ctx context.Context, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
 	log.Debug().Msg("[slide_creator] executeDataBank started")
+	config, _ := params["config"].(map[string]interface{})
+	numSlides, _ := parseIntFromInterface(config["num_slides"])
 	contextData := buildAccumulatedContext(input)
+	if numSlides == 1 && len(contextData) > slidePlanContextPerSlideLimit {
+		contextData = truncateWithSuffix(contextData, slidePlanContextPerSlideLimit)
+	}
 	brief, _ := params["brief"].(string)
-	assets := limitImageAssets(collectImageAssets(input), dataBankImageAssetLimit)
+	assetLimit := dataBankImageAssetLimit
+	if numSlides == 1 {
+		assetLimit = dataBankImageAssetLimitSingleSlide
+	}
+	assets := limitImageAssets(collectImageAssets(input), assetLimit)
 	assetsJSON, _ := json.Marshal(compactImageAssetsForPrompt(assets))
 
 	systemPrompt := dataBankPrompt

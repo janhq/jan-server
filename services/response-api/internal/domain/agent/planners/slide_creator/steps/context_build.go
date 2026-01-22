@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"jan-server/services/response-api/internal/domain/agent"
+
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -21,6 +23,7 @@ type contextBuildOptions struct {
 	maxPartChars      int
 	excludedToolNames map[string]struct{}
 	excludedTypes     map[string]struct{}
+	excludePayload    func(map[string]interface{}) bool
 }
 
 func buildSlidePlanContext(input agent.ExecutionInput, numSlides int) string {
@@ -45,7 +48,9 @@ func buildSlidePlanContext(input agent.ExecutionInput, numSlides int) string {
 			"image_search",
 			"image_search_slide",
 			"scrape",
+			"data_bank",
 		),
+		excludePayload: excludeOutlinePayload,
 	})
 }
 
@@ -107,6 +112,9 @@ func extractContextFromOutputWithOptions(output json.RawMessage, opts contextBui
 		return string(output)
 	}
 	if shouldSkipContextPayload(data, opts) {
+		return ""
+	}
+	if opts.excludePayload != nil && opts.excludePayload(data) {
 		return ""
 	}
 
@@ -224,4 +232,50 @@ func toKeySet(values ...string) map[string]struct{} {
 		set[key] = struct{}{}
 	}
 	return set
+}
+
+func collectOutlineText(input agent.ExecutionInput) string {
+	outputs := make([]json.RawMessage, 0, len(input.AccumulatedOutputs)+1)
+	outputs = append(outputs, input.AccumulatedOutputs...)
+	if len(input.PreviousOutput) > 0 {
+		outputs = append(outputs, input.PreviousOutput)
+	}
+
+	for i := len(outputs) - 1; i >= 0; i-- {
+		if len(outputs[i]) == 0 {
+			continue
+		}
+		var payload map[string]interface{}
+		if err := json.Unmarshal(outputs[i], &payload); err != nil {
+			continue
+		}
+		if !isOutlinePayload(payload) {
+			continue
+		}
+		if content, ok := payload["content"].(string); ok && strings.TrimSpace(content) != "" {
+			log.Debug().Int("content_length", len(content)).Msg("[slide_creator] outline text collected")
+			return content
+		}
+	}
+	return ""
+}
+
+func excludeOutlinePayload(payload map[string]interface{}) bool {
+	return isOutlinePayload(payload)
+}
+
+func isOutlinePayload(payload map[string]interface{}) bool {
+	if payload == nil {
+		return false
+	}
+	payloadType, _ := payload["type"].(string)
+	if normalizeKey(payloadType) != "llm_response" {
+		return false
+	}
+	action, _ := payload["action"].(string)
+	if normalizeKey(action) == "reasoning" {
+		return true
+	}
+	description, _ := payload["description"].(string)
+	return strings.Contains(strings.ToLower(description), "outline")
 }

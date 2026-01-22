@@ -25,11 +25,16 @@ func (e *SlideCreatorExecutor) executeSlidePlan(ctx context.Context, params map[
 	themePref := strings.TrimSpace(stringValue(config, "theme"))
 
 	contextData := buildSlidePlanContext(input, numSlides)
-	assets := collectImageAssets(input)
+	outlineText := strings.TrimSpace(collectOutlineText(input))
+	assets := limitSlidePlanImageAssets(collectImageAssets(input), numSlides)
 	assetsForPrompt := compactImageAssetsForPrompt(assets)
 	assetsJSON, _ := json.Marshal(assetsForPrompt)
 	assetsJSONStr := string(assetsJSON)
 	dataBank := collectDataBankText(input)
+	if numSlides == 1 {
+		contextData = ""
+		outlineText = stripURLsFromText(outlineText)
+	}
 
 	briefParts := []string{}
 	if brief != "" {
@@ -43,6 +48,17 @@ func (e *SlideCreatorExecutor) executeSlidePlan(ctx context.Context, params map[
 	}
 	if dataBank != "" {
 		briefParts = append(briefParts, "Data bank:\n"+dataBank)
+	}
+	if outlineText != "" {
+		outlineLimit := slidePlanContextPerSlideLimit
+		if numSlides > 0 {
+			outlineLimit = slidePlanContextPerSlideLimit * numSlides
+		}
+		if outlineLimit > slidePlanContextMaxTotal {
+			outlineLimit = slidePlanContextMaxTotal
+		}
+		outlineText = truncateWithSuffix(outlineText, outlineLimit)
+		briefParts = append(briefParts, "Draft outline (follow this):\n"+outlineText)
 	}
 	if len(assetsForPrompt) > 0 {
 		briefParts = append(briefParts, "Image assets:\n"+string(assetsJSON))
@@ -84,6 +100,10 @@ HARD RULES (must follow):
   - table: 3-6 columns, 3-9 rows, keep cells <= 24 chars.
   - chart: 3-6 categories, 1-3 series, use bar|line|pie.
   - Avoid colons + long clauses; prefer short phrases.
+- Every slide must include at least one content block: bullets OR table OR chart.
+- If a table or chart is not possible, include bullets instead (3-6 items).
+- Avoid title-only slides; do NOT use layout "title".
+- If a draft outline is provided, preserve its slide order and intent.
 - Theme safety (prevent low contrast):
   - Choose a background that is either VERY dark or VERY light (avoid mid-tone grays/blues).
     - Good dark examples: #0B1220, #0F172A, #111827

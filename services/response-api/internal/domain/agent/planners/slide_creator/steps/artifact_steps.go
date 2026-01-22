@@ -123,7 +123,8 @@ func (e *SlideCreatorExecutor) storePPTXArtifact(ctx context.Context, input agen
 	}
 
 	filename := filepath.Base(pptxPath)
-	return e.uploadFileArtifact(ctx, input, pptxBytes, filename, artifact.ContentTypeSlides, artifact.ContentTypeSlides.MimeTypeFor(), "Presentation", retentionPolicy)
+	slideImages := e.uploadSlidePreviewImages(ctx, input, collectSlideImages(outDir))
+	return e.uploadFileArtifact(ctx, input, pptxBytes, filename, artifact.ContentTypeSlides, artifact.ContentTypeSlides.MimeTypeFor(), "Presentation", retentionPolicy, slideImages...)
 }
 
 func (e *SlideCreatorExecutor) storeSlideImagesArtifact(ctx context.Context, input agent.ExecutionInput, retentionPolicy string) (*agent.ExecutionResult, error) {
@@ -163,7 +164,7 @@ func (e *SlideCreatorExecutor) storeSlideImagesArtifact(ctx context.Context, inp
 	return e.uploadFileArtifact(ctx, input, zipBytes, "slide-images.zip", artifact.ContentTypeImage, "application/zip", "Slide Images", retentionPolicy)
 }
 
-func (e *SlideCreatorExecutor) uploadFileArtifact(ctx context.Context, input agent.ExecutionInput, content []byte, filename string, contentType artifact.ContentType, mimeType string, title string, retentionPolicy string) (*agent.ExecutionResult, error) {
+func (e *SlideCreatorExecutor) uploadFileArtifact(ctx context.Context, input agent.ExecutionInput, content []byte, filename string, contentType artifact.ContentType, mimeType string, title string, retentionPolicy string, slidesImages ...plan.MediaArtifactImage) (*agent.ExecutionResult, error) {
 	if e.mediaClient == nil {
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
@@ -225,12 +226,13 @@ func (e *SlideCreatorExecutor) uploadFileArtifact(ctx context.Context, input age
 		Type:      "artifact_create",
 		CreatedAt: time.Now(),
 		Artifact: &plan.MediaArtifact{
-			ID:          createdArtifact.ID,
-			Type:        string(contentType),
-			Filename:    filename,
-			DownloadURL: downloadURL,
-			Size:        int64(len(content)),
-			ContentType: mimeType,
+			ID:           createdArtifact.ID,
+			Type:         string(contentType),
+			Filename:     filename,
+			DownloadURL:  downloadURL,
+			Size:         int64(len(content)),
+			ContentType:  mimeType,
+			SlidesImages: slidesImages,
 		},
 	}
 	outputBytes, _ := json.Marshal(stepOutput)
@@ -240,6 +242,51 @@ func (e *SlideCreatorExecutor) uploadFileArtifact(ctx context.Context, input age
 		Output:     outputBytes,
 		ArtifactID: &createdArtifact.ID,
 	}, nil
+}
+
+func (e *SlideCreatorExecutor) uploadSlidePreviewImages(ctx context.Context, input agent.ExecutionInput, imagePaths []string) []plan.MediaArtifactImage {
+	if e.mediaClient == nil || len(imagePaths) == 0 {
+		return nil
+	}
+
+	responseID := ""
+	conversationID := ""
+	userID := ""
+	if input.PlanContext != nil {
+		responseID = input.PlanContext.ResponseID
+		conversationID = input.PlanContext.ConversationID
+		userID = input.PlanContext.UserID
+	}
+
+	results := make([]plan.MediaArtifactImage, 0, len(imagePaths))
+	for _, path := range imagePaths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			log.Warn().Err(err).Str("path", path).Msg("[slide_creator] failed to read slide preview")
+			continue
+		}
+		filename := filepath.Base(path)
+		mediaArtifact, err := e.mediaClient.UploadArtifact(ctx, &media.UploadRequest{
+			Content:        content,
+			Filename:       filename,
+			ContentType:    "",
+			ConversationID: conversationID,
+			ResponseID:     responseID,
+			UserID:         userID,
+		})
+		if err != nil {
+			log.Warn().Err(err).Str("filename", filename).Msg("[slide_creator] failed to upload slide preview")
+			continue
+		}
+		id := strings.TrimSuffix(filename, filepath.Ext(filename))
+		url := mediaArtifact.DownloadURL
+		results = append(results, plan.MediaArtifactImage{
+			ID:    id,
+			URL:   url,
+			Thumb: url,
+		})
+	}
+	return results
 }
 
 func collectHTMLBundleFiles(outDir string) ([]string, error) {
