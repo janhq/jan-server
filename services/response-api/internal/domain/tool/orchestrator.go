@@ -40,15 +40,32 @@ type Orchestrator struct {
 	mcpClient       MCPClient
 	maxDepth        int
 	toolCallTimeout time.Duration
+	llmStreamMode   string
 }
 
 // NewOrchestrator constructs a tool orchestrator instance.
-func NewOrchestrator(llmProvider llm.Provider, mcpClient MCPClient, maxDepth int, toolCallTimeout time.Duration) *Orchestrator {
+func NewOrchestrator(llmProvider llm.Provider, mcpClient MCPClient, maxDepth int, toolCallTimeout time.Duration, llmStreamMode string) *Orchestrator {
 	return &Orchestrator{
 		llmProvider:     llmProvider,
 		mcpClient:       mcpClient,
 		maxDepth:        maxDepth,
 		toolCallTimeout: toolCallTimeout,
+		llmStreamMode:   normalizeLLMStreamMode(llmStreamMode),
+	}
+}
+
+const (
+	llmStreamModeAuto = "auto"
+	llmStreamModeREST = "rest"
+	llmStreamModeSSE  = "sse"
+)
+
+func normalizeLLMStreamMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case llmStreamModeSSE, llmStreamModeREST:
+		return strings.ToLower(strings.TrimSpace(mode))
+	default:
+		return llmStreamModeAuto
 	}
 }
 
@@ -92,6 +109,16 @@ func (o *Orchestrator) Execute(params ExecuteParams) (*ExecuteResult, error) {
 		trimResult := llm.TrimMessagesToFitContext(messages, contextLength)
 		messages = trimResult.Messages
 
+		useStream := false
+		switch o.llmStreamMode {
+		case llmStreamModeSSE:
+			useStream = true
+		case llmStreamModeREST:
+			useStream = false
+		default:
+			useStream = params.StreamObserver != nil
+		}
+
 		req := llm.ChatCompletionRequest{
 			Model:       params.Model,
 			Messages:    messages,
@@ -99,14 +126,13 @@ func (o *Orchestrator) Execute(params ExecuteParams) (*ExecuteResult, error) {
 			ToolChoice:  params.ToolChoice,
 			Temperature: params.Temperature,
 			MaxTokens:   params.MaxTokens,
-			Stream:      false,
+			Stream:      useStream,
 		}
-		req.Stream = params.StreamObserver != nil
 
 		var choice llm.ChatCompletionChoice
 		var usage *llm.Usage
 
-		if params.StreamObserver != nil {
+		if useStream {
 			streamChoice, err := o.streamChatCompletion(params.Ctx, req, params.StreamObserver)
 			if err != nil {
 				return nil, err

@@ -118,7 +118,7 @@ func main() {
 	llmClient := llmprovider.NewClient(cfg.LLMAPIURL)
 	mcpClient := mcp.NewClient(cfg.MCPToolsURL)
 	mediaClient := media.NewClient(cfg.MediaAPIURL)
-	orchestrator := tool.NewOrchestrator(llmClient, mcpClient, cfg.MaxToolDepth, cfg.ToolTimeout)
+	orchestrator := tool.NewOrchestrator(llmClient, mcpClient, cfg.MaxToolDepth, cfg.ToolTimeout, cfg.LLMStreamMode)
 
 	// Initialize webhook service
 	webhookService := webhook.NewHTTPService(log)
@@ -165,6 +165,7 @@ func main() {
 
 	// Create code fixer for LLM-based code fix retry
 	codeFixer := llm.NewCodeFixer(llmClient, cfg.CodeFixModel)
+	codeFixer.SetDisableCustomTemperature(cfg.LLMDisableCustomTemperature)
 
 	// Register executors for tool calls and LLM calls
 	deepResearchExecutor := planners.NewDeepResearchExecutor(mcpClient, codeFixer)

@@ -137,7 +137,7 @@ func newSkillService() (*skill2.Service, error) {
 }
 
 func newOrchestrator(cfg *config.Config, provider llm.Provider, mcpClient tool.MCPClient) *tool.Orchestrator {
-	return tool.NewOrchestrator(provider, mcpClient, cfg.MaxToolDepth, cfg.ToolTimeout)
+	return tool.NewOrchestrator(provider, mcpClient, cfg.MaxToolDepth, cfg.ToolTimeout, cfg.LLMStreamMode)
 }
 
 func newAgentOrchestrator(registry agent.Registry, planService plan2.Service) agent.Orchestrator {
@@ -178,6 +178,7 @@ func newAgentRegistry(planService plan2.Service, mcpClient tool.MCPClient, llmPr
 	}
 
 	codeFixer := llm.NewCodeFixer(llmProvider, cfg.CodeFixModel)
+	codeFixer.SetDisableCustomTemperature(cfg.LLMDisableCustomTemperature)
 
 	deepResearchExecutor := planners.NewDeepResearchExecutor(mcpClient, codeFixer)
 

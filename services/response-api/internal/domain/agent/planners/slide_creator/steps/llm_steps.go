@@ -98,6 +98,11 @@ func (e *SlideCreatorExecutor) executeOutlineReasoning(ctx context.Context, para
 		contextData,
 	)
 
+	log.Debug().
+		Str("plan_id", planContextValue(input, "plan_id")).
+		Str("prompt", sanitizeForLog(prompt)).
+		Msg("[slide_creator] outline prompt")
+
 	model := getModelFromContext(input)
 	if e.llmProvider == nil {
 		return &agent.ExecutionResult{
@@ -148,6 +153,12 @@ func (e *SlideCreatorExecutor) executeDataBank(ctx context.Context, params map[s
 
 	systemPrompt := dataBankPrompt
 	userPrompt := fmt.Sprintf("BRIEF:\n%s\n\nRESEARCH:\n%s\n\nASSETS AVAILABLE:\n%s", brief, contextData, string(assetsJSON))
+
+	log.Debug().
+		Str("plan_id", planContextValue(input, "plan_id")).
+		Str("system_prompt", sanitizeForLog(systemPrompt)).
+		Str("user_prompt", sanitizeForLog(userPrompt)).
+		Msg("[slide_creator] data bank prompt")
 
 	model := getModelFromContext(input)
 	if e.llmProvider == nil {
@@ -206,74 +217,4 @@ func (e *SlideCreatorExecutor) executeDataBank(ctx context.Context, params map[s
 		Status: status.StatusCompleted,
 		Output: outputBytes,
 	}, nil
-}
-
-func buildAccumulatedContext(input agent.ExecutionInput) string {
-	var contextParts []string
-
-	for _, output := range input.AccumulatedOutputs {
-		if len(output) > 0 {
-			extracted := extractContextFromOutput(output)
-			if extracted != "" {
-				contextParts = append(contextParts, extracted)
-			}
-		}
-	}
-
-	if len(input.PreviousOutput) > 0 {
-		extracted := extractContextFromOutput(input.PreviousOutput)
-		if extracted != "" {
-			contextParts = append(contextParts, extracted)
-		}
-	}
-
-	if len(contextParts) == 0 {
-		return ""
-	}
-
-	return strings.Join(contextParts, "\n\n---\n\n")
-}
-
-func extractContextFromOutput(output json.RawMessage) string {
-	if len(output) == 0 {
-		return ""
-	}
-
-	var data map[string]interface{}
-	if err := json.Unmarshal(output, &data); err != nil {
-		rawStr := string(output)
-		if len(rawStr) > 10000 {
-			return rawStr[:10000] + "... [truncated]"
-		}
-		return rawStr
-	}
-
-	if content, ok := data["content"].(string); ok && content != "" {
-		return content
-	}
-	if text, ok := data["text"].(string); ok && text != "" {
-		return text
-	}
-
-	if toolName, ok := data["tool_name"].(string); ok && toolName != "" {
-		if content, ok := data["content"].([]interface{}); ok {
-			texts := []string{}
-			for _, item := range content {
-				if itemMap, ok := item.(map[string]interface{}); ok {
-					if text, ok := itemMap["text"].(string); ok {
-						texts = append(texts, text)
-					}
-				}
-			}
-			if len(texts) > 0 {
-				return fmt.Sprintf("[%s result]: %s", toolName, strings.Join(texts, "\n"))
-			}
-		}
-	}
-
-	rawStr := string(output)
-	if len(rawStr) > 10000 {
-		return rawStr[:10000] + "... [truncated]"
-	}
-	return rawStr
 }

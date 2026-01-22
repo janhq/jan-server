@@ -46,9 +46,11 @@ type Config struct {
 	// Tool Execution
 	MaxToolDepth int           `env:"RESPONSE_MAX_TOOL_DEPTH" envDefault:"50"`
 	ToolTimeout  time.Duration `env:"TOOL_EXECUTION_TIMEOUT" envDefault:"300s"`
+	LLMStreamMode string        `env:"RESPONSE_LLM_STREAM_MODE" envDefault:"auto"`
 
 	// Code Execution Retry
-	CodeFixModel string `env:"CODE_FIX_MODEL" envDefault:"gpt-4o-mini"`
+	CodeFixModel                string `env:"CODE_FIX_MODEL" envDefault:"gpt-4o-mini"`
+	LLMDisableCustomTemperature bool   `env:"RESPONSE_LLM_DISABLE_CUSTOM_TEMPERATURE" envDefault:"false"`
 
 	// Skill Execution
 	SkillExecutionEnabled    bool          `env:"SKILL_EXECUTION_ENABLED" envDefault:"true"`
@@ -98,6 +100,13 @@ func Load() (*Config, error) {
 
 	if cfg.ToolTimeout <= 0 {
 		cfg.ToolTimeout = 300 * time.Second
+	}
+
+	cfg.LLMStreamMode = strings.ToLower(strings.TrimSpace(cfg.LLMStreamMode))
+	switch cfg.LLMStreamMode {
+	case "auto", "rest", "sse":
+	default:
+		cfg.LLMStreamMode = "auto"
 	}
 
 	return cfg, nil

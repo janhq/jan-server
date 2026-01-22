@@ -135,6 +135,41 @@ func collectImageAssets(input agent.ExecutionInput) []map[string]any {
 	return assets
 }
 
+func replacePlanImageSources(plan DeckPlan, assets []map[string]any) (DeckPlan, int) {
+	if len(assets) == 0 || len(plan.Slides) == 0 {
+		return plan, 0
+	}
+	replacements := make(map[string]string)
+	for _, asset := range assets {
+		thumb := firstString(asset, "thumbnailUrl")
+		img := firstString(asset, "imageUrl")
+		if thumb == "" || img == "" {
+			continue
+		}
+		if strings.TrimSpace(thumb) == strings.TrimSpace(img) {
+			continue
+		}
+		replacements[thumb] = img
+	}
+	if len(replacements) == 0 {
+		return plan, 0
+	}
+	replaced := 0
+	for i := range plan.Slides {
+		for j := range plan.Slides[i].Images {
+			src := strings.TrimSpace(plan.Slides[i].Images[j].Src)
+			if src == "" {
+				continue
+			}
+			if full, ok := replacements[src]; ok && strings.TrimSpace(full) != "" {
+				plan.Slides[i].Images[j].Src = full
+				replaced++
+			}
+		}
+	}
+	return plan, replaced
+}
+
 func extractImageAssetsFromOutput(output json.RawMessage) []map[string]any {
 	if len(output) == 0 {
 		return nil
@@ -195,7 +230,7 @@ func extractImageAssetsFromArray(arr []any) []map[string]any {
 }
 
 func assetFromImageResult(item map[string]any) map[string]any {
-	imageURL := firstString(item, "imageUrl", "image_url", "url", "link", "source_url")
+	imageURL := firstString(item, "imageUrl", "image_url")
 	thumbURL := firstString(item, "thumbnailUrl", "thumbnail_url", "thumbnail", "thumb", "previewUrl", "preview_url")
 	if imageURL == "" && thumbURL == "" {
 		return nil

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/status"
@@ -14,6 +15,7 @@ import (
 )
 
 func (e *SlideCreatorExecutor) executeSlidePlan(ctx context.Context, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
+	startTime := time.Now()
 	config, _ := params["config"].(map[string]interface{})
 	brief := strings.TrimSpace(stringValue(params, "brief"))
 	numSlides, ok := parseIntFromInterface(config["num_slides"])
@@ -22,9 +24,11 @@ func (e *SlideCreatorExecutor) executeSlidePlan(ctx context.Context, params map[
 	}
 	themePref := strings.TrimSpace(stringValue(config, "theme"))
 
-	contextData := buildAccumulatedContext(input)
+	contextData := buildSlidePlanContext(input, numSlides)
 	assets := collectImageAssets(input)
-	assetsJSON, _ := json.Marshal(assets)
+	assetsForPrompt := compactImageAssetsForPrompt(assets)
+	assetsJSON, _ := json.Marshal(assetsForPrompt)
+	assetsJSONStr := string(assetsJSON)
 	dataBank := collectDataBankText(input)
 
 	briefParts := []string{}
@@ -40,7 +44,7 @@ func (e *SlideCreatorExecutor) executeSlidePlan(ctx context.Context, params map[
 	if dataBank != "" {
 		briefParts = append(briefParts, "Data bank:\n"+dataBank)
 	}
-	if len(assets) > 0 {
+	if len(assetsForPrompt) > 0 {
 		briefParts = append(briefParts, "Image assets:\n"+string(assetsJSON))
 	}
 
@@ -91,14 +95,39 @@ HARD RULES (must follow):
   - Do NOT use gray-on-gray or low-saturation combinations for text vs background.
 - Keep theme consistent across all slides.
 - Use image URLs only (no base64).
-- When picking from provided assets, prefer imageUrl and only use thumbnailUrl if imageUrl is missing.
+- When picking from provided assets, prefer thumbnailUrl and only use imageUrl if thumbnailUrl is missing.
 - Omit empty optional fields.
 - Output JSON only (no markdown, no commentary).
 
 %s
 `, numSlides, strings.Join(briefParts, "\n\n"))
 
+	log.Debug().
+		Str("plan_id", planContextValue(input, "plan_id")).
+		Str("brief", sanitizeForLog(brief)).
+		Str("theme", sanitizeForLog(themePref)).
+		Str("context", sanitizeForLog(contextData)).
+		Str("data_bank", sanitizeForLog(dataBank)).
+		Str("assets", sanitizeForLog(assetsJSONStr)).
+		Msg("[slide_creator] slide plan prompt inputs")
+	log.Debug().
+		Str("plan_id", planContextValue(input, "plan_id")).
+		Str("prompt", sanitizeForLog(planPrompt)).
+		Msg("[slide_creator] slide plan prompt")
+
 	model := getModelFromContext(input)
+	log.Info().
+		Str("plan_id", planContextValue(input, "plan_id")).
+		Str("task_id", planContextValue(input, "task_id")).
+		Str("response_id", planContextValue(input, "response_id")).
+		Str("model", model).
+		Int("num_slides", numSlides).
+		Int("assets_count", len(assets)).
+		Int("assets_json_len", len(assetsJSONStr)).
+		Int("context_len", len(contextData)).
+		Int("data_bank_len", len(dataBank)).
+		Int("prompt_len", len(planPrompt)).
+		Msg("[slide_creator] slide plan request prepared")
 	if e.llmProvider == nil {
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,
@@ -114,13 +143,25 @@ HARD RULES (must follow):
 	var err error
 	var lastErr error
 	for attempt := 1; attempt <= 3; attempt++ {
+		attemptStart := time.Now()
 		content, err = e.generateWithStructuredOutput(ctx, "", planPrompt, model, DeckPlanSchema, 0.2)
 		if err == nil {
+			log.Info().
+				Str("plan_id", planContextValue(input, "plan_id")).
+				Int("attempt", attempt).
+				Int("response_len", len(content)).
+				Int64("duration_ms", time.Since(attemptStart).Milliseconds()).
+				Msg("[slide_creator] plan structured output succeeded")
 			lastErr = nil
 			break
 		}
 		lastErr = err
-		log.Warn().Err(err).Int("attempt", attempt).Msg("[slide_creator] plan structured output failed")
+		log.Warn().
+			Err(err).
+			Str("plan_id", planContextValue(input, "plan_id")).
+			Int("attempt", attempt).
+			Int64("duration_ms", time.Since(attemptStart).Milliseconds()).
+			Msg("[slide_creator] plan structured output failed")
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 			return &agent.ExecutionResult{
 				Status: status.StatusFailed,
@@ -134,7 +175,11 @@ HARD RULES (must follow):
 	}
 
 	if lastErr != nil {
-		log.Warn().Err(lastErr).Msg("[slide_creator] plan structured output failed after retries, falling back to free-form")
+		log.Warn().
+			Err(lastErr).
+			Str("plan_id", planContextValue(input, "plan_id")).
+			Msg("[slide_creator] plan structured output failed after retries, falling back to free-form")
+		fallbackStart := time.Now()
 		content, err = e.generateWithSystemPrompt(ctx, "", planPrompt, model, 0.2)
 		if err != nil {
 			return &agent.ExecutionResult{
@@ -146,11 +191,21 @@ HARD RULES (must follow):
 				},
 			}, nil
 		}
+		log.Info().
+			Str("plan_id", planContextValue(input, "plan_id")).
+			Int("response_len", len(content)).
+			Int64("duration_ms", time.Since(fallbackStart).Milliseconds()).
+			Msg("[slide_creator] plan free-form response received")
 		content = extractJSONFromResponse(content)
 	}
 
 	plan, err := parseDeckPlan(strings.TrimSpace(content))
 	if err != nil {
+		log.Warn().
+			Err(err).
+			Str("plan_id", planContextValue(input, "plan_id")).
+			Int("response_len", len(content)).
+			Msg("[slide_creator] plan parse failed, attempting repair")
 		fixPrompt := fmt.Sprintf(`Fix the following JSON to be valid AND to conform exactly to the required shape and HARD RULES.
 
 HARD RULES:
@@ -164,6 +219,7 @@ BAD_JSON:
 %s
 `, numSlides, content)
 
+		fixStart := time.Now()
 		fixed, fixErr := e.generateWithSystemPrompt(ctx, "", fixPrompt, model, 0.0)
 		if fixErr != nil {
 			return &agent.ExecutionResult{
@@ -175,6 +231,11 @@ BAD_JSON:
 				},
 			}, nil
 		}
+		log.Info().
+			Str("plan_id", planContextValue(input, "plan_id")).
+			Int("response_len", len(fixed)).
+			Int64("duration_ms", time.Since(fixStart).Milliseconds()).
+			Msg("[slide_creator] plan repair response received")
 		fixed = extractJSONFromResponse(fixed)
 		plan, err = parseDeckPlan(strings.TrimSpace(fixed))
 		if err != nil {
@@ -189,6 +250,14 @@ BAD_JSON:
 		}
 	}
 
+	plan, replaced := replacePlanImageSources(plan, assets)
+	if replaced > 0 {
+		log.Info().
+			Str("plan_id", planContextValue(input, "plan_id")).
+			Int("replaced_images", replaced).
+			Msg("[slide_creator] replaced plan thumbnail URLs with originals")
+	}
+
 	contentBytes, _ := json.Marshal(plan)
 	output := map[string]interface{}{
 		"type":    "slide_plan",
@@ -197,10 +266,32 @@ BAD_JSON:
 	}
 	outputBytes, _ := json.Marshal(output)
 
+	log.Info().
+		Str("plan_id", planContextValue(input, "plan_id")).
+		Int("slides", len(plan.Slides)).
+		Int64("duration_ms", time.Since(startTime).Milliseconds()).
+		Msg("[slide_creator] slide plan completed")
+
 	return &agent.ExecutionResult{
 		Status: status.StatusCompleted,
 		Output: outputBytes,
 	}, nil
+}
+
+func planContextValue(input agent.ExecutionInput, key string) string {
+	if input.PlanContext == nil {
+		return ""
+	}
+	switch key {
+	case "plan_id":
+		return input.PlanContext.PlanID
+	case "task_id":
+		return input.PlanContext.TaskID
+	case "response_id":
+		return input.PlanContext.ResponseID
+	default:
+		return ""
+	}
 }
 
 func extractJSONFromResponse(response string) string {

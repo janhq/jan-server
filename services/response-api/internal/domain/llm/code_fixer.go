@@ -10,8 +10,9 @@ import (
 
 // CodeFixer provides LLM-based code fixing capabilities.
 type CodeFixer struct {
-	provider Provider
-	model    string
+	provider                 Provider
+	model                    string
+	disableCustomTemperature bool
 }
 
 // NewCodeFixer creates a new code fixer with the given LLM provider.
@@ -23,6 +24,18 @@ func NewCodeFixer(provider Provider, model string) *CodeFixer {
 		provider: provider,
 		model:    model,
 	}
+}
+
+// SetDisableCustomTemperature controls whether explicit temperature values are sent.
+func (cf *CodeFixer) SetDisableCustomTemperature(disable bool) {
+	cf.disableCustomTemperature = disable
+}
+
+func (cf *CodeFixer) temperaturePtr(value float64) *float64 {
+	if cf.disableCustomTemperature {
+		return nil
+	}
+	return floatPtr(value)
 }
 
 // FixCode attempts to fix code that produced an error using the LLM.
@@ -64,7 +77,7 @@ Provide the fixed code:`, language, "```"+language+"\n", code, "```", errorMsg)
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userPrompt},
 		},
-		Temperature: floatPtr(0.2), // Low temperature for more deterministic fixes
+		Temperature: cf.temperaturePtr(0.2), // Low temperature for more deterministic fixes
 		MaxTokens:   intPtr(40000),
 		Stream:      false,
 	}
@@ -108,7 +121,7 @@ func (cf *CodeFixer) GenerateWithModel(ctx context.Context, prompt string, model
 		Messages: []ChatMessage{
 			{Role: "user", Content: prompt},
 		},
-		Temperature: floatPtr(0.7), // Moderate temperature for balanced creativity
+		Temperature: cf.temperaturePtr(0.7), // Moderate temperature for balanced creativity
 		MaxTokens:   intPtr(40000),
 		Stream:      false,
 	}
@@ -142,7 +155,7 @@ func (cf *CodeFixer) GenerateWithModelWithMaxTokens(ctx context.Context, prompt 
 		Messages: []ChatMessage{
 			{Role: "user", Content: prompt},
 		},
-		Temperature: floatPtr(0.7),
+		Temperature: cf.temperaturePtr(0.7),
 		MaxTokens:   resolveMaxTokens(40000, maxTokens),
 		Stream:      false,
 	}
@@ -175,7 +188,7 @@ func (cf *CodeFixer) GenerateWithModelWithTemperature(ctx context.Context, promp
 		Messages: []ChatMessage{
 			{Role: "user", Content: prompt},
 		},
-		Temperature: floatPtr(temperature),
+		Temperature: cf.temperaturePtr(temperature),
 		MaxTokens:   intPtr(40000),
 		Stream:      false,
 	}
@@ -209,7 +222,7 @@ func (cf *CodeFixer) GenerateWithModelWithTemperatureAndMaxTokens(ctx context.Co
 		Messages: []ChatMessage{
 			{Role: "user", Content: prompt},
 		},
-		Temperature: floatPtr(temperature),
+		Temperature: cf.temperaturePtr(temperature),
 		MaxTokens:   resolveMaxTokens(40000, maxTokens),
 		Stream:      false,
 	}
@@ -294,7 +307,7 @@ func (cf *CodeFixer) GenerateWithSystemPrompt(ctx context.Context, systemPrompt 
 	req := ChatCompletionRequest{
 		Model:       useModel,
 		Messages:    messages,
-		Temperature: floatPtr(0.2), // Low temperature for structured output
+		Temperature: cf.temperaturePtr(0.2), // Low temperature for structured output
 		MaxTokens:   intPtr(40000),
 		Stream:      false,
 	}
@@ -335,7 +348,7 @@ func (cf *CodeFixer) GenerateWithSystemPromptWithMaxTokens(ctx context.Context, 
 	req := ChatCompletionRequest{
 		Model:       useModel,
 		Messages:    messages,
-		Temperature: floatPtr(0.2),
+		Temperature: cf.temperaturePtr(0.2),
 		MaxTokens:   resolveMaxTokens(40000, maxTokens),
 		Stream:      false,
 	}
@@ -376,7 +389,7 @@ func (cf *CodeFixer) GenerateWithSystemPromptWithTemperature(ctx context.Context
 	req := ChatCompletionRequest{
 		Model:       useModel,
 		Messages:    messages,
-		Temperature: floatPtr(temperature),
+		Temperature: cf.temperaturePtr(temperature),
 		MaxTokens:   intPtr(40000),
 		Stream:      false,
 	}
@@ -417,7 +430,7 @@ func (cf *CodeFixer) GenerateWithSystemPromptWithTemperatureAndMaxTokens(ctx con
 	req := ChatCompletionRequest{
 		Model:       useModel,
 		Messages:    messages,
-		Temperature: floatPtr(temperature),
+		Temperature: cf.temperaturePtr(temperature),
 		MaxTokens:   resolveMaxTokens(40000, maxTokens),
 		Stream:      false,
 	}
@@ -461,7 +474,7 @@ func (cf *CodeFixer) GenerateWithStructuredOutput(ctx context.Context, systemPro
 	req := ChatCompletionRequest{
 		Model:       useModel,
 		Messages:    messages,
-		Temperature: floatPtr(0.2),
+		Temperature: cf.temperaturePtr(0.2),
 		MaxTokens:   intPtr(40000),
 		Stream:      false,
 		ResponseFormat: &ResponseFormat{
@@ -513,7 +526,7 @@ func (cf *CodeFixer) GenerateWithStructuredOutputWithMaxTokens(ctx context.Conte
 	req := ChatCompletionRequest{
 		Model:       useModel,
 		Messages:    messages,
-		Temperature: floatPtr(0.2),
+		Temperature: cf.temperaturePtr(0.2),
 		MaxTokens:   resolveMaxTokens(40000, maxTokens),
 		Stream:      false,
 		ResponseFormat: &ResponseFormat{
@@ -565,7 +578,7 @@ func (cf *CodeFixer) GenerateWithStructuredOutputWithTemperature(ctx context.Con
 	req := ChatCompletionRequest{
 		Model:       useModel,
 		Messages:    messages,
-		Temperature: floatPtr(temperature),
+		Temperature: cf.temperaturePtr(temperature),
 		MaxTokens:   intPtr(40000),
 		Stream:      false,
 		ResponseFormat: &ResponseFormat{
@@ -617,7 +630,7 @@ func (cf *CodeFixer) GenerateWithStructuredOutputWithTemperatureAndMaxTokens(ctx
 	req := ChatCompletionRequest{
 		Model:       useModel,
 		Messages:    messages,
-		Temperature: floatPtr(temperature),
+		Temperature: cf.temperaturePtr(temperature),
 		MaxTokens:   resolveMaxTokens(40000, maxTokens),
 		Stream:      false,
 		ResponseFormat: &ResponseFormat{
@@ -682,7 +695,7 @@ func (cf *CodeFixer) GenerateWithStructuredOutputWithMaxTokensAndUsage(ctx conte
 	req := ChatCompletionRequest{
 		Model:       useModel,
 		Messages:    messages,
-		Temperature: floatPtr(0.2),
+		Temperature: cf.temperaturePtr(0.2),
 		MaxTokens:   resolveMaxTokens(40000, maxTokens),
 		Stream:      false,
 		ResponseFormat: &ResponseFormat{
@@ -737,7 +750,7 @@ func (cf *CodeFixer) GenerateWithStructuredOutputWithTemperatureAndMaxTokensAndU
 	req := ChatCompletionRequest{
 		Model:       useModel,
 		Messages:    messages,
-		Temperature: floatPtr(temperature),
+		Temperature: cf.temperaturePtr(temperature),
 		MaxTokens:   resolveMaxTokens(40000, maxTokens),
 		Stream:      false,
 		ResponseFormat: &ResponseFormat{
