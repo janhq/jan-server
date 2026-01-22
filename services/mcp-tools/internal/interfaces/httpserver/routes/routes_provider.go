@@ -6,6 +6,7 @@ import (
 
 	"jan-server/services/mcp-tools/internal/infrastructure/aio"
 	"jan-server/services/mcp-tools/internal/infrastructure/config"
+	"jan-server/services/mcp-tools/internal/infrastructure/e2b"
 	"jan-server/services/mcp-tools/internal/infrastructure/llmapi"
 	sandboxfusionclient "jan-server/services/mcp-tools/internal/infrastructure/sandboxfusion"
 	"jan-server/services/mcp-tools/internal/infrastructure/toolconfig"
@@ -22,6 +23,9 @@ var RoutesProvider = wire.NewSet(
 	ProvideImageEditMCP,
 	ProvideAIOMCP,
 	ProvideAgentProxyMCP,
+	ProvideE2BClient,
+	ProvideWorkspaceResolver,
+	ProvideE2BMCP,
 	ProvideToolConfigCache,
 	ProvideMCPRoute,
 	ProvideSearchMCPConfig,
@@ -140,6 +144,44 @@ func ProvideAgentProxyMCP(cfg *config.Config) *mcp.AgentProxyMCP {
 	return agentProxy
 }
 
+// ProvideE2BClient creates an E2B client if configured
+func ProvideE2BClient(cfg *config.Config) *e2b.Client {
+	if !cfg.E2BEnabled {
+		log.Info().Msg("E2B Sandbox integration disabled (MCP_E2B_ENABLED=false)")
+		return nil
+	}
+	e2bClient := e2b.NewClient(e2b.ClientConfig{
+		BaseURL: cfg.E2BServiceURL,
+		Timeout: cfg.E2BTimeout,
+		Enabled: cfg.E2BEnabled,
+	})
+	if !e2bClient.IsEnabled() {
+		log.Warn().Msg("MCP_E2B_ENABLED=true but client failed to initialize")
+		return nil
+	}
+	log.Info().
+		Str("e2b_service_url", cfg.E2BServiceURL).
+		Dur("e2b_timeout", cfg.E2BTimeout).
+		Msg("E2B Sandbox integration enabled")
+	return e2bClient
+}
+
+// ProvideWorkspaceResolver creates a workspace resolver if E2B is configured
+func ProvideWorkspaceResolver(client *e2b.Client) *e2b.WorkspaceResolver {
+	if client == nil || !client.IsEnabled() {
+		return nil
+	}
+	return e2b.NewWorkspaceResolver(client)
+}
+
+// ProvideE2BMCP creates an E2BMCP handler if configured
+func ProvideE2BMCP(client *e2b.Client, resolver *e2b.WorkspaceResolver) *mcp.E2BMCP {
+	if client == nil || !client.IsEnabled() {
+		return nil
+	}
+	return mcp.NewE2BMCP(client, resolver, true)
+}
+
 // ProvideMCPRoute creates a MCPRoute with all dependencies
 func ProvideMCPRoute(
 	searchMCP *mcp.SearchMCP,
@@ -150,6 +192,7 @@ func ProvideMCPRoute(
 	imageEditMCP *mcp.ImageEditMCP,
 	aioMCP *mcp.AIOMCP,
 	agentProxyMCP *mcp.AgentProxyMCP,
+	e2bMCP *mcp.E2BMCP,
 	llmClient *llmapi.Client,
 	toolConfigCache *toolconfig.Cache,
 ) *mcp.MCPRoute {
@@ -157,5 +200,5 @@ func ProvideMCPRoute(
 	if toolConfigCache != nil {
 		searchMCP.SetToolConfigCache(toolConfigCache)
 	}
-	return mcp.NewMCPRoute(searchMCP, providerMCP, sandboxMCP, memoryMCP, imageMCP, imageEditMCP, aioMCP, agentProxyMCP, llmClient, toolConfigCache)
+	return mcp.NewMCPRoute(searchMCP, providerMCP, sandboxMCP, memoryMCP, imageMCP, imageEditMCP, aioMCP, agentProxyMCP, e2bMCP, llmClient, toolConfigCache)
 }

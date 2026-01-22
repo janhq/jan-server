@@ -4,6 +4,8 @@
 
 set -e
 
+# Save the original directory where user ran the command
+ORIGINAL_DIR="$(pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLI_DIR="${SCRIPT_DIR}/jan-cli"
 CLI_BINARY="${CLI_DIR}/jan-cli"
@@ -26,8 +28,8 @@ if [ "$needs_build" = true ]; then
     echo "Building jan-cli..." >&2
     cd "${CLI_DIR}"
     go build -o jan-cli .
-    cd "${SCRIPT_DIR}"
 fi
 
-# Run jan-cli with all arguments
+# Run jan-cli from the original directory (repo root)
+cd "${ORIGINAL_DIR}"
 exec "${CLI_BINARY}" "$@"

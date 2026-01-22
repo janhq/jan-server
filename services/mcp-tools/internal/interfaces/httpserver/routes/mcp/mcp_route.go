@@ -38,6 +38,9 @@ var allowedMCPMethods = map[string]bool{
 	"resources/templates/list": true,
 	"resources/read":           true,
 	"resources/subscribe":      true,
+
+	// Logging
+	"logging/setLevel": true,
 }
 
 type MCPRoute struct {
@@ -49,10 +52,18 @@ type MCPRoute struct {
 	imageEditMCP    *ImageEditMCP
 	aioMCP          *AIOMCP
 	agentProxyMCP   *AgentProxyMCP
+	e2bMCP          *E2BMCP
 	llmClient       *llmapi.Client    // LLM-API client for tool call tracking
 	toolConfigCache *toolconfig.Cache // Cache for dynamic tool descriptions
 	mcpServer       *mcp.Server
 	httpHandler     http.Handler
+}
+
+// Tool represents an MCP tool definition for dynamic tools merging
+type Tool struct {
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	InputSchema map[string]interface{} `json:"inputSchema,omitempty"`
 }
 
 func NewMCPRoute(
@@ -64,6 +75,7 @@ func NewMCPRoute(
 	imageEditMCP *ImageEditMCP,
 	aioMCP *AIOMCP,
 	agentProxyMCP *AgentProxyMCP,
+	e2bMCP *E2BMCP,
 	llmClient *llmapi.Client,
 	toolConfigCache *toolconfig.Cache,
 ) *MCPRoute {
@@ -113,6 +125,12 @@ func NewMCPRoute(
 		agentProxyMCP.RegisterTools(server)
 	}
 
+	// Register E2B Sandbox tools
+	if e2bMCP != nil {
+		e2bMCP.SetLLMClient(llmClient)
+		e2bMCP.RegisterTools(server)
+	}
+
 	// Register tools from external MCP providers
 	if providerMCP != nil {
 		if err := providerMCP.RegisterTools(server); err != nil {
@@ -130,6 +148,7 @@ func NewMCPRoute(
 		imageEditMCP:    imageEditMCP,
 		aioMCP:          aioMCP,
 		agentProxyMCP:   agentProxyMCP,
+		e2bMCP:          e2bMCP,
 		llmClient:       llmClient,
 		toolConfigCache: toolConfigCache,
 		mcpServer:       server,
@@ -163,6 +182,7 @@ func (route *MCPRoute) RegisterRouter(router *gin.RouterGroup) {
 // @Description - `memory_retrieve`: Retrieve relevant user preferences, project context, or conversation history (params: query, user_id, project_id, max_user_items, max_project_items, min_similarity). Returns personalized context.
 // @Description - `generate_image`: Generate images from a text prompt via LLM API /v1/images/generations (params: prompt, size, n, num_inference_steps, cfg_scale).
 // @Description - `edit_image`: Edit images with a prompt + input image via LLM API /v1/images/edits (params: prompt, image, mask, size, strength, steps, seed, cfg_scale).
+// @Description - `e2b_*`: E2B sandbox tools (shell_exec, file_read, file_write, etc.) - fetched dynamically from e2b-api
 // @Description
 // @Description **MCP Protocol:**
 // @Description - Request format: JSON-RPC 2.0 with method and params
@@ -177,31 +197,147 @@ func (route *MCPRoute) RegisterRouter(router *gin.RouterGroup) {
 // @Failure 500 {object} responses.ErrorResponse "Internal server error"
 // @Router /v1/mcp [post]
 func (route *MCPRoute) serveMCP(reqCtx *gin.Context) {
-	// Check if this is a tools/list request and intercept it to provide dynamic descriptions
-	if route.toolConfigCache != nil {
-		// Read body to check method
-		bodyBytes, err := io.ReadAll(reqCtx.Request.Body)
-		if err == nil && len(bodyBytes) > 0 {
-			// Restore body for potential re-use
-			reqCtx.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+	// Read body to check method
+	bodyBytes, err := io.ReadAll(reqCtx.Request.Body)
+	if err != nil || len(bodyBytes) == 0 {
+		reqCtx.Request.Header.Set("Accept", "application/json, text/event-stream")
+		route.httpHandler.ServeHTTP(reqCtx.Writer, reqCtx.Request)
+		return
+	}
 
-			var payload struct {
-				Method string      `json:"method"`
-				ID     interface{} `json:"id"`
-			}
-			if json.Unmarshal(bodyBytes, &payload) == nil && payload.Method == "tools/list" {
-				route.handleToolsListWithDynamicDescriptions(reqCtx, payload.ID)
-				return
-			}
+	// Restore body for potential re-use
+	reqCtx.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	var payload struct {
+		Method string                 `json:"method"`
+		ID     interface{}            `json:"id"`
+		Params map[string]interface{} `json:"params"`
+	}
+	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
+		reqCtx.Request.Header.Set("Accept", "application/json, text/event-stream")
+		route.httpHandler.ServeHTTP(reqCtx.Writer, reqCtx.Request)
+		return
+	}
+
+	// Handle tools/list with dynamic descriptions and E2B tools
+	if payload.Method == "tools/list" {
+		route.handleToolsListWithDynamicDescriptions(reqCtx, payload.ID)
+		return
+	}
+
+	// Intercept e2b_* tool calls - proxy to e2b-api instead of MCP SDK
+	if payload.Method == "tools/call" {
+		toolName, _ := payload.Params["name"].(string)
+		if IsE2BTool(toolName) && route.e2bMCP != nil && route.e2bMCP.IsEnabled() {
+			route.handleE2BToolCall(reqCtx, payload.ID, toolName, payload.Params)
+			return
 		}
 	}
 
-	// Force acceptable content types for go-sdk streamable handler even if client omits Accept.
+	// Default: pass to MCP SDK
 	reqCtx.Request.Header.Set("Accept", "application/json, text/event-stream")
 	route.httpHandler.ServeHTTP(reqCtx.Writer, reqCtx.Request)
 }
 
+// handleE2BToolCall proxies an E2B tool call to e2b-api
+func (route *MCPRoute) handleE2BToolCall(reqCtx *gin.Context, requestID interface{}, toolName string, params map[string]interface{}) {
+	ctx := reqCtx.Request.Context()
+
+	// Extract arguments
+	args, _ := params["arguments"].(map[string]interface{})
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+
+	// Get user_id from arguments or context
+	userID, _ := args["user_id"].(string)
+	if userID == "" {
+		userID, _ = ctx.Value("user_id").(string)
+	}
+
+	if userID == "" {
+		route.sendMCPError(reqCtx, requestID, -32602, "user_id required for E2B tools")
+		return
+	}
+
+	// Auto-inject user_id into args if not already present
+	if _, hasUserID := args["user_id"]; !hasUserID {
+		args["user_id"] = userID
+		log.Debug().
+			Str("tool", toolName).
+			Str("user_id", userID).
+			Msg("Auto-injected user_id into E2B tool args")
+	}
+
+	// Auto-inject conversation_id from tracking context if not already in args
+	if _, hasConvID := args["conversation_id"]; !hasConvID {
+		if tracking, _ := GetToolTracking(ctx); tracking.ConversationID != "" {
+			args["conversation_id"] = tracking.ConversationID
+			log.Debug().
+				Str("tool", toolName).
+				Str("conversation_id", tracking.ConversationID).
+				Msg("Auto-injected conversation_id into E2B tool args")
+		}
+	}
+
+	log.Info().
+		Str("tool", toolName).
+		Str("user_id", userID).
+		Msg("Proxying E2B tool call to e2b-api")
+
+	result, err := route.e2bMCP.ExecuteTool(ctx, userID, toolName, args)
+	if err != nil {
+		log.Error().Err(err).Str("tool", toolName).Msg("E2B tool execution failed")
+		route.sendMCPError(reqCtx, requestID, -32000, err.Error())
+		return
+	}
+
+	route.sendMCPResult(reqCtx, requestID, result)
+}
+
+// sendMCPError sends an MCP JSON-RPC error response
+func (route *MCPRoute) sendMCPError(reqCtx *gin.Context, requestID interface{}, code int, message string) {
+	response := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      requestID,
+		"error": map[string]interface{}{
+			"code":    code,
+			"message": message,
+		},
+	}
+	reqCtx.JSON(http.StatusOK, response)
+}
+
+// sendMCPResult sends an MCP JSON-RPC success response for tools/call
+// Result is wrapped in MCP content format: {"content": [{"type": "text", "text": "..."}]}
+func (route *MCPRoute) sendMCPResult(reqCtx *gin.Context, requestID interface{}, result interface{}) {
+	// Convert result to JSON string for text content
+	resultJSON, err := json.Marshal(result)
+	if err != nil {
+		route.sendMCPError(reqCtx, requestID, -32000, "failed to serialize result")
+		return
+	}
+
+	// Wrap in MCP content format
+	mcpResult := map[string]interface{}{
+		"content": []map[string]interface{}{
+			{
+				"type": "text",
+				"text": string(resultJSON),
+			},
+		},
+	}
+
+	response := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      requestID,
+		"result":  mcpResult,
+	}
+	reqCtx.JSON(http.StatusOK, response)
+}
+
 // handleToolsListWithDynamicDescriptions handles tools/list with descriptions from the cache
+// and dynamic tools from e2b-api when user has a running sandbox
 func (route *MCPRoute) handleToolsListWithDynamicDescriptions(reqCtx *gin.Context, requestID interface{}) {
 	ctx := reqCtx.Request.Context()
 
@@ -255,11 +391,7 @@ func (route *MCPRoute) handleToolsListWithDynamicDescriptions(reqCtx *gin.Contex
 		Jsonrpc string      `json:"jsonrpc"`
 		ID      interface{} `json:"id"`
 		Result  struct {
-			Tools []struct {
-				Name        string                 `json:"name"`
-				Description string                 `json:"description"`
-				InputSchema map[string]interface{} `json:"inputSchema,omitempty"`
-			} `json:"tools"`
+			Tools []Tool `json:"tools"`
 			NextCursor string `json:"nextCursor,omitempty"`
 		} `json:"result"`
 		Error interface{} `json:"error,omitempty"`
@@ -294,6 +426,49 @@ func (route *MCPRoute) handleToolsListWithDynamicDescriptions(reqCtx *gin.Contex
 		}
 	}
 
+	// Fetch E2B tools based on auth AND conversation context
+	// Visibility rules:
+	// - Missing user_id OR conversation_id → no E2B tools
+	// - Have BOTH + can't fetch from e2b-api → only e2b_sandbox_* tools
+	// - Have BOTH + can fetch → all tools (sandbox + desktop + dynamic)
+	if route.e2bMCP != nil && route.e2bMCP.IsEnabled() {
+		userID, _ := ctx.Value("user_id").(string)
+		tracking, _ := GetToolTracking(ctx)
+		conversationID := tracking.ConversationID
+
+		// Must have BOTH user_id AND conversation_id to see ANY E2B tools
+		if userID != "" && conversationID != "" {
+			// Try to fetch all tools from e2b-api (sandbox + desktop + dynamic)
+			e2bTools, err := route.e2bMCP.GetToolsForUser(ctx, userID, conversationID)
+			if err != nil {
+				// Can't reach e2b-api: show only sandbox lifecycle tools
+				log.Debug().Err(err).Msg("Cannot fetch from e2b-api, showing sandbox tools only")
+				sandboxTools := route.e2bMCP.GetSandboxTools()
+				if len(sandboxTools) > 0 {
+					log.Debug().
+						Int("sandbox_tool_count", len(sandboxTools)).
+						Str("user_id", userID).
+						Str("conversation_id", conversationID).
+						Msg("Adding e2b_sandbox_* tools (fallback)")
+					rpcResponse.Result.Tools = append(rpcResponse.Result.Tools, sandboxTools...)
+				}
+			} else if len(e2bTools) > 0 {
+				// Success: show all E2B tools
+				log.Debug().
+					Int("e2b_tool_count", len(e2bTools)).
+					Str("user_id", userID).
+					Str("conversation_id", conversationID).
+					Msg("Adding all E2B tools")
+				rpcResponse.Result.Tools = append(rpcResponse.Result.Tools, e2bTools...)
+			}
+		} else {
+			log.Debug().
+				Str("user_id", userID).
+				Str("conversation_id", conversationID).
+				Msg("Missing user_id or conversation_id, skipping E2B tools")
+		}
+	}
+
 	// Send modified response
 	modifiedBody, err := json.Marshal(rpcResponse)
 	if err != nil {
@@ -310,6 +485,7 @@ func (route *MCPRoute) handleToolsListWithDynamicDescriptions(reqCtx *gin.Contex
 	reqCtx.Writer.WriteHeader(http.StatusOK)
 	reqCtx.Writer.Write(modifiedBody)
 }
+
 
 // responseCapture captures HTTP response for modification
 type responseCapture struct {
@@ -357,31 +533,43 @@ func extractJSONFromSSE(data []byte) []byte {
 	return nil
 }
 
-// InjectUserContext extracts user_id from JWT token and injects it into request context
+// InjectUserContext extracts user_id and injects it into request context.
+// Handles both API key auth (user_id already in gin context) and JWT auth (extract from claims).
 func InjectUserContext() gin.HandlerFunc {
 	return func(reqCtx *gin.Context) {
-		// Try to get auth token from gin context (set by auth middleware)
-		if tokenVal, exists := reqCtx.Get("auth_token"); exists {
-			if token, ok := tokenVal.(*jwt.Token); ok && token.Valid {
-				if claims, ok := token.Claims.(jwt.MapClaims); ok {
-					// Try to extract user_id from various claim fields
-					var userID string
-					if sub, ok := claims["sub"].(string); ok && sub != "" {
-						userID = sub
-					} else if uid, ok := claims["user_id"].(string); ok && uid != "" {
-						userID = uid
-					} else if uid, ok := claims["uid"].(string); ok && uid != "" {
-						userID = uid
-					}
+		var userID string
 
-					if userID != "" {
-						// Inject user_id into request context
-						ctx := context.WithValue(reqCtx.Request.Context(), "user_id", userID)
-						reqCtx.Request = reqCtx.Request.WithContext(ctx)
+		// First, check if user_id is already set in gin context (API key auth)
+		if uid, exists := reqCtx.Get("user_id"); exists {
+			if uidStr, ok := uid.(string); ok && uidStr != "" {
+				userID = uidStr
+			}
+		}
+
+		// If not found, try to extract from JWT token (JWT auth)
+		if userID == "" {
+			if tokenVal, exists := reqCtx.Get("auth_token"); exists {
+				if token, ok := tokenVal.(*jwt.Token); ok && token.Valid {
+					if claims, ok := token.Claims.(jwt.MapClaims); ok {
+						// Try to extract user_id from various claim fields
+						if sub, ok := claims["sub"].(string); ok && sub != "" {
+							userID = sub
+						} else if uid, ok := claims["user_id"].(string); ok && uid != "" {
+							userID = uid
+						} else if uid, ok := claims["uid"].(string); ok && uid != "" {
+							userID = uid
+						}
 					}
 				}
 			}
 		}
+
+		// Inject user_id into request context for downstream handlers
+		if userID != "" {
+			ctx := context.WithValue(reqCtx.Request.Context(), "user_id", userID)
+			reqCtx.Request = reqCtx.Request.WithContext(ctx)
+		}
+
 		reqCtx.Next()
 	}
 }

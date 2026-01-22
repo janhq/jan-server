@@ -59,7 +59,7 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	// Determine estimated steps based on whether code execution is needed
 	estimatedSteps := 9
 	if requiresCodeExecution {
-		estimatedSteps = 11 // Add 2 more steps for code execution
+		estimatedSteps = 11 // Add 2 steps for code generation + code execution
 	}
 	log.Debug().Int("estimated_steps", estimatedSteps).Msg("[deep_research] calculated estimated steps")
 
@@ -207,9 +207,10 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 			return nil, err
 		}
 
-		// Step 2: Execute the generated code using aio_code_execute
+		// Step 2: Execute the generated code using e2b_desktop_code_execute
+		// Note: Sandbox lifecycle (start/pause) is handled internally by the executor
 		codeExecParams, _ := json.Marshal(map[string]interface{}{
-			"tool":        "aio_code_execute",
+			"tool":        "e2b_desktop_code_execute",
 			"language":    "python",
 			"description": "Execute the generated Python code in sandbox",
 		})
@@ -318,7 +319,7 @@ func (p *DeepResearchPlanner) detectCodeExecutionNeed(request *agent.PlanRequest
 	input := strings.ToLower(request.UserMessage)
 	codeKeywords := []string{
 		"python", "script", "code", "program", "execute", "run",
-		"aio_code_execute", "aio_shell_exec", "implementation",
+		"code_execute", "shell_exec", "implementation",
 		"demonstrate", "example code", "working example",
 		"analysis script", "data analysis", "visualization",
 	}
@@ -337,8 +338,9 @@ var _ agent.Planner = (*DeepResearchPlanner)(nil)
 
 // DeepResearchExecutor executes steps for deep research plans.
 type DeepResearchExecutor struct {
-	mcpClient   MCPClient
-	llmProvider LLMProvider
+	mcpClient     MCPClient
+	llmProvider   LLMProvider
+	sandboxHelper *agent.SandboxHelper
 }
 
 // MCPClient interface for tool execution - matches tool.MCPClient
@@ -364,8 +366,9 @@ const MaxCodeFixRetries = 5
 // NewDeepResearchExecutor creates a new deep research executor.
 func NewDeepResearchExecutor(mcpClient MCPClient, llmProvider LLMProvider) *DeepResearchExecutor {
 	return &DeepResearchExecutor{
-		mcpClient:   mcpClient,
-		llmProvider: llmProvider,
+		mcpClient:     mcpClient,
+		llmProvider:   llmProvider,
+		sandboxHelper: agent.NewSandboxHelper(mcpClient),
 	}
 }
 
@@ -464,9 +467,24 @@ func (e *DeepResearchExecutor) executeToolCallWithRetry(ctx context.Context, ste
 		Str("step_id", step.ID).
 		Msg("[deep_research] executing tool call")
 
-	// Check if this is a code execution tool
-	isCodeExecTool := toolName == "aio_code_execute" || toolName == "aio_shell_exec"
+	// Check if this is a code execution tool (E2B sandbox)
+	isCodeExecTool := toolName == "e2b_desktop_code_execute" || toolName == "e2b_desktop_shell"
 	log.Debug().Bool("is_code_exec_tool", isCodeExecTool).Msg("[deep_research] tool type determined")
+
+	// Start sandbox automatically before code execution tools
+	if isCodeExecTool && e.sandboxHelper != nil {
+		opts := agent.StartSandboxOptions{
+			Timeout: 1800, // 30 minutes
+		}
+		if input.PlanContext != nil {
+			opts.ConversationID = input.PlanContext.ConversationID
+			opts.RequestID = input.PlanContext.ResponseID
+		}
+		if err := e.sandboxHelper.EnsureSandboxStarted(ctx, opts); err != nil {
+			log.Warn().Err(err).Msg("[deep_research] failed to start sandbox, continuing anyway")
+			// Don't fail - the tool call might still work if sandbox is already running
+		}
+	}
 
 	// Execute the tool via MCP client
 	result, err := e.mcpClient.CallTool(ctx, callReq)
@@ -1019,7 +1037,7 @@ func (e *DeepResearchExecutor) buildToolArguments(toolName string, params map[st
 			"url": urls[0],
 		}, nil
 
-	case "aio_code_execute":
+	case "e2b_desktop_code_execute":
 		// Priority: currentCode (from retry) > params["code"] > PreviousOutput
 		var code string
 		if currentCode != nil {
@@ -1036,7 +1054,7 @@ func (e *DeepResearchExecutor) buildToolArguments(toolName string, params map[st
 			for _, accOutput := range input.AccumulatedOutputs {
 				if extracted := e.extractCodeFromPreviousOutput(accOutput); extracted != "" {
 					log.Info().
-						Str("tool", "aio_code_execute").
+						Str("tool", toolName).
 						Int("code_len", len(extracted)).
 						Msg("Found code in accumulated outputs")
 					code = extracted
@@ -1047,7 +1065,7 @@ func (e *DeepResearchExecutor) buildToolArguments(toolName string, params map[st
 
 		if code == "" {
 			log.Error().
-				Str("tool", "aio_code_execute").
+				Str("tool", toolName).
 				Str("previous_output_preview", truncateForLog(input.PreviousOutput, 500)).
 				Int("accumulated_outputs_count", len(input.AccumulatedOutputs)).
 				Msg("No code provided for execution - LLM may have returned empty or invalid response")
@@ -1065,7 +1083,7 @@ func (e *DeepResearchExecutor) buildToolArguments(toolName string, params map[st
 			"code":     code,
 		}, nil
 
-	case "aio_shell_exec":
+	case "e2b_desktop_shell":
 		var command string
 		if currentCode != nil {
 			command = *currentCode
@@ -1077,6 +1095,39 @@ func (e *DeepResearchExecutor) buildToolArguments(toolName string, params map[st
 		}
 		return map[string]interface{}{
 			"command": command,
+		}, nil
+
+	case "e2b_sandbox_start":
+		// Extract timeout from params, default to 30 minutes
+		timeout := 1800
+		if t, ok := params["timeout"].(float64); ok {
+			timeout = int(t)
+		} else if t, ok := params["timeout"].(int); ok {
+			timeout = t
+		}
+		args := map[string]interface{}{
+			"timeout": timeout,
+		}
+		// Add conversation_id if available for workspace creation
+		if input.PlanContext != nil && input.PlanContext.ConversationID != "" {
+			args["conversation_id"] = input.PlanContext.ConversationID
+		}
+		return args, nil
+
+	case "e2b_sandbox_pause", "e2b_sandbox_stop":
+		// These tools don't require any arguments
+		return map[string]interface{}{}, nil
+
+	case "e2b_sandbox_extend":
+		// Extract additional_seconds from params
+		additionalSeconds := 1800 // Default 30 minutes
+		if s, ok := params["additional_seconds"].(float64); ok {
+			additionalSeconds = int(s)
+		} else if s, ok := params["additional_seconds"].(int); ok {
+			additionalSeconds = s
+		}
+		return map[string]interface{}{
+			"additional_seconds": additionalSeconds,
 		}, nil
 
 	default:
@@ -1155,10 +1206,10 @@ func (e *DeepResearchExecutor) extractURLsFromPreviousOutput(previousOutput json
 	return urls
 }
 
-// installPackage calls aio_install_packages to install a missing package.
+// installPackage calls e2b_desktop_packages to install a missing package.
 func (e *DeepResearchExecutor) installPackage(ctx context.Context, packageName string, input agent.ExecutionInput) (*tool.Result, error) {
 	callReq := tool.CallRequest{
-		Name: "aio_install_packages",
+		Name: "e2b_desktop_packages",
 		Arguments: map[string]interface{}{
 			"packages": []string{packageName},
 		},

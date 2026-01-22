@@ -13,6 +13,7 @@ import (
 	domainsearch "jan-server/services/mcp-tools/internal/domain/search"
 	"jan-server/services/mcp-tools/internal/infrastructure/aio"
 	"jan-server/services/mcp-tools/internal/infrastructure/auth"
+	"jan-server/services/mcp-tools/internal/infrastructure/e2b"
 	"jan-server/services/mcp-tools/internal/infrastructure/config"
 	"jan-server/services/mcp-tools/internal/infrastructure/llmapi"
 	"jan-server/services/mcp-tools/internal/infrastructure/logger"
@@ -234,7 +235,29 @@ func main() {
 		log.Info().Msg("Agent proxy integration disabled (MCP_AGENT_PROXY_ENABLED=false)")
 	}
 
-	mcpRoute := mcp.NewMCPRoute(searchMCP, providerMCP, sandboxMCP, memoryMCP, imageMCP, imageEditMCP, aioMCP, agentProxyMCP, llmClient, toolConfigCache)
+	// Initialize E2B Sandbox client and MCP handler
+	var e2bMCP *mcp.E2BMCP
+	if cfg.E2BEnabled {
+		e2bClient := e2b.NewClient(e2b.ClientConfig{
+			BaseURL: cfg.E2BServiceURL,
+			Timeout: cfg.E2BTimeout,
+			Enabled: cfg.E2BEnabled,
+		})
+		if e2bClient.IsEnabled() {
+			resolver := e2b.NewWorkspaceResolver(e2bClient)
+			e2bMCP = mcp.NewE2BMCP(e2bClient, resolver, true)
+			log.Info().
+				Str("e2b_service_url", cfg.E2BServiceURL).
+				Dur("e2b_timeout", cfg.E2BTimeout).
+				Msg("E2B Sandbox integration enabled")
+		} else {
+			log.Warn().Msg("MCP_E2B_ENABLED=true but client failed to initialize")
+		}
+	} else {
+		log.Info().Msg("E2B Sandbox integration disabled (MCP_E2B_ENABLED=false)")
+	}
+
+	mcpRoute := mcp.NewMCPRoute(searchMCP, providerMCP, sandboxMCP, memoryMCP, imageMCP, imageEditMCP, aioMCP, agentProxyMCP, e2bMCP, llmClient, toolConfigCache)
 
 	authValidator, err := auth.NewValidator(ctx, cfg, log.Logger)
 	if err != nil {

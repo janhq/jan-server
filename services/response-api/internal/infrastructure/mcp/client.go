@@ -187,7 +187,6 @@ func (c *Client) CallTool(ctx context.Context, req tool.CallRequest) (*tool.Resu
 	}
 
 	// Add context IDs to _meta field (not merged into arguments)
-	// Note: conversation_id is NOT included - it's internal to response-api
 	meta := buildMetaContext(req.RequestID, req.UserID, req.ToolCallID)
 	if len(meta) > 0 {
 		params["_meta"] = meta
@@ -206,6 +205,14 @@ func (c *Client) CallTool(ctx context.Context, req tool.CallRequest) (*tool.Resu
 
 	// Forward auth token from context to MCP service
 	setAuthHeader(ctx, httpReq)
+
+	// Add conversation and tool call tracking headers for mcp-tools
+	if req.ConversationID != "" {
+		httpReq.SetHeader("X-Conversation-ID", req.ConversationID)
+	}
+	if req.ToolCallID != "" {
+		httpReq.SetHeader("X-Tool-Call-ID", req.ToolCallID)
+	}
 
 	resp, err := httpReq.Post("/v1/mcp")
 	if err != nil {
@@ -264,15 +271,13 @@ func (r *rpcError) Error() string {
 }
 
 // buildMetaContext creates metadata for MCP tool calls.
-// Note: conversation_id is intentionally NOT included as it's internal to response-api.
-// Downstream services should not track or store conversation context from response-api calls.
+// Note: conversation_id is passed via X-Conversation-ID header, not in _meta.
 func buildMetaContext(requestID, userID, toolCallID string) map[string]interface{} {
 	meta := make(map[string]interface{})
 
 	if strings.TrimSpace(requestID) != "" {
 		meta["request_id"] = requestID
 	}
-	// conversation_id is NOT sent - it's internal to response-api
 	if strings.TrimSpace(userID) != "" {
 		meta["user_id"] = userID
 	}

@@ -4,6 +4,7 @@
   - path: infra/docker/services-mcp.yml
   - path: infra/docker/services-memory.yml
   - path: infra/docker/services-realtime.yml
+  - path: infra/docker/services-e2b.yml
   - path: infra/docker/apps-platform.yml
   - path: infra/docker/apps-web.yml
   - path: infra/docker/inference.yml

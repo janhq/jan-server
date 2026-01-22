@@ -471,6 +471,100 @@ else
 		-d '{"command": "echo Hello from AIO Sandbox"}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('output',d.get('message','No output')))" 2>/dev/null || echo "Shell exec failed"
 endif
 
+# --- E2B Desktop Sandbox Services ---
+
+.PHONY: up-e2b up-e2b-dev down-e2b down-e2b-dev restart-e2b logs-e2b e2b-local e2b-template-build e2b-template-list
+
+# Production mode - internal only (docker network access)
+up-e2b:
+	@echo "Starting E2B API service (internal mode)..."
+	$(COMPOSE) --profile e2b up -d e2b-api
+	@echo "✓ E2B API started (internal service)"
+	@echo ""
+	@echo "Access:"
+	@echo "  - Internal: http://e2b-api:8095 (docker network only)"
+	@echo ""
+	@echo "Test E2B health:"
+	@echo "  docker exec e2b-api curl -s http://localhost:8095/health"
+	@echo ""
+	@echo "To enable E2B in mcp-tools, add E2B_ENABLED=true to .env"
+
+# Development mode - exposed externally for testing
+up-e2b-dev:
+	@echo "Starting E2B API service (dev mode - exposed externally)..."
+	$(COMPOSE) --profile e2b-dev up -d e2b-api-dev
+	@echo "✓ E2B API started (dev mode)"
+	@echo ""
+	@echo "Access:"
+	@echo "  - External: http://localhost:$${E2B_HOST_PORT:-8095}"
+	@echo "  - Internal: http://e2b-api:8095 (docker network)"
+	@echo ""
+	@echo "Test E2B health:"
+	@echo "  curl -s http://localhost:$${E2B_HOST_PORT:-8095}/health"
+
+down-e2b:
+	$(COMPOSE) --profile e2b down
+
+down-e2b-dev:
+	$(COMPOSE) --profile e2b-dev down
+
+restart-e2b:
+	$(COMPOSE) --profile e2b restart e2b-api
+
+logs-e2b:
+	@$(COMPOSE) --profile e2b logs -f e2b-api 2>/dev/null || $(COMPOSE) --profile e2b-dev logs -f e2b-api-dev
+
+# Run e2b-api locally with Python (requires Python 3.11+)
+e2b-local:
+	@echo "Starting E2B API locally (Python)..."
+	@echo "Prerequisites: pip install -e './services/e2b-api[dev]'"
+	@echo ""
+	cd services/e2b-api && python -m cmd.server.main
+
+# Build and publish E2B template (auto-loads from .env if not set)
+# This target handles the full build pipeline:
+#   1. Validates E2B_ACCESS_TOKEN
+#   2. Initializes jan-browser-extension submodule if needed
+#   3. Builds the browser extension (npm install + build)
+#   4. Builds and publishes the E2B template
+e2b-template-build:
+	@echo "=== Building E2B Template ==="
+	@echo ""
+	@echo "Step 1: Validating E2B_ACCESS_TOKEN..."
+	@TOKEN=$${E2B_ACCESS_TOKEN:-$$(grep '^E2B_ACCESS_TOKEN=' .env 2>/dev/null | cut -d'=' -f2)}; \
+	if [ -z "$$TOKEN" ]; then \
+		echo "ERROR: E2B_ACCESS_TOKEN not found in environment or .env"; \
+		echo "Get your token from: https://e2b.dev/dashboard"; \
+		exit 1; \
+	fi; \
+	echo "  Token found"; \
+	echo ""; \
+	echo "Step 2: Checking jan-browser-extension submodule..."; \
+	if [ ! -f "packages/jan-browser-extension/package.json" ]; then \
+		echo "  Submodule not found, initializing..."; \
+		git submodule update --init packages/jan-browser-extension; \
+	else \
+		echo "  Submodule found"; \
+	fi; \
+	echo ""; \
+	echo "Step 3: Building browser extension..."; \
+	cd packages/jan-browser-extension && npm install --silent && npm run build; \
+	echo "  Extension built to dist/"; \
+	echo ""; \
+	echo "Step 4: Building E2B template..."; \
+	cd ../../services/e2b-api/e2b-template && E2B_ACCESS_TOKEN=$$TOKEN make build
+	@echo ""
+	@echo "=== E2B template built and published ==="
+
+# List available E2B templates (auto-loads from .env if not set)
+e2b-template-list:
+	@TOKEN=$${E2B_ACCESS_TOKEN:-$$(grep '^E2B_ACCESS_TOKEN=' .env 2>/dev/null | cut -d'=' -f2)}; \
+	if [ -z "$$TOKEN" ]; then \
+		echo "ERROR: E2B_ACCESS_TOKEN not found in environment or .env"; \
+		exit 1; \
+	fi; \
+	cd services/e2b-api/e2b-template && E2B_ACCESS_TOKEN=$$TOKEN make list
+
 # --- vLLM Inference Services ---
 
 .PHONY: up-vllm-gpu up-vllm-cpu down-vllm logs-vllm
@@ -885,6 +979,7 @@ ifeq ($(OS),Windows_NT)
 	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:8086 -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '  SearXNG:        healthy' } catch { Write-Host '  SearXNG:        not running' }"
 	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:3010 -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '  SandboxFusion:  healthy' } catch { Write-Host '  SandboxFusion:  not running' }"
 	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:8101/v1/models -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '  vLLM:           healthy' } catch { Write-Host '  vLLM:           not running' }"
+	@powershell -Command "try { docker exec e2b-api curl -sf http://localhost:8095/health 2>$$null; Write-Host '  E2B API:        healthy' } catch { Write-Host '  E2B API:        not running' }"
 	@echo ============================================
 else
 	@echo "============================================"
@@ -910,6 +1005,7 @@ else
 	@curl -sf http://localhost:8086 >/dev/null && echo "  SearXNG:        healthy" || echo "  SearXNG:        not running"
 	@curl -sf http://localhost:3010 >/dev/null && echo "  SandboxFusion:  healthy" || echo "  SandboxFusion:  not running"
 	@curl -sf http://localhost:8101/v1/models >/dev/null && echo "  vLLM:           healthy" || echo "  vLLM:           not running"
+	@docker exec e2b-api curl -sf http://localhost:8095/health >/dev/null 2>&1 && echo "  E2B API:        healthy" || echo "  E2B API:        not running"
 	@echo ""
 	@echo "============================================"
 endif

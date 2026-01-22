@@ -115,6 +115,11 @@ services:
       AIO_ENABLED: ${AIO_ENABLED:-false}
       AIO_URL: ${AIO_URL:-http://aio-sandbox:8080}
       AIO_TIMEOUT: ${AIO_TIMEOUT:-120s}
+
+      # E2B Sandbox Configuration (cloud-based sandbox via e2b-api service)
+      E2B_ENABLED: ${E2B_ENABLED:-false}
+      E2B_SERVICE_URL: ${E2B_SERVICE_URL:-http://e2b-api:8095}
+      E2B_TIMEOUT: ${E2B_TIMEOUT:-120s}
       
       # Authentication
       AUTH_ENABLED: ${AUTH_ENABLED:-false}
@@ -141,6 +146,7 @@ services:
     networks:
       - default
       - mcp-network
+      - jan-network
     profiles: ["mcp", "full"]
 
   # AIO Sandbox - All-in-One Agent Sandbox Environment
@@ -188,4 +194,8 @@ volumes:
   aio-workspace:
     driver: local
 
-# Note: Networks are defined in infrastructure.yml and shared across all compose files
+networks:
+  jan-network:
+    external: true
+  mcp-network:
+    # Defined in infrastructure.yml but declared here for clarity

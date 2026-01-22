@@ -92,6 +92,11 @@ type Config struct {
 	AIOEnabled bool          `env:"AIO_ENABLED" envDefault:"false"`
 	AIOURL     string        `env:"AIO_URL" envDefault:"http://aio-sandbox:8080"`
 	AIOTimeout time.Duration `env:"AIO_TIMEOUT" envDefault:"120s"`
+
+	// E2B Sandbox Configuration (internal service only)
+	E2BEnabled    bool          `env:"E2B_ENABLED" envDefault:"false"`
+	E2BServiceURL string        `env:"E2B_SERVICE_URL" envDefault:"http://e2b-api:8095"`
+	E2BTimeout    time.Duration `env:"E2B_TIMEOUT" envDefault:"120s"`
 }
 
 // LoadConfig loads configuration from environment variables

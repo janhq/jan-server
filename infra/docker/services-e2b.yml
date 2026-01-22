@@ -1,0 +1,60 @@
+# E2B API Docker Compose Configuration
+# Cloud Desktop Sandbox for browser automation and file operations
+#
+# Requires: E2B_API_KEY environment variable
+#
+# Profiles:
+#   - e2b     : Internal only (production) - accessible at http://e2b-api:8095 within docker network
+#   - e2b-dev : Exposed externally (development) - accessible at http://localhost:8095
+#
+# Usage:
+#   make up-e2b         # Internal only (default)
+#   make up-e2b-dev     # Exposed externally for development
+
+# Common configuration anchor
+x-e2b-common: &e2b-common
+  build:
+    context: ../../services/e2b-api
+    dockerfile: Dockerfile
+  environment:
+    - E2B_API_KEY=${E2B_API_KEY}
+    - E2B_TEMPLATE_ID=${E2B_TEMPLATE_ID:-jan-browser-sandbox}
+    - E2B_SERVICE_PORT=8095
+    - E2B_SANDBOX_TIMEOUT=${E2B_SANDBOX_TIMEOUT:-1800}
+    - DB_POSTGRESQL_WRITE_DSN=postgresql://${POSTGRES_USER:-jan_user}:${POSTGRES_PASSWORD:-jan_password}@api-db:5432/${POSTGRES_DB:-jan_llm_api}
+    - LOG_LEVEL=${LOG_LEVEL:-INFO}
+  depends_on:
+    api-db:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8095/health"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 10s
+  restart: unless-stopped
+  networks:
+    - jan-network
+    - default
+
+services:
+  # Production mode - internal only, not exposed to host
+  e2b-api:
+    <<: *e2b-common
+    profiles:
+      - e2b
+    expose:
+      - "8095"  # Available only within docker network
+
+  # Development mode - exposed externally for testing
+  e2b-api-dev:
+    <<: *e2b-common
+    container_name: e2b-api  # Same container name for compatibility
+    profiles:
+      - e2b-dev
+    ports:
+      - "${E2B_HOST_PORT:-8095}:8095"  # Exposed to host
+
+networks:
+  jan-network:
+    external: true

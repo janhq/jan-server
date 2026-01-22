@@ -40,9 +40,12 @@ func CreateApplication(ctx context.Context) (*Application, error) {
 	imageEditMCP := routes.ProvideImageEditMCP(config)
 	aiomcp := routes.ProvideAIOMCP(config)
 	agentProxyMCP := routes.ProvideAgentProxyMCP(config)
+	e2bClient := routes.ProvideE2BClient(config)
+	workspaceResolver := routes.ProvideWorkspaceResolver(e2bClient)
+	e2BMCP := routes.ProvideE2BMCP(e2bClient, workspaceResolver)
 	llmapiClient := infrastructure.ProvideLLMAPIClient(config)
 	cache := routes.ProvideToolConfigCache(config, llmapiClient)
-	mcpRoute := routes.ProvideMCPRoute(searchMCP, providerMCP, sandboxFusionMCP, memoryMCP, imageGenerateMCP, imageEditMCP, aiomcp, agentProxyMCP, llmapiClient, cache)
+	mcpRoute := routes.ProvideMCPRoute(searchMCP, providerMCP, sandboxFusionMCP, memoryMCP, imageGenerateMCP, imageEditMCP, aiomcp, agentProxyMCP, e2BMCP, llmapiClient, cache)
 	validator, err := infrastructure.ProvideAuthValidator(ctx, config)
 	if err != nil {
 		return nil, err

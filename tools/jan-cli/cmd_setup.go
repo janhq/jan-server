@@ -21,9 +21,11 @@ func init() {
 	setupAndRunCmd.Flags().Bool("with-memory-tools", false, "Enable memory tools profile and defaults during setup")
 	setupAndRunCmd.Flags().Bool("with-realtime-api", false, "Enable realtime API profile during setup")
 	setupAndRunCmd.Flags().Bool("with-aio", false, "Enable AIO Sandbox profile during setup")
+	setupAndRunCmd.Flags().Bool("with-e2b", false, "Enable E2B Desktop Sandbox profile during setup")
 	setupAndRunCmd.Flags().Bool("skip-realtime", false, "Skip realtime API setup (disable realtime profile)")
 	setupAndRunCmd.Flags().Bool("skip-memory", false, "Skip memory tools setup (disable memory profile)")
 	setupAndRunCmd.Flags().Bool("skip-aio", false, "Skip AIO Sandbox setup (disable aio profile)")
+	setupAndRunCmd.Flags().Bool("skip-e2b", false, "Skip E2B Sandbox setup (disable e2b profile)")
 }
 
 func runSetupAndRun(cmd *cobra.Command, args []string) error {
@@ -31,9 +33,11 @@ func runSetupAndRun(cmd *cobra.Command, args []string) error {
 	enableMemory, _ := cmd.Flags().GetBool("with-memory-tools")
 	enableRealtime, _ := cmd.Flags().GetBool("with-realtime-api")
 	enableAIO, _ := cmd.Flags().GetBool("with-aio")
+	enableE2B, _ := cmd.Flags().GetBool("with-e2b")
 	skipRealtime, _ := cmd.Flags().GetBool("skip-realtime")
 	skipMemory, _ := cmd.Flags().GetBool("skip-memory")
 	skipAIO, _ := cmd.Flags().GetBool("skip-aio")
+	skipE2B, _ := cmd.Flags().GetBool("skip-e2b")
 
 	fmt.Println("🚀 Jan Server Setup and Run")
 	fmt.Println("=" + strings.Repeat("=", 50))
@@ -59,7 +63,7 @@ func runSetupAndRun(cmd *cobra.Command, args []string) error {
 			if response != "y" && response != "yes" {
 				fmt.Println("Using existing .env file...")
 			} else {
-				if err := promptForEnvVars(envPath, enableMemory, enableAIO, skipRealtime, skipMemory, skipAIO); err != nil {
+				if err := promptForEnvVars(envPath, enableMemory, enableAIO, enableE2B, skipRealtime, skipMemory, skipAIO, skipE2B); err != nil {
 					return fmt.Errorf("failed to update .env: %w", err)
 				}
 			}
@@ -70,7 +74,7 @@ func runSetupAndRun(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("failed to copy .env template: %w", err)
 			}
 
-			if err := promptForEnvVars(envPath, enableMemory, enableAIO, skipRealtime, skipMemory, skipAIO); err != nil {
+			if err := promptForEnvVars(envPath, enableMemory, enableAIO, enableE2B, skipRealtime, skipMemory, skipAIO, skipE2B); err != nil {
 				return fmt.Errorf("failed to configure .env: %w", err)
 			}
 		}
@@ -97,6 +101,12 @@ func runSetupAndRun(cmd *cobra.Command, args []string) error {
 	if skipPrompts && enableAIO {
 		if err := applyAIODefaults(envPath); err != nil {
 			return fmt.Errorf("failed to enable AIO Sandbox defaults: %w", err)
+		}
+	}
+
+	if skipPrompts && enableE2B {
+		if err := applyE2BDefaults(envPath); err != nil {
+			return fmt.Errorf("failed to enable E2B Sandbox defaults: %w", err)
 		}
 	}
 
@@ -249,6 +259,11 @@ func runSetupAndRun(cmd *cobra.Command, args []string) error {
 		fmt.Println("  • AIO Docs:         http://localhost:8180/v1/docs")
 	}
 
+	// Show E2B Desktop Sandbox if enabled (internal service, no external URL)
+	if os.Getenv("E2B_ENABLED") == "true" {
+		fmt.Println("  • E2B API:          enabled (internal: http://e2b-api:8095)")
+	}
+
 	// Show Platform if it was started
 	if startPlatform {
 		fmt.Println("  • Platform Web App: http://localhost:3000")
@@ -285,7 +300,7 @@ func copyEnvTemplate(destPath string) error {
 	return nil
 }
 
-func promptForEnvVars(envPath string, defaultEnableMemory bool, enableAIO bool, skipRealtime bool, skipMemory bool, skipAIO bool) error {
+func promptForEnvVars(envPath string, defaultEnableMemory bool, enableAIO bool, enableE2B bool, skipRealtime bool, skipMemory bool, skipAIO bool, skipE2B bool) error {
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Println()
@@ -693,6 +708,55 @@ func promptForEnvVars(envPath string, defaultEnableMemory bool, enableAIO bool, 
 		}
 	}
 
+	// 7. E2B Desktop Sandbox Configuration
+	if skipE2B {
+		updates["E2B_ENABLED"] = "false"
+		fmt.Println()
+		fmt.Println("⏭️  Skipping E2B Sandbox setup (disabled via --skip-e2b flag)")
+	} else if enableE2B {
+		// Enable E2B via flag without prompting
+		updates["E2B_ENABLED"] = "true"
+		updates["E2B_SERVICE_URL"] = "http://e2b-api:8095"
+		updates["E2B_TEMPLATE_ID"] = "jan-browser-sandbox"
+		profiles = append(profiles, "e2b")
+		fmt.Println()
+		fmt.Println("✓ E2B Desktop Sandbox enabled (via --with-e2b flag)")
+	} else {
+		fmt.Println()
+		fmt.Println("🖥️  E2B Desktop Sandbox Setup")
+		fmt.Println("E2B provides cloud desktop sandboxes with browser automation and file operations.")
+		fmt.Println("Requires E2B API key from https://e2b.dev/dashboard")
+		fmt.Print("Enable E2B Desktop Sandbox? (y/N): ")
+
+		e2bChoice, _ := reader.ReadString('\n')
+		e2bChoice = strings.TrimSpace(strings.ToLower(e2bChoice))
+
+		// Default is No for E2B (requires API key)
+		if e2bChoice == "y" || e2bChoice == "yes" {
+			fmt.Println()
+			fmt.Print("E2B_API_KEY (get from https://e2b.dev/dashboard): ")
+			e2bKey, _ := reader.ReadString('\n')
+			e2bKey = strings.TrimSpace(e2bKey)
+
+			if e2bKey != "" {
+				updates["E2B_API_KEY"] = e2bKey
+				updates["E2B_ENABLED"] = "true"
+				updates["E2B_SERVICE_URL"] = "http://e2b-api:8095"
+				updates["E2B_TEMPLATE_ID"] = "jan-browser-sandbox"
+				profiles = append(profiles, "e2b")
+				fmt.Println("✓ E2B Desktop Sandbox enabled (profile: e2b)")
+				fmt.Println("  Tools: e2b_create_sandbox, e2b_run_command, e2b_read_file, e2b_write_file,")
+				fmt.Println("         e2b_screenshot, e2b_open_url, e2b_click, e2b_type_text")
+			} else {
+				fmt.Println("⚠️  No API key provided, E2B disabled")
+				updates["E2B_ENABLED"] = "false"
+			}
+		} else {
+			updates["E2B_ENABLED"] = "false"
+			fmt.Println("✓ E2B Desktop Sandbox disabled (enable later with: make up-e2b)")
+		}
+	}
+
 	// Apply all updates
 	fmt.Println()
 
@@ -882,6 +946,38 @@ func applyAIODefaults(envPath string) error {
 	}
 
 	fmt.Println("✓ AIO Sandbox enabled (profile: aio)")
+	return applyEnvUpdates(envPath, updates)
+}
+
+func applyE2BDefaults(envPath string) error {
+	data, err := os.ReadFile(envPath)
+	if err != nil {
+		return fmt.Errorf("read .env: %w", err)
+	}
+
+	profiles := parseProfiles(strings.Split(string(data), "\n"))
+	updates := make(map[string]string)
+
+	// Add e2b profile if not present
+	hasE2B := false
+	for _, profile := range profiles {
+		if profile == "e2b" {
+			hasE2B = true
+			break
+		}
+	}
+	if !hasE2B {
+		profiles = append(profiles, "e2b")
+	}
+
+	updates["E2B_ENABLED"] = "true"
+	updates["E2B_SERVICE_URL"] = "http://e2b-api:8095"
+	updates["E2B_TEMPLATE_ID"] = "jan-browser-sandbox"
+	if len(profiles) > 0 {
+		updates["COMPOSE_PROFILES"] = strings.Join(profiles, ",")
+	}
+
+	fmt.Println("✓ E2B Desktop Sandbox enabled (profile: e2b)")
 	return applyEnvUpdates(envPath, updates)
 }
 

@@ -166,6 +166,11 @@ services:
       # AIO Sandbox (for slide rendering - bypasses MCP for stability)
       AIO_URL: ${AIO_URL:-http://aio-sandbox:8080}
 
+      # E2B Sandbox Service (cloud-based sandbox)
+      RESPONSE_E2B_API_URL: ${RESPONSE_E2B_API_URL:-http://e2b-api:8095}
+      RESPONSE_E2B_ENABLED: ${RESPONSE_E2B_ENABLED:-false}
+      RESPONSE_E2B_TIMEOUT: ${RESPONSE_E2B_TIMEOUT:-120s}
+
       # Tool Execution
       RESPONSE_MAX_TOOL_DEPTH: ${RESPONSE_MAX_TOOL_DEPTH:-8}
       RESPONSE_TOOL_TIMEOUT: ${RESPONSE_TOOL_TIMEOUT:-45s}
@@ -198,4 +203,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    networks:
+      - default
+      - jan-network
     profiles: ["api", "full"]
+
+networks:
+  jan-network:
+    external: true
