@@ -42,9 +42,9 @@ func TestAgentHandler_List(t *testing.T) {
 	err := json.Unmarshal(rec.Body.Bytes(), &response)
 	require.NoError(t, err)
 
-	// Should return default agents (deep_research, slide_generator, slide_creator)
-	assert.GreaterOrEqual(t, response.Total, 3)
-	assert.GreaterOrEqual(t, len(response.Agents), 3)
+	// Should return default agents (deep_research, slide_creator, doc_generator, pdf_generator, spreadsheet_generator)
+	assert.GreaterOrEqual(t, response.Total, 2)
+	assert.GreaterOrEqual(t, len(response.Agents), 2)
 
 	// Check that expected agents are present
 	agentTypes := make(map[string]bool)
@@ -56,7 +56,6 @@ func TestAgentHandler_List(t *testing.T) {
 	}
 
 	assert.True(t, agentTypes["deep_research"], "deep_research agent should be present")
-	assert.True(t, agentTypes["slide_generator"], "slide_generator agent should be present")
 	assert.True(t, agentTypes["slide_creator"], "slide_creator agent should be present")
 }
 
@@ -77,12 +76,6 @@ func TestAgentHandler_Get(t *testing.T) {
 		{
 			name:           "get deep_research agent",
 			agentType:      "deep_research",
-			expectedStatus: http.StatusOK,
-			checkFields:    true,
-		},
-		{
-			name:           "get slide_generator agent",
-			agentType:      "slide_generator",
 			expectedStatus: http.StatusOK,
 			checkFields:    true,
 		},
@@ -149,11 +142,6 @@ func TestAgentHandler_GetSchema(t *testing.T) {
 		{
 			name:           "get deep_research schema",
 			agentType:      "deep_research",
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "get slide_generator schema",
-			agentType:      "slide_generator",
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -247,6 +235,5 @@ func TestAgentHandler_GetCapabilities(t *testing.T) {
 	}
 
 	assert.True(t, agentTypes["deep_research"], "deep_research should be in capabilities")
-	assert.True(t, agentTypes["slide_generator"], "slide_generator should be in capabilities")
 	assert.True(t, agentTypes["slide_creator"], "slide_creator should be in capabilities")
 }

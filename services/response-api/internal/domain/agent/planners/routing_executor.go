@@ -10,17 +10,15 @@ import (
 
 // RoutingExecutor delegates execution based on the plan's agent type.
 type RoutingExecutor struct {
-	defaultExecutor        agent.Executor
-	slideGeneratorExecutor agent.Executor
-	slideCreatorExecutor   agent.Executor
+	defaultExecutor      agent.Executor
+	slideCreatorExecutor agent.Executor
 }
 
 // NewRoutingExecutor creates a new routing executor.
-func NewRoutingExecutor(defaultExecutor agent.Executor, slideGeneratorExecutor agent.Executor, slideCreatorExecutor agent.Executor) *RoutingExecutor {
+func NewRoutingExecutor(defaultExecutor agent.Executor, slideCreatorExecutor agent.Executor) *RoutingExecutor {
 	return &RoutingExecutor{
-		defaultExecutor:        defaultExecutor,
-		slideGeneratorExecutor: slideGeneratorExecutor,
-		slideCreatorExecutor:   slideCreatorExecutor,
+		defaultExecutor:      defaultExecutor,
+		slideCreatorExecutor: slideCreatorExecutor,
 	}
 }
 
@@ -28,10 +26,6 @@ func NewRoutingExecutor(defaultExecutor agent.Executor, slideGeneratorExecutor a
 func (e *RoutingExecutor) Execute(ctx context.Context, step *plan.Step, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
 	if input.PlanContext != nil {
 		switch input.PlanContext.AgentType {
-		case plan.AgentTypeSlideGenerator:
-			if e.slideGeneratorExecutor != nil {
-				return e.slideGeneratorExecutor.Execute(ctx, step, input)
-			}
 		case plan.AgentTypeSlideCreator:
 			if e.slideCreatorExecutor != nil {
 				return e.slideCreatorExecutor.Execute(ctx, step, input)
@@ -53,9 +47,6 @@ func (e *RoutingExecutor) CanExecute(action plan.ActionType) bool {
 	if e.slideCreatorExecutor != nil && e.slideCreatorExecutor.CanExecute(action) {
 		return true
 	}
-	if e.slideGeneratorExecutor != nil && e.slideGeneratorExecutor.CanExecute(action) {
-		return true
-	}
 	if e.defaultExecutor != nil && e.defaultExecutor.CanExecute(action) {
 		return true
 	}
@@ -66,9 +57,6 @@ func (e *RoutingExecutor) CanExecute(action plan.ActionType) bool {
 func (e *RoutingExecutor) Rollback(ctx context.Context, step *plan.Step) error {
 	if e.slideCreatorExecutor != nil {
 		return e.slideCreatorExecutor.Rollback(ctx, step)
-	}
-	if e.slideGeneratorExecutor != nil {
-		return e.slideGeneratorExecutor.Rollback(ctx, step)
 	}
 	if e.defaultExecutor != nil {
 		return e.defaultExecutor.Rollback(ctx, step)

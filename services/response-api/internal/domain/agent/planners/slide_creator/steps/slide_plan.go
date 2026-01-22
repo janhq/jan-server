@@ -91,6 +91,7 @@ HARD RULES (must follow):
   - Do NOT use gray-on-gray or low-saturation combinations for text vs background.
 - Keep theme consistent across all slides.
 - Use image URLs only (no base64).
+- When picking from provided assets, prefer imageUrl and only use thumbnailUrl if imageUrl is missing.
 - Omit empty optional fields.
 - Output JSON only (no markdown, no commentary).
 

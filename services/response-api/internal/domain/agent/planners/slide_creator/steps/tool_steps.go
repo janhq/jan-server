@@ -29,6 +29,8 @@ func (e *SlideCreatorExecutor) executeToolCall(ctx context.Context, step *plan.S
 	switch action {
 	case "export_pptx_dom":
 		return e.executeExportPPTX(ctx, params, input)
+	case "image_search_slide":
+		return e.executeSlideImageSearch(ctx, params, input)
 	default:
 		return e.executeGenericToolCall(ctx, step, params, input)
 	}

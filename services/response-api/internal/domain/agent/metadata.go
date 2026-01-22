@@ -5,7 +5,7 @@ import "encoding/json"
 
 // AgentMetadata contains descriptive information about an agent for discovery.
 type AgentMetadata struct {
-	// Type is the unique identifier for this agent (e.g., "deep_research", "slide_generator")
+	// Type is the unique identifier for this agent (e.g., "deep_research", "slide_creator")
 	Type string `json:"type"`
 
 	// Name is the human-readable name of the agent
@@ -94,27 +94,6 @@ func DeepResearchMetadata() AgentMetadata {
 		OutputFormats:     []string{"markdown", "pdf", "json"},
 		EstimatedDuration: "2-10 minutes",
 		UseWhen:           "User wants to research, investigate, analyze, or learn about a topic in depth",
-		Enabled:           true,
-	}
-}
-
-// SlideGeneratorMetadata returns metadata for the slide generator agent.
-func SlideGeneratorMetadata() AgentMetadata {
-	return AgentMetadata{
-		Type:        "slide_generator",
-		Name:        "Slide Generator Agent",
-		Description: "Creates professional presentations with research, visuals, and speaker notes. Perfect for pitch decks, educational content, and business presentations.",
-		Keywords: []string{
-			"slides", "presentation", "powerpoint", "deck", "pitch",
-			"pptx", "keynote", "slideshow", "visual presentation",
-		},
-		Capabilities: []string{
-			"research", "outline", "content_generation", "visual_design",
-			"speaker_notes", "export", "theme_customization",
-		},
-		OutputFormats:     []string{"pptx", "pdf", "google_slides"},
-		EstimatedDuration: "3-15 minutes",
-		UseWhen:           "User wants to create a presentation, slides, pitch deck, or visual deck",
 		Enabled:           true,
 	}
 }
@@ -228,62 +207,6 @@ func DeepResearchInputSchema() *AgentInputSchema {
 				Type:        "boolean",
 				Description: "Whether to include source citations",
 				Default:     true,
-			},
-		},
-		Required: []string{"prompt"},
-	}
-}
-
-// SlideGeneratorInputSchema returns the input schema for slide generation.
-func SlideGeneratorInputSchema() *AgentInputSchema {
-	min3 := 3
-	max50 := 50
-	return &AgentInputSchema{
-		Type: "object",
-		Properties: map[string]SchemaProperty{
-			"prompt": {
-				Type:        "string",
-				Description: "Description of the presentation to create",
-			},
-			"num_slides": {
-				Type:        "integer",
-				Description: "Target number of slides",
-				Default:     10,
-				Minimum:     &min3,
-				Maximum:     &max50,
-			},
-			"theme": {
-				Type:        "string",
-				Description: "Visual theme for the presentation",
-				Enum:        []string{"modern", "corporate", "minimal", "creative", "dark"},
-				Default:     "modern",
-			},
-			"format": {
-				Type:        "string",
-				Description: "Output format for the presentation",
-				Enum:        []string{"pptx", "pdf", "google_slides"},
-				Default:     "pptx",
-			},
-			"research_depth": {
-				Type:        "string",
-				Description: "How much web research to perform",
-				Enum:        []string{"minimal", "standard", "deep"},
-				Default:     "standard",
-			},
-			"include_speaker_notes": {
-				Type:        "boolean",
-				Description: "Whether to generate speaker notes",
-				Default:     true,
-			},
-			"include_visuals": {
-				Type:        "boolean",
-				Description: "Whether to generate charts, diagrams, and images",
-				Default:     true,
-			},
-			"options_count": {
-				Type:        "integer",
-				Description: "Number of variations to generate for user selection",
-				Default:     1,
 			},
 		},
 		Required: []string{"prompt"},
@@ -459,31 +382,6 @@ func DeepResearchOutputSchema() *AgentOutputSchema {
 	}
 }
 
-// SlideGeneratorOutputSchema returns the output schema for slide generation.
-func SlideGeneratorOutputSchema() *AgentOutputSchema {
-	return &AgentOutputSchema{
-		Type: "object",
-		Properties: map[string]SchemaProperty{
-			"artifact_id": {
-				Type:        "string",
-				Description: "ID of the generated presentation artifact",
-			},
-			"slides_count": {
-				Type:        "integer",
-				Description: "Number of slides generated",
-			},
-			"download_url": {
-				Type:        "string",
-				Description: "URL to download the presentation",
-			},
-			"preview_url": {
-				Type:        "string",
-				Description: "URL to preview the presentation",
-			},
-		},
-	}
-}
-
 // SlideCreatorOutputSchema returns the output schema for slide creation.
 func SlideCreatorOutputSchema() *AgentOutputSchema {
 	return &AgentOutputSchema{
@@ -582,20 +480,6 @@ func DeepResearchExamples() []AgentExample {
 	}
 }
 
-// SlideGeneratorExamples returns usage examples for slide generation.
-func SlideGeneratorExamples() []AgentExample {
-	return []AgentExample{
-		{
-			Input:       json.RawMessage(`{"prompt": "Create a pitch deck for a SaaS startup", "num_slides": 12, "theme": "modern"}`),
-			Description: "Creates a 12-slide investor pitch deck with modern styling",
-		},
-		{
-			Input:       json.RawMessage(`{"prompt": "Make slides about AI safety for executives", "include_speaker_notes": true}`),
-			Description: "Executive presentation with speaker notes",
-		},
-	}
-}
-
 // SlideCreatorExamples returns usage examples for slide creation.
 func SlideCreatorExamples() []AgentExample {
 	return []AgentExample{
@@ -650,13 +534,6 @@ func GetAgentDetail(agentType string) *AgentDetail {
 			OutputSchema:  DeepResearchOutputSchema(),
 			Examples:      DeepResearchExamples(),
 		}
-	case "slide_generator":
-		return &AgentDetail{
-			AgentMetadata: SlideGeneratorMetadata(),
-			InputSchema:   SlideGeneratorInputSchema(),
-			OutputSchema:  SlideGeneratorOutputSchema(),
-			Examples:      SlideGeneratorExamples(),
-		}
 	case "slide_creator":
 		return &AgentDetail{
 			AgentMetadata: SlideCreatorMetadata(),
@@ -694,7 +571,6 @@ func GetAgentDetail(agentType string) *AgentDetail {
 func GetAllAgentMetadata() []AgentMetadata {
 	return []AgentMetadata{
 		DeepResearchMetadata(),
-		SlideGeneratorMetadata(),
 		SlideCreatorMetadata(),
 		DocGeneratorMetadata(),
 		PDFGeneratorMetadata(),

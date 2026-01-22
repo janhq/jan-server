@@ -37,9 +37,7 @@ type AgentProxyMCP struct {
 	modelCacheTime time.Time
 }
 
-var disabledAgentTypes = map[string]struct{}{
-	"slide_generator": {},
-}
+var disabledAgentTypes = map[string]struct{}{}
 
 // AgentMetadataCache holds cached agent metadata.
 type AgentMetadataCache struct {
@@ -152,7 +150,7 @@ func (a *AgentProxyMCP) handleRunAgent(ctx context.Context, req *mcpsdk.CallTool
 	if isAgentDisabled(input.AgentType) {
 		return &mcpsdk.CallToolResult{
 			IsError: true,
-			Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: "slide_generator is disabled; use slide_creator instead"}},
+			Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: "agent_type is disabled"}},
 		}, nil, nil
 	}
 

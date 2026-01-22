@@ -15,7 +15,6 @@ import (
 	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/agent/planners"
 	slide_creator "jan-server/services/response-api/internal/domain/agent/planners/slide_creator"
-	slide_generator "jan-server/services/response-api/internal/domain/agent/planners/slide_generator"
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/llm"
 	"jan-server/services/response-api/internal/domain/plan"
@@ -143,12 +142,6 @@ func main() {
 		log.Warn().Err(err).Msg("failed to register deep research planner")
 	}
 
-	// Register slide generator planner
-	slideGeneratorPlanner := slide_generator.NewSlideGeneratorPlanner(planService, artifactService)
-	if err := agentRegistry.RegisterPlanner(slideGeneratorPlanner); err != nil {
-		log.Warn().Err(err).Msg("failed to register slide generator planner")
-	}
-
 	// Register slide creator planner
 	slideCreatorPlanner := slide_creator.NewSlideCreatorPlanner(planService, artifactService)
 	if err := agentRegistry.RegisterPlanner(slideCreatorPlanner); err != nil {
@@ -193,10 +186,9 @@ func main() {
 			skill.SkillTypeSpreadsheets: cfg.SkillSpreadsheetsEnabled,
 		},
 	)
-	slideGeneratorExecutor := slide_generator.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient, skillExecutor, cfg)
 	slideCreatorExecutor := slide_creator.NewSlideCreatorExecutor(mcpClient, codeFixer, artifactService, mediaClient, cfg)
-	routingExecutor := planners.NewRoutingExecutor(deepResearchExecutor, slideGeneratorExecutor, slideCreatorExecutor)
-	artifactRoutingExecutor := planners.NewRoutingExecutor(slideGeneratorExecutor, slideGeneratorExecutor, slideCreatorExecutor)
+	routingExecutor := planners.NewRoutingExecutor(deepResearchExecutor, slideCreatorExecutor)
+	artifactRoutingExecutor := planners.NewRoutingExecutor(slideCreatorExecutor, slideCreatorExecutor)
 	if err := agentRegistry.RegisterExecutor(plan.ActionTypeToolCall, routingExecutor); err != nil {
 		log.Warn().Err(err).Msg("failed to register tool call executor")
 	}

@@ -68,7 +68,7 @@ func TestAgentDiscovery_ListAgents(t *testing.T) {
 	err := json.Unmarshal(body, &response)
 	require.NoError(t, err)
 
-	// Should have at least 2 agents (deep_research, slide_generator)
+	// Should have at least 2 agents (deep_research, slide_creator)
 	assert.GreaterOrEqual(t, response.Total, 2, "Should have at least 2 agents")
 	assert.GreaterOrEqual(t, len(response.Agents), 2, "Should have at least 2 agents in list")
 
@@ -86,7 +86,7 @@ func TestAgentDiscovery_ListAgents(t *testing.T) {
 	}
 
 	assert.True(t, agentTypes["deep_research"], "deep_research agent should be present")
-	assert.True(t, agentTypes["slide_generator"], "slide_generator agent should be present")
+	assert.True(t, agentTypes["slide_creator"], "slide_creator agent should be present")
 }
 
 func TestAgentDiscovery_GetAgent(t *testing.T) {
@@ -103,8 +103,8 @@ func TestAgentDiscovery_GetAgent(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "get slide_generator agent",
-			agentType:      "slide_generator",
+			name:           "get slide_creator agent",
+			agentType:      "slide_creator",
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -149,8 +149,8 @@ func TestAgentDiscovery_GetAgentSchema(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "get slide_generator schema",
-			agentType:      "slide_generator",
+			name:           "get slide_creator schema",
+			agentType:      "slide_creator",
 			expectedStatus: http.StatusOK,
 		},
 	}
@@ -214,7 +214,7 @@ func TestAgentDiscovery_GetCapabilities(t *testing.T) {
 	}
 
 	assert.True(t, agentTypes["deep_research"], "deep_research should be in capabilities")
-	assert.True(t, agentTypes["slide_generator"], "slide_generator should be in capabilities")
+	assert.True(t, agentTypes["slide_creator"], "slide_creator should be in capabilities")
 }
 
 func TestAgentDiscovery_DeepResearchSchema(t *testing.T) {
@@ -252,10 +252,10 @@ func TestAgentDiscovery_DeepResearchSchema(t *testing.T) {
 	}
 }
 
-func TestAgentDiscovery_SlideGeneratorSchema(t *testing.T) {
+func TestAgentDiscovery_SlideCreatorSchema(t *testing.T) {
 	skipIfNoAPI(t)
 
-	resp, body := makeRequest(t, http.MethodGet, "/v1/agents/slide_generator/schema", nil)
+	resp, body := makeRequest(t, http.MethodGet, "/v1/agents/slide_creator/schema", nil)
 	assertStatus(t, resp, http.StatusOK, body)
 
 	var response AgentSchemaResponse
@@ -268,11 +268,11 @@ func TestAgentDiscovery_SlideGeneratorSchema(t *testing.T) {
 	properties, ok := inputSchema["properties"].(map[string]interface{})
 	require.True(t, ok)
 
-	// Check slide_generator specific properties
+	// Check slide_creator specific properties
 	expectedProps := []string{"prompt", "num_slides", "theme", "format", "research_depth"}
 	for _, prop := range expectedProps {
 		_, exists := properties[prop]
-		assert.True(t, exists, "slide_generator schema should have %s property", prop)
+		assert.True(t, exists, "slide_creator schema should have %s property", prop)
 	}
 
 	// Check theme enum
@@ -292,7 +292,6 @@ func TestAgentDiscovery_SlideGeneratorSchema(t *testing.T) {
 		enum, hasEnum := format["enum"].([]interface{})
 		if hasEnum {
 			assert.Contains(t, enum, "pptx")
-			assert.Contains(t, enum, "pdf")
 		}
 	}
 }

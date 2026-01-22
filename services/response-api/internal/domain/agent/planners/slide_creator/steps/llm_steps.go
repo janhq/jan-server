@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"jan-server/services/response-api/internal/domain/agent"
-	"jan-server/services/response-api/internal/domain/agent/planners/slide_generator/schemas"
+	"jan-server/services/response-api/internal/domain/agent/planners/slide_creator/schemas"
 	"jan-server/services/response-api/internal/domain/plan"
 	"jan-server/services/response-api/internal/domain/status"
 

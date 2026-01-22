@@ -14,7 +14,6 @@ import (
 	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/agent/planners"
 	slide_creator "jan-server/services/response-api/internal/domain/agent/planners/slide_creator"
-	slide_generator "jan-server/services/response-api/internal/domain/agent/planners/slide_generator"
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/conversation"
 	"jan-server/services/response-api/internal/domain/llm"
@@ -22,6 +21,7 @@ import (
 	responseDomain "jan-server/services/response-api/internal/domain/response"
 	"jan-server/services/response-api/internal/domain/skill"
 	"jan-server/services/response-api/internal/domain/tool"
+	"jan-server/services/response-api/internal/infrastructure/apikey"
 	"jan-server/services/response-api/internal/infrastructure/auth"
 	"jan-server/services/response-api/internal/infrastructure/database"
 	"jan-server/services/response-api/internal/infrastructure/llmprovider"
@@ -62,6 +62,8 @@ var responseSet = wire.NewSet(
 	newAgentOrchestrator,
 	newWebhookService,
 	wire.Bind(new(webhook.Service), new(*webhook.HTTPService)),
+	newAPIKeyProvider,
+	wire.Bind(new(apikey.Provider), new(*apikey.Client)),
 	plan.NewService,
 	newAgentRegistry,
 	newResponseService,
@@ -116,6 +118,10 @@ func newMCPClient(cfg *config.Config) *mcp.Client {
 	return mcp.NewClient(cfg.MCPToolsURL)
 }
 
+func newAPIKeyProvider(cfg *config.Config) *apikey.Client {
+	return apikey.NewClient(cfg.LLMAPIURL)
+}
+
 func newMediaClient(cfg *config.Config) *media.Client {
 	return media.NewClient(cfg.MediaAPIURL)
 }
@@ -143,12 +149,6 @@ func newAgentRegistry(planService plan.Service, mcpClient tool.MCPClient, llmPro
 	deepResearchPlanner := planners.NewDeepResearchPlanner(planService)
 	if err := registry.RegisterPlanner(deepResearchPlanner); err != nil {
 		// Log but don't fail - planner registration is not critical
-		_ = err
-	}
-
-	// Register the slide generator planner
-	slideGeneratorPlanner := slide_generator.NewSlideGeneratorPlanner(planService, artifactService)
-	if err := registry.RegisterPlanner(slideGeneratorPlanner); err != nil {
 		_ = err
 	}
 
@@ -196,10 +196,9 @@ func newAgentRegistry(planService plan.Service, mcpClient tool.MCPClient, llmPro
 			skill.SkillTypeSpreadsheets: cfg.SkillSpreadsheetsEnabled,
 		},
 	)
-	slideGeneratorExecutor := slide_generator.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient, skillExecutor, cfg)
 	slideCreatorExecutor := slide_creator.NewSlideCreatorExecutor(mcpClient, codeFixer, artifactService, mediaClient, cfg)
-	routingExecutor := planners.NewRoutingExecutor(deepResearchExecutor, slideGeneratorExecutor, slideCreatorExecutor)
-	artifactRoutingExecutor := planners.NewRoutingExecutor(slideGeneratorExecutor, slideGeneratorExecutor, slideCreatorExecutor)
+	routingExecutor := planners.NewRoutingExecutor(deepResearchExecutor, slideCreatorExecutor)
+	artifactRoutingExecutor := planners.NewRoutingExecutor(slideCreatorExecutor, slideCreatorExecutor)
 	_ = registry.RegisterExecutor(plan.ActionTypeToolCall, routingExecutor)
 	_ = registry.RegisterExecutor(plan.ActionTypeLLMCall, routingExecutor)
 	_ = registry.RegisterExecutor(plan.ActionTypeArtifactCreate, artifactRoutingExecutor)

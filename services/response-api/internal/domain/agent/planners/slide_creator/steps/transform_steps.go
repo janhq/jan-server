@@ -53,7 +53,8 @@ func (e *SlideCreatorExecutor) executeNormalizePlan(ctx context.Context, params 
 		numSlides = len(planData.Slides)
 	}
 
-	normalized := normalizeDeckPlan(*planData, numSlides)
+	enriched := mergeSlideImagesFromSearch(*planData, input)
+	normalized := normalizeDeckPlan(enriched, numSlides)
 	contentBytes, _ := json.Marshal(normalized)
 	output := map[string]interface{}{
 		"type":    "normalized_plan",

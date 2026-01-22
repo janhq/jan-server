@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"jan-server/services/response-api/internal/domain/agent"
-	"jan-server/services/response-api/internal/domain/agent/planners/slide_generator/schemas"
+	"jan-server/services/response-api/internal/domain/agent/planners/slide_creator/schemas"
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/plan"
 
@@ -302,6 +302,7 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		return nil, err
 	}
 
+	stepSequence := 1
 	selectTemplateParams, _ := json.Marshal(map[string]interface{}{
 		"action":      "select_templates",
 		"description": "Select the best HTML templates for the deck",
@@ -314,7 +315,7 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		},
 	})
 	_, err = p.planService.CreateStep(ctx, htmlTask.ID, plan.CreateStepParams{
-		Sequence:    1,
+		Sequence:    stepSequence,
 		Action:      plan.ActionTypeLLMCall,
 		Title:       "Template Selection",
 		Description: strPtr("Select the best HTML templates for the deck"),
@@ -324,6 +325,7 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	if err != nil {
 		return nil, err
 	}
+	stepSequence++
 
 	planParams, _ := json.Marshal(map[string]interface{}{
 		"action":      "slide_plan",
@@ -335,7 +337,7 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		},
 	})
 	_, err = p.planService.CreateStep(ctx, htmlTask.ID, plan.CreateStepParams{
-		Sequence:    2,
+		Sequence:    stepSequence,
 		Action:      plan.ActionTypeLLMCall,
 		Title:       "Slide Plan",
 		Description: strPtr("Generate slide plan JSON"),
@@ -344,6 +346,28 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	})
 	if err != nil {
 		return nil, err
+	}
+	stepSequence++
+
+	for i := 1; i <= config.NumSlides; i++ {
+		imageParams, _ := json.Marshal(map[string]interface{}{
+			"action":      "image_search_slide",
+			"description": "Expand slide-specific image queries",
+			"slide_index": i,
+			"num":         6,
+		})
+		_, err = p.planService.CreateStep(ctx, htmlTask.ID, plan.CreateStepParams{
+			Sequence:    stepSequence,
+			Action:      plan.ActionTypeToolCall,
+			Title:       "Per-Slide Image Search",
+			Description: strPtr("Search for slide-specific images when needed"),
+			InputParams: imageParams,
+			MaxRetries:  2,
+		})
+		if err != nil {
+			return nil, err
+		}
+		stepSequence++
 	}
 
 	normalizeParams, _ := json.Marshal(map[string]interface{}{
@@ -354,7 +378,7 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		},
 	})
 	_, err = p.planService.CreateStep(ctx, htmlTask.ID, plan.CreateStepParams{
-		Sequence:    3,
+		Sequence:    stepSequence,
 		Action:      plan.ActionTypeTransform,
 		Title:       "Normalize Plan",
 		Description: strPtr("Normalize the slide plan for layout safety"),
@@ -364,6 +388,7 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	if err != nil {
 		return nil, err
 	}
+	stepSequence++
 
 	renderParams, _ := json.Marshal(map[string]interface{}{
 		"action":      "render_slides",
@@ -373,7 +398,7 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		},
 	})
 	_, err = p.planService.CreateStep(ctx, htmlTask.ID, plan.CreateStepParams{
-		Sequence:    4,
+		Sequence:    stepSequence,
 		Action:      plan.ActionTypeTransform,
 		Title:       "Render Slides",
 		Description: strPtr("Render HTML slides from the normalized plan"),
@@ -383,6 +408,7 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	if err != nil {
 		return nil, err
 	}
+	stepSequence++
 
 	writeParams, _ := json.Marshal(map[string]interface{}{
 		"action":      "write_outputs",
@@ -392,7 +418,7 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		},
 	})
 	_, err = p.planService.CreateStep(ctx, htmlTask.ID, plan.CreateStepParams{
-		Sequence:    5,
+		Sequence:    stepSequence,
 		Action:      plan.ActionTypeTransform,
 		Title:       "Write Outputs",
 		Description: strPtr("Write HTML outputs and metadata"),
@@ -402,6 +428,7 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	if err != nil {
 		return nil, err
 	}
+	stepSequence++
 
 	artifactParams, _ := json.Marshal(map[string]interface{}{
 		"action":        "store_html_artifact",
@@ -412,7 +439,7 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		},
 	})
 	_, err = p.planService.CreateStep(ctx, htmlTask.ID, plan.CreateStepParams{
-		Sequence:    6,
+		Sequence:    stepSequence,
 		Action:      plan.ActionTypeArtifactCreate,
 		Title:       "Store HTML Artifact",
 		Description: strPtr("Store HTML slide bundle as an artifact"),
@@ -683,7 +710,7 @@ func (p *SlideCreatorPlanner) calculateEstimatedSteps(config SlideCreatorConfig)
 
 	steps += 2 // outline (reasoning + image_search)
 	steps += 1 // data bank
-	steps += 6 // html generation: select templates, plan, normalize, render, write, artifact
+	steps += 6 + config.NumSlides // html generation: select templates, plan, per-slide search, normalize, render, write, artifact
 	steps += 3 // pptx export + artifacts
 
 	log.Debug().

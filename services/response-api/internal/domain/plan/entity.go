@@ -37,7 +37,6 @@ type AgentType string
 
 const (
 	AgentTypeSlideCreator         AgentType = "slide_creator"
-	AgentTypeSlideGenerator       AgentType = "slide_generator"
 	AgentTypeDeepResearch         AgentType = "deep_research"
 	AgentTypeDocGenerator         AgentType = "doc_generator"
 	AgentTypePDFGenerator         AgentType = "pdf_generator"
