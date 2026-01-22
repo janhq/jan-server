@@ -11,6 +11,8 @@ import { Jan } from "@janhq/interfaces/svgs/jan";
 import { useModels } from "@/stores/models-store";
 import { useProfile } from "@/stores/profile-store";
 import { useAnimationStore } from "@/stores/animation-store";
+import { useAuth } from "@/stores/auth-store";
+import { analytics } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 
 export function ModelSelector() {
@@ -63,7 +65,19 @@ export function ModelSelector() {
     setModelSelectorAnimated,
   ]);
 
+  const isAuthenticated = useAuth((state) => state.isAuthenticated);
+
   const handleSelectModel = (model: Model) => {
+    const previousModel = selectedModel;
+
+    if (previousModel?.id !== model.id) {
+      analytics.capture("model_selected", {
+        model: model.id,
+        previous_model: previousModel?.id || null,
+        user_status: analytics.getUserStatus(isAuthenticated),
+      });
+    }
+
     setSelectedModel(model);
     updatePreferences({
       preferences: {

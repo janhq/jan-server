@@ -23,6 +23,14 @@ jobs:
       CLOUDFLARE_PROJECT_NAME: "jan-server-web"
       ENVIRONMENT: "prod"
       VITE_REPORT_ISSUE_URL: "https://forms.gle/LoxNVacHqUT261sa9"
+      POSTHOG_ENABLED: true
+      POSTHOG_DEBUG: false
+      POSTHOG_BATCH_SIZE: 100
+      POSTHOG_FLUSH_INTERVAL: "10s"
+      ANALYTICS_PII_LEVEL: "hashed"
+      ANALYTICS_ENVIRONMENT: "prod"
+      POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -47,6 +55,7 @@ jobs:
           VITE_AUTH_CLIENT_ID: ${{ env.VITE_AUTH_CLIENT_ID }}
           VITE_OAUTH_REDIRECT_URI: ${{ env.VITE_OAUTH_REDIRECT_URI }}
           VITE_GA_ID: ${{ env.VITE_GA_ID }}
+          POSTHOG_API_KEY: ${{ env.POSTHOG_API_KEY }}
 
       - name: Add headers
         run: cp apps/web/_headers apps/web/dist/_headers

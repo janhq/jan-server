@@ -36,6 +36,18 @@ type Config struct {
 	// Session Management
 	SessionCleanupInterval time.Duration `env:"SESSION_CLEANUP_INTERVAL" envDefault:"15s"`
 	SessionStaleTTL        time.Duration `env:"SESSION_STALE_TTL" envDefault:"10m"` // How long before a "created" session is considered stale
+
+	// Analytics (PostHog + OTel)
+	AnalyticsEnabled     bool          `env:"ANALYTICS_ENABLED" envDefault:"true"`
+	PostHogEnabled       bool          `env:"POSTHOG_ENABLED" envDefault:"false"`
+	PostHogAPIKey        string        `env:"POSTHOG_API_KEY"`
+	PostHogHost          string        `env:"POSTHOG_HOST" envDefault:"https://eu.posthog.com"`
+	PostHogDebug         bool          `env:"POSTHOG_DEBUG" envDefault:"false"`
+	PostHogBatchSize     int           `env:"POSTHOG_BATCH_SIZE" envDefault:"100"`
+	PostHogFlushInterval time.Duration `env:"POSTHOG_FLUSH_INTERVAL" envDefault:"10s"`
+	OTelAnalyticsEnabled bool          `env:"OTEL_ANALYTICS" envDefault:"false"`
+	AnalyticsPIILevel    string        `env:"ANALYTICS_PII_LEVEL" envDefault:"hashed"`
+	AnalyticsEnvironment string        `env:"ANALYTICS_ENVIRONMENT" envDefault:"dev"`
 }
 
 // Load parses environment variables into Config.

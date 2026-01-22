@@ -33,4 +33,11 @@ jobs:
         VITE_AUTH_CLIENT_ID=jan-client
         VITE_OAUTH_REDIRECT_URI=https://chat-dev.jan.ai/auth/callback
         VITE_REPORT_ISSUE_URL=https://forms.gle/LoxNVacHqUT261sa9
+        POSTHOG_ENABLED=true
+        POSTHOG_DEBUG=false
+        POSTHOG_BATCH_SIZE=100
+        POSTHOG_FLUSH_INTERVAL=10s
+        ANALYTICS_PII_LEVEL=hashed
+        ANALYTICS_ENVIRONMENT=dev
+        POSTHOG_API_KEY=${{ secrets.POSTHOG_API_KEY }}
       is_push: ${{ github.event_name == 'push' }}

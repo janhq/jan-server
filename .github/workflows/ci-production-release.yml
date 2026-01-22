@@ -19,6 +19,8 @@ jobs:
       is_push: true
       build-args: |
         VERSION_TAG=${{ github.ref_name }}
+      build-contexts: |
+        go-common=packages/go-common
 
   build-mcp-tools:
     uses: ./.github/workflows/_reusable-docker.yml
@@ -32,6 +34,8 @@ jobs:
       is_push: true
       build-args: |
         VERSION_TAG=${{ github.ref_name }}
+      build-contexts: |
+        go-common=packages/go-common
 
   build-media-api:
     uses: ./.github/workflows/_reusable-docker.yml
@@ -45,6 +49,8 @@ jobs:
       is_push: true
       build-args: |
         VERSION_TAG=${{ github.ref_name }}
+      build-contexts: |
+        go-common=packages/go-common
 
   build-response-api:
     uses: ./.github/workflows/_reusable-docker.yml
@@ -58,6 +64,8 @@ jobs:
       is_push: true
       build-args: |
         VERSION_TAG=${{ github.ref_name }}
+      build-contexts: |
+        go-common=packages/go-common
 
   build-memory-tools:
     uses: ./.github/workflows/_reusable-docker.yml
@@ -97,6 +105,8 @@ jobs:
       is_push: true
       build-args: |
         VERSION_TAG=${{ github.ref_name }}
+      build-contexts: |
+        go-common=packages/go-common
 
   build-platform:
     uses: ./.github/workflows/_reusable-docker.yml

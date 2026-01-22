@@ -16,6 +16,8 @@ import { shareService } from "@/services/share-service";
 import { toast } from "sonner";
 import { CopyIcon, CheckIcon, Loader2Icon, TrashIcon } from "lucide-react";
 import { Separator } from "@janhq/interfaces/separator";
+import { analytics } from "@/lib/analytics";
+import { useAuth } from "@/stores/auth-store";
 
 interface ShareDialogProps {
   open: boolean;
@@ -34,6 +36,7 @@ export function ShareDialog({
   const [isLoadingShares, setIsLoadingShares] = useState(false);
   const [existingShares, setExistingShares] = useState<ShareResponse[]>([]);
   const [copiedShareId, setCopiedShareId] = useState<string | null>(null);
+  const isAuthenticated = useAuth((state) => state.isAuthenticated);
 
   // Share options
   const [includeImages, setIncludeImages] = useState(true);
@@ -80,6 +83,13 @@ export function ShareDialog({
 
       // Add to existing shares
       setExistingShares([share]);
+
+      analytics.capture("share_created", {
+        conversation_id: conversationId,
+        share_type: "link",
+        include_images: includeImages,
+        user_status: analytics.getUserStatus(isAuthenticated),
+      });
 
       // Copy to clipboard immediately using local URL
       const localShareUrl = getLocalShareUrl(share.slug);

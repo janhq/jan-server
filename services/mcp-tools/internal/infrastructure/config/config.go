@@ -92,6 +92,20 @@ type Config struct {
 	AIOEnabled bool          `env:"AIO_ENABLED" envDefault:"false"`
 	AIOURL     string        `env:"AIO_URL" envDefault:"http://aio-sandbox:8080"`
 	AIOTimeout time.Duration `env:"AIO_TIMEOUT" envDefault:"120s"`
+
+	// Analytics (PostHog + OTel)
+	AnalyticsEnabled     bool          `env:"ANALYTICS_ENABLED" envDefault:"true"`
+	PostHogEnabled       bool          `env:"POSTHOG_ENABLED" envDefault:"false"`
+	PostHogAPIKey        string        `env:"POSTHOG_API_KEY"`
+	PostHogHost          string        `env:"POSTHOG_HOST" envDefault:"https://eu.posthog.com"`
+	PostHogDebug         bool          `env:"POSTHOG_DEBUG" envDefault:"false"`
+	PostHogBatchSize     int           `env:"POSTHOG_BATCH_SIZE" envDefault:"100"`
+	PostHogFlushInterval time.Duration `env:"POSTHOG_FLUSH_INTERVAL" envDefault:"10s"`
+	OTelAnalyticsEnabled bool          `env:"OTEL_ANALYTICS" envDefault:"false"`
+	OTLPEndpoint         string        `env:"OTEL_EXPORTER_OTLP_ENDPOINT"`
+	AnalyticsPIILevel    string        `env:"ANALYTICS_PII_LEVEL" envDefault:"hashed"`
+	AnalyticsEnvironment string        `env:"ANALYTICS_ENVIRONMENT" envDefault:"dev"`
+	ServiceName          string        `env:"SERVICE_NAME" envDefault:"mcp-tools"`
 }
 
 // LoadConfig loads configuration from environment variables

@@ -9,6 +9,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/google/wire v0.7.0
+	github.com/janhq/jan-server/packages/go-common v0.0.0
 	github.com/joho/godotenv v1.5.1
 	github.com/livekit/protocol v1.43.2
 	github.com/livekit/server-sdk-go/v2 v2.13.0
@@ -17,13 +18,31 @@ require (
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.1
 	github.com/swaggo/swag v1.16.6
-	go.opentelemetry.io/otel v1.39.0
-	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.39.0
+	go.opentelemetry.io/otel v1.38.0
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.24.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.24.0
-	go.opentelemetry.io/otel/sdk v1.39.0
-	go.opentelemetry.io/otel/sdk/metric v1.39.0
-	go.opentelemetry.io/otel/trace v1.39.0
+	go.opentelemetry.io/otel/sdk v1.38.0
+	go.opentelemetry.io/otel/sdk/metric v1.38.0
+	go.opentelemetry.io/otel/trace v1.38.0
 )
+
+replace github.com/janhq/jan-server/packages/go-common => ../../packages/go-common
+
+replace go.opentelemetry.io/otel => go.opentelemetry.io/otel v1.24.0
+
+replace go.opentelemetry.io/otel/metric => go.opentelemetry.io/otel/metric v1.24.0
+
+replace go.opentelemetry.io/otel/trace => go.opentelemetry.io/otel/trace v1.24.0
+
+replace go.opentelemetry.io/otel/sdk => go.opentelemetry.io/otel/sdk v1.24.0
+
+replace go.opentelemetry.io/otel/sdk/metric => go.opentelemetry.io/otel/sdk/metric v1.24.0
+
+replace go.opentelemetry.io/otel/exporters/otlp/otlptrace => go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.24.0
+
+replace go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp => go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.24.0
+
+replace go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp => go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.24.0
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.10-20250912141014-52f32327d4b0.1 // indirect
@@ -40,7 +59,6 @@ require (
 	github.com/bytedance/sonic v1.11.6 // indirect
 	github.com/bytedance/sonic/loader v0.1.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
-	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.4 // indirect
 	github.com/cloudwego/iasm v0.2.0 // indirect
@@ -61,10 +79,11 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.20.0 // indirect
-	github.com/goccy/go-json v0.10.2 // indirect
+	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/google/cel-go v0.26.1 // indirect
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.3 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/jxskiss/base62 v1.1.0 // indirect
@@ -76,7 +95,7 @@ require (
 	github.com/livekit/mediatransportutil v0.0.0-20251128105421-19c7a7b81c22 // indirect
 	github.com/livekit/psrpc v0.7.1 // indirect
 	github.com/magefile/mage v1.15.0 // indirect
-	github.com/mailru/easyjson v0.7.6 // indirect
+	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/moby/sys/user v0.4.0 // indirect
@@ -103,18 +122,19 @@ require (
 	github.com/pion/transport/v3 v3.1.1 // indirect
 	github.com/pion/turn/v4 v4.1.3 // indirect
 	github.com/pion/webrtc/v4 v4.1.6 // indirect
+	github.com/posthog/posthog-go v1.9.0 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
 	github.com/redis/go-redis/v9 v9.17.2 // indirect
+	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/stoewer/go-strcase v1.3.1 // indirect
 	github.com/twitchtv/twirp v8.1.3+incompatible // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/zeebo/xxh3 v1.0.2 // indirect
-	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.38.0 // indirect
 	go.opentelemetry.io/otel/metric v1.39.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.9.0 // indirect

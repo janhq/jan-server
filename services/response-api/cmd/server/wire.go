@@ -10,6 +10,8 @@ import (
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 
+	"github.com/janhq/jan-server/packages/go-common/analytics"
+
 	"jan-server/services/response-api/internal/config"
 	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/agent/planners"
@@ -78,6 +80,7 @@ func BuildApplication(ctx context.Context) (*Application, error) {
 		newDatabaseConfig,
 		newGormDB,
 		newAuthValidator,
+		newAnalyticsTracker,
 		responseSet,
 		httpserver.New,
 		NewApplication,
@@ -225,4 +228,43 @@ func newResponseService(
 	log zerolog.Logger,
 ) responseDomain.Service {
 	return responseDomain.NewService(repo, conversations, conversationItems, toolRepo, orchestrator, agentOrchestrator, mcpClient, mediaClient, modelInfoProvider, webhookService, agentRegistry, planService, log)
+}
+
+// newAnalyticsTracker creates the analytics tracker from config
+func newAnalyticsTracker(cfg *config.Config, log zerolog.Logger) analytics.Tracker {
+	analyticsCfg := analytics.Config{
+		Enabled:     cfg.AnalyticsEnabled,
+		Environment: cfg.AnalyticsEnvironment,
+		PIILevel:    cfg.AnalyticsPIILevel,
+		PostHog: analytics.PostHogConfig{
+			Enabled:       cfg.PostHogEnabled,
+			APIKey:        cfg.PostHogAPIKey,
+			Host:          cfg.PostHogHost,
+			Debug:         cfg.PostHogDebug,
+			BatchSize:     cfg.PostHogBatchSize,
+			FlushInterval: cfg.PostHogFlushInterval,
+		},
+		OTel: analytics.OTelConfig{
+			Enabled:  cfg.OTelAnalyticsEnabled,
+			Endpoint: cfg.OTLPEndpoint,
+		},
+	}
+
+	// Create sanitizer for PII protection
+	sanitizer := analytics.NewSanitizer(analytics.PIILevel(cfg.AnalyticsPIILevel), cfg.ServiceName)
+
+	tracker, err := analytics.NewTracker(analyticsCfg, sanitizer)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to create analytics tracker, using no-op")
+		return analytics.NewNoopTracker()
+	}
+
+	log.Info().
+		Bool("enabled", analyticsCfg.Enabled).
+		Bool("posthog", analyticsCfg.PostHog.Enabled).
+		Bool("otel", analyticsCfg.OTel.Enabled).
+		Str("environment", analyticsCfg.Environment).
+		Msg("Analytics tracker initialized")
+
+	return tracker
 }

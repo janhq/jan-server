@@ -4,6 +4,7 @@ import type { UIMessage } from "@ai-sdk/react";
 import { convertToUIMessages } from "@/lib/utils";
 import { useChatSessions } from "./chat-session-store";
 import { BRANCH } from "@/constants";
+import { analytics } from "@/lib/analytics";
 
 let fetchPromise: Promise<void> | null = null;
 
@@ -195,6 +196,15 @@ export const useConversations = create<ConversationState>((set, get) => ({
       set((state) => ({
         conversations: [newConversation, ...state.conversations],
       }));
+
+      const { useAuth } = await import("@/stores/auth-store");
+      const isAuthenticated = useAuth.getState().isAuthenticated;
+      analytics.capture("conversation_created", {
+        conversation_id: newConversation.id,
+        has_project: !!payload.project_id,
+        user_status: analytics.getUserStatus(isAuthenticated),
+      });
+
       return newConversation;
     } catch (err) {
       console.error("Error creating conversation:", err);

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/janhq/jan-server/packages/go-common/analytics"
+	analyticsMiddleware "github.com/janhq/jan-server/packages/go-common/analytics/middleware"
 	openai "github.com/sashabaranov/go-openai"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -98,6 +100,9 @@ func (h *ChatHandler) CreateChatCompletion(
 		attribute.Int("chat.message_count", len(request.Messages)),
 		attribute.Int("user.id", int(userID)),
 	)
+
+	// Track message_sent event for analytics
+	h.trackMessageSent(reqCtx, request)
 
 	var conv *conversation.Conversation
 	var conversationID string
@@ -1660,4 +1665,73 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// trackMessageSent tracks a message_sent analytics event
+func (h *ChatHandler) trackMessageSent(reqCtx *gin.Context, request chatrequests.ChatCompletionRequest) {
+	ctx := reqCtx.Request.Context()
+	values := analytics.ValuesFromContext(ctx)
+
+	if values.DistinctID == "" {
+		return
+	}
+
+	mode := "normal"
+	if request.DeepResearch != nil && *request.DeepResearch {
+		mode = "deep_research"
+	} else if request.Image != nil && *request.Image {
+		mode = "image"
+	}
+
+	messageLength := 0
+	hasAttachments := false
+	attachmentCount := 0
+	var attachmentTypes []string
+
+	for i := len(request.Messages) - 1; i >= 0; i-- {
+		msg := request.Messages[i]
+		if msg.Role == openai.ChatMessageRoleUser {
+			messageLength = len(msg.Content)
+			if len(msg.MultiContent) > 0 {
+				for _, part := range msg.MultiContent {
+					if part.Type == openai.ChatMessagePartTypeText {
+						messageLength += len(part.Text)
+					} else if part.Type == openai.ChatMessagePartTypeImageURL {
+						hasAttachments = true
+						attachmentCount++
+						attachmentTypes = append(attachmentTypes, "image")
+					}
+				}
+			}
+			break
+		}
+	}
+
+	conversationID := ""
+	if request.Conversation != nil {
+		conversationID = request.Conversation.GetID()
+	}
+
+	props := map[string]interface{}{
+		analytics.PropModel:           request.Model,
+		analytics.PropMode:            mode,
+		analytics.PropIsStreaming:     request.Stream,
+		analytics.PropMessageLength:   messageLength,
+		analytics.PropHasAttachments:  hasAttachments,
+		analytics.PropAttachmentCount: attachmentCount,
+		analytics.PropUserStatus:      values.UserStatus,
+		analytics.PropPlatform:        values.Platform,
+	}
+
+	if conversationID != "" {
+		props[analytics.PropConversationID] = conversationID
+	}
+
+	if len(attachmentTypes) > 0 {
+		props[analytics.PropAttachmentTypes] = attachmentTypes
+	}
+
+	if err := analyticsMiddleware.TrackEvent(reqCtx, analytics.EventMessageSent, props); err != nil {
+		observability.AddSpanEvent(ctx, "analytics_error", attribute.String("error", err.Error()))
+	}
 }

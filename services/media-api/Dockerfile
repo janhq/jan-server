@@ -3,6 +3,10 @@ ARG GO_VERSION=1.25
 FROM golang:${GO_VERSION} as build
 
 WORKDIR /src
+
+# Copy go-common from named build context to match replace directive path
+COPY --from=go-common . /packages/go-common
+
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .

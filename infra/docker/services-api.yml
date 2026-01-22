@@ -2,7 +2,10 @@
 
 services:
   llm-api:
-    build: ../../services/llm-api
+    build:
+      context: ../../services/llm-api
+      additional_contexts:
+        go-common: ../../packages/go-common
     restart: unless-stopped
     env_file:
       - ${ENV_FILE:-../../.env}
@@ -93,7 +96,10 @@ services:
     profiles: ["api", "full"]
 
   media-api:
-    build: ../../services/media-api
+    build:
+      context: ../../services/media-api
+      additional_contexts:
+        go-common: ../../packages/go-common
     restart: unless-stopped
     env_file:
       - ${ENV_FILE:-../../.env}
@@ -129,6 +135,16 @@ services:
       AUTH_ISSUER: ${ISSUER:-http://localhost:8085/realms/jan}
       ACCOUNT: ${ACCOUNT:-account}
       AUTH_JWKS_URL: ${JWKS_URL:-http://keycloak:8085/realms/jan/protocol/openid-connect/certs}
+
+      # Analytics (PostHog + OTel)
+      ANALYTICS_ENABLED: ${ANALYTICS_ENABLED:-true}
+      POSTHOG_ENABLED: ${POSTHOG_ENABLED:-false}
+      POSTHOG_API_KEY: ${POSTHOG_API_KEY:-}
+      POSTHOG_HOST: ${POSTHOG_HOST:-https://eu.posthog.com}
+      OTEL_ANALYTICS: ${OTEL_ANALYTICS:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
+      ANALYTICS_PII_LEVEL: ${ANALYTICS_PII_LEVEL:-hashed}
+      ANALYTICS_ENVIRONMENT: ${ANALYTICS_ENVIRONMENT:-dev}
     ports:
       - "${MEDIA_API_PORT:-8285}:${MEDIA_API_PORT:-8285}"
     depends_on:
@@ -146,7 +162,10 @@ services:
     profiles: ["api", "full"]
 
   response-api:
-    build: ../../services/response-api
+    build:
+      context: ../../services/response-api
+      additional_contexts:
+        go-common: ../../packages/go-common
     restart: unless-stopped
     env_file:
       - ${ENV_FILE:-../../.env}

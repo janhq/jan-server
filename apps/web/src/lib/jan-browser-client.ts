@@ -23,11 +23,18 @@ export class JanBrowserClient implements ToolCallClient {
   private connectionState: ConnectionState = CONNECTION_STATE.DISCONNECTED;
   private detectionResult: DetectionResult | null = null;
   private onStateChange?: (state: ConnectionState) => void;
-  private reconnectIntervalId?: ReturnType<typeof setInterval>;
+  private reconnectTimeoutId?: ReturnType<typeof setTimeout>;
+  private reconnectAttempts = 0;
+  private isReconnecting = false;
+
+  // Reconnection config with exponential backoff
+  private static readonly INITIAL_RECONNECT_DELAY = 5000; // 5 seconds
+  private static readonly MAX_RECONNECT_DELAY = 60000; // 1 minute max
+  private static readonly MAX_RECONNECT_ATTEMPTS = 10; // Stop after 10 attempts
 
   constructor() {
     this.connect();
-    this.startReconnectInterval();
+    this.scheduleReconnect();
   }
 
   /**
@@ -168,6 +175,7 @@ export class JanBrowserClient implements ToolCallClient {
     // Set up event handlers
     this.client.on("connect", () => {
       this.updateConnectionState(CONNECTION_STATE.CONNECTED);
+      this.resetReconnectState();
       console.log("Connected to browser extension MCP server");
     });
 
@@ -175,6 +183,8 @@ export class JanBrowserClient implements ToolCallClient {
       this.updateConnectionState(CONNECTION_STATE.DISCONNECTED);
       // Immediately re-detect to check if extension still exists
       await this.detectExtensionState();
+      // Schedule reconnection with backoff
+      this.scheduleReconnect();
     });
 
     this.client.on("error", (error: Error) => {
@@ -217,38 +227,81 @@ export class JanBrowserClient implements ToolCallClient {
   }
 
   /**
-   * Start automatic reconnection interval
+   * Calculate delay with exponential backoff
    */
-  private startReconnectInterval(): void {
-    // Clear any existing interval
-    if (this.reconnectIntervalId) {
-      clearInterval(this.reconnectIntervalId);
-    }
-
-    // Try to reconnect every 10 seconds if not connected
-    this.reconnectIntervalId = setInterval(async () => {
-      if (!this.client?.isConnected()) {
-        console.log("Attempting to reconnect to browser extension...");
-        await this.connect();
-      }
-    }, 5000);
+  private getReconnectDelay(): number {
+    const delay =
+      JanBrowserClient.INITIAL_RECONNECT_DELAY *
+      Math.pow(2, this.reconnectAttempts);
+    return Math.min(delay, JanBrowserClient.MAX_RECONNECT_DELAY);
   }
 
   /**
-   * Stop automatic reconnection interval
+   * Schedule a reconnection attempt with exponential backoff
    */
-  private stopReconnectInterval(): void {
-    if (this.reconnectIntervalId) {
-      clearInterval(this.reconnectIntervalId);
-      this.reconnectIntervalId = undefined;
+  private scheduleReconnect(): void {
+    // Clear any existing timeout
+    this.cancelReconnect();
+
+    // Don't schedule if already connected or max attempts reached
+    if (this.client?.isConnected()) {
+      this.reconnectAttempts = 0; // Reset on successful connection
+      return;
     }
+
+    if (this.reconnectAttempts >= JanBrowserClient.MAX_RECONNECT_ATTEMPTS) {
+      console.log(
+        "Browser extension: Max reconnection attempts reached. Use manual connect.",
+      );
+      return;
+    }
+
+    const delay = this.getReconnectDelay();
+
+    this.reconnectTimeoutId = setTimeout(async () => {
+      if (this.isReconnecting || this.client?.isConnected()) {
+        return;
+      }
+
+      this.isReconnecting = true;
+      this.reconnectAttempts++;
+
+      try {
+        await this.connect();
+      } finally {
+        this.isReconnecting = false;
+        // Schedule next attempt if still not connected
+        if (!this.client?.isConnected()) {
+          this.scheduleReconnect();
+        }
+      }
+    }, delay);
+  }
+
+  /**
+   * Cancel scheduled reconnection
+   */
+  private cancelReconnect(): void {
+    if (this.reconnectTimeoutId) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = undefined;
+    }
+  }
+
+  /**
+   * Reset reconnection state (call after successful connection)
+   */
+  private resetReconnectState(): void {
+    this.reconnectAttempts = 0;
+    this.isReconnecting = false;
   }
 
   /**
    * Disconnect from the browser extension
    */
   async disconnect(): Promise<void> {
-    this.stopReconnectInterval();
+    this.cancelReconnect();
+    this.resetReconnectState();
     if (this.client) {
       this.client.disconnect();
       this.client = undefined;
@@ -272,5 +325,17 @@ export class JanBrowserClient implements ToolCallClient {
       this.connectionState === CONNECTION_STATE.CONNECTED &&
       (this.client?.isConnected() ?? false)
     );
+  }
+
+  /**
+   * Manually trigger reconnection (resets attempt counter)
+   * Call this when user explicitly requests connection
+   */
+  async manualConnect(): Promise<void> {
+    this.resetReconnectState();
+    await this.connect();
+    if (!this.client?.isConnected()) {
+      this.scheduleReconnect();
+    }
   }
 }

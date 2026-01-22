@@ -9,6 +9,8 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	"github.com/janhq/jan-server/packages/go-common/analytics"
+
 	"jan-server/services/llm-api/internal/application/audit"
 	"jan-server/services/llm-api/internal/config"
 	"jan-server/services/llm-api/internal/infrastructure/auth"
@@ -119,6 +121,46 @@ func ProvideAdminAuditLogger(db *gorm.DB, logger zerolog.Logger) *audit.AdminAud
 	return audit.NewAdminAuditLogger(db, logger)
 }
 
+// ProvideAnalyticsTracker creates the analytics tracker from config
+func ProvideAnalyticsTracker(cfg *config.Config, log zerolog.Logger) analytics.Tracker {
+	analyticsCfg := analytics.Config{
+		Enabled:     cfg.AnalyticsEnabled,
+		Environment: cfg.AnalyticsEnvironment,
+		PIILevel:    cfg.AnalyticsPIILevel,
+		PostHog: analytics.PostHogConfig{
+			Enabled:       cfg.PostHogEnabled,
+			APIKey:        cfg.PostHogAPIKey,
+			Host:          cfg.PostHogHost,
+			Debug:         cfg.PostHogDebug,
+			BatchSize:     cfg.PostHogBatchSize,
+			FlushInterval: cfg.PostHogFlushInterval,
+		},
+		OTel: analytics.OTelConfig{
+			Enabled:  cfg.OTelAnalyticsEnabled,
+			Endpoint: cfg.OTLPEndpoint,
+			Headers:  cfg.OTLPHeaders,
+		},
+	}
+
+	// Create sanitizer for PII protection
+	sanitizer := analytics.NewSanitizer(analytics.PIILevel(cfg.AnalyticsPIILevel), cfg.ServiceName)
+
+	tracker, err := analytics.NewTracker(analyticsCfg, sanitizer)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to create analytics tracker, using no-op")
+		return analytics.NewNoopTracker()
+	}
+
+	log.Info().
+		Bool("enabled", analyticsCfg.Enabled).
+		Bool("posthog", analyticsCfg.PostHog.Enabled).
+		Bool("otel", analyticsCfg.OTel.Enabled).
+		Str("environment", analyticsCfg.Environment).
+		Msg("Analytics tracker initialized")
+
+	return tracker
+}
+
 // Infrastructure holds all infrastructure dependencies
 type Infrastructure struct {
 	DB                *gorm.DB
@@ -183,4 +225,7 @@ var InfrastructureProvider = wire.NewSet(
 
 	// Audit logger
 	ProvideAdminAuditLogger,
+
+	// Analytics
+	ProvideAnalyticsTracker,
 )

@@ -1,5 +1,37 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import { analytics } from "@/lib/analytics";
+
+const trackModeSelected = async (
+  mode: string,
+  previousMode: string,
+  enabled: boolean,
+) => {
+  if (!enabled) return; // Only track when enabling a mode
+  const { useAuth } = await import("@/stores/auth-store");
+  const isAuthenticated = useAuth.getState().isAuthenticated;
+  analytics.capture("mode_selected", {
+    mode,
+    previous_mode: previousMode,
+    user_status: analytics.getUserStatus(isAuthenticated),
+  });
+};
+
+// Helper to determine current active mode
+const getCurrentMode = (state: {
+  searchEnabled: boolean;
+  deepResearchEnabled: boolean;
+  reasoningEnabled: boolean;
+  imageGenerationEnabled: boolean;
+  agentModeEnabled: boolean;
+}): string => {
+  if (state.agentModeEnabled) return "agent";
+  if (state.deepResearchEnabled) return "deep_research";
+  if (state.searchEnabled) return "search";
+  if (state.reasoningEnabled) return "reasoning";
+  if (state.imageGenerationEnabled) return "create_image";
+  return "normal";
+};
 
 interface CapabilitiesState {
   searchEnabled: boolean;
@@ -58,6 +90,7 @@ export const useCapabilities = create<CapabilitiesState>()(
       toggleSearch: () =>
         set((state) => {
           const newValue = !state.searchEnabled;
+          const previousMode = getCurrentMode(state);
           updatePreferencesInBackground({
             enable_search: newValue,
             enable_image_generation: newValue
@@ -65,6 +98,7 @@ export const useCapabilities = create<CapabilitiesState>()(
               : state.imageGenerationEnabled,
             enable_agent_mode: newValue ? false : state.agentModeEnabled,
           });
+          trackModeSelected("search", previousMode, newValue);
           return {
             searchEnabled: newValue,
             agentModeEnabled: newValue ? false : state.agentModeEnabled,
@@ -73,6 +107,7 @@ export const useCapabilities = create<CapabilitiesState>()(
       toggleDeepResearch: () =>
         set((state) => {
           const newValue = !state.deepResearchEnabled;
+          const previousMode = getCurrentMode(state);
           updatePreferencesInBackground({
             enable_deep_research: newValue,
             enable_image_generation: newValue
@@ -80,6 +115,7 @@ export const useCapabilities = create<CapabilitiesState>()(
               : state.imageGenerationEnabled,
             enable_agent_mode: newValue ? false : state.agentModeEnabled,
           });
+          trackModeSelected("deep_research", previousMode, newValue);
           return {
             deepResearchEnabled: newValue,
             agentModeEnabled: newValue ? false : state.agentModeEnabled,
@@ -88,6 +124,7 @@ export const useCapabilities = create<CapabilitiesState>()(
       toggleBrowser: () =>
         set((state) => {
           const newValue = !state.browserEnabled;
+          const previousMode = getCurrentMode(state);
           updatePreferencesInBackground({
             enable_browser: newValue,
             enable_image_generation: newValue
@@ -95,6 +132,7 @@ export const useCapabilities = create<CapabilitiesState>()(
               : state.imageGenerationEnabled,
             enable_agent_mode: newValue ? false : state.agentModeEnabled,
           });
+          trackModeSelected("browser", previousMode, newValue);
           return {
             browserEnabled: newValue,
             agentModeEnabled: newValue ? false : state.agentModeEnabled,
@@ -103,6 +141,7 @@ export const useCapabilities = create<CapabilitiesState>()(
       toggleReasoning: () =>
         set((state) => {
           const newValue = !state.reasoningEnabled;
+          const previousMode = getCurrentMode(state);
           updatePreferencesInBackground({
             enable_thinking: newValue,
             enable_image_generation: newValue
@@ -110,6 +149,7 @@ export const useCapabilities = create<CapabilitiesState>()(
               : state.imageGenerationEnabled,
             enable_agent_mode: newValue ? false : state.agentModeEnabled,
           });
+          trackModeSelected("reasoning", previousMode, newValue);
           return {
             reasoningEnabled: newValue,
             agentModeEnabled: newValue ? false : state.agentModeEnabled,
@@ -118,10 +158,12 @@ export const useCapabilities = create<CapabilitiesState>()(
       toggleImageGeneration: () =>
         set((state) => {
           const newValue = !state.imageGenerationEnabled;
+          const previousMode = getCurrentMode(state);
           updatePreferencesInBackground({
             enable_image_generation: newValue,
             enable_agent_mode: newValue ? false : state.agentModeEnabled,
           });
+          trackModeSelected("create_image", previousMode, newValue);
           return {
             imageGenerationEnabled: newValue,
             agentModeEnabled: newValue ? false : state.agentModeEnabled,
@@ -130,6 +172,7 @@ export const useCapabilities = create<CapabilitiesState>()(
       toggleAgentMode: () =>
         set((state) => {
           const newValue = !state.agentModeEnabled;
+          const previousMode = getCurrentMode(state);
           if (newValue) {
             // Disable all other modes when enabling agent mode
             updatePreferencesInBackground({
@@ -140,10 +183,7 @@ export const useCapabilities = create<CapabilitiesState>()(
               enable_thinking: false,
               enable_image_generation: false,
             });
-            // Open right sidebar when agent mode is enabled
-            import("./right-sidebar-store").then(({ useRightSidebarStore }) => {
-              useRightSidebarStore.getState().setSidebarOpen(true);
-            });
+            trackModeSelected("agent", previousMode, newValue);
             return {
               agentModeEnabled: newValue,
               searchEnabled: false,
@@ -153,10 +193,6 @@ export const useCapabilities = create<CapabilitiesState>()(
               imageGenerationEnabled: false,
             };
           }
-          // Close right sidebar when agent mode is disabled
-          import("./right-sidebar-store").then(({ useRightSidebarStore }) => {
-            useRightSidebarStore.getState().setSidebarOpen(false);
-          });
           updatePreferencesInBackground({ enable_agent_mode: newValue });
           return { agentModeEnabled: newValue };
         }),

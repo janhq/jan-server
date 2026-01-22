@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/janhq/jan-server/packages/go-common/analytics"
+	analyticsMiddleware "github.com/janhq/jan-server/packages/go-common/analytics/middleware"
 
 	"jan-server/services/llm-api/internal/config"
 	"jan-server/services/llm-api/internal/domain/share"
@@ -100,6 +102,19 @@ func (h *ShareHandler) CreateShare(reqCtx *gin.Context) {
 	}
 
 	metrics.RecordShare(req.Scope, "success")
+
+	// Track share_created event
+	values := analytics.ValuesFromContext(ctx)
+	if values.DistinctID != "" {
+		props := map[string]interface{}{
+			analytics.PropConversationID: conv.PublicID,
+			analytics.PropShareType:      req.Scope,
+			analytics.PropUserStatus:     values.UserStatus,
+			analytics.PropPlatform:       values.Platform,
+		}
+		_ = analyticsMiddleware.TrackEvent(reqCtx, analytics.EventShareCreated, props)
+	}
+
 	resp := shareresponses.NewShareResponse(output.Share, h.getBaseURL(reqCtx))
 	reqCtx.JSON(http.StatusCreated, resp)
 }
