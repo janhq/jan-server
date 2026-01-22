@@ -65,6 +65,7 @@ import {
   uploadMedia,
   createJanMediaUrl,
 } from "@/services/media-upload-service";
+import { mcpService } from "@/services/mcp-service";
 import type { UploadServiceConfig } from "@janhq/interfaces/ai-elements/prompt-input";
 
 /**
@@ -194,7 +195,16 @@ const ChatInput = ({
     (state) => state.toggleImageGeneration,
   );
   const agentModeEnabled = useCapabilities((state) => state.agentModeEnabled);
+  const agentModeAvailable = useCapabilities(
+    (state) => state.agentModeAvailable,
+  );
   const toggleAgentMode = useCapabilities((state) => state.toggleAgentMode);
+  const setAgentModeAvailable = useCapabilities(
+    (state) => state.setAgentModeAvailable,
+  );
+  const setAgentModeEnabled = useCapabilities(
+    (state) => state.setAgentModeEnabled,
+  );
   const hydrateCapabilities = useCapabilities((state) => state.hydrate);
 
   // Typewriter animation for placeholder
@@ -323,10 +333,48 @@ const ChatInput = ({
   }, []);
 
   useEffect(() => {
+    let isActive = true;
+
+    const fetchAgentAvailability = async () => {
+      try {
+        const toolsResponse = await mcpService.getTools();
+        if (!isActive) {
+          return;
+        }
+        const hasAgentTool = toolsResponse.data.some(
+          (tool) => tool.name === "run_agent",
+        );
+        setAgentModeAvailable(hasAgentTool);
+      } catch (error) {
+        console.error(
+          "Failed to fetch MCP tools for agent availability:",
+          error,
+        );
+        if (!isActive) {
+          return;
+        }
+        setAgentModeAvailable(false);
+      }
+    };
+
+    fetchAgentAvailability();
+
+    return () => {
+      isActive = false;
+    };
+  }, [setAgentModeAvailable]);
+
+  useEffect(() => {
     if (pref) {
       hydrateCapabilities(pref.preferences);
     }
   }, [pref, hydrateCapabilities]);
+
+  useEffect(() => {
+    if (!agentModeAvailable && agentModeEnabled) {
+      setAgentModeEnabled(false);
+    }
+  }, [agentModeAvailable, agentModeEnabled, setAgentModeEnabled]);
 
   // Auto-disable image generation when server doesn't support it
   useEffect(() => {
@@ -543,7 +591,7 @@ const ChatInput = ({
                     <Settings2 className="size-4 text-muted-foreground" />
                   </Button>
                 </SettingChatInput>
-                {!imageGenerationEnabled && (
+                {!imageGenerationEnabled && agentModeAvailable && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -731,7 +779,9 @@ const ChatInput = ({
             </div>
           )}
         </PromptInputProvider>
-        {status !== CHAT_STATUS.STREAMING && agentModeEnabled && (
+        {status !== CHAT_STATUS.STREAMING &&
+          agentModeEnabled &&
+          agentModeAvailable && (
         <div className="absolute inset-0 scale-90 opacity-50 dark:opacity-25 blur-xl transition-all duration-100">
           <div className="bg-linear-to-r/increasing animate-hue-rotate absolute inset-x-0 bottom-0 top-6 from-pink-300 to-purple-300" />
         </div>

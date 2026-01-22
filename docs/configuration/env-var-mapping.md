@@ -110,6 +110,7 @@ This document maps centralized configuration (`pkg/config/types.go`) environment
 | `SANDBOXFUSION_URL`            | string   | `http://sandboxfusion:8080`     | `SANDBOXFUSION_URL`        | OK Aligned       |
 | `MCP_SANDBOX_REQUIRE_APPROVAL` | bool     | `true`                          | `SANDBOX_REQUIRE_APPROVAL` | TODO Need prefix |
 | `MCP_CONFIG_FILE`              | string   | `configs/mcp-providers.yml`     | `MCP_CONFIG_FILE`          | OK Aligned       |
+| `MCP_AGENT_PROXY_ENABLED`      | bool     | `true`                          | `MCP_AGENT_PROXY_ENABLED`  | New              |
 
 **Migration Notes:**
 

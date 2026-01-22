@@ -273,6 +273,12 @@ func (h *ChatHandler) CreateChatCompletion(
 			observability.AddSpanAttributes(ctx, attribute.Bool("chat.image", true))
 		}
 
+		// Pass agent flag to prompt orchestration to prioritize agent tool usage
+		if request.Agent != nil && *request.Agent {
+			preferences["agent"] = true
+			observability.AddSpanAttributes(ctx, attribute.Bool("chat.agent", true))
+		}
+
 		var profileSettings *usersettings.ProfileSettings
 		if userSettings != nil {
 			profileSettings = &userSettings.ProfileSettings

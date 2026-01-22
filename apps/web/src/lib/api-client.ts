@@ -214,6 +214,7 @@ export function janProvider(
   isPrivateChat?: boolean,
   isEnableThinking: boolean = false,
   imageEnabled?: boolean,
+  agentEnabled?: boolean,
 ): OpenAICompatibleProvider<string, string, string> {
   return createOpenAICompatible({
     name: "janhq",
@@ -225,6 +226,7 @@ export function janProvider(
       deep_research: deepResearch ?? false,
       enable_thinking: deepResearch ? true : isEnableThinking,
       ...(imageEnabled && { image: true }),
+      ...(agentEnabled && { agent: true }),
     }),
   });
 }

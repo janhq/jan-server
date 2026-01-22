@@ -72,20 +72,24 @@ export function ThreadPageContent({
   );
   const searchEnabled = useCapabilities((state) => state.searchEnabled);
   const agentModeEnabled = useCapabilities((state) => state.agentModeEnabled);
+  const agentModeAvailable = useCapabilities(
+    (state) => state.agentModeAvailable,
+  );
   const enableThinking = useCapabilities((state) => state.reasoningEnabled);
   const imageGenerationEnabled = useCapabilities(
     (state) => state.imageGenerationEnabled,
   );
+  const agentModeActive = agentModeEnabled && agentModeAvailable;
 
   const getCurrentMode = useCallback(() => {
-    if (agentModeEnabled) return "agent";
+    if (agentModeActive) return "agent";
     if (deepResearchEnabled) return "deep_research";
     if (searchEnabled) return "search";
     if (enableThinking) return "reasoning";
     if (imageGenerationEnabled) return "create_image";
     return "normal";
   }, [
-    agentModeEnabled,
+    agentModeActive,
     deepResearchEnabled,
     searchEnabled,
     enableThinking,
@@ -110,6 +114,7 @@ export function ThreadPageContent({
         isPrivateChat,
         enableThinking,
         imageGenerationEnabled,
+        agentModeActive,
       ),
     [
       conversationId,
@@ -117,6 +122,7 @@ export function ThreadPageContent({
       isPrivateChat,
       enableThinking,
       imageGenerationEnabled,
+      agentModeActive,
     ],
   );
 

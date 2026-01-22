@@ -96,6 +96,9 @@ function AgentModeHero({ phrase }: { phrase: string }) {
 function AppPageContent() {
   const isPrivateChat = usePrivateChat((state) => state.isPrivateChat);
   const agentModeEnabled = useCapabilities((state) => state.agentModeEnabled);
+  const agentModeAvailable = useCapabilities(
+    (state) => state.agentModeAvailable,
+  );
 
   const randomPhrase = useMemo(
     () => newYearPhrases[Math.floor(Math.random() * newYearPhrases.length)],
@@ -213,7 +216,7 @@ function AppPageContent() {
                     when you close it.
                   </motion.p>
                 </>
-              ) : agentModeEnabled ? (
+              ) : agentModeEnabled && agentModeAvailable ? (
                 <AgentModeHero phrase={agentPhrase} />
               ) : (
                 <div className="flex items-center justify-center gap-2">
