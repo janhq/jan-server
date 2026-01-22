@@ -12,6 +12,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+const dataBankImageAssetLimit = 2
+
 func ExecuteDataBank(ctx context.Context, deps ExecutorDeps, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
 	log.Debug().Msg("[slide_generator] executeDataBank started")
 	contextData := BuildAccumulatedContext(input)
@@ -25,8 +27,8 @@ func ExecuteDataBank(ctx context.Context, deps ExecutorDeps, params map[string]i
 			},
 		}, nil
 	}
-	assets := limitImageAssets(deps.CollectImageAssets(input), 4)
-	assetsJSON, _ := json.Marshal(assets)
+	assets := limitImageAssets(deps.CollectImageAssets(input), dataBankImageAssetLimit)
+	assetsJSON, _ := json.Marshal(compactImageAssetsForPrompt(assets))
 
 	systemPrompt := dataBankPrompt
 	userPrompt := fmt.Sprintf("BRIEF:\n%s\n\nASSETS AVAILABLE:\n%s", contextData, string(assetsJSON))

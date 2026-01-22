@@ -29,6 +29,8 @@ func ExecuteToolCall(ctx context.Context, deps ExecutorDeps, step *plan.Step, in
 
 	action, _ := params["action"].(string)
 	switch action {
+	case "image_search_slide":
+		return ExecuteSlideImageSearch(ctx, deps, params, input)
 	case "upload_slide_spec":
 		if deps.ExecuteUploadSlideSpec == nil {
 			return &agent.ExecutionResult{

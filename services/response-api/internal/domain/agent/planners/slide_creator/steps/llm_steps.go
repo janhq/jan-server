@@ -30,6 +30,8 @@ RULES:
 - If data is missing, leave the dataset list empty instead of inventing values.
 `
 
+const dataBankImageAssetLimit = 2
+
 func (e *SlideCreatorExecutor) executeLLMCall(ctx context.Context, step *plan.Step, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
 	var params map[string]interface{}
 	if err := json.Unmarshal(input.StepParams, &params); err != nil {
@@ -141,8 +143,8 @@ func (e *SlideCreatorExecutor) executeDataBank(ctx context.Context, params map[s
 	log.Debug().Msg("[slide_creator] executeDataBank started")
 	contextData := buildAccumulatedContext(input)
 	brief, _ := params["brief"].(string)
-	assets := limitImageAssets(collectImageAssets(input), 4)
-	assetsJSON, _ := json.Marshal(assets)
+	assets := limitImageAssets(collectImageAssets(input), dataBankImageAssetLimit)
+	assetsJSON, _ := json.Marshal(compactImageAssetsForPrompt(assets))
 
 	systemPrompt := dataBankPrompt
 	userPrompt := fmt.Sprintf("BRIEF:\n%s\n\nRESEARCH:\n%s\n\nASSETS AVAILABLE:\n%s", brief, contextData, string(assetsJSON))

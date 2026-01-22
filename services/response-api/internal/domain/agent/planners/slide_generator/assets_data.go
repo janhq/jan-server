@@ -162,16 +162,22 @@ func extractImageAssetsFromArray(arr []any) []map[string]any {
 }
 
 func assetFromImageResult(item map[string]any) map[string]any {
-	urlStr := firstString(item, "imageUrl", "image_url", "url", "link", "thumbnail", "thumbnailUrl", "source_url")
-	if urlStr == "" {
+	imageURL := firstString(item, "imageUrl", "image_url", "url", "link", "source_url")
+	thumbURL := firstString(item, "thumbnailUrl", "thumbnail_url", "thumbnail", "thumb", "previewUrl", "preview_url")
+	if imageURL == "" && thumbURL == "" {
 		return nil
 	}
-	parsed, _ := url.Parse(urlStr)
+	sourceURL := imageURL
+	if sourceURL == "" {
+		sourceURL = thumbURL
+	}
+	parsed, _ := url.Parse(sourceURL)
 	host := ""
 	if parsed != nil {
 		host = parsed.Host
 	}
-	altText := firstString(item, "title", "alt", "altText", "snippet", "description")
+	title := firstString(item, "title", "alt", "altText", "snippet", "description")
+	altText := title
 	if altText == "" {
 		altText = host
 	}
@@ -180,18 +186,28 @@ func assetFromImageResult(item map[string]any) map[string]any {
 	if attribution == "" {
 		attribution = host
 	}
-	id := assetIDFromURL(urlStr)
-	return map[string]any{
+	id := assetIDFromURL(sourceURL)
+	asset := map[string]any{
 		"id":   id,
 		"kind": "image",
 		"source": map[string]any{
 			"type": "url",
-			"url":  urlStr,
+			"url":  sourceURL,
 		},
 		"altText":     altText,
 		"license":     license,
 		"attribution": attribution,
 	}
+	if title != "" {
+		asset["title"] = title
+	}
+	if imageURL != "" {
+		asset["imageUrl"] = imageURL
+	}
+	if thumbURL != "" {
+		asset["thumbnailUrl"] = thumbURL
+	}
+	return asset
 }
 
 func assetIDFromURL(urlStr string) string {

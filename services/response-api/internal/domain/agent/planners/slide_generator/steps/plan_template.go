@@ -781,7 +781,7 @@ func parsePlanOutput(raw json.RawMessage) *schemas.SlidePlan {
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return nil
 	}
-	if payloadType, _ := payload["type"].(string); payloadType != "plan" {
+	if payloadType, _ := payload["type"].(string); payloadType != "plan" && payloadType != "plan_and_template" {
 		return nil
 	}
 	if planData, ok := payload["plan"]; ok {

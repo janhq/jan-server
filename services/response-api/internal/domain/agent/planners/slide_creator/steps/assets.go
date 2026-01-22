@@ -48,6 +48,62 @@ func limitImageAssets(assets []map[string]any, max int) []map[string]any {
 	return assets[:max]
 }
 
+func compactImageAssetsForPrompt(assets []map[string]any) []map[string]any {
+	if len(assets) == 0 {
+		return assets
+	}
+	out := make([]map[string]any, 0, len(assets))
+	for _, asset := range assets {
+		if asset == nil {
+			continue
+		}
+		prompt := map[string]any{}
+		if id, ok := asset["id"].(string); ok && strings.TrimSpace(id) != "" {
+			prompt["id"] = id
+		}
+		if kind, ok := asset["kind"].(string); ok && strings.TrimSpace(kind) != "" {
+			prompt["kind"] = kind
+		}
+		if url := promptImageURL(asset); url != "" {
+			prompt["source"] = map[string]any{"type": "url", "url": url}
+		}
+		if title, ok := asset["title"].(string); ok && strings.TrimSpace(title) != "" {
+			prompt["title"] = title
+		}
+		if alt, ok := asset["altText"].(string); ok && strings.TrimSpace(alt) != "" {
+			prompt["altText"] = alt
+		}
+		if attribution, ok := asset["attribution"].(string); ok && strings.TrimSpace(attribution) != "" {
+			prompt["attribution"] = attribution
+		}
+		if license, ok := asset["license"]; ok {
+			prompt["license"] = license
+		}
+		if len(prompt) > 0 {
+			out = append(out, prompt)
+		}
+	}
+	return out
+}
+
+func promptImageURL(asset map[string]any) string {
+	if asset == nil {
+		return ""
+	}
+	if thumb, ok := asset["thumbnailUrl"].(string); ok && strings.TrimSpace(thumb) != "" {
+		return thumb
+	}
+	if img, ok := asset["imageUrl"].(string); ok && strings.TrimSpace(img) != "" {
+		return img
+	}
+	if source, ok := asset["source"].(map[string]any); ok {
+		if url, ok := source["url"].(string); ok && strings.TrimSpace(url) != "" {
+			return url
+		}
+	}
+	return ""
+}
+
 func collectImageAssets(input agent.ExecutionInput) []map[string]any {
 	outputs := make([]json.RawMessage, 0, len(input.AccumulatedOutputs)+1)
 	outputs = append(outputs, input.AccumulatedOutputs...)
@@ -139,16 +195,22 @@ func extractImageAssetsFromArray(arr []any) []map[string]any {
 }
 
 func assetFromImageResult(item map[string]any) map[string]any {
-	urlStr := firstString(item, "imageUrl", "image_url", "url", "link", "thumbnail", "thumbnailUrl", "source_url")
-	if urlStr == "" {
+	imageURL := firstString(item, "imageUrl", "image_url", "url", "link", "source_url")
+	thumbURL := firstString(item, "thumbnailUrl", "thumbnail_url", "thumbnail", "thumb", "previewUrl", "preview_url")
+	if imageURL == "" && thumbURL == "" {
 		return nil
 	}
-	parsed, _ := url.Parse(urlStr)
+	sourceURL := imageURL
+	if sourceURL == "" {
+		sourceURL = thumbURL
+	}
+	parsed, _ := url.Parse(sourceURL)
 	host := ""
 	if parsed != nil {
 		host = parsed.Host
 	}
-	altText := firstString(item, "title", "alt", "altText", "snippet", "description")
+	title := firstString(item, "title", "alt", "altText", "snippet", "description")
+	altText := title
 	if altText == "" {
 		altText = host
 	}
@@ -157,18 +219,28 @@ func assetFromImageResult(item map[string]any) map[string]any {
 	if attribution == "" {
 		attribution = host
 	}
-	id := assetIDFromURL(urlStr)
-	return map[string]any{
+	id := assetIDFromURL(sourceURL)
+	asset := map[string]any{
 		"id":   id,
 		"kind": "image",
 		"source": map[string]any{
 			"type": "url",
-			"url":  urlStr,
+			"url":  sourceURL,
 		},
 		"altText":     altText,
 		"license":     license,
 		"attribution": attribution,
 	}
+	if title != "" {
+		asset["title"] = title
+	}
+	if imageURL != "" {
+		asset["imageUrl"] = imageURL
+	}
+	if thumbURL != "" {
+		asset["thumbnailUrl"] = thumbURL
+	}
+	return asset
 }
 
 func assetIDFromURL(urlStr string) string {

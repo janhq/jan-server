@@ -356,6 +356,38 @@ func (p *SlideGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.P
 
 	taskSequence++
 
+	log.Debug().Int("task_sequence", taskSequence).Msg("[slide_generator] creating per-slide image search task")
+	imageTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
+		Sequence:    taskSequence,
+		TaskType:    plan.TaskTypeResearch,
+		Title:       "Per-Slide Image Search",
+		Description: strPtr("Search images for slides that require visuals"),
+	})
+	if err != nil {
+		return nil, err
+	}
+	for i := 1; i <= config.NumSlides; i++ {
+		imageParams, _ := json.Marshal(map[string]interface{}{
+			"action":      "image_search_slide",
+			"description": fmt.Sprintf("Search images for slide %d", i),
+			"slide_index": i,
+			"num":         6,
+		})
+		_, err = p.planService.CreateStep(ctx, imageTask.ID, plan.CreateStepParams{
+			Sequence:    i,
+			Action:      plan.ActionTypeToolCall,
+			Title:       fmt.Sprintf("Image Search Slide %d", i),
+			Description: strPtr(fmt.Sprintf("Search images for slide %d", i)),
+			InputParams: imageParams,
+			MaxRetries:  2,
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	taskSequence++
+
 	log.Debug().Int("task_sequence", taskSequence).Int("num_slides", config.NumSlides).Msg("[slide_generator] creating slide generation task")
 	slideGenTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
 		Sequence:    taskSequence,
@@ -608,6 +640,7 @@ func (p *SlideGeneratorPlanner) calculateEstimatedSteps(config SlideGeneratorCon
 	steps += 2 // outline (reasoning + image_search)
 	steps += 1 // data bank
 	steps += 3 // plan, template, assemble
+	steps += config.NumSlides // per-slide image search
 	steps += config.NumSlides
 	steps += 1 // upload spec
 	steps += 1 // render

@@ -45,6 +45,31 @@ type filePayload struct {
 	B64  string `json:"b64"`
 }
 
+type fileListRequest struct {
+	Path       string   `json:"path"`
+	Recursive  *bool    `json:"recursive,omitempty"`
+	ShowHidden *bool    `json:"show_hidden,omitempty"`
+	FileTypes  []string `json:"file_types,omitempty"`
+}
+
+type fileInfo struct {
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	IsDirectory bool   `json:"is_directory"`
+	Extension   string `json:"extension"`
+}
+
+type fileListResult struct {
+	Path  string     `json:"path"`
+	Files []fileInfo `json:"files"`
+}
+
+type responseWrapper[T any] struct {
+	Success bool    `json:"success"`
+	Message *string `json:"message"`
+	Data    *T      `json:"data"`
+}
+
 func (e *SlideCreatorExecutor) executeExportPPTX(ctx context.Context, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
 	if strings.TrimSpace(e.aioBaseURL) == "" {
 		return &agent.ExecutionResult{
@@ -76,6 +101,10 @@ func (e *SlideCreatorExecutor) executeExportPPTX(ctx context.Context, params map
 	if mode == "" {
 		mode = "dom"
 	}
+	useCDP := true
+	if v, ok := parseBoolFromInterface(params["use_cdp"]); ok {
+		useCDP = v
+	}
 
 	payloads, rootName, err := collectAIOInputFiles(outDir)
 	if err != nil {
@@ -100,12 +129,15 @@ func (e *SlideCreatorExecutor) executeExportPPTX(ctx context.Context, params map
 		baseURL = strings.TrimRight(e.aioBaseURL, "/")
 	}
 
-	useCDP := false
-	cdpURL, err := fetchBrowserCDPURL(ctx, baseURL)
-	if err == nil && strings.TrimSpace(cdpURL) != "" && !isLocalhostURL(cdpURL) {
-		useCDP = true
-	} else {
-		cdpURL = ""
+	cdpURL := ""
+	if useCDP {
+		if u, err := fetchBrowserCDPURL(ctx, baseURL); err == nil {
+			cdpURL = strings.TrimSpace(u)
+		}
+		if cdpURL != "" && isLocalhostURL(cdpURL) {
+			useCDP = false
+			cdpURL = ""
+		}
 	}
 
 	outputFile := "presentation.pptx"
@@ -177,6 +209,19 @@ func (e *SlideCreatorExecutor) executeExportPPTX(ctx context.Context, params map
 		imageNames = append(imageNames, name)
 	}
 	sort.Strings(imageNames)
+
+	if len(imageNames) == 0 {
+		outputDir := extractOutputDirFromStdout(stdout)
+		if outputDir != "" {
+			downloaded, err := downloadSlideImages(ctx, baseURL, outputDir, outDir)
+			if err != nil {
+				log.Warn().Err(err).Msg("[slide_creator] failed to download slide images from AIO")
+			} else if len(downloaded) > 0 {
+				imageNames = append(imageNames, downloaded...)
+				sort.Strings(imageNames)
+			}
+		}
+	}
 
 	output := map[string]interface{}{
 		"type":        "pptx_export",
@@ -363,37 +408,19 @@ const shimContent = [
 fs.writeFileSync(shimPath, shimContent, "utf8");
 
 const pwBin = path.join(nodeEnvDir, "node_modules", ".bin", "playwright");
-let hasChromium = false;
-try {
-  const entries = fs.readdirSync(browsersDir);
-  hasChromium = entries.some((name) => name.startsWith("chromium"));
-} catch (e) {
-  hasChromium = false;
-}
-
-if (!hasChromium) {
-  console.log("[AIO] Ensuring local Playwright browsers in " + browsersDir);
+if (!USE_CDP || !CDP_URL) {
+  console.log("[AIO] No CDP (or disabled). Ensuring local Playwright browsers in " + browsersDir);
   const envPwInstall = Object.assign({}, process.env, {
     PLAYWRIGHT_BROWSERS_PATH: browsersDir,
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "0",
   });
   let r = run(pwBin, ["install", "chromium"], { cwd: nodeEnvDir, env: envPwInstall });
   if (r.code !== 0) {
-    if (USE_CDP && CDP_URL) {
-      console.warn("[AIO] WARN: playwright install chromium failed; continuing with CDP only");
-    } else {
-      console.error("[AIO] ERROR: playwright install chromium failed");
-      process.exit(2);
-    }
+    console.error("[AIO] ERROR: playwright install chromium failed");
+    process.exit(2);
   }
 } else {
-  console.log("[AIO] Playwright browsers cached in " + browsersDir);
-}
-
-if (USE_CDP && CDP_URL) {
-  console.log("[AIO] Using CDP; local fallback enabled");
-} else {
-  console.log("[AIO] CDP disabled; using local browser");
+  console.log("[AIO] Using CDP; skipping browser download");
 }
 
 const envRun = Object.assign({}, process.env, {
@@ -564,6 +591,16 @@ func extractImages(output string) (map[string]string, error) {
 	return decoded, nil
 }
 
+func extractOutputDirFromStdout(output string) string {
+	start := strings.Index(output, "===OUTPUT_DIR_START===")
+	end := strings.Index(output, "===OUTPUT_DIR_END===")
+	if start == -1 || end == -1 || end <= start {
+		return ""
+	}
+	chunk := strings.TrimSpace(output[start+len("===OUTPUT_DIR_START===") : end])
+	return chunk
+}
+
 func aioBaseCandidates(raw string) []string {
 	base := strings.TrimRight(strings.TrimSpace(raw), "/")
 	if base == "" {
@@ -679,4 +716,90 @@ func mathRoundSeconds(d time.Duration) int64 {
 		return 0
 	}
 	return int64(seconds + 0.5)
+}
+
+func downloadSlideImages(ctx context.Context, baseURL, outputDir, localDir string) ([]string, error) {
+	showHidden := true
+	req := fileListRequest{
+		Path:       outputDir,
+		ShowHidden: &showHidden,
+		FileTypes:  []string{".png"},
+	}
+	var resp responseWrapper[fileListResult]
+	if err := postJSON(ctx, strings.TrimRight(baseURL, "/")+"/v1/file/list", req, &resp); err != nil {
+		return nil, err
+	}
+	if resp.Data == nil {
+		return nil, nil
+	}
+	var names []string
+	for _, f := range resp.Data.Files {
+		if f.IsDirectory {
+			continue
+		}
+		name := f.Name
+		if !strings.HasPrefix(strings.ToLower(name), "slide-") || !strings.HasSuffix(strings.ToLower(name), ".png") {
+			continue
+		}
+		localPath := filepath.Join(localDir, name)
+		if err := downloadFile(ctx, baseURL, f.Path, localPath); err != nil {
+			return names, err
+		}
+		names = append(names, name)
+	}
+	return names, nil
+}
+
+func downloadFile(ctx context.Context, baseURL, remotePath, localPath string) error {
+	u := strings.TrimRight(baseURL, "/") + "/v1/file/download?path=" + url.QueryEscape(remotePath)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{Timeout: 10 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("download failed %d: %s", resp.StatusCode, truncateForLog(string(body), 800))
+	}
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(localPath, data, 0644)
+}
+
+func postJSON(ctx context.Context, url string, payload any, out any) error {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 10 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("AIO error %d: %s", resp.StatusCode, truncateForLog(string(respBody), 1200))
+	}
+	if out != nil {
+		if err := json.Unmarshal(respBody, out); err != nil {
+			return fmt.Errorf("response decode failed: %v; body=%s", err, truncateForLog(string(respBody), 1200))
+		}
+	}
+	return nil
 }

@@ -78,7 +78,7 @@ func ExecuteSingleSlide(ctx context.Context, deps ExecutorDeps, params map[strin
 			},
 		}, nil
 	}
-	assets := limitImageAssets(deps.CollectImageAssets(input), 4)
+	assets := limitImageAssets(collectAssetsForSlide(deps, input, slideIndex), 4)
 	assetsJSON, _ := json.Marshal(assets)
 	dataBankText := limitText(deps.CollectDataBankText(input), 3000)
 
@@ -223,8 +223,8 @@ func ExecuteSingleSlide(ctx context.Context, deps ExecutorDeps, params map[strin
 			continue
 		}
 
-		if err := json.Unmarshal([]byte(result), &slideResult); err != nil {
-			lastErr = err
+	if err := json.Unmarshal([]byte(result), &slideResult); err != nil {
+		lastErr = err
 			retryErrors = append(retryErrors, fmt.Sprintf("attempt %d parse error: %v", attempt, err))
 			log.Warn().
 				Err(err).
@@ -234,6 +234,8 @@ func ExecuteSingleSlide(ctx context.Context, deps ExecutorDeps, params map[strin
 				Msg("[slide_generator] failed to parse slide result")
 			continue
 		}
+
+		slideResult.Requires.Assets = filterRequiresAssets(slideResult.Requires.Assets, assets)
 
 		slideMap, ok := slideResult.Slide.(map[string]any)
 		if !ok {
@@ -444,6 +446,96 @@ func ExecuteSingleSlide(ctx context.Context, deps ExecutorDeps, params map[strin
 		Status: status.StatusCompleted,
 		Output: outputBytes,
 	}, nil
+}
+
+func collectAssetsForSlide(deps ExecutorDeps, input agent.ExecutionInput, slideIndex int) []map[string]any {
+	allAssets := deps.CollectImageAssets(input)
+	slideAssets := collectSlideSearchAssets(deps, input, slideIndex)
+	if len(slideAssets) == 0 {
+		return allAssets
+	}
+	return mergeAssets(slideAssets, allAssets)
+}
+
+func collectSlideSearchAssets(deps ExecutorDeps, input agent.ExecutionInput, slideIndex int) []map[string]any {
+	if deps.CollectImageAssets == nil {
+		return nil
+	}
+	outputs := make([]json.RawMessage, 0, len(input.AccumulatedOutputs)+1)
+	outputs = append(outputs, input.AccumulatedOutputs...)
+	if len(input.PreviousOutput) > 0 {
+		outputs = append(outputs, input.PreviousOutput)
+	}
+	for i := len(outputs) - 1; i >= 0; i-- {
+		var payload map[string]any
+		if err := json.Unmarshal(outputs[i], &payload); err != nil {
+			continue
+		}
+		if payloadType, _ := payload["type"].(string); payloadType != "image_search_slide" {
+			continue
+		}
+		if idxRaw, ok := payload["slide_index"].(float64); ok && int(idxRaw) == slideIndex {
+			return deps.CollectImageAssets(agent.ExecutionInput{PreviousOutput: outputs[i]})
+		}
+	}
+	return nil
+}
+
+func mergeAssets(primary []map[string]any, fallback []map[string]any) []map[string]any {
+	seen := map[string]bool{}
+	out := make([]map[string]any, 0, len(primary)+len(fallback))
+	add := func(asset map[string]any) {
+		if asset == nil {
+			return
+		}
+		if id, ok := asset["id"].(string); ok && id != "" {
+			if seen[id] {
+				return
+			}
+			seen[id] = true
+		}
+		out = append(out, asset)
+	}
+	for _, asset := range primary {
+		add(asset)
+	}
+	for _, asset := range fallback {
+		add(asset)
+	}
+	return out
+}
+
+func filterRequiresAssets(requires []any, globalAssets []map[string]any) []any {
+	if len(requires) == 0 {
+		return requires
+	}
+	globalIDs := map[string]bool{}
+	for _, asset := range globalAssets {
+		if id, ok := asset["id"].(string); ok && id != "" {
+			globalIDs[id] = true
+		}
+	}
+	filtered := make([]any, 0, len(requires))
+	for _, asset := range requires {
+		id := assetIDFromAny(asset)
+		if id != "" && globalIDs[id] {
+			continue
+		}
+		filtered = append(filtered, asset)
+	}
+	return filtered
+}
+
+func assetIDFromAny(asset any) string {
+	switch v := asset.(type) {
+	case map[string]any:
+		if id, ok := v["id"].(string); ok {
+			return strings.TrimSpace(id)
+		}
+	case string:
+		return strings.TrimSpace(v)
+	}
+	return ""
 }
 
 // P2 fix: Richness scoring to prevent sparse slides
