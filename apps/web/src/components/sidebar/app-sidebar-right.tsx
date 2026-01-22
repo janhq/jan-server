@@ -4,6 +4,7 @@ import {
   useRightSidebarStore,
   type SearchResultItem,
   type ArtifactItem,
+  type SlideImage,
 } from "@/stores/right-sidebar-store";
 import { Button } from "@janhq/interfaces/button";
 import { MessageResponse } from "@janhq/interfaces/ai-elements/message";
@@ -63,17 +64,38 @@ const ArtifactCard = ({ artifact }: { artifact: ArtifactItem }) => {
   );
 };
 
-// Dummy slide images for testing
-const DUMMY_SLIDES_IMAGES = [
-  { id: "1", thumb: "https://files.manuscdn.com/slides_screenshots/310519663212496132/rZfjoEjb3h1vrw6L90coS5/b9445299-1de3-4f3b-b736-c7542a4eea40/e37ecaef-605e-42f4-8663-9a42633dcb23_11.png" },
-  { id: "2", thumb: "https://files.manuscdn.com/slides_screenshots/310519663212496132/rZfjoEjb3h1vrw6L90coS5/b9445299-1de3-4f3b-b736-c7542a4eea40/759a6306-915d-4da0-b5dd-7f3e71b916d1_7.png"},
-  { id: "3", thumb: "https://files.manuscdn.com/slides_screenshots/310519663212496132/rZfjoEjb3h1vrw6L90coS5/b9445299-1de3-4f3b-b736-c7542a4eea40/3650de89-7890-41eb-a84c-ebb356b4d01e_6.png", },
-  { id: "4", thumb: "https://files.manuscdn.com/slides_screenshots/310519663212496132/rZfjoEjb3h1vrw6L90coS5/b9445299-1de3-4f3b-b736-c7542a4eea40/1c5440cd-af7a-4aeb-b9aa-60d0b5e9792c_10.png", },
-  { id: "5", thumb: "https://files.manuscdn.com/slides_screenshots/310519663212496132/rZfjoEjb3h1vrw6L90coS5/b9445299-1de3-4f3b-b736-c7542a4eea40/8969efd3-cd35-4063-bad3-9307256d3953_8.png"},
-  { id: "6", thumb: "https://files.manuscdn.com/slides_screenshots/310519663212496132/rZfjoEjb3h1vrw6L90coS5/b9445299-1de3-4f3b-b736-c7542a4eea40/4ad2c86a-e431-46e5-adc6-0ef9af243fd8_4.png"},
-  { id: "7", thumb: "https://files.manuscdn.com/slides_screenshots/310519663212496132/rZfjoEjb3h1vrw6L90coS5/b9445299-1de3-4f3b-b736-c7542a4eea40/df1b06d2-9f73-4769-bbaa-a4b4e49300ed_3.png"},
-  { id: "8", thumb: "https://files.manuscdn.com/slides_screenshots/310519663212496132/rZfjoEjb3h1vrw6L90coS5/b9445299-1de3-4f3b-b736-c7542a4eea40/28cb1382-3f03-45f5-8d75-9a4a4d8263a5_1.png"},
+// Hard-coded slide images for preview fallback
+const HARD_CODED_SLIDE_IMAGES = [
+  { id: "1", thumb: "/slides/slide-1.svg" },
+  { id: "2", thumb: "/slides/slide-2.svg" },
+  { id: "3", thumb: "/slides/slide-3.svg" },
+  { id: "4", thumb: "/slides/slide-4.svg" },
+  { id: "5", thumb: "/slides/slide-5.svg" },
+  { id: "6", thumb: "/slides/slide-6.svg" },
 ];
+const USE_HARD_CODED_SLIDES = false;
+
+const needsSlidesFallback = (artifact: ArtifactItem, slidesFallback?: SlideImage[]) => {
+  if (!slidesFallback || slidesFallback.length === 0) return false;
+  if (artifact.slidesImages && artifact.slidesImages.length > 0) return false;
+  const filename = (artifact.filename || "").toLowerCase();
+  return filename.includes("slide-images");
+};
+
+const withSlidesFallback = (
+  artifact: ArtifactItem,
+  slidesFallback?: SlideImage[],
+  fallbackDownloadUrl?: string,
+  fallbackTitle?: string,
+) => {
+  if (!needsSlidesFallback(artifact, slidesFallback)) return artifact;
+  return {
+    ...artifact,
+    slidesImages: slidesFallback,
+    downloadUrl: fallbackDownloadUrl || artifact.downloadUrl,
+    filename: fallbackTitle || artifact.filename,
+  };
+};
 
 
 // Preview component for bottom Panel content section
@@ -151,9 +173,10 @@ const ArtifactPreview = ({ artifact }: { artifact: ArtifactItem }) => {
   }
 
   // Handle slides content type
-  if (artifact.contentType === "slides") {
-    // Use dummy data if no slidesImages available (for testing)
-    const slides = artifact.slidesImages?.length ? artifact.slidesImages : DUMMY_SLIDES_IMAGES;
+  if (artifact.contentType === "slides" || (artifact.slidesImages && artifact.slidesImages.length > 0)) {
+    const slides = USE_HARD_CODED_SLIDES
+      ? HARD_CODED_SLIDE_IMAGES
+      : (artifact.slidesImages?.length ? artifact.slidesImages : HARD_CODED_SLIDE_IMAGES);
     const currentSlide = slides[0];
     return (
       <>
@@ -196,9 +219,15 @@ const ArtifactPreview = ({ artifact }: { artifact: ArtifactItem }) => {
 const SearchResult = ({
   result,
   isLast,
+  slidesFallback,
+  slidesFallbackDownloadUrl,
+  slidesFallbackTitle,
 }: {
   result: SearchResultItem;
   isLast?: boolean;
+  slidesFallback?: SlideImage[];
+  slidesFallbackDownloadUrl?: string;
+  slidesFallbackTitle?: string;
 }) => {
 
 
@@ -292,8 +321,14 @@ const SearchResult = ({
   }
 
   if (result.type === "artifact" && result.artifact) {
+    const previewArtifact = withSlidesFallback(
+      result.artifact,
+      slidesFallback,
+      slidesFallbackDownloadUrl,
+      slidesFallbackTitle,
+    );
     return (
-      <ArtifactPreview artifact={result.artifact} />
+      <ArtifactPreview artifact={previewArtifact} />
     );
   }
 
@@ -323,6 +358,10 @@ export const AppSidebarRight = memo(function AppSidebarRight() {
   const hasArtifacts = artifacts.length > 0;
   const currentStep = allSteps[currentStepIndex];
   const currentResults = currentStep?.results || [];
+  const slidesArtifact = [...artifacts].reverse().find((artifact) => (artifact.slidesImages?.length ?? 0) > 0);
+  const slidesFallback = slidesArtifact?.slidesImages;
+  const slidesFallbackDownloadUrl = slidesArtifact?.downloadUrl;
+  const slidesFallbackTitle = slidesArtifact?.filename;
 
   return (
     <div
@@ -405,6 +444,9 @@ export const AppSidebarRight = memo(function AppSidebarRight() {
                       key={index}
                       result={result}
                       isLast={index === currentResults.length - 1}
+                      slidesFallback={slidesFallback}
+                      slidesFallbackDownloadUrl={slidesFallbackDownloadUrl}
+                      slidesFallbackTitle={slidesFallbackTitle}
                     />
                   ))}
                 </div>

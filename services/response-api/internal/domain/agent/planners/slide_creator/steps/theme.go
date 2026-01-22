@@ -2,6 +2,7 @@ package steps
 
 import (
 	"fmt"
+	"hash/fnv"
 	"html/template"
 	"math"
 	"strconv"
@@ -26,6 +27,74 @@ func normalizeTheme(theme Theme) Theme {
 		theme.FontFamily = "Segoe UI, Arial, Helvetica, sans-serif"
 	}
 	return theme
+}
+
+func formatThemePreferences(config map[string]interface{}) string {
+	if config == nil {
+		return ""
+	}
+	theme := strings.TrimSpace(stringValue(config, "theme"))
+	style := strings.TrimSpace(stringValue(config, "style"))
+	colorScheme := strings.TrimSpace(stringValue(config, "color_scheme"))
+	lines := []string{}
+	if theme != "" {
+		lines = append(lines, "- theme: "+theme)
+	}
+	if style != "" {
+		lines = append(lines, "- style: "+style)
+	}
+	if colorScheme != "" {
+		lines = append(lines, "- color scheme: "+colorScheme)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func applyColorScheme(theme Theme, scheme string, seed string) Theme {
+	switch strings.ToLower(strings.TrimSpace(scheme)) {
+	case "bright", "light", "vibrant", "colorful", "colourful", "pastel":
+		palette := pickBrightPalette(seed)
+		theme.PrimaryColor = palette.PrimaryColor
+		theme.AccentColor = palette.AccentColor
+		theme.BackgroundColor = palette.BackgroundColor
+		theme.TextColor = palette.TextColor
+		return theme
+	case "dark":
+		if !isDarkColor(theme.BackgroundColor) {
+			theme.BackgroundColor = "#0B1220"
+		}
+		theme.TextColor = "#F8FAFC"
+		if !isHexColor(theme.PrimaryColor) {
+			theme.PrimaryColor = "#38BDF8"
+		}
+		if !isHexColor(theme.AccentColor) {
+			theme.AccentColor = "#F97316"
+		}
+	}
+	return theme
+}
+
+func pickBrightPalette(seed string) Theme {
+	palettes := []Theme{
+		{PrimaryColor: "#F97316", AccentColor: "#14B8A6", BackgroundColor: "#FFF7ED", TextColor: "#0F172A"},
+		{PrimaryColor: "#E11D48", AccentColor: "#F59E0B", BackgroundColor: "#FFF1F2", TextColor: "#111827"},
+		{PrimaryColor: "#10B981", AccentColor: "#FB7185", BackgroundColor: "#F0FDF4", TextColor: "#0F172A"},
+		{PrimaryColor: "#8B5CF6", AccentColor: "#22C55E", BackgroundColor: "#F5F3FF", TextColor: "#111827"},
+		{PrimaryColor: "#06B6D4", AccentColor: "#F97316", BackgroundColor: "#ECFEFF", TextColor: "#0F172A"},
+	}
+	if len(palettes) == 0 {
+		return Theme{PrimaryColor: "#F97316", AccentColor: "#14B8A6", BackgroundColor: "#F8FAFC", TextColor: "#0F172A"}
+	}
+	idx := int(hashString(seed)) % len(palettes)
+	if idx < 0 {
+		idx = 0
+	}
+	return palettes[idx]
+}
+
+func hashString(s string) uint32 {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(s))
+	return h.Sum32()
 }
 
 func parseHex(s string) (int, int, int, bool) {

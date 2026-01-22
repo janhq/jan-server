@@ -26,6 +26,9 @@ func collectDataBankText(input agent.ExecutionInput) string {
 			continue
 		}
 		if payloadType, _ := payload["type"].(string); payloadType == "data_bank" {
+			if skipped, ok := payload["skipped"].(bool); ok && skipped {
+				continue
+			}
 			if content, ok := payload["content"].(string); ok && content != "" {
 				log.Debug().Int("content_length", len(content)).Msg("[slide_creator] data bank text collected")
 				return content

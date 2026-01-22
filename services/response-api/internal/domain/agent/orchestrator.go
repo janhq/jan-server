@@ -304,7 +304,8 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 		}
 
 		// Handle based on severity
-		if execErr.Severity == status.ErrorSeverityRetryable && step.CanRetry() {
+		canRetry := execErr.Severity == status.ErrorSeverityRetryable && step.RetryCount < step.MaxRetries
+		if canRetry {
 			if task.TaskType == plan.TaskTypeFinalization && step.Sequence > 1 {
 				if resetErr := o.planService.ResetTaskStepsForRetry(ctx, task.ID, step.Sequence); resetErr != nil {
 					return nil, resetErr
@@ -357,7 +358,8 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 		}
 
 		// Handle based on severity - retry if retryable and step can retry
-		if execErr.Severity == status.ErrorSeverityRetryable && step.CanRetry() {
+		canRetry := execErr.Severity == status.ErrorSeverityRetryable && step.RetryCount < step.MaxRetries
+		if canRetry {
 			if task.TaskType == plan.TaskTypeFinalization && step.Sequence > 1 {
 				if resetErr := o.planService.ResetTaskStepsForRetry(ctx, task.ID, step.Sequence); resetErr != nil {
 					return nil, resetErr

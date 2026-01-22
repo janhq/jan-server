@@ -29,6 +29,8 @@ func (e *SlideCreatorExecutor) executeTransform(ctx context.Context, step *plan.
 	switch action {
 	case "normalize_plan":
 		return e.executeNormalizePlan(ctx, params, input)
+	case "merge_slide_plans":
+		return e.executeMergeSlidePlans(ctx, params, input)
 	case "render_slides":
 		return e.executeRenderSlides(ctx, params, input)
 	case "write_outputs":
@@ -55,10 +57,68 @@ func (e *SlideCreatorExecutor) executeNormalizePlan(ctx context.Context, params 
 
 	enriched := mergeSlideImagesFromSearch(*planData, input)
 	normalized := normalizeDeckPlan(enriched, numSlides)
+	applyOutlineFallbacks(&normalized, collectOutlineText(input))
 	contentBytes, _ := json.Marshal(normalized)
 	output := map[string]interface{}{
 		"type":    "normalized_plan",
 		"plan":    normalized,
+		"content": string(contentBytes),
+	}
+	outputBytes, _ := json.Marshal(output)
+
+	return &agent.ExecutionResult{
+		Status: status.StatusCompleted,
+		Output: outputBytes,
+	}, nil
+}
+
+func (e *SlideCreatorExecutor) executeMergeSlidePlans(ctx context.Context, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
+	config, _ := params["config"].(map[string]interface{})
+	numSlides, ok := parseIntFromInterface(config["num_slides"])
+	if !ok || numSlides <= 0 {
+		numSlides = 0
+	}
+	brief := strings.TrimSpace(stringValue(params, "brief"))
+	outlineText := strings.TrimSpace(collectOutlineText(input))
+
+	deckTheme, _ := extractDeckTheme(input)
+	title := strings.TrimSpace(deckTheme.Title)
+	if title == "" {
+		title = fallbackDeckTitle(outlineText, brief)
+	}
+
+	theme := normalizeTheme(deckTheme.Theme)
+	drafts := collectSlidePlanDrafts(input)
+
+	if numSlides <= 0 {
+		numSlides = len(drafts)
+	}
+	if numSlides <= 0 {
+		numSlides = 1
+	}
+
+	slides := make([]SlidePlan, 0, numSlides)
+	for i := 1; i <= numSlides; i++ {
+		if draft, ok := drafts[i]; ok {
+			slide := draft.Slide
+			slide.ID = i
+			slides = append(slides, slide)
+			continue
+		}
+		slides = append(slides, SlidePlan{ID: i, Title: fmt.Sprintf("Slide %d", i)})
+	}
+
+	plan := DeckPlan{
+		Title:  title,
+		Theme:  theme,
+		Slides: slides,
+	}
+	applyOutlineFallbacks(&plan, outlineText)
+
+	contentBytes, _ := json.Marshal(plan)
+	output := map[string]interface{}{
+		"type":    "slide_plan",
+		"plan":    plan,
 		"content": string(contentBytes),
 	}
 	outputBytes, _ := json.Marshal(output)

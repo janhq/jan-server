@@ -22,7 +22,7 @@ func (e *SlideCreatorExecutor) executeSlidePlan(ctx context.Context, params map[
 	if !ok || numSlides <= 0 {
 		numSlides = 10
 	}
-	themePref := strings.TrimSpace(stringValue(config, "theme"))
+	themePref := formatThemePreferences(config)
 
 	contextData := buildSlidePlanContext(input, numSlides)
 	outlineText := strings.TrimSpace(collectOutlineText(input))
@@ -41,7 +41,7 @@ func (e *SlideCreatorExecutor) executeSlidePlan(ctx context.Context, params map[
 		briefParts = append(briefParts, "Brief:\n"+brief)
 	}
 	if themePref != "" {
-		briefParts = append(briefParts, "Preferred theme:\n"+themePref)
+		briefParts = append(briefParts, "Theme preferences:\n"+themePref)
 	}
 	if contextData != "" {
 		briefParts = append(briefParts, "Research context:\n"+contextData)
@@ -233,6 +233,8 @@ HARD RULES:
 - Ensure exactly %d slides.
 - Enforce Fit-safety limits: title 6-60 chars; subtitle <= 110 chars; bullets 3-6 and each 25-75 chars; table 3-6 columns and 3-9 rows.
 - Enforce Theme safety: background very dark OR very light; text_color must be near-white on dark, near-black on light; target contrast >= 4.5:1.
+- Ensure every slide has bullets OR table OR chart. If missing, add bullets.
+- Remove any reasoning text from titles, subtitles, and bullets.
 - Do NOT add markdown or explanations.
 
 BAD_JSON:
@@ -264,6 +266,65 @@ BAD_JSON:
 				Error: &agent.ExecutionError{
 					Code:     "PARSE_ERROR",
 					Message:  fmt.Sprintf("could not parse plan JSON: %v", err),
+					Severity: status.ErrorSeverityRetryable,
+				},
+			}, nil
+		}
+	} else if err := validateDeckPlan(plan, numSlides); err != nil {
+		log.Warn().
+			Err(err).
+			Str("plan_id", planContextValue(input, "plan_id")).
+			Msg("[slide_creator] plan validation failed, attempting repair")
+		fixPrompt := fmt.Sprintf(`Fix the following JSON to be valid AND to conform exactly to the required shape and HARD RULES.
+
+HARD RULES:
+- Output ONLY a single JSON object.
+- Ensure exactly %d slides.
+- Enforce Fit-safety limits: title 6-60 chars; subtitle <= 110 chars; bullets 3-6 and each 25-75 chars; table 3-6 columns and 3-9 rows.
+- Enforce Theme safety: background very dark OR very light; text_color must be near-white on dark, near-black on light; target contrast >= 4.5:1.
+- Ensure every slide has bullets OR table OR chart. If missing, add bullets.
+- Remove any reasoning text from titles, subtitles, and bullets.
+- Do NOT add markdown or explanations.
+
+BAD_JSON:
+%s
+`, numSlides, content)
+
+		fixStart := time.Now()
+		fixed, fixErr := e.generateWithSystemPrompt(ctx, "", fixPrompt, model, 0.0)
+		if fixErr != nil {
+			return &agent.ExecutionResult{
+				Status: status.StatusFailed,
+				Error: &agent.ExecutionError{
+					Code:     "PARSE_ERROR",
+					Message:  fmt.Sprintf("invalid JSON from plan (and repair failed): %v", fixErr),
+					Severity: status.ErrorSeverityRetryable,
+				},
+			}, nil
+		}
+		log.Info().
+			Str("plan_id", planContextValue(input, "plan_id")).
+			Int("response_len", len(fixed)).
+			Int64("duration_ms", time.Since(fixStart).Milliseconds()).
+			Msg("[slide_creator] plan repair response received")
+		fixed = extractJSONFromResponse(fixed)
+		plan, err = parseDeckPlan(strings.TrimSpace(fixed))
+		if err != nil {
+			return &agent.ExecutionResult{
+				Status: status.StatusFailed,
+				Error: &agent.ExecutionError{
+					Code:     "PARSE_ERROR",
+					Message:  fmt.Sprintf("could not parse plan JSON: %v", err),
+					Severity: status.ErrorSeverityRetryable,
+				},
+			}, nil
+		}
+		if err := validateDeckPlan(plan, numSlides); err != nil {
+			return &agent.ExecutionResult{
+				Status: status.StatusFailed,
+				Error: &agent.ExecutionError{
+					Code:     "PARSE_ERROR",
+					Message:  fmt.Sprintf("plan validation failed after repair: %v", err),
 					Severity: status.ErrorSeverityRetryable,
 				},
 			}, nil

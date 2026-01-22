@@ -212,6 +212,9 @@ func (e *SlideCreatorExecutor) executeExportPPTX(ctx context.Context, params map
 
 	if len(imageNames) == 0 {
 		outputDir := extractOutputDirFromStdout(stdout)
+		if outputDir == "" {
+			outputDir = filepath.ToSlash(filepath.Join(cacheDir, "outputs"))
+		}
 		if outputDir != "" {
 			downloaded, err := downloadSlideImages(ctx, baseURL, outputDir, outDir)
 			if err != nil {

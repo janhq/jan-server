@@ -231,7 +231,27 @@ func renderSlideFromTemplate(layout string, data TemplateData, templateFS fs.FS,
 	if err := tmpl.ExecuteTemplate(&buf, "base.html", data); err != nil {
 		return "", err
 	}
-	return buf.String(), nil
+	html := buf.String()
+	html = tuneImageOverlays(html, data.Theme)
+	return html, nil
+}
+
+func tuneImageOverlays(html string, theme Theme) string {
+	if html == "" || isDarkColor(theme.BackgroundColor) {
+		return html
+	}
+	// Lighten image overlays for bright themes to keep text readable.
+	replacements := map[string]string{
+		"rgba(0,0,0,0.70)": "rgba(0,0,0,0.45)",
+		"rgba(0,0,0,0.62)": "rgba(0,0,0,0.40)",
+		"rgba(0,0,0,0.30)": "rgba(0,0,0,0.18)",
+		"rgba(0,0,0,0.18)": "rgba(0,0,0,0.10)",
+		"rgba(0,0,0,0.05)": "rgba(0,0,0,0.02)",
+	}
+	for oldValue, newValue := range replacements {
+		html = strings.ReplaceAll(html, oldValue, newValue)
+	}
+	return html
 }
 
 type templatePaths struct {

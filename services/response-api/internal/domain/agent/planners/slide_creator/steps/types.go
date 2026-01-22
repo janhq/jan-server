@@ -72,6 +72,20 @@ type DeckPlan struct {
 	Slides []SlidePlan `json:"slides"`
 }
 
+// DeckTheme defines the deck title and shared theme.
+type DeckTheme struct {
+	Title string `json:"title"`
+	Theme Theme  `json:"theme"`
+}
+
+// SlidePlanDraft captures a single slide plan with image guidance.
+type SlidePlanDraft struct {
+	SlideIndex    int       `json:"slide_index"`
+	Slide         SlidePlan `json:"slide"`
+	ImageQuery    string    `json:"image_query,omitempty"`
+	ImageRequired *bool     `json:"image_required,omitempty"`
+}
+
 // TemplateCatalog describes available template packs.
 type TemplateCatalog struct {
 	Count     int            `json:"count"`

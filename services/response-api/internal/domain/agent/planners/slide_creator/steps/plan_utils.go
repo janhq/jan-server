@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // normalizeDeckPlan ensures slide count and layout safety.
@@ -27,13 +28,18 @@ func normalizeDeckPlan(plan DeckPlan, wantSlides int) DeckPlan {
 
 	for i := range plan.Slides {
 		plan.Slides[i].ID = i + 1
-		plan.Slides[i].Title = strings.TrimSpace(plan.Slides[i].Title)
-		if plan.Slides[i].Title == "" {
+		title := strings.TrimSpace(plan.Slides[i].Title)
+		if title == "" {
 			plan.Slides[i].Title = fmt.Sprintf("Slide %d", i+1)
+		} else {
+			if utf8.RuneCountInString(title) > 60 {
+				title = trimToRunesNoEllipsis(title, 60)
+			}
+			plan.Slides[i].Title = title
 		}
 		plan.Slides[i].Subtitle = strings.TrimSpace(plan.Slides[i].Subtitle)
 		plan.Slides[i].Notes = strings.TrimSpace(plan.Slides[i].Notes)
-		plan.Slides[i].Bullets = clampBullets(plan.Slides[i].Bullets, 10)
+		plan.Slides[i].Bullets = clampBullets(plan.Slides[i].Bullets, 6)
 
 		if len(plan.Slides[i].Images) > 2 {
 			plan.Slides[i].Images = plan.Slides[i].Images[:2]
@@ -83,6 +89,42 @@ func normalizeDeckPlan(plan DeckPlan, wantSlides int) DeckPlan {
 	}
 
 	return plan
+}
+
+func validateDeckPlan(plan DeckPlan, wantSlides int) error {
+	if wantSlides > 0 && len(plan.Slides) != wantSlides {
+		return fmt.Errorf("expected %d slides, got %d", wantSlides, len(plan.Slides))
+	}
+	for i, slide := range plan.Slides {
+		if err := validateSlidePlan(slide); err != nil {
+			return fmt.Errorf("slide %d invalid: %v", i+1, err)
+		}
+	}
+	return nil
+}
+
+func hasSlideContent(slide SlidePlan) bool {
+	if len(slide.Bullets) > 0 {
+		return true
+	}
+	if slide.Table != nil && len(slide.Table.Columns) > 0 && len(slide.Table.Rows) > 0 {
+		return true
+	}
+	if slide.Chart != nil && len(slide.Chart.Series) > 0 {
+		return true
+	}
+	return false
+}
+
+func validateSlidePlan(slide SlidePlan) error {
+	title := strings.TrimSpace(slide.Title)
+	if utf8.RuneCountInString(title) < 6 || utf8.RuneCountInString(title) > 60 {
+		return fmt.Errorf("title out of range")
+	}
+	if !hasSlideContent(slide) {
+		return fmt.Errorf("missing content")
+	}
+	return nil
 }
 
 func parseDeckPlan(content string) (DeckPlan, error) {
@@ -162,6 +204,24 @@ func clampBullets(in []string, max int) []string {
 		}
 	}
 	return out
+}
+
+func trimToRunesNoEllipsis(s string, maxRunes int) string {
+	s = strings.TrimSpace(s)
+	if maxRunes <= 0 {
+		return ""
+	}
+	if utf8.RuneCountInString(s) <= maxRunes {
+		return s
+	}
+	out := make([]rune, 0, maxRunes)
+	for _, r := range s {
+		out = append(out, r)
+		if len(out) >= maxRunes {
+			break
+		}
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // buildChartsExport writes charts.json for raster overlay or downstream use.

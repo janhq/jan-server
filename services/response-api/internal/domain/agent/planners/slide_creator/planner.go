@@ -26,6 +26,8 @@ type SlideCreatorPlanner struct {
 type SlideCreatorConfig struct {
 	NumSlides       int    `json:"num_slides"`
 	Theme           string `json:"theme"`
+	ColorScheme     string `json:"color_scheme"`
+	Style           string `json:"style"`
 	Format          string `json:"format"`         // pptx
 	ResearchDepth   string `json:"research_depth"` // minimal, standard, deep
 	OptionsCount    int    `json:"options_count"`
@@ -240,28 +242,6 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		return nil, err
 	}
 
-	imageSearchNum := 8
-	if config.NumSlides == 1 {
-		imageSearchNum = 4
-	}
-	imageSearchParams, _ := json.Marshal(map[string]interface{}{
-		"tool":        "image_search",
-		"description": "Find visual references for the presentation",
-		"q":           request.UserMessage,
-		"num":         imageSearchNum,
-	})
-	_, err = p.planService.CreateStep(ctx, outlineTask.ID, plan.CreateStepParams{
-		Sequence:    2,
-		Action:      plan.ActionTypeToolCall,
-		Title:       "Find Visual References",
-		Description: strPtr("Find visual references for the presentation"),
-		InputParams: imageSearchParams,
-		MaxRetries:  3,
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	taskSequence++
 
 	log.Debug().Int("task_sequence", taskSequence).Msg("[slide_creator] creating data bank task")
@@ -320,6 +300,8 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 			"template_catalog": config.TemplateCatalog,
 			"template_id":      config.TemplateID,
 			"tone":             config.Tone,
+			"color_scheme":     config.ColorScheme,
+			"style":            config.Style,
 		},
 	})
 	_, err = p.planService.CreateStep(ctx, htmlTask.ID, plan.CreateStepParams{
@@ -335,21 +317,22 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	}
 	stepSequence++
 
-	planParams, _ := json.Marshal(map[string]interface{}{
-		"action":      "slide_plan",
-		"description": "Draft the slide-by-slide plan",
+	themeParams, _ := json.Marshal(map[string]interface{}{
+		"action":      "deck_theme",
+		"description": "Select deck title and theme colors",
 		"brief":       request.UserMessage,
 		"config": map[string]interface{}{
-			"num_slides": config.NumSlides,
-			"theme":      config.Theme,
+			"theme":        config.Theme,
+			"color_scheme": config.ColorScheme,
+			"style":        config.Style,
 		},
 	})
 	_, err = p.planService.CreateStep(ctx, htmlTask.ID, plan.CreateStepParams{
 		Sequence:    stepSequence,
 		Action:      plan.ActionTypeLLMCall,
-		Title:       "Draft Slide Plan",
-		Description: strPtr("Draft the slide-by-slide plan"),
-		InputParams: planParams,
+		Title:       "Select Deck Theme",
+		Description: strPtr("Select deck title and theme colors"),
+		InputParams: themeParams,
 		MaxRetries:  3,
 	})
 	if err != nil {
@@ -358,6 +341,32 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	stepSequence++
 
 	for i := 1; i <= config.NumSlides; i++ {
+		planParams, _ := json.Marshal(map[string]interface{}{
+			"action":      "slide_plan_slide",
+			"description": fmt.Sprintf("Draft slide plan for slide %d", i),
+			"brief":       request.UserMessage,
+			"slide_index": i,
+			"max_retries": 3,
+			"config": map[string]interface{}{
+				"num_slides":    config.NumSlides,
+				"theme":         config.Theme,
+				"color_scheme":  config.ColorScheme,
+				"style":         config.Style,
+			},
+		})
+		_, err = p.planService.CreateStep(ctx, htmlTask.ID, plan.CreateStepParams{
+			Sequence:    stepSequence,
+			Action:      plan.ActionTypeLLMCall,
+			Title:       fmt.Sprintf("Draft Slide Plan for Slide %d", i),
+			Description: strPtr(fmt.Sprintf("Draft slide plan for slide %d", i)),
+			InputParams: planParams,
+			MaxRetries:  3,
+		})
+		if err != nil {
+			return nil, err
+		}
+		stepSequence++
+
 		stepTitle := fmt.Sprintf("Find Images for Slide %d", i)
 		stepDescription := fmt.Sprintf("Find images for slide %d", i)
 		perSlideNum := 6
@@ -369,6 +378,8 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 			"description": stepDescription,
 			"slide_index": i,
 			"num":         perSlideNum,
+			"color_scheme": config.ColorScheme,
+			"style":        config.Style,
 		})
 		_, err = p.planService.CreateStep(ctx, htmlTask.ID, plan.CreateStepParams{
 			Sequence:    stepSequence,
@@ -383,6 +394,27 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		}
 		stepSequence++
 	}
+
+	mergeParams, _ := json.Marshal(map[string]interface{}{
+		"action":      "merge_slide_plans",
+		"description": "Combine per-slide plans into a single deck plan",
+		"brief":       request.UserMessage,
+		"config": map[string]interface{}{
+			"num_slides": config.NumSlides,
+		},
+	})
+	_, err = p.planService.CreateStep(ctx, htmlTask.ID, plan.CreateStepParams{
+		Sequence:    stepSequence,
+		Action:      plan.ActionTypeTransform,
+		Title:       "Merge Slide Plans",
+		Description: strPtr("Combine per-slide plans into a single deck plan"),
+		InputParams: mergeParams,
+		MaxRetries:  2,
+	})
+	if err != nil {
+		return nil, err
+	}
+	stepSequence++
 
 	normalizeParams, _ := json.Marshal(map[string]interface{}{
 		"action":      "normalize_plan",
@@ -554,6 +586,8 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		Str("response_id", request.ResponseID).
 		Int("num_slides", config.NumSlides).
 		Str("theme", config.Theme).
+		Str("color_scheme", config.ColorScheme).
+		Str("style", config.Style).
 		Str("format", config.Format).
 		Str("research_depth", config.ResearchDepth).
 		Int("estimated_steps", estimatedSteps).
@@ -595,6 +629,8 @@ func (p *SlideCreatorPlanner) parseConfig(request *agent.PlanRequest) SlideCreat
 	log.Debug().
 		Int("num_slides", config.NumSlides).
 		Str("theme", config.Theme).
+		Str("color_scheme", config.ColorScheme).
+		Str("style", config.Style).
 		Str("format", config.Format).
 		Str("research_depth", config.ResearchDepth).
 		Int("options_count", config.OptionsCount).
@@ -618,6 +654,12 @@ func applySlideCreatorConfigFromMap(config *SlideCreatorConfig, values map[strin
 	}
 	if theme, ok := values["theme"].(string); ok {
 		config.Theme = theme
+	}
+	if colorScheme, ok := values["color_scheme"].(string); ok {
+		config.ColorScheme = colorScheme
+	}
+	if style, ok := values["style"].(string); ok {
+		config.Style = style
 	}
 	if format, ok := values["format"].(string); ok {
 		config.Format = format
@@ -722,10 +764,10 @@ func (p *SlideCreatorPlanner) calculateEstimatedSteps(config SlideCreatorConfig)
 		steps += 3
 	}
 
-	steps += 2                    // outline (reasoning + image_search)
-	steps += 1                    // data bank
-	steps += 6 + config.NumSlides // html generation: select templates, plan, per-slide search, normalize, render, write, artifact
-	steps += 3                    // pptx export + artifacts
+	steps += 1                          // outline
+	steps += 1                          // data bank
+	steps += 7 + (config.NumSlides * 2) // html generation: template + theme + per-slide plan + per-slide search + merge + normalize + render + write + artifact
+	steps += 3                          // pptx export + artifacts
 
 	log.Debug().
 		Int("num_slides", config.NumSlides).

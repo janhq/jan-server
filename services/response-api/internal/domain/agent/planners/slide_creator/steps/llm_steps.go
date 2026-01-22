@@ -76,8 +76,12 @@ func (e *SlideCreatorExecutor) executeLLMCall(ctx context.Context, step *plan.St
 	switch action {
 	case "select_templates":
 		return e.executeSelectTemplates(ctx, params, input)
+	case "deck_theme":
+		return e.executeDeckTheme(ctx, params, input)
 	case "slide_plan":
 		return e.executeSlidePlan(ctx, params, input)
+	case "slide_plan_slide":
+		return e.executeSlidePlanSlide(ctx, params, input)
 	case "reasoning":
 		return e.executeOutlineReasoning(ctx, params, input)
 	case "data_bank":
@@ -159,6 +163,18 @@ func (e *SlideCreatorExecutor) executeOutlineReasoning(ctx context.Context, para
 
 func (e *SlideCreatorExecutor) executeDataBank(ctx context.Context, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
 	log.Debug().Msg("[slide_creator] executeDataBank started")
+	outlineText := strings.TrimSpace(collectOutlineText(input))
+	if outlineText != "" && !outlineNeedsDataBank(outlineText) {
+		outputBytes, _ := json.Marshal(map[string]interface{}{
+			"type":    "data_bank",
+			"skipped": true,
+			"reason":  "outline_no_data_markers",
+		})
+		return &agent.ExecutionResult{
+			Status: status.StatusCompleted,
+			Output: outputBytes,
+		}, nil
+	}
 	config, _ := params["config"].(map[string]interface{})
 	numSlides, _ := parseIntFromInterface(config["num_slides"])
 	contextData := buildAccumulatedContext(input)

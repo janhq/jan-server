@@ -86,6 +86,8 @@ func (e *SlideCreatorExecutor) executeSelectTemplates(ctx context.Context, param
 	templateDir := strings.TrimSpace(stringValue(config, "template_dir"))
 	templateCatalog := strings.TrimSpace(stringValue(config, "template_catalog"))
 	tone := strings.TrimSpace(stringValue(config, "tone"))
+	colorScheme := strings.TrimSpace(stringValue(config, "color_scheme"))
+	style := strings.TrimSpace(stringValue(config, "style"))
 	brief := strings.TrimSpace(stringValue(params, "brief"))
 	templateID, _ := parseIntFromInterface(config["template_id"])
 
@@ -130,9 +132,14 @@ func (e *SlideCreatorExecutor) executeSelectTemplates(ctx context.Context, param
 	}
 
 	model := getModelFromContext(input)
-	choices, err := e.selectTemplateChoices(ctx, catalog, tone, brief, model)
+	choices, err := e.selectTemplateChoices(ctx, catalog, tone, style, colorScheme, brief, model)
 	if err != nil || len(choices) == 0 {
-		choices = fallbackTemplateChoices(catalog, tone, 3)
+		choices = fallbackTemplateChoices(catalog, tone, colorScheme, 3)
+	}
+	choices = filterTemplateChoicesByColorScheme(choices, catalog, colorScheme)
+	if len(choices) == 0 {
+		choices = fallbackTemplateChoices(catalog, "", colorScheme, 3)
+		choices = filterTemplateChoicesByColorScheme(choices, catalog, colorScheme)
 	}
 	if len(choices) == 0 {
 		return &agent.ExecutionResult{
@@ -154,7 +161,7 @@ func (e *SlideCreatorExecutor) executeSelectTemplates(ctx context.Context, param
 	return &agent.ExecutionResult{Status: status.StatusCompleted, Output: outputBytes}, nil
 }
 
-func (e *SlideCreatorExecutor) selectTemplateChoices(ctx context.Context, catalog TemplateCatalog, tone string, brief string, model string) ([]TemplateChoice, error) {
+func (e *SlideCreatorExecutor) selectTemplateChoices(ctx context.Context, catalog TemplateCatalog, tone string, style string, colorScheme string, brief string, model string) ([]TemplateChoice, error) {
 	lines := make([]string, 0, len(catalog.Templates))
 	for _, t := range catalog.Templates {
 		line := fmt.Sprintf("%d | %s | %s | %s", t.ID, t.Name, t.Tone, t.Description)
@@ -178,12 +185,20 @@ Rules:
 User tone (optional):
 %s
 
+Style preference (optional):
+%s
+
+Color scheme (optional):
+%s
+
+If color scheme is bright/light/vibrant, avoid dark or monochrome templates.
+
 Brief:
 %s
 
 Catalog:
 %s
-`, tone, brief, strings.Join(lines, "\n"))
+`, tone, style, colorScheme, brief, strings.Join(lines, "\n"))
 
 	if e.llmProvider == nil {
 		return nil, fmt.Errorf("LLM provider not configured")
@@ -200,6 +215,7 @@ Catalog:
 		return nil, err
 	}
 	choices = filterTemplateChoices(choices, catalog)
+	choices = filterTemplateChoicesByColorScheme(choices, catalog, colorScheme)
 	if len(choices) > 3 {
 		choices = choices[:3]
 	}
@@ -239,12 +255,16 @@ func filterTemplateChoices(in []TemplateChoice, catalog TemplateCatalog) []Templ
 	return out
 }
 
-func fallbackTemplateChoices(catalog TemplateCatalog, tone string, max int) []TemplateChoice {
+func fallbackTemplateChoices(catalog TemplateCatalog, tone string, colorScheme string, max int) []TemplateChoice {
 	tone = strings.ToLower(strings.TrimSpace(tone))
 	out := make([]TemplateChoice, 0, max)
+	preferBright := isBrightColorScheme(colorScheme)
 	if tone != "" {
 		for _, t := range catalog.Templates {
 			if strings.ToLower(strings.TrimSpace(t.Tone)) == tone {
+				if preferBright && isDarkTemplateTone(t.Tone) {
+					continue
+				}
 				out = append(out, TemplateChoice{ID: t.ID, Reason: "tone match"})
 				if len(out) >= max {
 					return out
@@ -253,12 +273,47 @@ func fallbackTemplateChoices(catalog TemplateCatalog, tone string, max int) []Te
 		}
 	}
 	for _, t := range catalog.Templates {
+		if preferBright && isDarkTemplateTone(t.Tone) {
+			continue
+		}
 		out = append(out, TemplateChoice{ID: t.ID, Reason: "default"})
 		if len(out) >= max {
 			break
 		}
 	}
 	return out
+}
+
+func filterTemplateChoicesByColorScheme(in []TemplateChoice, catalog TemplateCatalog, colorScheme string) []TemplateChoice {
+	if !isBrightColorScheme(colorScheme) {
+		return in
+	}
+	toneByID := map[int]string{}
+	for _, t := range catalog.Templates {
+		toneByID[t.ID] = t.Tone
+	}
+	out := make([]TemplateChoice, 0, len(in))
+	for _, c := range in {
+		if tone, ok := toneByID[c.ID]; ok && isDarkTemplateTone(tone) {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+func isBrightColorScheme(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "bright", "light", "vibrant", "colorful", "colourful", "pastel":
+		return true
+	default:
+		return false
+	}
+}
+
+func isDarkTemplateTone(tone string) bool {
+	tone = strings.ToLower(strings.TrimSpace(tone))
+	return strings.Contains(tone, "dark") || strings.Contains(tone, "monochrome") || strings.Contains(tone, "noir")
 }
 
 func stringValue(values map[string]interface{}, key string) string {

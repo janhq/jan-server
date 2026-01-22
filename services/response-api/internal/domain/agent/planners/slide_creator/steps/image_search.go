@@ -20,6 +20,29 @@ func (e *SlideCreatorExecutor) executeSlideImageSearch(ctx context.Context, para
 		return buildSkippedImageSearchResult(slideIndex, "invalid_slide_index"), nil
 	}
 
+	draft, ok := extractSlidePlanDraft(input, slideIndex)
+	deckTitle := extractDeckTitle(input)
+	if ok {
+		slide := draft.Slide
+		if slideHasImage(slide) {
+			return buildSkippedImageSearchResult(slideIndex, "already_has_image"), nil
+		}
+		if draft.ImageRequired != nil && !*draft.ImageRequired {
+			return buildSkippedImageSearchResult(slideIndex, "image_not_required"), nil
+		}
+		if !slideNeedsImage(slide) && (draft.ImageRequired == nil || !*draft.ImageRequired) {
+			return buildSkippedImageSearchResult(slideIndex, "layout_not_image"), nil
+		}
+		query := strings.TrimSpace(draft.ImageQuery)
+		if query == "" {
+			query = buildSlideImageQuery(deckTitle, slide)
+		}
+		if query == "" {
+			return buildSkippedImageSearchResult(slideIndex, "empty_query"), nil
+		}
+		return e.executeImageSearch(ctx, input, slideIndex, query, params)
+	}
+
 	plan, err := extractDeckPlanFromOutputs(input)
 	if err != nil {
 		return buildSkippedImageSearchResult(slideIndex, "plan_missing"), nil
@@ -42,10 +65,17 @@ func (e *SlideCreatorExecutor) executeSlideImageSearch(ctx context.Context, para
 		return buildSkippedImageSearchResult(slideIndex, "empty_query"), nil
 	}
 
+	return e.executeImageSearch(ctx, input, slideIndex, query, params)
+}
+
+func (e *SlideCreatorExecutor) executeImageSearch(ctx context.Context, input agent.ExecutionInput, slideIndex int, query string, params map[string]interface{}) (*agent.ExecutionResult, error) {
 	num := perSlideImageSearchDefaultNum
 	if parsed, ok := parseIntFromInterface(params["num"]); ok && parsed > 0 {
 		num = parsed
 	}
+	colorScheme := strings.TrimSpace(stringValue(params, "color_scheme"))
+	style := strings.TrimSpace(stringValue(params, "style"))
+	query = decorateImageQuery(query, colorScheme, style)
 
 	args := map[string]interface{}{
 		"q":   query,
@@ -136,6 +166,79 @@ func buildSlideImageQuery(deckTitle string, slide SlidePlan) string {
 		query = query[:200]
 	}
 	return query
+}
+
+func decorateImageQuery(query string, colorScheme string, style string) string {
+	query = strings.TrimSpace(query)
+	hints := buildImageSearchHints(colorScheme, style)
+	if hints == "" {
+		return query
+	}
+	if query == "" {
+		if len(hints) > 200 {
+			return hints[:200]
+		}
+		return hints
+	}
+	const maxLen = 200
+	decorated := strings.TrimSpace(query + " " + hints)
+	if len(decorated) <= maxLen {
+		return decorated
+	}
+	if len(hints) >= maxLen-1 {
+		return hints[:maxLen]
+	}
+	allowedBaseLen := maxLen - len(hints) - 1
+	if allowedBaseLen <= 0 {
+		return hints
+	}
+	base := query
+	if len(base) > allowedBaseLen {
+		base = strings.TrimSpace(base[:allowedBaseLen])
+	}
+	if base == "" {
+		return hints
+	}
+	return strings.TrimSpace(base + " " + hints)
+}
+
+func buildImageSearchHints(colorScheme string, style string) string {
+	parts := []string{}
+	if isBrightColorScheme(colorScheme) {
+		parts = append(parts, "bright", "colorful", "light background", "high contrast", "well lit")
+	}
+
+	style = strings.ToLower(strings.TrimSpace(style))
+	switch {
+	case strings.Contains(style, "modern"):
+		parts = append(parts, "modern", "clean")
+	case strings.Contains(style, "minimal"):
+		parts = append(parts, "minimal", "clean")
+	case strings.Contains(style, "futuristic"):
+		parts = append(parts, "futuristic", "sleek")
+	case strings.Contains(style, "corporate"):
+		parts = append(parts, "corporate", "professional")
+	}
+
+	parts = append(parts, "no text", "no watermark")
+	if len(parts) == 0 {
+		return ""
+	}
+
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if _, ok := seen[part]; ok {
+			continue
+		}
+		seen[part] = struct{}{}
+		out = append(out, part)
+	}
+	return strings.Join(out, " ")
 }
 
 func slideNeedsImage(slide SlidePlan) bool {

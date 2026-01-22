@@ -307,6 +307,7 @@ async function exportDomEditable({
   domBundleUrl,
 }) {
   const { chromium } = require('playwright');
+  const outDir = path.dirname(path.resolve(outFile));
 
   // 1) Load each slide file to normalize resources (absolute <img src>, fixed root size, etc.)
   // 2) Assemble all slide roots into one "deck" page
@@ -323,12 +324,13 @@ async function exportDomEditable({
 
   for (let i = 0; i < htmlFiles.length; i += 1) {
     const file = htmlFiles[i];
+    const slideId = slideIdFromFile(file) || i + 1;
     const fullPath = path.resolve(inputDir, file);
     await page.goto(`file://${fullPath}`, { waitUntil: 'load' });
     await waitForFontsAndImages(page);
 
-    const hasRoot = await page.$(rootSelector);
-    if (!hasRoot) throw new Error(`No slide root found with selector "${rootSelector}" in ${file}`);
+    const root = await page.$(rootSelector);
+    if (!root) throw new Error(`No slide root found with selector "${rootSelector}" in ${file}`);
 
     // Normalize: lock the slide root to a deterministic 1920x1080 (or --vw/--vh)
     // and convert any relative image src -> absolute URL.
@@ -356,6 +358,26 @@ async function exportDomEditable({
       },
       { rootSelector, vw, vh }
     );
+
+    try {
+      const box = await root.boundingBox();
+      if (box) {
+        const image = await page.screenshot({
+          type: 'png',
+          clip: {
+            x: Math.max(0, Math.floor(box.x)),
+            y: Math.max(0, Math.floor(box.y)),
+            width: Math.max(1, Math.floor(box.width)),
+            height: Math.max(1, Math.floor(box.height)),
+          },
+        });
+        const imageName = `slide-${slideId}.png`;
+        fs.writeFileSync(path.join(outDir, imageName), image);
+      }
+    } catch (err) {
+      const message = err && err.message ? err.message : err;
+      console.warn(`Failed to capture slide preview for ${file}:`, message);
+    }
 
     const outer = await page.$eval(rootSelector, (el) => el.outerHTML);
     slideOuterHtml.push(outer);
