@@ -1,6 +1,6 @@
 module jan-server/services/realtime-api
 
-go 1.24
+go 1.24.4
 
 toolchain go1.25.6
 
