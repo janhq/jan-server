@@ -102,7 +102,7 @@ func (h *MessagesHandler) CreateMessage(ctx context.Context, reqCtx *gin.Context
 	var conversationID string
 	if request.Conversation != nil && request.Conversation.GetID() != "" {
 		conversationID = request.Conversation.GetID()
-		conv, err = h.conversationService.GetByUserAndPublicID(ctx, userID, conversationID)
+		conv, err = h.conversationService.GetConversationByPublicIDAndUserID(ctx, conversationID, userID)
 		if err != nil {
 			// Log but don't fail - conversation is optional
 			observability.AddSpanEvent(ctx, "conversation_not_found", attribute.String("conversation_id", conversationID))
@@ -372,7 +372,7 @@ func (h *MessagesHandler) storeToConversation(
 
 	// Save conversation (best effort)
 	if h.conversationService != nil {
-		_, _ = h.conversationService.Update(ctx, conv)
+		_, _ = h.conversationService.UpdateConversation(ctx, conv)
 	}
 }
 
