@@ -746,7 +746,7 @@ API_TEST_BASE_FLAGS := --env-file tests/e2e/.env \
 # Full flags with default auth mode
 API_TEST_FLAGS := $(API_TEST_BASE_FLAGS) --auto-auth $(AUTH_MODE) --debug
 
-.PHONY: test-all test-auth test-conversation test-response test-response-aio test-response-mcp test-request test-model test-media test-mcp test-user-management test-model-prompts test-image test-agent-slide test-dev
+.PHONY: test-all test-auth test-conversation test-response test-response-aio test-response-mcp test-request test-model test-media test-mcp test-user-management test-model-prompts test-image test-agent-slide test-messages test-dev
 
 test-all:
 	$(API_TEST) $(COLLECTION_FILES) $(API_TEST_FLAGS) --timeout-request 120000
@@ -789,6 +789,9 @@ test-model-prompts:
 
 test-image:
 	$(API_TEST) $(COLLECTIONS_DIR)/image.postman.json $(API_TEST_FLAGS) --timeout-request 120000
+
+test-messages:
+	$(API_TEST) $(COLLECTIONS_DIR)/messages.postman.json $(API_TEST_FLAGS) --timeout-request 120000
 
 test-memory:
 	$(API_TEST) $(COLLECTIONS_DIR)/memory.postman.json $(API_TEST_FLAGS)
