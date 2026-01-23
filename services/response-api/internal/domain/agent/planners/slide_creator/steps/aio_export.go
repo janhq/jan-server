@@ -411,8 +411,10 @@ const shimContent = [
 fs.writeFileSync(shimPath, shimContent, "utf8");
 
 const pwBin = path.join(nodeEnvDir, "node_modules", ".bin", "playwright");
-if (!USE_CDP || !CDP_URL) {
-  console.log("[AIO] No CDP (or disabled). Ensuring local Playwright browsers in " + browsersDir);
+const chromiumMarker = path.join(browsersDir, ".chromium-installed");
+const needsBrowserInstall = !fs.existsSync(chromiumMarker);
+if (needsBrowserInstall) {
+  console.log("[AIO] Ensuring local Playwright browsers in " + browsersDir + " (fallback for CDP failures)");
   const envPwInstall = Object.assign({}, process.env, {
     PLAYWRIGHT_BROWSERS_PATH: browsersDir,
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "0",
@@ -422,8 +424,12 @@ if (!USE_CDP || !CDP_URL) {
     console.error("[AIO] ERROR: playwright install chromium failed");
     process.exit(2);
   }
+  fs.writeFileSync(chromiumMarker, new Date().toISOString(), "utf8");
 } else {
-  console.log("[AIO] Using CDP; skipping browser download");
+  console.log("[AIO] Playwright browsers already installed (marker found)");
+}
+if (USE_CDP && CDP_URL) {
+  console.log("[AIO] Will attempt CDP connection first, local browser as fallback");
 }
 
 const envRun = Object.assign({}, process.env, {
