@@ -1,6 +1,8 @@
 module jan-server/services/realtime-api
 
-go 1.25.0
+go 1.24.4
+
+toolchain go1.25.6
 
 require (
 	github.com/MicahParks/keyfunc/v2 v2.1.0

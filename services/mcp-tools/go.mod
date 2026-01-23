@@ -1,9 +1,12 @@
 module jan-server/services/mcp-tools
 
-go 1.25.0
+go 1.24.0
+
+toolchain go1.24.7
 
 require (
 	github.com/MicahParks/keyfunc/v2 v2.1.0
+	github.com/agent-infra/sandbox-sdk-go v0.0.2
 	github.com/caarlos0/env/v11 v11.0.0
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-resty/resty/v2 v2.11.0
@@ -30,7 +33,6 @@ require (
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/PuerkitoBio/purell v1.1.1 // indirect
 	github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 // indirect
-	github.com/agent-infra/sandbox-sdk-go v0.0.2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bytedance/sonic v1.11.6 // indirect
 	github.com/bytedance/sonic/loader v0.1.1 // indirect

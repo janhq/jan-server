@@ -62,6 +62,8 @@ import (
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/model/provider"
 	share2 "jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/share"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/users"
+	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/messageshandler"
+	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/messages"
 )
 
 import (
@@ -146,7 +148,9 @@ func CreateApplication() (*Application, error) {
 	shareHandler := sharehandler.NewShareHandler(shareService, conversationHandler, config)
 	shareRoute := share2.NewShareRoute(shareHandler, authHandler, conversationHandler)
 	publicShareRoute := public.NewPublicShareRoute(shareHandler)
-	v1Route := v1.NewV1Route(modelRoute, chatRoute, imageRoute, conversationRoute, branchRoute, projectRoute, adminRoute, usersRoute, promptTemplateHandler, mcpToolHandler, shareRoute, publicShareRoute)
+	messagesHandler := messageshandler.NewMessagesHandler(inferenceProvider, providerHandler, conversationService)
+	messagesRoute := messages.NewMessagesRoute(messagesHandler, authHandler)
+	v1Route := v1.NewV1Route(modelRoute, chatRoute, imageRoute, conversationRoute, branchRoute, projectRoute, adminRoute, usersRoute, promptTemplateHandler, mcpToolHandler, shareRoute, publicShareRoute, messagesRoute)
 	guestHandler := guestauth.NewGuestHandler(client, zerologLogger)
 	upgradeHandler := guestauth.NewUpgradeHandler(client, zerologLogger)
 	tokenHandler := authhandler.NewTokenHandler(client, zerologLogger)

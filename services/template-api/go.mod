@@ -1,6 +1,6 @@
 module jan-server/services/template-api
 
-go 1.25.0
+go 1.24
 
 require (
 	github.com/MicahParks/keyfunc/v2 v2.1.0
