@@ -349,7 +349,8 @@ const USE_CDP = false; // Disabled - was: %v
 const CDP_URL = ""; // Disabled - was: %s
 const CACHE_DIR = (process.env.AIO_CACHE_DIR && process.env.AIO_CACHE_DIR.trim()) ? process.env.AIO_CACHE_DIR.trim() : %s;
 
-const OUTPUT_DIR = path.join(CACHE_DIR, "outputs");
+const RUN_ID = String(Date.now());
+const OUTPUT_DIR = path.join(CACHE_DIR, "outputs", RUN_ID);
 const OUT_PATH = path.join(OUTPUT_DIR, path.basename(OUT_FILE));
 
 function run(cmd, args, opts) {
@@ -546,6 +547,8 @@ if (typeof res.status === "number" && res.status !== 0) process.exit(res.status)
 
 const pptxPath = OUT_PATH;
 const pptx = fs.readFileSync(pptxPath);
+console.log("===OUTPUT_DIR===");
+console.log(OUTPUT_DIR);
 console.log("===OUTPUT_DIR_START===");
 console.log(OUTPUT_DIR);
 console.log("===OUTPUT_DIR_END===");
@@ -700,6 +703,18 @@ func extractImages(output string) (map[string]string, error) {
 }
 
 func extractOutputDirFromStdout(output string) string {
+	singleMarker := "===OUTPUT_DIR==="
+	if idx := strings.Index(output, singleMarker); idx != -1 {
+		rest := output[idx+len(singleMarker):]
+		rest = strings.TrimLeft(rest, "\r\n")
+		if rest == "" {
+			return ""
+		}
+		if lineEnd := strings.IndexAny(rest, "\r\n"); lineEnd != -1 {
+			rest = rest[:lineEnd]
+		}
+		return strings.TrimSpace(rest)
+	}
 	start := strings.Index(output, "===OUTPUT_DIR_START===")
 	end := strings.Index(output, "===OUTPUT_DIR_END===")
 	if start == -1 || end == -1 || end <= start {
