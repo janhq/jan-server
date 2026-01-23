@@ -64,6 +64,29 @@ type fileListResult struct {
 	Files []fileInfo `json:"files"`
 }
 
+// Shell execution types for AIO API
+type shellExecRequest struct {
+	ID        *string  `json:"id,omitempty"`
+	ExecDir   *string  `json:"exec_dir,omitempty"`
+	Command   string   `json:"command"`
+	AsyncMode bool     `json:"async_mode"`
+	Timeout   *float64 `json:"timeout,omitempty"`
+}
+
+type shellCommandResult struct {
+	SessionID string  `json:"session_id"`
+	Command   string  `json:"command"`
+	Status    string  `json:"status"`
+	Output    *string `json:"output"`
+	ExitCode  *int    `json:"exit_code"`
+}
+
+type shellExecResponse struct {
+	Success bool               `json:"success"`
+	Message *string            `json:"message"`
+	Data    *shellCommandResult `json:"data"`
+}
+
 type responseWrapper[T any] struct {
 	Success bool    `json:"success"`
 	Message *string `json:"message"`
@@ -143,6 +166,10 @@ func (e *SlideCreatorExecutor) executeExportPPTX(ctx context.Context, params map
 	outputFile := "presentation.pptx"
 	cacheDir := "/home/gem/.cache/pptx_export"
 	code := buildAIOWrapperCode(rootName, outputFile, mode, cdpURL, cacheDir, useCDP)
+
+	if err := ensurePlaywrightBrowsers(ctx, baseURL, cacheDir); err != nil {
+		log.Warn().Err(err).Msg("[slide_creator] failed to preinstall Playwright browsers via AIO shell API")
+	}
 
 	stdout, err := executeAIONodeJS(ctx, baseURL, code, files, 5*time.Minute)
 	if err != nil {
@@ -310,15 +337,16 @@ func buildAIOWrapperCode(inputDir, outFile, mode, cdpURL, cacheDir string, useCD
 	code := fmt.Sprintf(`
 const fs = require("fs");
 const path = require("path");
-const { spawnSync } = require("child_process");
+const { spawnSync, execSync } = require("child_process");
 
 const workdir = process.cwd();
 const INPUT_DIR = %s;
 const OUT_FILE = %s;
 const MODE = %s;
 
-const USE_CDP = %v;
-const CDP_URL = (process.env.AIO_CDP_URL && process.env.AIO_CDP_URL.trim()) ? process.env.AIO_CDP_URL.trim() : %s;
+// CDP often times out in dev; use local browsers instead (keep original values for logging only).
+const USE_CDP = false; // Disabled - was: %v
+const CDP_URL = ""; // Disabled - was: %s
 const CACHE_DIR = (process.env.AIO_CACHE_DIR && process.env.AIO_CACHE_DIR.trim()) ? process.env.AIO_CACHE_DIR.trim() : %s;
 
 const OUTPUT_DIR = path.join(CACHE_DIR, "outputs");
@@ -374,6 +402,32 @@ if (!fs.existsSync(nmPlaywright) || !fs.existsSync(nmPptx)) {
   console.log("[AIO] npm deps already present in cache");
 }
 
+// Try to install OS deps (best-effort).
+try {
+  let r = run("npx", ["playwright", "install-deps"], { cwd: nodeEnvDir });
+  if (r.code !== 0) {
+    console.log("[AIO] install-deps returned " + r.code + " (continuing)");
+  }
+} catch (e) {
+  console.log("[AIO] install-deps failed: " + (e && e.message ? e.message : e));
+}
+
+// Clean up incomplete headless shell installs.
+try {
+  const entries = fs.readdirSync(browsersDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (!String(entry.name).startsWith("chromium_headless_shell-")) continue;
+    const exe = path.join(browsersDir, entry.name, "chrome-headless-shell-linux64", "chrome-headless-shell");
+    if (!fs.existsSync(exe)) {
+      console.log("[AIO] Removing incomplete: " + entry.name);
+      fs.rmSync(path.join(browsersDir, entry.name), { recursive: true, force: true });
+    }
+  }
+} catch (e) {
+  console.log("[AIO] Cleanup failed: " + (e && e.message ? e.message : e));
+}
+
 const shimPath = path.join(workdir, "playwright_shim.cjs");
 const shimContent = [
   "const pw = require(\"playwright\");",
@@ -410,29 +464,80 @@ const shimContent = [
 ].join("\n");
 fs.writeFileSync(shimPath, shimContent, "utf8");
 
+// Diagnostics
+try {
+  const ver = execSync("npx playwright --version", { cwd: nodeEnvDir, encoding: "utf8" });
+  console.log("[AIO] Playwright version: " + String(ver).trim());
+} catch (e) {
+  console.log("[AIO] Playwright version check failed: " + (e && e.message ? e.message : e));
+}
+
+// Install browsers (always ensure chromium is present).
 const pwBin = path.join(nodeEnvDir, "node_modules", ".bin", "playwright");
-if (!USE_CDP || !CDP_URL) {
-  console.log("[AIO] No CDP (or disabled). Ensuring local Playwright browsers in " + browsersDir);
+if (fs.existsSync(pwBin)) {
+  console.log("[AIO] Ensuring Playwright browsers in " + browsersDir);
   const envPwInstall = Object.assign({}, process.env, {
     PLAYWRIGHT_BROWSERS_PATH: browsersDir,
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "0",
   });
   let r = run(pwBin, ["install", "chromium"], { cwd: nodeEnvDir, env: envPwInstall });
   if (r.code !== 0) {
-    console.error("[AIO] ERROR: playwright install chromium failed");
-    process.exit(2);
+    console.warn("[AIO] WARNING: playwright install chromium returned " + r.code);
   }
-} else {
-  console.log("[AIO] Using CDP; skipping browser download");
 }
+
+// Find executables.
+let chromeExe = "";
+let headlessShellExe = "";
+try {
+  const findChrome = execSync("find " + browsersDir + " -type f -name 'chrome' -executable 2>/dev/null | grep -v headless | head -1", { encoding: "utf8" });
+  chromeExe = String(findChrome).trim();
+  if (chromeExe) console.log("[AIO] Found chrome executable: " + chromeExe);
+  const findHeadless = execSync("find " + browsersDir + " -type f -name 'chrome-headless-shell' -executable 2>/dev/null | head -1", { encoding: "utf8" });
+  headlessShellExe = String(findHeadless).trim();
+  if (headlessShellExe) console.log("[AIO] Found headless shell executable: " + headlessShellExe);
+  if (!headlessShellExe) {
+    const findAny = execSync("find " + browsersDir + "/chromium_headless_shell* -type f -executable 2>/dev/null | head -1", { encoding: "utf8" });
+    headlessShellExe = String(findAny).trim();
+    if (headlessShellExe) console.log("[AIO] Found alternative headless executable: " + headlessShellExe);
+  }
+} catch (e) {
+  console.log("[AIO] Error finding chrome executables: " + (e && e.message ? e.message : e));
+}
+
+// If headless shell is missing but chrome exists, copy chrome to headless shell path.
+if (!headlessShellExe && chromeExe) {
+  console.log("[AIO] Headless shell missing, copying chrome to headless shell path...");
+  const targetDir = path.join(browsersDir, "chromium_headless_shell-1200", "chrome-headless-shell-linux64");
+  const targetFile = path.join(targetDir, "chrome-headless-shell");
+  try {
+    fs.mkdirSync(targetDir, { recursive: true });
+    try { fs.unlinkSync(targetFile); } catch (e) {}
+    fs.copyFileSync(chromeExe, targetFile);
+    fs.chmodSync(targetFile, 0o755);
+    headlessShellExe = targetFile;
+    console.log("[AIO] Copied chrome to: " + targetFile);
+  } catch (e) {
+    console.log("[AIO] Could not copy chrome: " + (e && e.message ? e.message : e));
+  }
+}
+
+console.log("[AIO] Using local Playwright browsers (CDP disabled)");
 
 const envRun = Object.assign({}, process.env, {
   NODE_PATH: path.join(nodeEnvDir, "node_modules"),
   AIO_CACHE_DIR: CACHE_DIR,
-  AIO_CDP_URL: CDP_URL,
+  AIO_CDP_URL: "",
   PLAYWRIGHT_BROWSERS_PATH: browsersDir,
   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "0",
 });
+
+if (chromeExe) {
+  envRun.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = chromeExe;
+}
+if (headlessShellExe) {
+  envRun.PLAYWRIGHT_CHROMIUM_HEADLESS_SHELL_EXECUTABLE_PATH = headlessShellExe;
+}
 
 const args = ["-r", shimPath, path.join(workdir, "export_pptx_full.js"), "--in", INPUT_DIR, "--out", OUT_PATH, "--mode", MODE];
 console.log("[AIO] Running: node " + args.join(" "));
@@ -719,6 +824,121 @@ func mathRoundSeconds(d time.Duration) int64 {
 		return 0
 	}
 	return int64(seconds + 0.5)
+}
+
+func ensurePlaywrightBrowsers(ctx context.Context, baseURL, cacheDir string) error {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if baseURL == "" {
+		return fmt.Errorf("AIO base URL is empty")
+	}
+	if strings.TrimSpace(cacheDir) == "" {
+		cacheDir = "/home/gem/.cache/pptx_export"
+	}
+
+	browsersDir := cacheDir + "/pw_browsers"
+	nodeEnvDir := cacheDir + "/node_env"
+
+	commands := []struct {
+		name    string
+		cmd     string
+		timeout float64
+	}{
+		{
+			name:    "Create cache directories",
+			cmd:     fmt.Sprintf("mkdir -p %s %s %s/outputs && chmod -R 777 %s 2>/dev/null || true", nodeEnvDir, browsersDir, cacheDir, cacheDir),
+			timeout: 30,
+		},
+		{
+			name:    "Initialize npm package",
+			cmd:     fmt.Sprintf("cd %s && [ -f package.json ] || npm init -y 2>/dev/null", nodeEnvDir),
+			timeout: 30,
+		},
+		{
+			name:    "Install npm packages",
+			cmd:     fmt.Sprintf("cd %s && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --no-fund --no-audit playwright pptxgenjs 2>&1", nodeEnvDir),
+			timeout: 180,
+		},
+		{
+			name:    "Install Playwright system dependencies (sudo)",
+			cmd:     fmt.Sprintf("cd %s && sudo npx playwright install-deps 2>&1 || true", nodeEnvDir),
+			timeout: 180,
+		},
+		{
+			name:    "Clean up incomplete browser installations",
+			cmd:     fmt.Sprintf(`cd %s && for d in chromium_headless_shell-*; do if [ -d "$d" ]; then exe="$d/chrome-headless-shell-linux64/chrome-headless-shell"; if [ ! -f "$exe" ]; then echo "Removing incomplete: $d"; rm -rf "$d"; fi; fi; done 2>/dev/null; echo "Cleanup done"`, browsersDir),
+			timeout: 30,
+		},
+		{
+			name:    "Install Playwright browsers",
+			cmd:     fmt.Sprintf(`cd %s && npx playwright --version 2>&1 && PLAYWRIGHT_BROWSERS_PATH=%s npx playwright install chromium 2>&1`, nodeEnvDir, browsersDir),
+			timeout: 300,
+		},
+		{
+			name:    "Check and fix headless shell",
+			cmd:     fmt.Sprintf(`cd %s && EXPECTED="%s/chromium_headless_shell-1200/chrome-headless-shell-linux64/chrome-headless-shell" && if [ -f "$EXPECTED" ]; then echo "Headless shell exists at $EXPECTED"; else CHROME="%s/chromium-1200/chrome-linux64/chrome" && if [ -f "$CHROME" ]; then mkdir -p chromium_headless_shell-1200/chrome-headless-shell-linux64 && cp "$CHROME" "$EXPECTED" 2>&1 && chmod +x "$EXPECTED" 2>&1 && echo "Copied chrome to $EXPECTED"; else echo "Chrome also missing at $CHROME"; fi; fi`, browsersDir, browsersDir, browsersDir),
+			timeout: 60,
+		},
+		{
+			name:    "Verify browser paths",
+			cmd:     fmt.Sprintf(`ls -la %s/ 2>&1 && find %s -type f \( -name 'chrome' -o -name 'chrome-headless-shell' -o -name 'chromium' \) 2>/dev/null`, browsersDir, browsersDir),
+			timeout: 30,
+		},
+	}
+
+	endpoint := baseURL + "/v1/shell/exec"
+	client := &http.Client{Timeout: 10 * time.Minute}
+
+	for _, c := range commands {
+		log.Debug().Str("name", c.name).Msg("[slide_creator] AIO shell exec")
+		req := shellExecRequest{
+			Command:   c.cmd,
+			AsyncMode: false,
+			Timeout:   &c.timeout,
+		}
+		body, err := json.Marshal(req)
+		if err != nil {
+			return fmt.Errorf("marshal shell exec request: %w", err)
+		}
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+		if err != nil {
+			return fmt.Errorf("create shell exec request: %w", err)
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+
+		resp, err := client.Do(httpReq)
+		if err != nil {
+			return fmt.Errorf("shell exec request failed: %w", err)
+		}
+		respBody, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return fmt.Errorf("read shell exec response: %w", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("shell exec failed %d: %s", resp.StatusCode, truncateForLog(string(respBody), 1000))
+		}
+
+		var result shellExecResponse
+		if err := json.Unmarshal(respBody, &result); err != nil {
+			return fmt.Errorf("decode shell exec response: %w", err)
+		}
+		if result.Data != nil {
+			if result.Data.Output != nil && strings.TrimSpace(*result.Data.Output) != "" {
+				log.Debug().
+					Str("name", c.name).
+					Str("output", truncateForLog(*result.Data.Output, 800)).
+					Msg("[slide_creator] AIO shell output")
+			}
+			if result.Data.ExitCode != nil && *result.Data.ExitCode != 0 {
+				log.Warn().
+					Str("name", c.name).
+					Int("exit_code", *result.Data.ExitCode).
+					Msg("[slide_creator] AIO shell exec returned non-zero")
+			}
+		}
+	}
+
+	return nil
 }
 
 func downloadSlideImages(ctx context.Context, baseURL, outputDir, localDir string) ([]string, error) {
