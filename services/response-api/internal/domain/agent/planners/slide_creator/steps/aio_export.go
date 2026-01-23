@@ -70,6 +70,149 @@ type responseWrapper[T any] struct {
 	Data    *T      `json:"data"`
 }
 
+// Shell execution types for AIO API
+type shellExecRequest struct {
+	ID        *string  `json:"id,omitempty"`
+	ExecDir   *string  `json:"exec_dir,omitempty"`
+	Command   string   `json:"command"`
+	AsyncMode bool     `json:"async_mode"`
+	Timeout   *float64 `json:"timeout,omitempty"`
+}
+
+type shellCommandResult struct {
+	SessionID string  `json:"session_id"`
+	Command   string  `json:"command"`
+	Status    string  `json:"status"`
+	Output    *string `json:"output"`
+	ExitCode  *int    `json:"exit_code"`
+}
+
+type shellExecResponse struct {
+	Success bool               `json:"success"`
+	Message *string            `json:"message"`
+	Data    *shellCommandResult `json:"data"`
+}
+
+// ensurePlaywrightBrowsers installs Playwright browsers via AIO shell API
+// Key fixes: cleans up incomplete installations, copies chrome to headless shell path if missing
+func ensurePlaywrightBrowsers(ctx context.Context, baseURL, cacheDir string) error {
+	browsersDir := cacheDir + "/pw_browsers"
+	nodeEnvDir := cacheDir + "/node_env"
+
+	// Commands to run (using sudo for system deps)
+	commands := []struct {
+		name    string
+		cmd     string
+		timeout float64
+	}{
+		{
+			name:    "Create cache directories",
+			cmd:     fmt.Sprintf("mkdir -p %s %s %s/outputs && chmod -R 777 %s 2>/dev/null || true", nodeEnvDir, browsersDir, cacheDir, cacheDir),
+			timeout: 30,
+		},
+		{
+			name:    "Initialize npm package",
+			cmd:     fmt.Sprintf("cd %s && [ -f package.json ] || npm init -y 2>/dev/null", nodeEnvDir),
+			timeout: 30,
+		},
+		{
+			name:    "Install npm packages",
+			cmd:     fmt.Sprintf("cd %s && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --no-fund --no-audit playwright pptxgenjs 2>&1", nodeEnvDir),
+			timeout: 180,
+		},
+		{
+			name:    "Install Playwright system dependencies",
+			cmd:     fmt.Sprintf("cd %s && sudo npx playwright install-deps 2>&1 || true", nodeEnvDir),
+			timeout: 180,
+		},
+		{
+			name:    "Clean up incomplete browser installations",
+			cmd:     fmt.Sprintf(`cd %s && for d in chromium_headless_shell-*; do if [ -d "$d" ]; then exe="$d/chrome-headless-shell-linux64/chrome-headless-shell"; if [ ! -f "$exe" ]; then echo "Removing incomplete: $d"; rm -rf "$d"; fi; fi; done 2>/dev/null; echo "Cleanup done"`, browsersDir),
+			timeout: 30,
+		},
+		{
+			name:    "Install Playwright browsers",
+			cmd:     fmt.Sprintf(`cd %s && echo "Playwright version:" && npx playwright --version 2>&1 && echo "Installing browsers..." && PLAYWRIGHT_BROWSERS_PATH=%s npx playwright install chromium 2>&1`, nodeEnvDir, browsersDir),
+			timeout: 300,
+		},
+		{
+			name:    "Check and fix headless shell",
+			cmd:     fmt.Sprintf(`cd %s && echo "=== Current browser structure ===" && ls -la 2>&1 && EXPECTED="%s/chromium_headless_shell-1200/chrome-headless-shell-linux64/chrome-headless-shell" && if [ -f "$EXPECTED" ]; then echo "Headless shell exists at $EXPECTED"; else echo "Headless shell MISSING at $EXPECTED" && echo "Checking directory structure:" && ls -laR chromium_headless_shell-* 2>&1 | head -30 && CHROME="%s/chromium-1200/chrome-linux64/chrome" && if [ -f "$CHROME" ]; then echo "Chrome found, creating headless shell structure..." && mkdir -p chromium_headless_shell-1200/chrome-headless-shell-linux64 && cp "$CHROME" "$EXPECTED" 2>&1 && chmod +x "$EXPECTED" 2>&1 && echo "Copied chrome to $EXPECTED"; else echo "Chrome also missing at $CHROME"; fi; fi`, browsersDir, browsersDir, browsersDir),
+			timeout: 60,
+		},
+		{
+			name:    "Verify browser paths",
+			cmd:     fmt.Sprintf(`echo '=== Browser directories ===' && ls -la %s/ 2>&1 && echo '=== All chrome executables ===' && find %s -type f \( -name 'chrome' -o -name 'chrome-headless-shell' -o -name 'chromium' \) 2>/dev/null && echo '=== Checking headless shell ===' && ls -la %s/chromium_headless_shell-*/chrome-headless-shell-linux64/ 2>&1 || echo 'Headless shell dir not found' && echo '=== Checking regular chromium ===' && ls -la %s/chromium-*/chrome-linux64/ 2>&1 || echo 'Regular chromium dir not found'`, browsersDir, browsersDir, browsersDir, browsersDir),
+			timeout: 30,
+		},
+	}
+
+	endpoint := strings.TrimRight(baseURL, "/") + "/v1/shell/exec"
+	client := &http.Client{Timeout: 10 * time.Minute}
+
+	for _, c := range commands {
+		log.Debug().Str("command", c.name).Msg("[slide_creator] Running shell command")
+
+		req := shellExecRequest{
+			Command:   c.cmd,
+			AsyncMode: false,
+			Timeout:   &c.timeout,
+		}
+
+		body, err := json.Marshal(req)
+		if err != nil {
+			return fmt.Errorf("marshal request: %w", err)
+		}
+
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+		if err != nil {
+			return fmt.Errorf("create request: %w", err)
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+
+		resp, err := client.Do(httpReq)
+		if err != nil {
+			return fmt.Errorf("execute request: %w", err)
+		}
+
+		respBody, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return fmt.Errorf("read response: %w", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("shell exec failed %d: %s", resp.StatusCode, truncateForLog(string(respBody), 1000))
+		}
+
+		var result shellExecResponse
+		if err := json.Unmarshal(respBody, &result); err != nil {
+			return fmt.Errorf("decode response: %w", err)
+		}
+
+		if result.Data != nil {
+			if result.Data.Output != nil && *result.Data.Output != "" {
+				// Log output for debugging (first few lines)
+				output := *result.Data.Output
+				lines := strings.Split(output, "\n")
+				for i, line := range lines {
+					if i < 5 {
+						log.Debug().Str("line", line).Msg("[slide_creator] Shell output")
+					} else if i == 5 {
+						log.Debug().Int("remaining", len(lines)-5).Msg("[slide_creator] ... more lines")
+						break
+					}
+				}
+			}
+			if result.Data.ExitCode != nil && *result.Data.ExitCode != 0 {
+				log.Warn().Int("exit_code", *result.Data.ExitCode).Str("command", c.name).Msg("[slide_creator] Shell command exited with non-zero code")
+			}
+		}
+	}
+
+	return nil
+}
+
 func (e *SlideCreatorExecutor) executeExportPPTX(ctx context.Context, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
 	if strings.TrimSpace(e.aioBaseURL) == "" {
 		return &agent.ExecutionResult{
@@ -101,10 +244,8 @@ func (e *SlideCreatorExecutor) executeExportPPTX(ctx context.Context, params map
 	if mode == "" {
 		mode = "dom"
 	}
-	useCDP := true
-	if v, ok := parseBoolFromInterface(params["use_cdp"]); ok {
-		useCDP = v
-	}
+	// CDP disabled entirely - it was timing out, so we use local browsers instead
+	useCDP := false
 
 	payloads, rootName, err := collectAIOInputFiles(outDir)
 	if err != nil {
@@ -129,19 +270,20 @@ func (e *SlideCreatorExecutor) executeExportPPTX(ctx context.Context, params map
 		baseURL = strings.TrimRight(e.aioBaseURL, "/")
 	}
 
+	// CDP disabled - always use local browsers
 	cdpURL := ""
-	if useCDP {
-		if u, err := fetchBrowserCDPURL(ctx, baseURL); err == nil {
-			cdpURL = strings.TrimSpace(u)
-		}
-		if cdpURL != "" && isLocalhostURL(cdpURL) {
-			useCDP = false
-			cdpURL = ""
-		}
-	}
 
 	outputFile := "presentation.pptx"
 	cacheDir := "/home/gem/.cache/pptx_export"
+
+	// Ensure Playwright browsers are installed via shell API
+	// This cleans up incomplete installations and copies chrome to headless shell path if needed
+	log.Info().Str("cache_dir", cacheDir).Msg("[slide_creator] Ensuring Playwright browsers are installed")
+	if err := ensurePlaywrightBrowsers(ctx, baseURL, cacheDir); err != nil {
+		log.Warn().Err(err).Msg("[slide_creator] Playwright browser installation may have failed, continuing anyway")
+		// Continue anyway - the JS code will also try to install
+	}
+
 	code := buildAIOWrapperCode(rootName, outputFile, mode, cdpURL, cacheDir, useCDP)
 
 	stdout, err := executeAIONodeJS(ctx, baseURL, code, files, 5*time.Minute)
@@ -307,25 +449,28 @@ func collectAIOInputFiles(outDir string) ([]filePayload, string, error) {
 }
 
 func buildAIOWrapperCode(inputDir, outFile, mode, cdpURL, cacheDir string, useCDP bool) string {
+	// CDP is disabled entirely - it was timing out, so we use local browsers instead
+	// The useCDP and cdpURL parameters are kept for compatibility but ignored
 	code := fmt.Sprintf(`
 const fs = require("fs");
 const path = require("path");
-const { spawnSync } = require("child_process");
+const { spawnSync, execSync } = require("child_process");
 
 const workdir = process.cwd();
 const INPUT_DIR = %s;
 const OUT_FILE = %s;
 const MODE = %s;
 
-const USE_CDP = %v;
-const CDP_URL = (process.env.AIO_CDP_URL && process.env.AIO_CDP_URL.trim()) ? process.env.AIO_CDP_URL.trim() : %s;
+// CDP is unreliable (often times out), so we disable it and use local browsers
+const USE_CDP = false;
+const CDP_URL = "";
 const CACHE_DIR = (process.env.AIO_CACHE_DIR && process.env.AIO_CACHE_DIR.trim()) ? process.env.AIO_CACHE_DIR.trim() : %s;
 
 const OUTPUT_DIR = path.join(CACHE_DIR, "outputs");
 const OUT_PATH = path.join(OUTPUT_DIR, path.basename(OUT_FILE));
 
 function run(cmd, args, opts) {
-  const res = spawnSync(cmd, args, Object.assign({ encoding: "utf8" }, opts || {}));
+  const res = spawnSync(cmd, args, Object.assign({ encoding: "utf8", maxBuffer: 50 * 1024 * 1024 }, opts || {}));
   if (res.stdout) process.stdout.write(res.stdout);
   if (res.stderr) process.stderr.write(res.stderr);
   const code = (typeof res.status === "number") ? res.status : 1;
@@ -334,11 +479,11 @@ function run(cmd, args, opts) {
 
 console.log("[AIO] workdir=" + workdir);
 console.log("[AIO] cache_dir=" + CACHE_DIR);
-if (USE_CDP) console.log("[AIO] cdp_url=" + (CDP_URL || "(empty)"));
 
 const files = JSON.parse(fs.readFileSync(path.join(workdir, "inputs.json"), "utf8"));
 const exportJs = fs.readFileSync(path.join(workdir, "export_pptx_full.js"), "utf8");
 
+// Write input files into temp workdir
 for (const f of files) {
   const fullPath = path.join(workdir, f.path);
   fs.mkdirSync(path.dirname(fullPath), { recursive: true });
@@ -347,6 +492,7 @@ for (const f of files) {
 fs.writeFileSync(path.join(workdir, "export_pptx_full.js"), exportJs);
 console.log("[AIO] wrote " + files.length + " input files + export_pptx_full.js");
 
+// Persistent env dirs
 const nodeEnvDir = path.join(CACHE_DIR, "node_env");
 const browsersDir = path.join(CACHE_DIR, "pw_browsers");
 fs.mkdirSync(nodeEnvDir, { recursive: true });
@@ -358,6 +504,7 @@ if (!fs.existsSync(pkgJson)) {
   fs.writeFileSync(pkgJson, JSON.stringify({ name: "pptx_export_env", private: true }, null, 2));
 }
 
+// Ensure deps
 const nmPlaywright = path.join(nodeEnvDir, "node_modules", "playwright");
 const nmPptx = path.join(nodeEnvDir, "node_modules", "pptxgenjs");
 if (!fs.existsSync(nmPlaywright) || !fs.existsSync(nmPptx)) {
@@ -374,71 +521,99 @@ if (!fs.existsSync(nmPlaywright) || !fs.existsSync(nmPptx)) {
   console.log("[AIO] npm deps already present in cache");
 }
 
-const shimPath = path.join(workdir, "playwright_shim.cjs");
-const shimContent = [
-  "const pw = require(\"playwright\");",
-  "const cdp = (process.env.AIO_CDP_URL || \"\").trim();",
-  "if (!cdp) {",
-  "  console.log(\"[AIO] Shim: AIO_CDP_URL empty; will use local launch()\");",
-  "  return;",
-  "}",
-  "console.log(\"[AIO] Shim: overriding chromium.launch() to use connectOverCDP()\");",
-  "const chromium = pw.chromium;",
-  "",
-  "const origLaunch = chromium.launch.bind(chromium);",
-  "chromium.launch = async function(opts) {",
-  "  try {",
-  "    return await chromium.connectOverCDP(cdp);",
-  "  } catch (e) {",
-  "    console.warn(\"[AIO] Shim: connectOverCDP failed; falling back to launch(): \" + (e && e.message ? e.message : e));",
-  "    return await origLaunch(opts || {});",
-  "  }",
-  "};",
-  "",
-  "const origPersistent = chromium.launchPersistentContext.bind(chromium);",
-  "chromium.launchPersistentContext = async function(userDataDir, opts) {",
-  "  try {",
-  "    const browser = await chromium.connectOverCDP(cdp);",
-  "    const contexts = browser.contexts();",
-  "    if (contexts && contexts.length) return contexts[0];",
-  "    return await browser.newContext(opts || {});",
-  "  } catch (e) {",
-  "    console.warn(\"[AIO] Shim: connectOverCDP(persistent) failed; falling back: \" + (e && e.message ? e.message : e));",
-  "    return await origPersistent(userDataDir, opts || {});",
-  "  }",
-  "};"
-].join("\n");
-fs.writeFileSync(shimPath, shimContent, "utf8");
+// Check browser installation
+console.log("[AIO] Checking browser installation in " + browsersDir);
+try {
+  const dirs = fs.readdirSync(browsersDir);
+  console.log("[AIO] Browser dirs: " + dirs.join(", "));
+} catch (e) {
+  console.log("[AIO] Could not list browser dirs: " + e.message);
+}
 
+// Install browsers if needed (using the cached playwright)
 const pwBin = path.join(nodeEnvDir, "node_modules", ".bin", "playwright");
-if (!USE_CDP || !CDP_URL) {
-  console.log("[AIO] No CDP (or disabled). Ensuring local Playwright browsers in " + browsersDir);
+if (fs.existsSync(pwBin)) {
+  console.log("[AIO] Ensuring browsers are installed via " + pwBin);
   const envPwInstall = Object.assign({}, process.env, {
     PLAYWRIGHT_BROWSERS_PATH: browsersDir,
-    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "0",
   });
   let r = run(pwBin, ["install", "chromium"], { cwd: nodeEnvDir, env: envPwInstall });
   if (r.code !== 0) {
-    console.error("[AIO] ERROR: playwright install chromium failed");
-    process.exit(2);
+    console.warn("[AIO] WARNING: playwright install chromium returned " + r.code);
   }
-} else {
-  console.log("[AIO] Using CDP; skipping browser download");
+}
+
+// Find actual chrome executable
+let chromeExe = "";
+let headlessShellExe = "";
+try {
+  // Find regular chrome
+  const findChrome = execSync("find " + browsersDir + " -type f -name 'chrome' -executable 2>/dev/null | grep -v headless | head -1", { encoding: "utf8" });
+  chromeExe = findChrome.trim();
+  if (chromeExe) {
+    console.log("[AIO] Found chrome executable: " + chromeExe);
+  }
+
+  // Find headless shell
+  const findHeadless = execSync("find " + browsersDir + " -type f -name 'chrome-headless-shell' -executable 2>/dev/null | head -1", { encoding: "utf8" });
+  headlessShellExe = findHeadless.trim();
+  if (headlessShellExe) {
+    console.log("[AIO] Found headless shell executable: " + headlessShellExe);
+  }
+
+  // If no headless shell, try to find any chrome in headless_shell dir
+  if (!headlessShellExe) {
+    const findAny = execSync("find " + browsersDir + "/chromium_headless_shell* -type f -executable 2>/dev/null | head -1", { encoding: "utf8" });
+    headlessShellExe = findAny.trim();
+    if (headlessShellExe) {
+      console.log("[AIO] Found alternative headless executable: " + headlessShellExe);
+    }
+  }
+} catch (e) {
+  console.log("[AIO] Error finding chrome executables: " + e.message);
+}
+
+// If headless shell is missing but chrome exists, create a copy
+if (!headlessShellExe && chromeExe) {
+  console.log("[AIO] Headless shell missing, copying chrome to headless shell path...");
+  const targetDir = path.join(browsersDir, "chromium_headless_shell-1200", "chrome-headless-shell-linux64");
+  const targetFile = path.join(targetDir, "chrome-headless-shell");
+  try {
+    fs.mkdirSync(targetDir, { recursive: true });
+    // Remove existing file if any
+    try { fs.unlinkSync(targetFile); } catch (e) {}
+    // Copy chrome to headless shell location
+    fs.copyFileSync(chromeExe, targetFile);
+    fs.chmodSync(targetFile, 0o755);
+    headlessShellExe = targetFile;
+    console.log("[AIO] Copied chrome to: " + targetFile);
+  } catch (e) {
+    console.log("[AIO] Could not copy chrome: " + e.message);
+  }
 }
 
 const envRun = Object.assign({}, process.env, {
   NODE_PATH: path.join(nodeEnvDir, "node_modules"),
   AIO_CACHE_DIR: CACHE_DIR,
-  AIO_CDP_URL: CDP_URL,
+  AIO_CDP_URL: "", // Disabled
   PLAYWRIGHT_BROWSERS_PATH: browsersDir,
   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "0",
 });
 
-const args = ["-r", shimPath, path.join(workdir, "export_pptx_full.js"), "--in", INPUT_DIR, "--out", OUT_PATH, "--mode", MODE];
+// Set executable paths if found
+if (chromeExe) {
+  envRun.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = chromeExe;
+}
+if (headlessShellExe) {
+  envRun.PLAYWRIGHT_CHROMIUM_HEADLESS_SHELL_EXECUTABLE_PATH = headlessShellExe;
+}
+
+const args = [path.join(workdir, "export_pptx_full.js"), "--in", INPUT_DIR, "--out", OUT_PATH, "--mode", MODE];
 console.log("[AIO] Running: node " + args.join(" "));
-const res = spawnSync("node", args, { cwd: workdir, env: envRun, stdio: "inherit" });
+const res = spawnSync("node", args, { cwd: workdir, env: envRun, stdio: "inherit", maxBuffer: 50 * 1024 * 1024 });
 if (typeof res.status === "number" && res.status !== 0) process.exit(res.status);
 
+// Return PPTX as base64
 const pptxPath = OUT_PATH;
 const pptx = fs.readFileSync(pptxPath);
 console.log("===OUTPUT_DIR_START===");
@@ -447,10 +622,17 @@ console.log("===OUTPUT_DIR_END===");
 console.log("===BASE64_START===");
 console.log(pptx.toString("base64"));
 console.log("===BASE64_END===");
-const imageFiles = fs.readdirSync(OUTPUT_DIR).filter((f) => /^slide-\\d+\\.png$/i.test(f));
-const images = {};
-for (const f of imageFiles) {
-  images[f] = fs.readFileSync(path.join(OUTPUT_DIR, f)).toString("base64");
+
+// Try to get slide images
+let images = {};
+try {
+  const outDir = OUTPUT_DIR;
+  const imageFiles = fs.readdirSync(outDir).filter((f) => /^slide-\d+\.png$/i.test(f));
+  for (const f of imageFiles) {
+    images[f] = fs.readFileSync(path.join(outDir, f)).toString("base64");
+  }
+} catch (e) {
+  console.log("[AIO] Could not read slide images: " + e.message);
 }
 console.log("===IMAGES_START===");
 console.log(JSON.stringify(images));
@@ -459,8 +641,6 @@ console.log("===IMAGES_END===");
 		jsQuote(inputDir),
 		jsQuote(outFile),
 		jsQuote(mode),
-		useCDP,
-		jsQuote(cdpURL),
 		jsQuote(cacheDir),
 	)
 
