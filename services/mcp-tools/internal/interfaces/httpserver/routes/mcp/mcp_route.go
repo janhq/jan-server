@@ -178,21 +178,19 @@ func (route *MCPRoute) RegisterRouter(router *gin.RouterGroup) {
 // @Router /v1/mcp [post]
 func (route *MCPRoute) serveMCP(reqCtx *gin.Context) {
 	// Check if this is a tools/list request and intercept it to provide dynamic descriptions
-	if route.toolConfigCache != nil {
-		// Read body to check method
-		bodyBytes, err := io.ReadAll(reqCtx.Request.Body)
-		if err == nil && len(bodyBytes) > 0 {
-			// Restore body for potential re-use
-			reqCtx.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+	// and filter out internal-only tools.
+	bodyBytes, err := io.ReadAll(reqCtx.Request.Body)
+	if err == nil && len(bodyBytes) > 0 {
+		// Restore body for potential re-use
+		reqCtx.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
-			var payload struct {
-				Method string      `json:"method"`
-				ID     interface{} `json:"id"`
-			}
-			if json.Unmarshal(bodyBytes, &payload) == nil && payload.Method == "tools/list" {
-				route.handleToolsListWithDynamicDescriptions(reqCtx, payload.ID)
-				return
-			}
+		var payload struct {
+			Method string      `json:"method"`
+			ID     interface{} `json:"id"`
+		}
+		if json.Unmarshal(bodyBytes, &payload) == nil && payload.Method == "tools/list" {
+			route.handleToolsListWithDynamicDescriptions(reqCtx, payload.ID)
+			return
 		}
 	}
 
@@ -275,6 +273,19 @@ func (route *MCPRoute) handleToolsListWithDynamicDescriptions(reqCtx *gin.Contex
 		reqCtx.Writer.Write(responseBody)
 		return
 	}
+
+	filteredTools := make([]struct {
+		Name        string                 `json:"name"`
+		Description string                 `json:"description"`
+		InputSchema map[string]interface{} `json:"inputSchema,omitempty"`
+	}, 0, len(rpcResponse.Result.Tools))
+	for _, tool := range rpcResponse.Result.Tools {
+		if strings.HasPrefix(tool.Name, "aio_") {
+			continue
+		}
+		filteredTools = append(filteredTools, tool)
+	}
+	rpcResponse.Result.Tools = filteredTools
 
 	// Override descriptions from cache
 	for i := range rpcResponse.Result.Tools {

@@ -1,0 +1,14 @@
+{
+  "id": 82,
+  "dir": "82",
+  "name": "Sunrise",
+  "tone": "Gradient Modern",
+  "description": "Band gradient + modern spacing; works with gradient palettes.",
+  "variants": {
+    "base": 4,
+    "bullets": 2,
+    "split": 3,
+    "hero": 2,
+    "title": 2
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "id": 2,
+  "dir": "2",
+  "name": "Cyber Grid",
+  "tone": "Neon Cyberpunk",
+  "description": "Aurora glows + high-energy composition for futuristic themes.",
+  "variants": {
+    "base": 1,
+    "bullets": 2,
+    "split": 2,
+    "hero": 2,
+    "title": 2
+  }
+}

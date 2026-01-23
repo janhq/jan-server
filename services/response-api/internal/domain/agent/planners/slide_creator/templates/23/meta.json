@@ -1,0 +1,14 @@
+{
+  "id": 23,
+  "dir": "23",
+  "name": "Momentum Deck",
+  "tone": "Startup Bold",
+  "description": "Accent band + bold rhythm, pitch-deck energy.",
+  "variants": {
+    "base": 4,
+    "bullets": 3,
+    "split": 2,
+    "hero": 3,
+    "title": 3
+  }
+}

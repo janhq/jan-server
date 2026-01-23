@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0; padding:0; background:#000;">
+<div style="width:100vw; aspect-ratio:16 / 9; max-width:{{.SlideW}}px; margin:0; background:{{.Background}}; color:{{.Theme.TextColor}}; font-family:{{.Theme.FontFamily}}; display:flex; flex-direction:column; box-sizing:border-box; position:relative; overflow:hidden;">
+  <div style="position:absolute; inset:0; background:repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 23px, {{withAlpha .Theme.TextColor 0.03}} 24px), repeating-linear-gradient(90deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 23px, {{withAlpha .Theme.TextColor 0.03}} 24px); pointer-events:none;"></div>
+  <div style="position:absolute; top:0; left:0; right:0; height:140px; background:linear-gradient(180deg, {{withAlpha .Theme.AccentColor 0.12}} 0%, rgba(0,0,0,0) 100%); pointer-events:none;"></div>
+
+  <header style="height:90px; padding:0 94px; display:flex; align-items:center; justify-content:space-between; box-sizing:border-box; border-bottom:1px solid {{.Line}}; position:relative; z-index:1;">
+    <div style="display:flex; align-items:center; gap:14px; min-width:0;">
+      <div style="width:10px; height:10px; border-radius:999px; background:{{.Theme.AccentColor}};"></div>
+      <div style="font-size:21px; font-weight:900; letter-spacing:0.2px; color:{{.Theme.TextColor}}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:980px;">{{.Plan.Title}}</div>
+    </div>
+    <div style="font-size:13px; font-weight:850; color:{{.Muted}}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:760px;">{{.Slide.Title}}</div>
+  </header>
+
+  <main style="flex:1; padding:62px 94px; box-sizing:border-box; overflow:hidden; position:relative; z-index:1;">
+    <div style="height:100%; border:1px solid {{.CardBorder}}; border-radius:26px; background:{{.CardBg}}; box-shadow:0 22px 60px {{.Shadow}}; padding:50px 54px; box-sizing:border-box; overflow:hidden;">
+      {{template "body" .}}
+    </div>
+  </main>
+
+  <footer style="height:62px; padding:0 94px; display:flex; align-items:center; justify-content:space-between; box-sizing:border-box; border-top:1px solid {{.Line}}; position:relative; z-index:1;">
+    <div style="font-size:13px; font-weight:850; color:{{.Muted}};">{{.Index}} / {{.Total}}</div>
+    <div style="font-size:13px; font-weight:850; color:{{.Muted}}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:760px;">{{.Plan.Title}}</div>
+  </footer>
+</div>
+</body>
+</html>

@@ -10,8 +10,9 @@ import (
 
 // CodeFixer provides LLM-based code fixing capabilities.
 type CodeFixer struct {
-	provider Provider
-	model    string
+	provider                 Provider
+	model                    string
+	disableCustomTemperature bool
 }
 
 // NewCodeFixer creates a new code fixer with the given LLM provider.
@@ -23,6 +24,18 @@ func NewCodeFixer(provider Provider, model string) *CodeFixer {
 		provider: provider,
 		model:    model,
 	}
+}
+
+// SetDisableCustomTemperature controls whether explicit temperature values are sent.
+func (cf *CodeFixer) SetDisableCustomTemperature(disable bool) {
+	cf.disableCustomTemperature = disable
+}
+
+func (cf *CodeFixer) temperaturePtr(value float64) *float64 {
+	if cf.disableCustomTemperature {
+		return nil
+	}
+	return floatPtr(value)
 }
 
 // FixCode attempts to fix code that produced an error using the LLM.
@@ -64,8 +77,8 @@ Provide the fixed code:`, language, "```"+language+"\n", code, "```", errorMsg)
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userPrompt},
 		},
-		Temperature: floatPtr(0.2), // Low temperature for more deterministic fixes
-		MaxTokens:   intPtr(4096),
+		Temperature: cf.temperaturePtr(0.2), // Low temperature for more deterministic fixes
+		MaxTokens:   intPtr(40000),
 		Stream:      false,
 	}
 
@@ -108,8 +121,8 @@ func (cf *CodeFixer) GenerateWithModel(ctx context.Context, prompt string, model
 		Messages: []ChatMessage{
 			{Role: "user", Content: prompt},
 		},
-		Temperature: floatPtr(0.7), // Moderate temperature for balanced creativity
-		MaxTokens:   intPtr(4096),
+		Temperature: cf.temperaturePtr(0.7), // Moderate temperature for balanced creativity
+		MaxTokens:   intPtr(40000),
 		Stream:      false,
 	}
 
@@ -124,6 +137,106 @@ func (cf *CodeFixer) GenerateWithModel(ctx context.Context, prompt string, model
 
 	content := resp.Choices[0].Message.GetContentAsString()
 	return content, nil
+}
+
+// GenerateWithModelWithMaxTokens generates content using a max_tokens override.
+func (cf *CodeFixer) GenerateWithModelWithMaxTokens(ctx context.Context, prompt string, model string, maxTokens *int) (string, error) {
+	if prompt == "" {
+		return "", fmt.Errorf("empty prompt provided")
+	}
+
+	useModel := cf.model
+	if model != "" {
+		useModel = model
+	}
+
+	req := ChatCompletionRequest{
+		Model: useModel,
+		Messages: []ChatMessage{
+			{Role: "user", Content: prompt},
+		},
+		Temperature: cf.temperaturePtr(0.7),
+		MaxTokens:   resolveMaxTokens(40000, maxTokens),
+		Stream:      false,
+	}
+
+	resp, err := cf.provider.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("LLM call failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("LLM returned no choices")
+	}
+
+	return resp.Choices[0].Message.GetContentAsString(), nil
+}
+
+// GenerateWithModelWithTemperature generates content using the specified temperature.
+func (cf *CodeFixer) GenerateWithModelWithTemperature(ctx context.Context, prompt string, model string, temperature float64) (string, error) {
+	if prompt == "" {
+		return "", fmt.Errorf("empty prompt provided")
+	}
+
+	useModel := cf.model
+	if model != "" {
+		useModel = model
+	}
+
+	req := ChatCompletionRequest{
+		Model: useModel,
+		Messages: []ChatMessage{
+			{Role: "user", Content: prompt},
+		},
+		Temperature: cf.temperaturePtr(temperature),
+		MaxTokens:   intPtr(40000),
+		Stream:      false,
+	}
+
+	resp, err := cf.provider.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("LLM call failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("LLM returned no choices")
+	}
+
+	content := resp.Choices[0].Message.GetContentAsString()
+	return content, nil
+}
+
+// GenerateWithModelWithTemperatureAndMaxTokens generates content with temperature and max_tokens overrides.
+func (cf *CodeFixer) GenerateWithModelWithTemperatureAndMaxTokens(ctx context.Context, prompt string, model string, temperature float64, maxTokens *int) (string, error) {
+	if prompt == "" {
+		return "", fmt.Errorf("empty prompt provided")
+	}
+
+	useModel := cf.model
+	if model != "" {
+		useModel = model
+	}
+
+	req := ChatCompletionRequest{
+		Model: useModel,
+		Messages: []ChatMessage{
+			{Role: "user", Content: prompt},
+		},
+		Temperature: cf.temperaturePtr(temperature),
+		MaxTokens:   resolveMaxTokens(40000, maxTokens),
+		Stream:      false,
+	}
+
+	resp, err := cf.provider.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("LLM call failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("LLM returned no choices")
+	}
+
+	return resp.Choices[0].Message.GetContentAsString(), nil
 }
 
 // extractCodeFromResponse extracts code from an LLM response that may contain markdown.
@@ -194,8 +307,131 @@ func (cf *CodeFixer) GenerateWithSystemPrompt(ctx context.Context, systemPrompt 
 	req := ChatCompletionRequest{
 		Model:       useModel,
 		Messages:    messages,
-		Temperature: floatPtr(0.2), // Low temperature for structured output
-		MaxTokens:   intPtr(8192),
+		Temperature: cf.temperaturePtr(0.2), // Low temperature for structured output
+		MaxTokens:   intPtr(40000),
+		Stream:      false,
+	}
+
+	resp, err := cf.provider.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("LLM call failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("LLM returned no choices")
+	}
+
+	return resp.Choices[0].Message.GetContentAsString(), nil
+}
+
+// GenerateWithSystemPromptWithMaxTokens generates content using a max_tokens override.
+func (cf *CodeFixer) GenerateWithSystemPromptWithMaxTokens(ctx context.Context, systemPrompt string, userPrompt string, model string, maxTokens *int) (string, error) {
+	if userPrompt == "" {
+		return "", fmt.Errorf("empty prompt provided")
+	}
+
+	useModel := cf.model
+	if model != "" {
+		useModel = model
+	}
+
+	messages := []ChatMessage{
+		{Role: "user", Content: userPrompt},
+	}
+	if systemPrompt != "" {
+		messages = []ChatMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		}
+	}
+
+	req := ChatCompletionRequest{
+		Model:       useModel,
+		Messages:    messages,
+		Temperature: cf.temperaturePtr(0.2),
+		MaxTokens:   resolveMaxTokens(40000, maxTokens),
+		Stream:      false,
+	}
+
+	resp, err := cf.provider.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("LLM call failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("LLM returned no choices")
+	}
+
+	return resp.Choices[0].Message.GetContentAsString(), nil
+}
+
+// GenerateWithSystemPromptWithTemperature generates content using a system prompt and temperature override.
+func (cf *CodeFixer) GenerateWithSystemPromptWithTemperature(ctx context.Context, systemPrompt string, userPrompt string, model string, temperature float64) (string, error) {
+	if userPrompt == "" {
+		return "", fmt.Errorf("empty prompt provided")
+	}
+
+	useModel := cf.model
+	if model != "" {
+		useModel = model
+	}
+
+	messages := []ChatMessage{
+		{Role: "user", Content: userPrompt},
+	}
+	if systemPrompt != "" {
+		messages = []ChatMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		}
+	}
+
+	req := ChatCompletionRequest{
+		Model:       useModel,
+		Messages:    messages,
+		Temperature: cf.temperaturePtr(temperature),
+		MaxTokens:   intPtr(40000),
+		Stream:      false,
+	}
+
+	resp, err := cf.provider.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("LLM call failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("LLM returned no choices")
+	}
+
+	return resp.Choices[0].Message.GetContentAsString(), nil
+}
+
+// GenerateWithSystemPromptWithTemperatureAndMaxTokens generates content with temperature and max_tokens overrides.
+func (cf *CodeFixer) GenerateWithSystemPromptWithTemperatureAndMaxTokens(ctx context.Context, systemPrompt string, userPrompt string, model string, temperature float64, maxTokens *int) (string, error) {
+	if userPrompt == "" {
+		return "", fmt.Errorf("empty prompt provided")
+	}
+
+	useModel := cf.model
+	if model != "" {
+		useModel = model
+	}
+
+	messages := []ChatMessage{
+		{Role: "user", Content: userPrompt},
+	}
+	if systemPrompt != "" {
+		messages = []ChatMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		}
+	}
+
+	req := ChatCompletionRequest{
+		Model:       useModel,
+		Messages:    messages,
+		Temperature: cf.temperaturePtr(temperature),
+		MaxTokens:   resolveMaxTokens(40000, maxTokens),
 		Stream:      false,
 	}
 
@@ -238,8 +474,8 @@ func (cf *CodeFixer) GenerateWithStructuredOutput(ctx context.Context, systemPro
 	req := ChatCompletionRequest{
 		Model:       useModel,
 		Messages:    messages,
-		Temperature: floatPtr(0.2),
-		MaxTokens:   intPtr(8192),
+		Temperature: cf.temperaturePtr(0.2),
+		MaxTokens:   intPtr(40000),
 		Stream:      false,
 		ResponseFormat: &ResponseFormat{
 			Type: "json_schema",
@@ -261,4 +497,283 @@ func (cf *CodeFixer) GenerateWithStructuredOutput(ctx context.Context, systemPro
 	}
 
 	return resp.Choices[0].Message.GetContentAsString(), nil
+}
+
+// GenerateWithStructuredOutputWithMaxTokens generates structured output with a max_tokens override.
+func (cf *CodeFixer) GenerateWithStructuredOutputWithMaxTokens(ctx context.Context, systemPrompt string, userPrompt string, model string, schema map[string]any, maxTokens *int) (string, error) {
+	if userPrompt == "" {
+		return "", fmt.Errorf("empty prompt provided")
+	}
+	if schema == nil {
+		return "", fmt.Errorf("schema is required for structured output")
+	}
+
+	useModel := cf.model
+	if model != "" {
+		useModel = model
+	}
+
+	messages := []ChatMessage{
+		{Role: "user", Content: userPrompt},
+	}
+	if systemPrompt != "" {
+		messages = []ChatMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		}
+	}
+
+	req := ChatCompletionRequest{
+		Model:       useModel,
+		Messages:    messages,
+		Temperature: cf.temperaturePtr(0.2),
+		MaxTokens:   resolveMaxTokens(40000, maxTokens),
+		Stream:      false,
+		ResponseFormat: &ResponseFormat{
+			Type: "json_schema",
+			JSONSchema: &JSONSchema{
+				Name:   "output_schema",
+				Schema: schema,
+				Strict: true,
+			},
+		},
+	}
+
+	resp, err := cf.provider.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("LLM call failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("LLM returned no choices")
+	}
+
+	return resp.Choices[0].Message.GetContentAsString(), nil
+}
+
+// GenerateWithStructuredOutputWithTemperature generates content using response_format json_schema and a temperature override.
+func (cf *CodeFixer) GenerateWithStructuredOutputWithTemperature(ctx context.Context, systemPrompt string, userPrompt string, model string, schema map[string]any, temperature float64) (string, error) {
+	if userPrompt == "" {
+		return "", fmt.Errorf("empty prompt provided")
+	}
+	if schema == nil {
+		return "", fmt.Errorf("schema is required for structured output")
+	}
+
+	useModel := cf.model
+	if model != "" {
+		useModel = model
+	}
+
+	messages := []ChatMessage{
+		{Role: "user", Content: userPrompt},
+	}
+	if systemPrompt != "" {
+		messages = []ChatMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		}
+	}
+
+	req := ChatCompletionRequest{
+		Model:       useModel,
+		Messages:    messages,
+		Temperature: cf.temperaturePtr(temperature),
+		MaxTokens:   intPtr(40000),
+		Stream:      false,
+		ResponseFormat: &ResponseFormat{
+			Type: "json_schema",
+			JSONSchema: &JSONSchema{
+				Name:   "output_schema",
+				Schema: schema,
+				Strict: true,
+			},
+		},
+	}
+
+	resp, err := cf.provider.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("LLM call failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("LLM returned no choices")
+	}
+
+	return resp.Choices[0].Message.GetContentAsString(), nil
+}
+
+// GenerateWithStructuredOutputWithTemperatureAndMaxTokens generates structured output with temperature and max_tokens overrides.
+func (cf *CodeFixer) GenerateWithStructuredOutputWithTemperatureAndMaxTokens(ctx context.Context, systemPrompt string, userPrompt string, model string, schema map[string]any, temperature float64, maxTokens *int) (string, error) {
+	if userPrompt == "" {
+		return "", fmt.Errorf("empty prompt provided")
+	}
+	if schema == nil {
+		return "", fmt.Errorf("schema is required for structured output")
+	}
+
+	useModel := cf.model
+	if model != "" {
+		useModel = model
+	}
+
+	messages := []ChatMessage{
+		{Role: "user", Content: userPrompt},
+	}
+	if systemPrompt != "" {
+		messages = []ChatMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		}
+	}
+
+	req := ChatCompletionRequest{
+		Model:       useModel,
+		Messages:    messages,
+		Temperature: cf.temperaturePtr(temperature),
+		MaxTokens:   resolveMaxTokens(40000, maxTokens),
+		Stream:      false,
+		ResponseFormat: &ResponseFormat{
+			Type: "json_schema",
+			JSONSchema: &JSONSchema{
+				Name:   "output_schema",
+				Schema: schema,
+				Strict: true,
+			},
+		},
+	}
+
+	resp, err := cf.provider.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("LLM call failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("LLM returned no choices")
+	}
+
+	return resp.Choices[0].Message.GetContentAsString(), nil
+}
+
+func resolveMaxTokens(defaultTokens int, override *int) *int {
+	if override == nil || *override <= 0 {
+		return intPtr(defaultTokens)
+	}
+	return override
+}
+
+// LLMResult contains the LLM response content and token usage.
+type LLMResult struct {
+	Content string
+	Usage   *Usage
+}
+
+// GenerateWithStructuredOutputWithMaxTokensAndUsage generates structured output with max_tokens and returns usage.
+func (cf *CodeFixer) GenerateWithStructuredOutputWithMaxTokensAndUsage(ctx context.Context, systemPrompt string, userPrompt string, model string, schema map[string]any, maxTokens *int) (*LLMResult, error) {
+	if userPrompt == "" {
+		return nil, fmt.Errorf("empty prompt provided")
+	}
+	if schema == nil {
+		return nil, fmt.Errorf("schema is required for structured output")
+	}
+
+	useModel := cf.model
+	if model != "" {
+		useModel = model
+	}
+
+	messages := []ChatMessage{
+		{Role: "user", Content: userPrompt},
+	}
+	if systemPrompt != "" {
+		messages = []ChatMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		}
+	}
+
+	req := ChatCompletionRequest{
+		Model:       useModel,
+		Messages:    messages,
+		Temperature: cf.temperaturePtr(0.2),
+		MaxTokens:   resolveMaxTokens(40000, maxTokens),
+		Stream:      false,
+		ResponseFormat: &ResponseFormat{
+			Type: "json_schema",
+			JSONSchema: &JSONSchema{
+				Name:   "output_schema",
+				Schema: schema,
+				Strict: true,
+			},
+		},
+	}
+
+	resp, err := cf.provider.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("LLM call failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return nil, fmt.Errorf("LLM returned no choices")
+	}
+
+	return &LLMResult{
+		Content: resp.Choices[0].Message.GetContentAsString(),
+		Usage:   resp.Usage,
+	}, nil
+}
+
+// GenerateWithStructuredOutputWithTemperatureAndMaxTokensAndUsage generates structured output with temperature, max_tokens and returns usage.
+func (cf *CodeFixer) GenerateWithStructuredOutputWithTemperatureAndMaxTokensAndUsage(ctx context.Context, systemPrompt string, userPrompt string, model string, schema map[string]any, temperature float64, maxTokens *int) (*LLMResult, error) {
+	if userPrompt == "" {
+		return nil, fmt.Errorf("empty prompt provided")
+	}
+	if schema == nil {
+		return nil, fmt.Errorf("schema is required for structured output")
+	}
+
+	useModel := cf.model
+	if model != "" {
+		useModel = model
+	}
+
+	messages := []ChatMessage{
+		{Role: "user", Content: userPrompt},
+	}
+	if systemPrompt != "" {
+		messages = []ChatMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		}
+	}
+
+	req := ChatCompletionRequest{
+		Model:       useModel,
+		Messages:    messages,
+		Temperature: cf.temperaturePtr(temperature),
+		MaxTokens:   resolveMaxTokens(40000, maxTokens),
+		Stream:      false,
+		ResponseFormat: &ResponseFormat{
+			Type: "json_schema",
+			JSONSchema: &JSONSchema{
+				Name:   "output_schema",
+				Schema: schema,
+				Strict: true,
+			},
+		},
+	}
+
+	resp, err := cf.provider.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("LLM call failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return nil, fmt.Errorf("LLM returned no choices")
+	}
+
+	return &LLMResult{
+		Content: resp.Choices[0].Message.GetContentAsString(),
+		Usage:   resp.Usage,
+	}, nil
 }

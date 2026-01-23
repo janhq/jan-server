@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +37,8 @@ type AgentProxyMCP struct {
 	modelCacheTime time.Time
 }
 
+var disabledAgentTypes = map[string]struct{}{}
+
 // AgentMetadataCache holds cached agent metadata.
 type AgentMetadataCache struct {
 	Type              string   `json:"type"`
@@ -53,7 +54,8 @@ type AgentMetadataCache struct {
 
 // RunAgentArgs defines the input schema for the run_agent tool.
 type RunAgentArgs struct {
-	AgentType      string                 `json:"agent_type"`
+	AgentType      string                 `json:"agent_type,omitempty"`
+	Type           string                 `json:"type,omitempty"`
 	Prompt         string                 `json:"prompt"`
 	Model          string                 `json:"model,omitempty"`
 	Options        map[string]interface{} `json:"options,omitempty"`
@@ -122,6 +124,25 @@ func (a *AgentProxyMCP) handleRunAgent(ctx context.Context, req *mcpsdk.CallTool
 	startTime := time.Now()
 	callCtx := extractAllContext(req)
 
+	if input.AgentType == "" {
+		input.AgentType = input.Type
+	}
+
+	if input.AgentType == "slide_creator" {
+		if input.Options == nil {
+			input.Options = map[string]interface{}{}
+		}
+		if _, ok := input.Options["num_slides"]; !ok {
+			input.Options["num_slides"] = 5
+		}
+		if _, ok := input.Options["user_input"]; !ok {
+			input.Options["user_input"] = input.Prompt
+		}
+		if _, ok := input.Options["topic"]; !ok {
+			input.Options["topic"] = input.Prompt
+		}
+	}
+
 	log.Info().
 		Str("tool", "run_agent").
 		Str("agent_type", input.AgentType).
@@ -146,18 +167,11 @@ func (a *AgentProxyMCP) handleRunAgent(ctx context.Context, req *mcpsdk.CallTool
 		}, nil, nil
 	}
 
-	if input.AgentType == "slide_generator" {
-		numSlides, ok := extractRequiredSlideCount(input.Options)
-		if !ok || numSlides < 1 {
-			return &mcpsdk.CallToolResult{
-				IsError: true,
-				Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: "options.num_slides is required for slide_generator"}},
-			}, nil, nil
-		}
-		if input.Options == nil {
-			input.Options = map[string]interface{}{}
-		}
-		input.Options["num_slides"] = numSlides
+	if isAgentDisabled(input.AgentType) {
+		return &mcpsdk.CallToolResult{
+			IsError: true,
+			Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: "agent_type is disabled"}},
+		}, nil, nil
 	}
 
 	// Get tracking context
@@ -379,6 +393,7 @@ func (a *AgentProxyMCP) getAgentsWithCache() []AgentMetadataCache {
 		log.Warn().Err(err).Msg("Failed to fetch agents from Response API, using defaults")
 		return a.getDefaultAgents()
 	}
+	agents = filterDisabledAgents(agents)
 
 	// Update cache
 	a.cacheMu.Lock()
@@ -427,11 +442,18 @@ func (a *AgentProxyMCP) buildRunAgentDescription(agents []AgentMetadataCache) st
 	sb.WriteString("Run a specialized agent to perform complex multi-step tasks. ")
 	sb.WriteString("Each agent creates a plan with visible nested tool calls and produces artifacts.\n\n")
 	sb.WriteString("Parameters:\n")
-	sb.WriteString("- agent_type (required): The type of agent to run\n")
+	sb.WriteString("- type (required): The type of agent to run (alias: agent_type)\n")
 	sb.WriteString("- prompt (required): The task description for the agent\n")
 	sb.WriteString("- model (optional): The model to use. If not provided, uses the first available model\n")
 	sb.WriteString("- options (optional): Agent-specific options (e.g., research_depth, num_slides, format)\n")
-	sb.WriteString("- NOTE: slide_generator requires options.num_slides\n\n")
+	sb.WriteString("\nIf type is slide_creator, require and provide in options:\n")
+	sb.WriteString("- topic: summarized topic for the deck\n")
+	sb.WriteString("- tone: template tone (must be one of the predefined tones)\n")
+	sb.WriteString("- num_slides: target number of slides (default: 5)\n")
+	sb.WriteString("- user_input: original user prompt (must match user request)\n")
+	sb.WriteString("Available slide_creator tones:\n- ")
+	sb.WriteString(strings.Join(slideCreatorTones, "\n- "))
+	sb.WriteString("\n")
 	sb.WriteString("Available agents:\n")
 
 	for _, agent := range agents {
@@ -443,55 +465,55 @@ func (a *AgentProxyMCP) buildRunAgentDescription(agents []AgentMetadataCache) st
 	return sb.String()
 }
 
-func extractRequiredSlideCount(options map[string]interface{}) (int, bool) {
-	if options == nil {
-		return 0, false
-	}
-	if value, ok := options["num_slides"]; ok {
-		return parseIntFromInterface(value)
-	}
-	if value, ok := options["num_slide"]; ok {
-		return parseIntFromInterface(value)
-	}
-	return 0, false
+var slideCreatorTones = []string{
+	"Corporate Consulting",
+	"Creative Studio",
+	"Data Analyst",
+	"Editorial Serif",
+	"Education Friendly",
+	"Finance Professional",
+	"Government/Public Sector",
+	"Gradient Modern",
+	"Healthcare Calm",
+	"Luxury Elegant",
+	"Marketing Vibrant",
+	"Minimal Clean",
+	"Monochrome",
+	"Neon Cyberpunk",
+	"Playful Pastel",
+	"Retro",
+	"Sports/Energy",
+	"Startup Bold",
+	"Sustainability Earthy",
+	"Tech Dark",
 }
 
-func parseIntFromInterface(value interface{}) (int, bool) {
-	switch v := value.(type) {
-	case int:
-		return v, true
-	case int8:
-		return int(v), true
-	case int16:
-		return int(v), true
-	case int32:
-		return int(v), true
-	case int64:
-		return int(v), true
-	case uint:
-		return int(v), true
-	case uint8:
-		return int(v), true
-	case uint16:
-		return int(v), true
-	case uint32:
-		return int(v), true
-	case uint64:
-		return int(v), true
-	case float32:
-		return int(v), true
-	case float64:
-		return int(v), true
-	case json.Number:
-		if n, err := v.Int64(); err == nil {
-			return int(n), true
-		}
-	case string:
-		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-			return n, true
+func isSlideCreatorTone(tone string) bool {
+	for _, candidate := range slideCreatorTones {
+		if tone == candidate {
+			return true
 		}
 	}
-	return 0, false
+	return false
+}
+
+func isAgentDisabled(agentType string) bool {
+	_, disabled := disabledAgentTypes[strings.TrimSpace(agentType)]
+	return disabled
+}
+
+func filterDisabledAgents(agents []AgentMetadataCache) []AgentMetadataCache {
+	if len(agents) == 0 {
+		return agents
+	}
+	filtered := make([]AgentMetadataCache, 0, len(agents))
+	for _, agent := range agents {
+		if isAgentDisabled(agent.Type) {
+			continue
+		}
+		filtered = append(filtered, agent)
+	}
+	return filtered
 }
 
 // getEnabledAgentTypes returns a list of enabled agent type strings.
@@ -520,14 +542,14 @@ func (a *AgentProxyMCP) getDefaultAgents() []AgentMetadataCache {
 			Enabled:           true,
 		},
 		{
-			Type:              "slide_generator",
-			Name:              "Slide Generator Agent",
-			Description:       "Creates professional presentations with research, visuals, and speaker notes",
+			Type:              "slide_creator",
+			Name:              "Slide Creator Agent",
+			Description:       "Builds HTML-based slide decks and exports them to editable PPTX with research-backed content",
 			Keywords:          []string{"slides", "presentation", "powerpoint", "deck", "pitch"},
-			Capabilities:      []string{"research", "outline", "content_generation", "visual_design", "export"},
-			OutputFormats:     []string{"pptx", "pdf", "google_slides"},
+			Capabilities:      []string{"research", "outline", "html_slide_generation", "template_selection", "pptx_export"},
+			OutputFormats:     []string{"pptx", "html"},
 			EstimatedDuration: "3-15 minutes",
-			UseWhen:           "User wants to create a presentation, slides, pitch deck, or visual deck",
+			UseWhen:           "User wants an editable PPTX generated from HTML slide layouts with template control",
 			Enabled:           true,
 		},
 	}

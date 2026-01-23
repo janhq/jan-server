@@ -1,0 +1,14 @@
+{
+  "id": 77,
+  "dir": "77",
+  "name": "Mono White",
+  "tone": "Monochrome",
+  "description": "Minimal frame tuned for black/white/gray palettes.",
+  "variants": {
+    "base": 2,
+    "bullets": 2,
+    "split": 2,
+    "hero": 2,
+    "title": 2
+  }
+}

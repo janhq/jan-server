@@ -19,6 +19,7 @@ import (
 
 const (
 	serperSearchEndpoint         = "https://google.serper.dev/search"
+	serperImageSearchEndpoint    = "https://google.serper.dev/images"
 	serperScrapeEndpoint         = "https://scrape.serper.dev"
 	exaSearchEndpointDefault     = "https://api.exa.ai/search"
 	exaContentsEndpointDefault   = "https://api.exa.ai/contents"
@@ -1405,4 +1406,172 @@ func extractVisibleText(htmlBytes []byte) string {
 	}
 	walk(doc)
 	return builder.String()
+}
+
+// ImageSearch performs an image search using the Serper API.
+func (c *SearchClient) ImageSearch(ctx context.Context, query domainsearch.ImageSearchRequest) (*domainsearch.ImageSearchResponse, error) {
+	offline := c.resolveOfflineMode(query.OfflineMode)
+
+	log.Debug().
+		Str("operation", "image_search").
+		Str("query", query.Q).
+		Bool("offline_mode", offline).
+		Bool("serper_enabled", c.cfg.SerperEnabled && c.hasSerperAPIKey()).
+		Msg("image search client starting")
+
+	if offline {
+		return nil, fmt.Errorf("image search unavailable: offline mode is enabled")
+	}
+
+	// Currently only Serper supports image search
+	if !c.cfg.SerperEnabled || !c.hasSerperAPIKey() {
+		return nil, fmt.Errorf("image search unavailable: Serper provider not enabled or missing API key")
+	}
+
+	return c.imageSearchViaSerper(ctx, query)
+}
+
+// imageSearchViaSerper performs image search using the Serper Images API.
+func (c *SearchClient) imageSearchViaSerper(ctx context.Context, query domainsearch.ImageSearchRequest) (*domainsearch.ImageSearchResponse, error) {
+	// Check circuit breaker
+	if c.serperCB.GetState() == StateOpen {
+		log.Error().Str("service", "serper").Msg("serper circuit breaker is open, skipping image search")
+		return nil, fmt.Errorf("serper circuit breaker is open")
+	}
+
+	startTime := time.Now()
+	status := "success"
+	defer func() {
+		metrics.RecordProviderRequest("image_search", "serper", status)
+		metrics.RecordExternalProviderLatency("serper", time.Since(startTime).Seconds())
+	}()
+
+	body := map[string]any{
+		"q": query.Q,
+	}
+	if query.GL != nil {
+		body["gl"] = *query.GL
+	}
+	if query.HL != nil {
+		body["hl"] = *query.HL
+	}
+	if query.Num != nil && *query.Num > 0 {
+		body["num"] = *query.Num
+	}
+	if query.Autocorrect != nil {
+		body["autocorrect"] = *query.Autocorrect
+	}
+
+	var opErr error
+
+	// Retry with exponential backoff
+	resultPtr, err := WithRetry(ctx, c.retryConfig, "serper_image_search", func() (*domainsearch.ImageSearchResponse, error) {
+		// Use map for initial parsing since Serper returns images as []map[string]any
+		var rawResp struct {
+			SearchParameters map[string]any   `json:"searchParameters"`
+			Images           []map[string]any `json:"images"`
+		}
+
+		resp, err := c.serperClient.R().
+			SetContext(ctx).
+			SetHeader("X-API-KEY", c.cfg.SerperAPIKey).
+			SetHeader("Content-Type", "application/json").
+			SetBody(body).
+			SetResult(&rawResp).
+			Post(serperImageSearchEndpoint)
+
+		if err != nil {
+			log.Error().Err(err).Str("service", "serper").Str("endpoint", serperImageSearchEndpoint).Msg("failed to query Serper image search API")
+			return nil, fmt.Errorf("failed to query Serper image search API: %w", err)
+		}
+
+		if resp.IsError() {
+			log.Error().Int("status", resp.StatusCode()).Str("service", "serper").Str("response", resp.String()).Msg("Serper image search API error")
+			return nil, fmt.Errorf("Serper image search API error (status %d): %s", resp.StatusCode(), resp.String())
+		}
+
+		// Convert raw response to typed response
+		result := &domainsearch.ImageSearchResponse{
+			SearchParameters: rawResp.SearchParameters,
+			Images:           make([]domainsearch.ImageSearchResult, 0, len(rawResp.Images)),
+		}
+
+		for _, img := range rawResp.Images {
+			result.Images = append(result.Images, domainsearch.ImageSearchResult{
+				Title:           getStringFromMap(img, "title"),
+				ImageURL:        getStringFromMap(img, "imageUrl"),
+				ImageWidth:      getIntFromMap(img, "imageWidth"),
+				ImageHeight:     getIntFromMap(img, "imageHeight"),
+				ThumbnailURL:    getStringFromMap(img, "thumbnailUrl"),
+				ThumbnailWidth:  getIntFromMap(img, "thumbnailWidth"),
+				ThumbnailHeight: getIntFromMap(img, "thumbnailHeight"),
+				Source:          getStringFromMap(img, "source"),
+				Domain:          getStringFromMap(img, "domain"),
+				Link:            getStringFromMap(img, "link"),
+				GoogleURL:       getStringFromMap(img, "googleUrl"),
+				Creator:         getStringFromMap(img, "creator"),
+				Credit:          getStringFromMap(img, "credit"),
+				Position:        getIntFromMap(img, "position"),
+			})
+		}
+
+		return result, nil
+	})
+
+	opErr = err
+
+	// Update circuit breaker
+	c.serperCB.recordResult("serper_image_search", opErr)
+
+	if opErr != nil {
+		status = "error"
+		log.Error().Err(opErr).Str("service", "serper").Str("operation", "image_search").Msg("serper image search failed after retries")
+		return nil, opErr
+	}
+
+	if resultPtr.SearchParameters == nil {
+		resultPtr.SearchParameters = map[string]any{}
+	}
+	resultPtr.SearchParameters["engine"] = "serper"
+	resultPtr.SearchParameters["type"] = "images"
+	resultPtr.SearchParameters["live"] = true
+
+	log.Info().
+		Str("engine", "serper").
+		Str("query", query.Q).
+		Int("result_count", len(resultPtr.Images)).
+		Msg("image search completed")
+
+	return resultPtr, nil
+}
+
+// getStringFromMap safely extracts a string from a map
+func getStringFromMap(m map[string]any, key string) string {
+	if m == nil {
+		return ""
+	}
+	if val, ok := m[key]; ok {
+		if str, ok := val.(string); ok {
+			return str
+		}
+	}
+	return ""
+}
+
+// getIntFromMap safely extracts an int from a map
+func getIntFromMap(m map[string]any, key string) int {
+	if m == nil {
+		return 0
+	}
+	if val, ok := m[key]; ok {
+		switch v := val.(type) {
+		case int:
+			return v
+		case int64:
+			return int(v)
+		case float64:
+			return int(v)
+		}
+	}
+	return 0
 }

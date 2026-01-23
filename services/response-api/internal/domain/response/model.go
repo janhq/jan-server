@@ -90,6 +90,7 @@ type Service interface {
 	GetByPublicID(ctx context.Context, publicID string) (*Response, error)
 	GetWithPlanDetails(ctx context.Context, publicID string) (*ResponseWithPlan, error)
 	Cancel(ctx context.Context, publicID string) (*Response, error)
+	Retry(ctx context.Context, publicID string) (*Response, error)
 	ListConversationItems(ctx context.Context, publicID string) ([]ConversationItem, error)
 }
 

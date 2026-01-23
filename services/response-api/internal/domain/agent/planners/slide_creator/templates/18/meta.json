@@ -1,0 +1,14 @@
+{
+  "id": 18,
+  "dir": "18",
+  "name": "Quantum Slate",
+  "tone": "Tech Dark",
+  "description": "Dark glass + glow, strong contrast, product/engineering feel.",
+  "variants": {
+    "base": 5,
+    "bullets": 3,
+    "split": 1,
+    "hero": 3,
+    "title": 3
+  }
+}

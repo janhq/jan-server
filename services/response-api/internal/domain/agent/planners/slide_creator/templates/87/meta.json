@@ -1,0 +1,14 @@
+{
+  "id": 87,
+  "dir": "87",
+  "name": "Policy Note",
+  "tone": "Government/Public Sector",
+  "description": "Formal, legible, and conservative layout for public comms.",
+  "variants": {
+    "base": 9,
+    "bullets": 2,
+    "split": 4,
+    "hero": 2,
+    "title": 2
+  }
+}

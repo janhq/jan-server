@@ -4,6 +4,9 @@ FROM golang:${GO_VERSION}-alpine AS builder
 
 WORKDIR /app
 
+# Copy go-common from named build context to match replace directive path
+COPY --from=go-common . /packages/go-common
+
 # Copy go mod files
 COPY go.mod ./
 RUN go mod download
@@ -12,7 +15,7 @@ RUN go mod download
 COPY . .
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o mcp-tools .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o mcp-tools ./cmd/server
 
 # Runtime stage
 FROM alpine:latest
@@ -22,6 +25,7 @@ WORKDIR /app
 
 # Copy the binary from builder
 COPY --from=builder /app/mcp-tools .
+COPY configs /app/configs
 
 EXPOSE 8091
 

@@ -1,0 +1,14 @@
+{
+  "id": 52,
+  "dir": "52",
+  "name": "Investor Note",
+  "tone": "Finance Professional",
+  "description": "Structured, conservative frames for finance/strategy decks.",
+  "variants": {
+    "base": 9,
+    "bullets": 2,
+    "split": 2,
+    "hero": 2,
+    "title": 2
+  }
+}

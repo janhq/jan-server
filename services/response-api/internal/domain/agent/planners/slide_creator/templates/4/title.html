@@ -1,0 +1,16 @@
+{{define "body"}}
+<section style="height:100%; display:grid; grid-template-columns:repeat(12, 1fr); gap:32px; align-items:center; overflow:hidden;">
+  <div style="grid-column:1 / span 4; overflow:hidden;">
+    <div style="font-size:160px; line-height:0.95; font-weight:950; letter-spacing:-0.04em; color:{{withAlpha .Theme.TextColor 0.18}};">{{.Index}}</div>
+    <div style="margin-top:10px; font-size:14px; font-weight:900; letter-spacing:0.18em; text-transform:uppercase; color:{{.Theme.AccentColor}};">of {{.Total}}</div>
+  </div>
+  <div style="grid-column:5 / span 8; min-width:0; overflow:hidden;">
+    <div style="font-size:14px; font-weight:900; letter-spacing:0.18em; text-transform:uppercase; color:{{.Theme.AccentColor}};">{{.Plan.Title}}</div>
+    <h1 style="margin:18px 0 0 0; font-size:78px; line-height:1.03; font-weight:950; letter-spacing:-0.02em; color:{{.Theme.TextColor}}; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Slide.Title 130}}</h1>
+    {{if .Slide.Subtitle}}<p style="margin:20px 0 0 0; font-size:28px; line-height:1.25; font-weight:650; color:{{.Muted}}; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Slide.Subtitle 240}}</p>{{end}}
+    {{if .Title.Notes}}<div style="margin-top:26px; display:flex; gap:12px; flex-wrap:wrap;">
+      <span style="font-size:14px; font-weight:850; color:{{.Theme.TextColor}}; background:{{withAlpha .Theme.AccentColor 0.10}}; border:1px solid {{withAlpha .Theme.AccentColor 0.28}}; padding:10px 14px; border-radius:999px;">{{trimToRunes .Title.Notes 90}}</span>
+    </div>{{end}}
+  </div>
+</section>
+{{end}}

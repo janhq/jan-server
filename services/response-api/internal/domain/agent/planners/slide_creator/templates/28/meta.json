@@ -1,0 +1,14 @@
+{
+  "id": 28,
+  "dir": "28",
+  "name": "Mint Joy",
+  "tone": "Playful Pastel",
+  "description": "Soft patterns and friendly shapes; great for consumer topics.",
+  "variants": {
+    "base": 7,
+    "bullets": 3,
+    "split": 3,
+    "hero": 3,
+    "title": 3
+  }
+}

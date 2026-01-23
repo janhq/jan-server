@@ -161,7 +161,8 @@ func CreateApplication() (*Application, error) {
 		return nil, err
 	}
 	infrastructureInfrastructure := infrastructure.NewInfrastructure(db, keycloakValidator, zerologLogger)
-	httpServer := httpserver.NewHttpServer(v1Route, authRoute, infrastructureInfrastructure, config, apikeyService)
+	tracker := infrastructure.ProvideAnalyticsTracker(config, zerologLogger)
+	httpServer := httpserver.NewHttpServer(v1Route, authRoute, infrastructureInfrastructure, config, apikeyService, tracker)
 	crontabCrontab := crontab.NewCrontab(providerService, inferenceProvider)
 	application := &Application{
 		httpServer: httpServer,

@@ -22,6 +22,7 @@ import {
   SETTINGS_SECTION,
 } from "@/constants";
 import { AccentColorProvider } from "@/providers/accent-color";
+import { initAnalytics, analytics } from "@/lib/analytics";
 
 function RootLayout() {
   const location = useLocation();
@@ -29,10 +30,24 @@ function RootLayout() {
   const accessToken = useAuth((state) => state.accessToken);
   const guestLogin = useAuth((state) => state.guestLogin);
   const hasAttemptedGuestLogin = useRef(false);
+  const isAuthenticated = useAuth((state) => state.isAuthenticated);
   const clearRightSidebar = useRightSidebarStore(
     (state) => state.clearSelection
   );
   const setSidebarOpen = useRightSidebarStore((state) => state.setSidebarOpen);
+  const hasInitializedAnalytics = useRef(false);
+
+  // Initialize analytics and track app_opened
+  useEffect(() => {
+    if (!hasInitializedAnalytics.current) {
+      hasInitializedAnalytics.current = true;
+      initAnalytics();
+      analytics.capture("app_opened", {
+        user_status: analytics.getUserStatus(isAuthenticated),
+        referrer_source: document.referrer || null,
+      });
+    }
+  }, []);
 
   // Close right sidebar on route change
   useEffect(() => {

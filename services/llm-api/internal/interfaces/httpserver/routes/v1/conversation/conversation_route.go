@@ -4,6 +4,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/janhq/jan-server/packages/go-common/analytics"
+	analyticsMiddleware "github.com/janhq/jan-server/packages/go-common/analytics/middleware"
+
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/authhandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/conversationhandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/requests"
@@ -169,6 +172,19 @@ func (route *ConversationRoute) createConversation(reqCtx *gin.Context) {
 		responses.HandleError(reqCtx, err, "Failed to create conversation")
 		return
 	}
+
+	// Track conversation_created event
+	values := analytics.ValuesFromContext(ctx)
+	if values.DistinctID != "" && response != nil {
+		props := map[string]interface{}{
+			analytics.PropConversationID: response.ID,
+			analytics.PropHasProject:     req.ProjectID != nil && *req.ProjectID != "",
+			analytics.PropUserStatus:     values.UserStatus,
+			analytics.PropPlatform:       values.Platform,
+		}
+		_ = analyticsMiddleware.TrackEvent(reqCtx, analytics.EventConversationCreated, props)
+	}
+
 	reqCtx.JSON(http.StatusOK, response)
 }
 

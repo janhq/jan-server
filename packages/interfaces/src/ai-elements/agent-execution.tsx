@@ -108,7 +108,7 @@ export const AgentExecutionHeader = memo(
     const isPending = status === "pending";
 
     return (
-      <Collapsible onOpenChange={setIsOpen} open={isOpen} className="w-full">
+      <Collapsible onOpenChange={setIsOpen} open={isOpen} className="w-full" >
         <CollapsibleTrigger
           className={cn(
             "flex w-full items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground",
@@ -118,12 +118,12 @@ export const AgentExecutionHeader = memo(
           disabled={isPending}
           {...props}
         >
-          <div className="bg-background z-10 relative flex shrink-0 items-center justify-center size-4">
+          <div className="bg-background z-20 relative flex shrink-0 items-center justify-center size-4">
             {status === "complete" && (
               <CircleCheck className="size-4 text-green-600 dark:text-green-500" />
             )}
             {status === "pending" && (
-              <Circle className="size-4 text-muted-foreground" />
+              <Circle className="size-4 text-muted-foreground fill-background" />
             )}
             {status === "active" && (
               <Loader2 className="size-4 animate-spin text-muted-foreground" />
@@ -153,7 +153,7 @@ export const AgentExecutionHeader = memo(
 );
 
 export type SearchResultItem = {
-  type: "link" | "image" | "text";
+  type: "link" | "image" | "text" | "artifact";
   title?: string;
   description?: string;
   url?: string;
@@ -203,7 +203,7 @@ export const AgentExecutionStep = memo(
           "flex gap-2 text-sm relative overflow-hidden",
           statusStyles[status],
           "fade-in-0 slide-in-from-top-2 animate-in border py-1 px-2 rounded-md bg-secondary/50",
-          isClickable && "cursor-pointer hover:bg-secondary/80",
+          isClickable ? "cursor-pointer hover:bg-secondary/80" : 'inline-flex mr-2',
           status === "pending" && "cursor-not-allowed",
           className,
         )}

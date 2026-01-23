@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/janhq/jan-server/packages/go-common/analytics"
 	"github.com/rs/zerolog"
 
 	"jan-server/services/llm-api/internal/domain"
@@ -47,6 +48,24 @@ func (h *GuestHandler) CreateGuest(c *gin.Context) {
 		responses.HandleErrorWithStatus(c, http.StatusBadGateway, err, "failed to provision guest")
 
 		return
+	}
+
+	// Track user_logged_in event
+	if creds.PrincipalID != "" {
+		tracker := analytics.TrackerFromContext(c.Request.Context())
+		if tracker != nil {
+			values := analytics.ValuesFromContext(c.Request.Context())
+			event := analytics.NewEvent(analytics.EventUserLoggedIn, creds.PrincipalID).
+				WithProperties(map[string]interface{}{
+					analytics.PropAuthMethod: "guest",
+					analytics.PropIsNewUser:  true,
+					analytics.PropUserStatus: "guest",
+					analytics.PropPlatform:   values.Platform,
+				})
+			go func() {
+				_ = tracker.Track(c.Request.Context(), event)
+			}()
+		}
 	}
 
 	// Return tokens in JSON response (token-based authentication, not cookies)

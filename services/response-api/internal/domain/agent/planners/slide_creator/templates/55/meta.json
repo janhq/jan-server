@@ -1,0 +1,14 @@
+{
+  "id": 55,
+  "dir": "55",
+  "name": "Risk Report",
+  "tone": "Finance Professional",
+  "description": "Structured, conservative frames for finance/strategy decks.",
+  "variants": {
+    "base": 9,
+    "bullets": 5,
+    "split": 5,
+    "hero": 2,
+    "title": 1
+  }
+}

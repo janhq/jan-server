@@ -1,0 +1,15 @@
+{{define "body"}}
+<section style="height:100%; display:flex; align-items:center; justify-content:center; overflow:hidden;">
+  <div style="max-width:1220px; width:100%; text-align:center;">
+    <div style="display:flex; justify-content:center;">
+      <div style="font-size:14px; font-weight:900; letter-spacing:0.18em; text-transform:uppercase; color:{{.Theme.AccentColor}}; border:1px solid {{withAlpha .Theme.AccentColor 0.35}}; background:{{withAlpha .Theme.AccentColor 0.10}}; padding:10px 14px; border-radius:999px;">{{.Plan.Title}}</div>
+    </div>
+    <h1 style="margin:22px auto 0 auto; font-size:86px; line-height:1.02; font-weight:950; letter-spacing:-0.02em; color:{{.Theme.TextColor}}; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Slide.Title 130}}</h1>
+    {{if .Slide.Subtitle}}<p style="margin:22px auto 0 auto; font-size:30px; line-height:1.25; font-weight:650; color:{{.Muted}}; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Slide.Subtitle 240}}</p>{{end}}
+    <div style="margin-top:30px; display:flex; justify-content:center; gap:12px; flex-wrap:wrap;">
+      <span style="font-size:13px; font-weight:850; color:{{.Muted}};">Slide {{.Index}}/{{.Total}}</span>
+      {{if .Title.Notes}}<span style="font-size:13px; font-weight:850; color:{{.Theme.TextColor}}; background:{{withAlpha .Theme.TextColor 0.06}}; border:1px solid {{.BodyBorder}}; padding:8px 12px; border-radius:999px;">{{trimToRunes .Title.Notes 90}}</span>{{end}}
+    </div>
+  </div>
+</section>
+{{end}}

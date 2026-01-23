@@ -1,0 +1,14 @@
+{
+  "id": 89,
+  "dir": "89",
+  "name": "Agency Report",
+  "tone": "Government/Public Sector",
+  "description": "Formal, legible, and conservative layout for public comms.",
+  "variants": {
+    "base": 9,
+    "bullets": 4,
+    "split": 1,
+    "hero": 1,
+    "title": 4
+  }
+}

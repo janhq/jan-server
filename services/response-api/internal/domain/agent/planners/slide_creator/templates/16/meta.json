@@ -1,0 +1,14 @@
+{
+  "id": 16,
+  "dir": "16",
+  "name": "Dark Terminal",
+  "tone": "Tech Dark",
+  "description": "Dark glass + glow, strong contrast, product/engineering feel.",
+  "variants": {
+    "base": 5,
+    "bullets": 1,
+    "split": 4,
+    "hero": 1,
+    "title": 1
+  }
+}

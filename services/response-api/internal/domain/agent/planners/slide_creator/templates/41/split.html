@@ -1,0 +1,38 @@
+{{define "body"}}
+<section style="height:100%; display:grid; grid-template-columns:repeat(12, 1fr); gap:28px; align-items:stretch;">
+  <article style="grid-column:1 / span 7; height:100%; display:flex; flex-direction:column; overflow:hidden;">
+    <div style="font-size:14px; font-weight:900; letter-spacing:0.18em; text-transform:uppercase; color:{{.Theme.AccentColor}};">{{.Split.Label}}</div>
+    <h1 style="margin:14px 0 0 0; font-size:62px; line-height:1.05; font-weight:950; letter-spacing:-0.02em; color:{{.Theme.TextColor}}; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Slide.Title 90}}</h1>
+    {{if .Split.Subtitle}}<p style="margin:16px 0 0 0; font-size:28px; line-height:1.28; font-weight:650; color:{{.Muted}}; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Split.Subtitle 140}}</p>{{end}}
+    <div style="margin-top:{{if .Split.Subtitle}}26px{{else}}20px{{end}}; flex:1; overflow:hidden; display:flex; flex-direction:column; gap:14px;">
+      {{range .Split.Bullets}}
+      <div style="border:1px solid {{$.BodyBorder}}; background:{{withAlpha $.Theme.TextColor 0.03}}; border-radius:18px; padding:14px 16px; display:flex; gap:12px; align-items:flex-start; min-width:0;">
+        <div style="margin-top:4px; width:26px; height:26px; border-radius:999px; background:{{withAlpha $.Theme.AccentColor 0.14}}; border:1px solid {{withAlpha $.Theme.AccentColor 0.30}}; flex:0 0 auto;"></div>
+        <div style="font-size:{{$.Split.BulletFont}}px; line-height:1.28; font-weight:650; color:{{$.Theme.TextColor}}; min-width:0; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes . 160}}</div>
+      </div>
+      {{end}}
+    </div>
+  </article>
+
+  <div style="grid-column:8 / span 5; height:100%; overflow:hidden; display:flex; flex-direction:column; gap:18px;">
+    {{if .Split.HasImage}}
+    <figure style="margin:0; flex:1; border-radius:26px; overflow:hidden; border:1px solid {{.BodyBorder}}; position:relative; background:{{withAlpha .Theme.TextColor 0.06}};">
+      <img src="{{.Split.Image.Src}}" alt="{{.Split.ImageAlt}}" style="width:100%; height:100%; display:block; object-fit:cover;"/>
+      <div style="position:absolute; inset:0; background:linear-gradient(to bottom, rgba(0,0,0,0) 55%, rgba(0,0,0,0.62) 100%);"></div>
+      <figcaption style="position:absolute; left:22px; right:22px; bottom:18px; color:#FFFFFF; font-size:20px; font-weight:750; line-height:1.2; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Split.ImageCaption 110}}</figcaption>
+    </figure>
+    {{else}}
+    <div style="flex:1; border-radius:26px; border:1px solid {{.BodyBorder}}; background:{{withAlpha .Theme.TextColor 0.04}}; padding:26px; display:flex; flex-direction:column; justify-content:center; overflow:hidden;">
+      <div style="font-size:14px; font-weight:900; letter-spacing:0.18em; text-transform:uppercase; color:{{.Theme.AccentColor}};">Callout</div>
+      <div style="margin-top:14px; font-size:30px; font-weight:900; line-height:1.08; color:{{.Theme.TextColor}}; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Slide.Title 90}}</div>
+      <div style="margin-top:16px; font-size:20px; font-weight:650; line-height:1.35; color:{{.Muted}}; display:-webkit-box; -webkit-line-clamp:6; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Slide.Subtitle 170}}</div>
+    </div>
+    {{end}}
+
+    <div style="border:1px solid {{.BodyBorder}}; background:{{withAlpha .Theme.TextColor 0.03}}; border-radius:22px; padding:18px 20px; overflow:hidden;">
+      <div style="font-size:14px; font-weight:900; letter-spacing:0.18em; text-transform:uppercase; color:{{.Theme.AccentColor}};">Next</div>
+      <div style="margin-top:10px; font-size:22px; font-weight:750; line-height:1.22; color:{{.Theme.TextColor}}; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Slide.Subtitle 170}}</div>
+    </div>
+  </div>
+</section>
+{{end}}

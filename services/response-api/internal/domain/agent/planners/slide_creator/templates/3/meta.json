@@ -1,0 +1,14 @@
+{
+  "id": 3,
+  "dir": "3",
+  "name": "Laser Night",
+  "tone": "Neon Cyberpunk",
+  "description": "Aurora glows + high-energy composition for futuristic themes.",
+  "variants": {
+    "base": 1,
+    "bullets": 3,
+    "split": 3,
+    "hero": 3,
+    "title": 3
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "id": 21,
+  "dir": "21",
+  "name": "Launchpad Pitch",
+  "tone": "Startup Bold",
+  "description": "Accent band + bold rhythm, pitch-deck energy.",
+  "variants": {
+    "base": 4,
+    "bullets": 1,
+    "split": 5,
+    "hero": 1,
+    "title": 1
+  }
+}

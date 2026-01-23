@@ -1,0 +1,14 @@
+{
+  "id": 96,
+  "dir": "96",
+  "name": "Stadium",
+  "tone": "Sports/Energy",
+  "description": "Bold band framing; dynamic pacing and clear takeaways.",
+  "variants": {
+    "base": 4,
+    "bullets": 1,
+    "split": 5,
+    "hero": 1,
+    "title": 1
+  }
+}

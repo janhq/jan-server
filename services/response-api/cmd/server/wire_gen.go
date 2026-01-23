@@ -8,9 +8,14 @@ package main
 
 import (
 	"context"
+	"github.com/google/wire"
+	"github.com/rs/zerolog"
+	"gorm.io/gorm"
+	logger2 "gorm.io/gorm/logger"
 	"jan-server/services/response-api/internal/config"
 	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/agent/planners"
+	"jan-server/services/response-api/internal/domain/agent/planners/slide_creator"
 	artifact2 "jan-server/services/response-api/internal/domain/artifact"
 	conversation2 "jan-server/services/response-api/internal/domain/conversation"
 	"jan-server/services/response-api/internal/domain/llm"
@@ -29,14 +34,9 @@ import (
 	"jan-server/services/response-api/internal/infrastructure/repository/conversation"
 	"jan-server/services/response-api/internal/infrastructure/repository/plan"
 	"jan-server/services/response-api/internal/infrastructure/repository/response"
-	skillinfra "jan-server/services/response-api/internal/infrastructure/skill"
+	skill2 "jan-server/services/response-api/internal/infrastructure/skill"
 	"jan-server/services/response-api/internal/interfaces/httpserver"
 	"jan-server/services/response-api/internal/webhook"
-
-	"github.com/google/wire"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
-	logger2 "gorm.io/gorm/logger"
 )
 
 // Injectors from wire.go:
@@ -58,34 +58,36 @@ func BuildApplication(ctx context.Context) (*Application, error) {
 	itemRepository := conversation.NewItemRepository(db)
 	client := newLLMProvider(configConfig)
 	mcpClient := newMCPClient(configConfig)
-	mediaClient := newMediaClient(configConfig)
 	orchestrator := newOrchestrator(configConfig, client, mcpClient)
-	httpService := newWebhookService(zerologLogger)
 	planPostgresRepository := plan.NewPostgresRepository(db)
 	service := plan2.NewService(planPostgresRepository)
 	artifactPostgresRepository := artifact.NewPostgresRepository(db)
 	artifactService := artifact2.NewService(artifactPostgresRepository)
-	service2, err := newSkillService()
+	mediaClient := newMediaClient(configConfig)
+	skillService, err := newSkillService()
 	if err != nil {
 		return nil, err
 	}
-	registry := newAgentRegistry(service, mcpClient, client, artifactService, configConfig, mediaClient, service2)
-	orchestrator2 := newAgentOrchestrator(registry, service)
-	responseService := newResponseService(postgresRepository, repository, itemRepository, postgresRepository, orchestrator, orchestrator2, mcpClient, mediaClient, client, httpService, registry, service, zerologLogger)
-	apiKeyProvider := newAPIKeyProvider(configConfig)
+	registry := newAgentRegistry(service, mcpClient, client, artifactService, configConfig, mediaClient, skillService)
+	agentOrchestrator := newAgentOrchestrator(registry, service)
+	httpService := newWebhookService(zerologLogger)
+	responseService := newResponseService(postgresRepository, repository, itemRepository, postgresRepository, orchestrator, agentOrchestrator, mcpClient, mediaClient, client, httpService, registry, service, zerologLogger)
+	apikeyClient := newAPIKeyProvider(configConfig)
 	validator, err := newAuthValidator(ctx, configConfig, zerologLogger)
 	if err != nil {
 		return nil, err
 	}
-	httpServer := httpserver.New(configConfig, zerologLogger, responseService, service, artifactService, apiKeyProvider, validator)
+	httpServer := httpserver.New(configConfig, zerologLogger, responseService, service, artifactService, apikeyClient, validator)
 	application := NewApplication(httpServer, zerologLogger)
 	return application, nil
 }
 
 // wire.go:
 
-var responseSet = wire.NewSet(response.NewPostgresRepository, wire.Bind(new(response2.Repository), new(*response.PostgresRepository)), wire.Bind(new(response2.ToolExecutionRepository), new(*response.PostgresRepository)), plan.NewPostgresRepository, wire.Bind(new(plan2.Repository), new(*plan.PostgresRepository)), artifact.NewPostgresRepository, wire.Bind(new(artifact2.Repository), new(*artifact.PostgresRepository)), conversation.NewRepository, wire.Bind(new(conversation2.Repository), new(*conversation.Repository)), conversation.NewItemRepository, wire.Bind(new(conversation2.ItemRepository), new(*conversation.ItemRepository)), newLLMProvider, wire.Bind(new(llm.Provider), new(*llmprovider.Client)), wire.Bind(new(llm.ModelInfoProvider), new(*llmprovider.Client)), newMCPClient, wire.Bind(new(tool.MCPClient), new(*mcp.Client)), wire.Bind(new(planners.MCPClient), new(*mcp.Client)), newMediaClient, newOrchestrator,
-	newAgentOrchestrator, newWebhookService, wire.Bind(new(webhook.Service), new(*webhook.HTTPService)), plan2.NewService, newAgentRegistry,
+var responseSet = wire.NewSet(response.NewPostgresRepository, wire.Bind(new(response2.Repository), new(*response.PostgresRepository)), wire.Bind(new(response2.ToolExecutionRepository), new(*response.PostgresRepository)), plan.NewPostgresRepository, wire.Bind(new(plan2.Repository), new(*plan.PostgresRepository)), artifact.NewPostgresRepository, wire.Bind(new(artifact2.Repository), new(*artifact.PostgresRepository)), conversation.NewRepository, wire.Bind(new(conversation2.Repository), new(*conversation.Repository)), conversation.NewItemRepository, wire.Bind(new(conversation2.ItemRepository), new(*conversation.ItemRepository)), newLLMProvider, wire.Bind(new(llm.Provider), new(*llmprovider.Client)), wire.Bind(new(llm.ModelInfoProvider), new(*llmprovider.Client)), newMCPClient, wire.Bind(new(tool.MCPClient), new(*mcp.Client)), wire.Bind(new(planners.MCPClient), new(*mcp.Client)), newMediaClient,
+	newSkillService, wire.Bind(new(skill.Service), new(*skill2.Service)), newOrchestrator,
+	newAgentOrchestrator,
+	newWebhookService, wire.Bind(new(webhook.Service), new(*webhook.HTTPService)), newAPIKeyProvider, wire.Bind(new(apikey.Provider), new(*apikey.Client)), plan2.NewService, newAgentRegistry,
 	newResponseService, artifact2.NewService,
 )
 
@@ -118,24 +120,24 @@ func newLLMProvider(cfg *config.Config) *llmprovider.Client {
 	return llmprovider.NewClient(cfg.LLMAPIURL)
 }
 
-func newAPIKeyProvider(cfg *config.Config) *apikey.Client {
-	return apikey.NewClient(cfg.LLMAPIURL)
-}
-
 func newMCPClient(cfg *config.Config) *mcp.Client {
 	return mcp.NewClient(cfg.MCPToolsURL)
+}
+
+func newAPIKeyProvider(cfg *config.Config) *apikey.Client {
+	return apikey.NewClient(cfg.LLMAPIURL)
 }
 
 func newMediaClient(cfg *config.Config) *media.Client {
 	return media.NewClient(cfg.MediaAPIURL)
 }
 
-func newSkillService() (*skillinfra.Service, error) {
-	return skillinfra.NewService()
+func newSkillService() (*skill2.Service, error) {
+	return skill2.NewService()
 }
 
 func newOrchestrator(cfg *config.Config, provider llm.Provider, mcpClient tool.MCPClient) *tool.Orchestrator {
-	return tool.NewOrchestrator(provider, mcpClient, cfg.MaxToolDepth, cfg.ToolTimeout)
+	return tool.NewOrchestrator(provider, mcpClient, cfg.MaxToolDepth, cfg.ToolTimeout, cfg.LLMStreamMode)
 }
 
 func newAgentOrchestrator(registry agent.Registry, planService plan2.Service) agent.Orchestrator {
@@ -151,12 +153,12 @@ func newAgentRegistry(planService plan2.Service, mcpClient tool.MCPClient, llmPr
 
 	deepResearchPlanner := planners.NewDeepResearchPlanner(planService)
 	if err := registry.RegisterPlanner(deepResearchPlanner); err != nil {
+
 		_ = err
 	}
 
-	// Register the slide generator planner
-	slideGeneratorPlanner := planners.NewSlideGeneratorPlanner(planService, artifactService)
-	if err := registry.RegisterPlanner(slideGeneratorPlanner); err != nil {
+	slideCreatorPlanner := slide_creator.NewSlideCreatorPlanner(planService, artifactService)
+	if err := registry.RegisterPlanner(slideCreatorPlanner); err != nil {
 		_ = err
 	}
 
@@ -175,8 +177,8 @@ func newAgentRegistry(planService plan2.Service, mcpClient tool.MCPClient, llmPr
 		_ = err
 	}
 
-	// Create code fixer for LLM-based code fix retry
 	codeFixer := llm.NewCodeFixer(llmProvider, cfg.CodeFixModel)
+	codeFixer.SetDisableCustomTemperature(cfg.LLMDisableCustomTemperature)
 
 	deepResearchExecutor := planners.NewDeepResearchExecutor(mcpClient, codeFixer)
 
@@ -189,20 +191,15 @@ func newAgentRegistry(planService plan2.Service, mcpClient tool.MCPClient, llmPr
 		cfg.SkillMaxCodeFixRetries,
 		cfg.SkillMaxFileSize,
 		cfg.SkillExecutionTimeout,
-		map[skill.SkillType]bool{
-			skill.SkillTypeSlides:       cfg.SkillSlidesEnabled,
-			skill.SkillTypeDocs:         cfg.SkillDocsEnabled,
-			skill.SkillTypePDFs:         cfg.SkillPDFsEnabled,
-			skill.SkillTypeSpreadsheets: cfg.SkillSpreadsheetsEnabled,
-		},
+		map[skill.SkillType]bool{skill.SkillTypeSlides: cfg.SkillSlidesEnabled, skill.SkillTypeDocs: cfg.SkillDocsEnabled, skill.SkillTypePDFs: cfg.SkillPDFsEnabled, skill.SkillTypeSpreadsheets: cfg.SkillSpreadsheetsEnabled},
 	)
-
-	// Register the slide generator executor for artifact creation
-	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient, skillExecutor, cfg)
-	routingExecutor := planners.NewRoutingExecutor(deepResearchExecutor, slideGeneratorExecutor)
+	slideCreatorExecutor := slide_creator.NewSlideCreatorExecutor(mcpClient, codeFixer, artifactService, mediaClient, cfg)
+	routingExecutor := planners.NewRoutingExecutor(deepResearchExecutor, slideCreatorExecutor)
+	artifactRoutingExecutor := planners.NewRoutingExecutor(slideCreatorExecutor, slideCreatorExecutor)
 	_ = registry.RegisterExecutor(plan2.ActionTypeToolCall, routingExecutor)
 	_ = registry.RegisterExecutor(plan2.ActionTypeLLMCall, routingExecutor)
-	_ = registry.RegisterExecutor(plan2.ActionTypeArtifactCreate, slideGeneratorExecutor)
+	_ = registry.RegisterExecutor(plan2.ActionTypeArtifactCreate, artifactRoutingExecutor)
+	_ = registry.RegisterExecutor(plan2.ActionTypeTransform, slideCreatorExecutor)
 	_ = registry.RegisterExecutor(plan2.ActionTypeSkillExecute, skillExecutor)
 
 	return registry

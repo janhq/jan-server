@@ -191,12 +191,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   private async initializeTools() {
     try {
       // Fetch all tools from MCP service
-      const servers = this.enableImageTools
-        ? undefined
-        : ([
-            "search", // Always include search tools
-            this.enableBrowse ? "browse" : null,
-          ].filter(Boolean) as string[]);
+      const servers = this.enableAgentMode
+        ? (["default"] as string[])
+        : this.enableImageTools
+          ? undefined
+          : ([
+              "search", // Always include search tools
+              this.enableBrowse ? "browse" : null,
+            ].filter(Boolean) as string[]);
       const toolsResponse = await mcpService.getTools(servers);
       const allowedImageTools = new Set(["generate_image", "edit_image"]);
 

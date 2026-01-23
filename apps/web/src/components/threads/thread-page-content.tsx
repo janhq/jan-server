@@ -47,6 +47,8 @@ import {
 import { ApiError } from "@/lib/api-client";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "@janhq/interfaces/sonner";
+import { analytics } from "@/lib/analytics";
+import { useAuth } from "@/stores/auth-store";
 
 interface ThreadPageContentProps {
   conversationId?: string;
@@ -61,15 +63,38 @@ export function ThreadPageContent({
   const models = useModels((state) => state.models);
   const setSelectedModel = useModels((state) => state.setSelectedModel);
   const getConversation = useConversations((state) => state.getConversation);
+  const isAuthenticated = useAuth((state) => state.isAuthenticated);
   const initialMessageSentRef = useRef(false);
   const reasoningContainerRef = useRef<HTMLDivElement>(null);
+  const messageStartTimeRef = useRef<number | null>(null);
   const deepResearchEnabled = useCapabilities(
     (state) => state.deepResearchEnabled,
+  );
+  const searchEnabled = useCapabilities((state) => state.searchEnabled);
+  const agentModeEnabled = useCapabilities((state) => state.agentModeEnabled);
+  const agentModeAvailable = useCapabilities(
+    (state) => state.agentModeAvailable,
   );
   const enableThinking = useCapabilities((state) => state.reasoningEnabled);
   const imageGenerationEnabled = useCapabilities(
     (state) => state.imageGenerationEnabled,
   );
+  const agentModeActive = agentModeEnabled && agentModeAvailable;
+
+  const getCurrentMode = useCallback(() => {
+    if (agentModeActive) return "agent";
+    if (deepResearchEnabled) return "deep_research";
+    if (searchEnabled) return "search";
+    if (enableThinking) return "reasoning";
+    if (imageGenerationEnabled) return "create_image";
+    return "normal";
+  }, [
+    agentModeActive,
+    deepResearchEnabled,
+    searchEnabled,
+    enableThinking,
+    imageGenerationEnabled,
+  ]);
   const [conversationTitle, setConversationTitle] = useState<string>("");
   const navigate = useNavigate();
   const hasRedirectedRef = useRef(false);
@@ -89,6 +114,7 @@ export function ThreadPageContent({
         isPrivateChat,
         enableThinking,
         imageGenerationEnabled,
+        agentModeActive,
       ),
     [
       conversationId,
@@ -96,6 +122,7 @@ export function ThreadPageContent({
       isPrivateChat,
       enableThinking,
       imageGenerationEnabled,
+      agentModeActive,
     ],
   );
 
@@ -200,6 +227,59 @@ export function ThreadPageContent({
     return lastAssistantMessageIsCompleteWithToolCalls({ messages });
   };
 
+  const getLatestUserPrompt = useCallback((): string => {
+    const currentMessages = getCurrentMessages();
+    for (let i = currentMessages.length - 1; i >= 0; i--) {
+      const message = currentMessages[i];
+      if (message.role !== MESSAGE_ROLE.USER) {
+        continue;
+      }
+
+      const textParts =
+        message.parts?.filter(
+          (part) =>
+            part.type === CONTENT_TYPE.TEXT &&
+            "text" in part &&
+            typeof part.text === "string",
+        ) ?? [];
+      const combined = textParts.map((part) => part.text).join("").trim();
+      if (combined) {
+        return combined;
+      }
+    }
+
+    return "";
+  }, [getCurrentMessages]);
+
+  const normalizeRunAgentArguments = useCallback(
+    (toolArguments: Record<string, unknown>) => {
+      const originalPrompt = getLatestUserPrompt();
+      const agentType =
+        (toolArguments.type as string | undefined) ??
+        (toolArguments.agent_type as string | undefined) ??
+        "";
+      const prompt = (toolArguments.prompt as string | undefined) ?? "";
+
+      const normalized: Record<string, unknown> = {
+        ...toolArguments,
+        type: agentType || toolArguments.type,
+        prompt: prompt || originalPrompt,
+      };
+
+      if (agentType === "slide_creator") {
+        const options =
+          (normalized.options as Record<string, unknown> | undefined) ?? {};
+        if (!("user_input" in options)) {
+          options.user_input = prompt || originalPrompt;
+        }
+        normalized.options = options;
+      }
+
+      return normalized;
+    },
+    [getLatestUserPrompt],
+  );
+
   const {
     messages,
     status,
@@ -244,6 +324,7 @@ export function ThreadPageContent({
           let toolArguments = toolCall.input as Record<string, unknown>;
           if (toolCall.toolName === "run_agent") {
             ranAgent = true; // Mark that we ran an agent - always set regardless of model injection
+            toolArguments = normalizeRunAgentArguments(toolArguments);
             if (!toolArguments.model && selectedModel?.id) {
               toolArguments = {
                 ...toolArguments,
@@ -641,6 +722,18 @@ export function ThreadPageContent({
           imageGenerationEnabled,
         );
 
+        messageStartTimeRef.current = Date.now();
+
+        analytics.capture("message_sent", {
+          conversation_id: conversationId || null,
+          model: selectedModel?.id || null,
+          mode: getCurrentMode(),
+          has_attachments: (withImageUrls.files?.length || 0) > 0,
+          attachment_count: withImageUrls.files?.length || 0,
+          message_length: withImageUrls.text?.length || 0,
+          user_status: analytics.getUserStatus(isAuthenticated),
+        });
+
         // Normal message flow
 
         // Persist to server (fire-and-forget, ID mapping handled in onFinish)
@@ -658,6 +751,18 @@ export function ThreadPageContent({
         currentStatus === CHAT_STATUS.STREAMING ||
         currentStatus === CHAT_STATUS.SUBMITTED
       ) {
+        const stoppedAfterMs = messageStartTimeRef.current
+          ? Date.now() - messageStartTimeRef.current
+          : null;
+        analytics.capture("message_stopped", {
+          conversation_id: conversationId || null,
+          model: selectedModel?.id || null,
+          mode: getCurrentMode(),
+          stopped_after_ms: stoppedAfterMs,
+          user_status: analytics.getUserStatus(isAuthenticated),
+        });
+        messageStartTimeRef.current = null;
+
         stop();
       } else {
         // Stop pending tool calls when user clicks stop (not streaming but tools are running)
@@ -681,6 +786,9 @@ export function ThreadPageContent({
       createUserMessageItem,
       appendImageUrlsToPrompt,
       imageGenerationEnabled,
+      selectedModel,
+      getCurrentMode,
+      isAuthenticated,
     ],
   );
 

@@ -11,6 +11,8 @@ import (
 	"github.com/rs/zerolog"
 	gormlogger "gorm.io/gorm/logger"
 
+	"github.com/janhq/jan-server/packages/go-common/analytics"
+
 	"jan-server/services/media-api/internal/config"
 	domain "jan-server/services/media-api/internal/domain/media"
 	"jan-server/services/media-api/internal/infrastructure/auth"
@@ -98,7 +100,10 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to initialize auth validator")
 	}
 
-	httpServer := httpserver.New(cfg, log, mediaService, authValidator)
+	// Initialize analytics tracker
+	tracker := newAnalyticsTracker(cfg, log)
+
+	httpServer := httpserver.New(cfg, log, mediaService, authValidator, tracker)
 	app := NewApplication(httpServer, log)
 
 	if err := app.Start(ctx); err != nil {
@@ -117,4 +122,43 @@ func loadEnvFiles() {
 			}
 		}
 	}
+}
+
+// newAnalyticsTracker creates the analytics tracker from config.
+func newAnalyticsTracker(cfg *config.Config, log zerolog.Logger) analytics.Tracker {
+	analyticsCfg := analytics.Config{
+		Enabled:     cfg.AnalyticsEnabled,
+		Environment: cfg.AnalyticsEnvironment,
+		PIILevel:    cfg.AnalyticsPIILevel,
+		PostHog: analytics.PostHogConfig{
+			Enabled:       cfg.PostHogEnabled,
+			APIKey:        cfg.PostHogAPIKey,
+			Host:          cfg.PostHogHost,
+			Debug:         cfg.PostHogDebug,
+			BatchSize:     cfg.PostHogBatchSize,
+			FlushInterval: cfg.PostHogFlushInterval,
+		},
+		OTel: analytics.OTelConfig{
+			Enabled:  cfg.OTelAnalyticsEnabled,
+			Endpoint: cfg.OTLPEndpoint,
+		},
+	}
+
+	// Create sanitizer for PII protection
+	sanitizer := analytics.NewSanitizer(analytics.PIILevel(cfg.AnalyticsPIILevel), cfg.ServiceName)
+
+	tracker, err := analytics.NewTracker(analyticsCfg, sanitizer)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to create analytics tracker, using no-op")
+		return analytics.NewNoopTracker()
+	}
+
+	log.Info().
+		Bool("enabled", analyticsCfg.Enabled).
+		Bool("posthog", analyticsCfg.PostHog.Enabled).
+		Bool("otel", analyticsCfg.OTel.Enabled).
+		Str("environment", analyticsCfg.Environment).
+		Msg("Analytics tracker initialized")
+
+	return tracker
 }

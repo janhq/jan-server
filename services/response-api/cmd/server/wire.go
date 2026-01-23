@@ -10,9 +10,12 @@ import (
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 
+	"github.com/janhq/jan-server/packages/go-common/analytics"
+
 	"jan-server/services/response-api/internal/config"
 	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/agent/planners"
+	slide_creator "jan-server/services/response-api/internal/domain/agent/planners/slide_creator"
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/conversation"
 	"jan-server/services/response-api/internal/domain/llm"
@@ -20,6 +23,7 @@ import (
 	responseDomain "jan-server/services/response-api/internal/domain/response"
 	"jan-server/services/response-api/internal/domain/skill"
 	"jan-server/services/response-api/internal/domain/tool"
+	"jan-server/services/response-api/internal/infrastructure/apikey"
 	"jan-server/services/response-api/internal/infrastructure/auth"
 	"jan-server/services/response-api/internal/infrastructure/database"
 	"jan-server/services/response-api/internal/infrastructure/llmprovider"
@@ -60,6 +64,8 @@ var responseSet = wire.NewSet(
 	newAgentOrchestrator,
 	newWebhookService,
 	wire.Bind(new(webhook.Service), new(*webhook.HTTPService)),
+	newAPIKeyProvider,
+	wire.Bind(new(apikey.Provider), new(*apikey.Client)),
 	plan.NewService,
 	newAgentRegistry,
 	newResponseService,
@@ -74,6 +80,7 @@ func BuildApplication(ctx context.Context) (*Application, error) {
 		newDatabaseConfig,
 		newGormDB,
 		newAuthValidator,
+		newAnalyticsTracker,
 		responseSet,
 		httpserver.New,
 		NewApplication,
@@ -114,6 +121,10 @@ func newMCPClient(cfg *config.Config) *mcp.Client {
 	return mcp.NewClient(cfg.MCPToolsURL)
 }
 
+func newAPIKeyProvider(cfg *config.Config) *apikey.Client {
+	return apikey.NewClient(cfg.LLMAPIURL)
+}
+
 func newMediaClient(cfg *config.Config) *media.Client {
 	return media.NewClient(cfg.MediaAPIURL)
 }
@@ -123,7 +134,7 @@ func newSkillService() (*skillinfra.Service, error) {
 }
 
 func newOrchestrator(cfg *config.Config, provider llm.Provider, mcpClient tool.MCPClient) *tool.Orchestrator {
-	return tool.NewOrchestrator(provider, mcpClient, cfg.MaxToolDepth, cfg.ToolTimeout)
+	return tool.NewOrchestrator(provider, mcpClient, cfg.MaxToolDepth, cfg.ToolTimeout, cfg.LLMStreamMode)
 }
 
 func newAgentOrchestrator(registry agent.Registry, planService plan.Service) agent.Orchestrator {
@@ -144,9 +155,9 @@ func newAgentRegistry(planService plan.Service, mcpClient tool.MCPClient, llmPro
 		_ = err
 	}
 
-	// Register the slide generator planner
-	slideGeneratorPlanner := planners.NewSlideGeneratorPlanner(planService, artifactService)
-	if err := registry.RegisterPlanner(slideGeneratorPlanner); err != nil {
+	// Register the slide creator planner
+	slideCreatorPlanner := slide_creator.NewSlideCreatorPlanner(planService, artifactService)
+	if err := registry.RegisterPlanner(slideCreatorPlanner); err != nil {
 		_ = err
 	}
 
@@ -167,6 +178,7 @@ func newAgentRegistry(planService plan.Service, mcpClient tool.MCPClient, llmPro
 
 	// Create code fixer for LLM-based code fix retry
 	codeFixer := llm.NewCodeFixer(llmProvider, cfg.CodeFixModel)
+	codeFixer.SetDisableCustomTemperature(cfg.LLMDisableCustomTemperature)
 
 	// Register the deep research executor for tool calls and LLM calls
 	deepResearchExecutor := planners.NewDeepResearchExecutor(mcpClient, codeFixer)
@@ -188,11 +200,13 @@ func newAgentRegistry(planService plan.Service, mcpClient tool.MCPClient, llmPro
 			skill.SkillTypeSpreadsheets: cfg.SkillSpreadsheetsEnabled,
 		},
 	)
-	slideGeneratorExecutor := planners.NewSlideGeneratorExecutor(mcpClient, codeFixer, artifactService, mediaClient, skillExecutor, cfg)
-	routingExecutor := planners.NewRoutingExecutor(deepResearchExecutor, slideGeneratorExecutor)
+	slideCreatorExecutor := slide_creator.NewSlideCreatorExecutor(mcpClient, codeFixer, artifactService, mediaClient, cfg)
+	routingExecutor := planners.NewRoutingExecutor(deepResearchExecutor, slideCreatorExecutor)
+	artifactRoutingExecutor := planners.NewRoutingExecutor(slideCreatorExecutor, slideCreatorExecutor)
 	_ = registry.RegisterExecutor(plan.ActionTypeToolCall, routingExecutor)
 	_ = registry.RegisterExecutor(plan.ActionTypeLLMCall, routingExecutor)
-	_ = registry.RegisterExecutor(plan.ActionTypeArtifactCreate, slideGeneratorExecutor)
+	_ = registry.RegisterExecutor(plan.ActionTypeArtifactCreate, artifactRoutingExecutor)
+	_ = registry.RegisterExecutor(plan.ActionTypeTransform, slideCreatorExecutor)
 	_ = registry.RegisterExecutor(plan.ActionTypeSkillExecute, skillExecutor)
 
 	return registry
@@ -214,4 +228,43 @@ func newResponseService(
 	log zerolog.Logger,
 ) responseDomain.Service {
 	return responseDomain.NewService(repo, conversations, conversationItems, toolRepo, orchestrator, agentOrchestrator, mcpClient, mediaClient, modelInfoProvider, webhookService, agentRegistry, planService, log)
+}
+
+// newAnalyticsTracker creates the analytics tracker from config
+func newAnalyticsTracker(cfg *config.Config, log zerolog.Logger) analytics.Tracker {
+	analyticsCfg := analytics.Config{
+		Enabled:     cfg.AnalyticsEnabled,
+		Environment: cfg.AnalyticsEnvironment,
+		PIILevel:    cfg.AnalyticsPIILevel,
+		PostHog: analytics.PostHogConfig{
+			Enabled:       cfg.PostHogEnabled,
+			APIKey:        cfg.PostHogAPIKey,
+			Host:          cfg.PostHogHost,
+			Debug:         cfg.PostHogDebug,
+			BatchSize:     cfg.PostHogBatchSize,
+			FlushInterval: cfg.PostHogFlushInterval,
+		},
+		OTel: analytics.OTelConfig{
+			Enabled:  cfg.OTelAnalyticsEnabled,
+			Endpoint: cfg.OTLPEndpoint,
+		},
+	}
+
+	// Create sanitizer for PII protection
+	sanitizer := analytics.NewSanitizer(analytics.PIILevel(cfg.AnalyticsPIILevel), cfg.ServiceName)
+
+	tracker, err := analytics.NewTracker(analyticsCfg, sanitizer)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to create analytics tracker, using no-op")
+		return analytics.NewNoopTracker()
+	}
+
+	log.Info().
+		Bool("enabled", analyticsCfg.Enabled).
+		Bool("posthog", analyticsCfg.PostHog.Enabled).
+		Bool("otel", analyticsCfg.OTel.Enabled).
+		Str("environment", analyticsCfg.Environment).
+		Msg("Analytics tracker initialized")
+
+	return tracker
 }

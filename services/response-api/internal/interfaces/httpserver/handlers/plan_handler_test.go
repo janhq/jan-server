@@ -38,12 +38,14 @@ type MockPlanService struct {
 	FailTaskFunc      func(ctx context.Context, taskID, errorMsg string) error
 
 	// Step operations
-	CreateStepFunc   func(ctx context.Context, taskID string, params plan.CreateStepParams) (*plan.Step, error)
-	StartStepFunc    func(ctx context.Context, stepID string) error
-	CompleteStepFunc func(ctx context.Context, stepID string, output []byte) error
-	FailStepFunc     func(ctx context.Context, stepID, errorMsg string, severity status.ErrorSeverity, output []byte) error
-	RetryStepFunc    func(ctx context.Context, stepID string) (*plan.Step, error)
-	SkipStepFunc     func(ctx context.Context, stepID, reason string) error
+	CreateStepFunc             func(ctx context.Context, taskID string, params plan.CreateStepParams) (*plan.Step, error)
+	StartStepFunc              func(ctx context.Context, stepID string) error
+	CompleteStepFunc           func(ctx context.Context, stepID string, output []byte) error
+	FailStepFunc               func(ctx context.Context, stepID, errorMsg string, severity status.ErrorSeverity, output []byte) error
+	RetryStepFunc              func(ctx context.Context, stepID string) (*plan.Step, error)
+	SkipStepFunc               func(ctx context.Context, stepID, reason string) error
+	ResetTaskStepsForRetryFunc func(ctx context.Context, taskID string, maxSequence int) error
+	ResetTaskForRetryFunc      func(ctx context.Context, taskID string) error
 
 	// Detail operations
 	AddStepDetailFunc func(ctx context.Context, stepID string, detail *plan.StepDetail) error
@@ -186,6 +188,20 @@ func (m *MockPlanService) RetryStep(ctx context.Context, stepID string) (*plan.S
 func (m *MockPlanService) SkipStep(ctx context.Context, stepID, reason string) error {
 	if m.SkipStepFunc != nil {
 		return m.SkipStepFunc(ctx, stepID, reason)
+	}
+	return nil
+}
+
+func (m *MockPlanService) ResetTaskStepsForRetry(ctx context.Context, taskID string, maxSequence int) error {
+	if m.ResetTaskStepsForRetryFunc != nil {
+		return m.ResetTaskStepsForRetryFunc(ctx, taskID, maxSequence)
+	}
+	return nil
+}
+
+func (m *MockPlanService) ResetTaskForRetry(ctx context.Context, taskID string) error {
+	if m.ResetTaskForRetryFunc != nil {
+		return m.ResetTaskForRetryFunc(ctx, taskID)
 	}
 	return nil
 }
