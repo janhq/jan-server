@@ -80,7 +80,14 @@ func (e *SlideCreatorExecutor) executeSlidePlanSlide(ctx context.Context, params
 		"- bullets: 3-6 items, 25-75 chars each when used.",
 		"- table: 3-6 columns, 3-9 rows when used.",
 		"- chart: 3-6 categories, 1-3 series when used.",
-		"- If outline requests a table or chart, include it.",
+		"- Include at most one of table or chart (not both).",
+		"- layout MUST match the primary content block:",
+		"  - if chart is present -> layout = \"chart\"",
+		"  - if table is present -> layout = \"table\"",
+		"  - if image + bullets -> layout = \"split\"",
+		"  - if image only -> layout = \"hero\"",
+		"  - otherwise -> layout = \"bullets\"",
+		"- If outline requests a table or chart (or mentions dataset/graph or pipe-delimited rows), include it and set layout accordingly.",
 		"- If outline requests an image or visual, set image_required true and provide image_query.",
 		"- Do NOT include images unless the outline provides a URL.",
 		"- Bullets must be plain text (no markdown or quotes).",
@@ -192,6 +199,12 @@ HARD RULES:
 - table: 3-6 columns, 3-9 rows when used.
 - chart: 3-6 categories, 1-3 series when used.
 - Ensure the slide has bullets OR table OR chart.
+- layout must match the primary content block:
+  - chart -> layout "chart"
+  - table -> layout "table"
+  - image + bullets -> layout "split"
+  - image only -> layout "hero"
+  - otherwise -> layout "bullets"
 - Output JSON only, no commentary.
 
 BAD_JSON:

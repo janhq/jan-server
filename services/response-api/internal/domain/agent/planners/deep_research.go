@@ -110,6 +110,8 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	_, err = p.planService.CreateStep(ctx, researchTask.ID, plan.CreateStepParams{
 		Sequence:    1,
 		Action:      plan.ActionTypeToolCall,
+		Title:       "Search primary sources",
+		Description: strPtr("Search the web for the main research question"),
 		InputParams: searchParams1,
 		MaxRetries:  3,
 	})
@@ -127,6 +129,8 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	_, err = p.planService.CreateStep(ctx, researchTask.ID, plan.CreateStepParams{
 		Sequence:    2,
 		Action:      plan.ActionTypeToolCall,
+		Title:       "Search supporting sources",
+		Description: strPtr("Find additional context, explanations, and examples"),
 		InputParams: searchParams2,
 		MaxRetries:  3,
 	})
@@ -141,6 +145,8 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	_, err = p.planService.CreateStep(ctx, researchTask.ID, plan.CreateStepParams{
 		Sequence:    3,
 		Action:      plan.ActionTypeToolCall,
+		Title:       "Scrape top sources",
+		Description: strPtr("Extract content from the most relevant sources"),
 		InputParams: scrapeParams,
 		MaxRetries:  2,
 	})
@@ -168,6 +174,8 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	_, err = p.planService.CreateStep(ctx, synthesisTask.ID, plan.CreateStepParams{
 		Sequence:    1,
 		Action:      plan.ActionTypeLLMCall,
+		Title:       "Synthesize findings",
+		Description: strPtr("Cross-reference claims and identify key themes"),
 		InputParams: synthesisParams,
 		MaxRetries:  2,
 	})
@@ -200,6 +208,8 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		_, err = p.planService.CreateStep(ctx, codeTask.ID, plan.CreateStepParams{
 			Sequence:    1,
 			Action:      plan.ActionTypeLLMCall,
+			Title:       "Generate code",
+			Description: strPtr("Generate Python code based on research findings"),
 			InputParams: codeGenParams,
 			MaxRetries:  5, // Increased from 2 to handle LLM empty responses
 		})
@@ -216,6 +226,8 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		_, err = p.planService.CreateStep(ctx, codeTask.ID, plan.CreateStepParams{
 			Sequence:    2,
 			Action:      plan.ActionTypeToolCall,
+			Title:       "Run code",
+			Description: strPtr("Execute the generated Python code in the sandbox"),
 			InputParams: codeExecParams,
 			MaxRetries:  2,
 		})
@@ -246,6 +258,8 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	_, err = p.planService.CreateStep(ctx, reportTask.ID, plan.CreateStepParams{
 		Sequence:    1,
 		Action:      plan.ActionTypeLLMCall,
+		Title:       "Write report",
+		Description: strPtr("Generate comprehensive analysis with citations"),
 		InputParams: generateParams,
 		MaxRetries:  2,
 	})
@@ -265,6 +279,8 @@ func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	_, err = p.planService.CreateStep(ctx, reportTask.ID, plan.CreateStepParams{
 		Sequence:    2,
 		Action:      plan.ActionTypeArtifactCreate,
+		Title:       "Save report",
+		Description: strPtr("Store the report as a downloadable artifact"),
 		InputParams: artifactParams,
 		MaxRetries:  1,
 	})
@@ -1227,7 +1243,7 @@ func (e *DeepResearchExecutor) executeLLMCall(ctx context.Context, step *plan.St
 		prompt = fmt.Sprintf("Generate Python code based on the research findings. %s\n\nResearch context: %s\n\nRequirements: Create simple, runnable code using only standard library or commonly available packages. Include comments. The code should directly address the user's request using the data from the research.",
 			description, contextData)
 	case "generate_content":
-		prompt = fmt.Sprintf("Write a comprehensive analysis report. %s\n\nAll research data: %s\n\nFormat: Provide detailed analysis with citations and conclusions.",
+		prompt = fmt.Sprintf("Write a comprehensive analysis report in Markdown. %s\n\nAll research data: %s\n\nFormat: Use Markdown headings, bullet lists, and inline citations where relevant. Include conclusions.",
 			description, contextData)
 	default:
 		prompt = fmt.Sprintf("%s\n\nContext: %s", description, contextData)

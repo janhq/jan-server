@@ -176,7 +176,10 @@ const ArtifactPreview = ({ artifact }: { artifact: ArtifactItem }) => {
   if (artifact.contentType === "slides" || (artifact.slidesImages && artifact.slidesImages.length > 0)) {
     const slides = USE_HARD_CODED_SLIDES
       ? HARD_CODED_SLIDE_IMAGES
-      : (artifact.slidesImages?.length ? artifact.slidesImages : HARD_CODED_SLIDE_IMAGES);
+      : (artifact.slidesImages?.length ? artifact.slidesImages : []);
+    if (slides.length === 0) {
+      return null;
+    }
     const currentSlide = slides[0];
     return (
       <>

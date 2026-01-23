@@ -2,6 +2,7 @@ package infrastructure
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/wire"
 	"github.com/rs/zerolog/log"
@@ -53,13 +54,36 @@ func ProvideConfig() (*config.Config, error) {
 // ProvideSearchClient provides the search client
 func ProvideSearchClient(cfg *config.Config) search.SearchClient {
 	return searchclient.NewSearchClient(searchclient.ClientConfig{
-		Engine:        searchclient.Engine(cfg.SearchEngine),
-		SerperAPIKey:  cfg.SerperAPIKey,
-		SearxngURL:    cfg.SearxngURL,
-		DomainFilters: cfg.SerperDomainFilter,
-		LocationHint:  cfg.SerperLocationHint,
-		OfflineMode:   cfg.SerperOfflineMode,
-		CBEnabled:     cfg.SearchCBEnabled,
+		Engine:             searchclient.Engine(cfg.SearchEngine),
+		SerperAPIKey:       cfg.SerperAPIKey,
+		SerperEnabled:      cfg.SerperEnabled,
+		SearxngURL:         cfg.SearxngURL,
+		SearxngEnabled:     cfg.SearxngEnabled,
+		DomainFilters:      cfg.SerperDomainFilter,
+		LocationHint:       cfg.SerperLocationHint,
+		OfflineMode:        cfg.SerperOfflineMode,
+		ExaAPIKey:          cfg.ExaAPIKey,
+		ExaEnabled:         cfg.ExaEnabled,
+		ExaEndpoint:        cfg.ExaSearchEndpoint,
+		ExaTimeout:         cfg.ExaTimeout,
+		TavilyAPIKey:       cfg.TavilyAPIKey,
+		TavilyEnabled:      cfg.TavilyEnabled,
+		TavilyEndpoint:     cfg.TavilySearchEndpoint,
+		TavilyTimeout:      cfg.TavilyTimeout,
+		CBEnabled:          cfg.SearchCBEnabled,
+		CBFailureThreshold: cfg.SerperCBFailureThreshold,
+		CBSuccessThreshold: cfg.SerperCBSuccessThreshold,
+		CBTimeout:          time.Duration(cfg.SerperCBTimeout) * time.Second,
+		CBMaxHalfOpen:      cfg.SerperCBMaxHalfOpen,
+		HTTPTimeout:        time.Duration(cfg.SerperHTTPTimeout) * time.Second,
+		ScrapeTimeout:      time.Duration(cfg.SerperScrapeTimeout) * time.Second,
+		MaxConnsPerHost:    cfg.SerperMaxConnsPerHost,
+		MaxIdleConns:       cfg.SerperMaxIdleConns,
+		IdleConnTimeout:    time.Duration(cfg.SerperIdleConnTimeout) * time.Second,
+		RetryMaxAttempts:   cfg.SerperRetryMaxAttempts,
+		RetryInitialDelay:  time.Duration(cfg.SerperRetryInitialDelay) * time.Millisecond,
+		RetryMaxDelay:      time.Duration(cfg.SerperRetryMaxDelay) * time.Millisecond,
+		RetryBackoffFactor: cfg.SerperRetryBackoffFactor,
 	})
 }
 
