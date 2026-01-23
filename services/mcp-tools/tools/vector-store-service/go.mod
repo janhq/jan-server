@@ -2,6 +2,8 @@ module jan-server/services/mcp-tools/tools/vector-store-service
 
 go 1.24
 
+toolchain go1.25.6
+
 require github.com/gin-gonic/gin v1.11.0
 
 require (
