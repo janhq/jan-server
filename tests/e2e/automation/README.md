@@ -13,6 +13,7 @@ Domain-scoped Postman collections for `jan-cli api-test`. Collections rely on `-
 - `collections/mcp-admin.postman.json` – public/admin MCP tooling.
 - `collections/user-management.postman.json` – user management scenarios.
 - `collections/model-prompt-templates.postman.json` – prompt template scenarios.
+- `collections/messages.postman.json` – Anthropic Messages API compatibility (Claude Code API).
 
 ## Running
 
