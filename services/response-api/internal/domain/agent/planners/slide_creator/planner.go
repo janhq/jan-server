@@ -42,7 +42,7 @@ type SlideCreatorConfig struct {
 // DefaultSlideCreatorConfig returns sensible defaults.
 func DefaultSlideCreatorConfig() SlideCreatorConfig {
 	return SlideCreatorConfig{
-		NumSlides:     10,
+		NumSlides:     5,
 		Theme:         "modern",
 		Format:        "pptx",
 		ResearchDepth: "standard",
@@ -348,10 +348,10 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 			"slide_index": i,
 			"max_retries": 3,
 			"config": map[string]interface{}{
-				"num_slides":    config.NumSlides,
-				"theme":         config.Theme,
-				"color_scheme":  config.ColorScheme,
-				"style":         config.Style,
+				"num_slides":   config.NumSlides,
+				"theme":        config.Theme,
+				"color_scheme": config.ColorScheme,
+				"style":        config.Style,
 			},
 		})
 		_, err = p.planService.CreateStep(ctx, htmlTask.ID, plan.CreateStepParams{
@@ -374,10 +374,10 @@ func (p *SlideCreatorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 			perSlideNum = 4
 		}
 		imageParams, _ := json.Marshal(map[string]interface{}{
-			"action":      "image_search_slide",
-			"description": stepDescription,
-			"slide_index": i,
-			"num":         perSlideNum,
+			"action":       "image_search_slide",
+			"description":  stepDescription,
+			"slide_index":  i,
+			"num":          perSlideNum,
 			"color_scheme": config.ColorScheme,
 			"style":        config.Style,
 		})

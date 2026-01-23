@@ -54,7 +54,8 @@ type AgentMetadataCache struct {
 
 // RunAgentArgs defines the input schema for the run_agent tool.
 type RunAgentArgs struct {
-	AgentType      string                 `json:"agent_type"`
+	AgentType      string                 `json:"agent_type,omitempty"`
+	Type           string                 `json:"type,omitempty"`
 	Prompt         string                 `json:"prompt"`
 	Model          string                 `json:"model,omitempty"`
 	Options        map[string]interface{} `json:"options,omitempty"`
@@ -122,6 +123,25 @@ func (a *AgentProxyMCP) RegisterTools(server *mcpsdk.Server) {
 func (a *AgentProxyMCP) handleRunAgent(ctx context.Context, req *mcpsdk.CallToolRequest, input RunAgentArgs) (*mcpsdk.CallToolResult, map[string]any, error) {
 	startTime := time.Now()
 	callCtx := extractAllContext(req)
+
+	if input.AgentType == "" {
+		input.AgentType = input.Type
+	}
+
+	if input.AgentType == "slide_creator" {
+		if input.Options == nil {
+			input.Options = map[string]interface{}{}
+		}
+		if _, ok := input.Options["num_slides"]; !ok {
+			input.Options["num_slides"] = 5
+		}
+		if _, ok := input.Options["user_input"]; !ok {
+			input.Options["user_input"] = input.Prompt
+		}
+		if _, ok := input.Options["topic"]; !ok {
+			input.Options["topic"] = input.Prompt
+		}
+	}
 
 	log.Info().
 		Str("tool", "run_agent").
@@ -422,10 +442,18 @@ func (a *AgentProxyMCP) buildRunAgentDescription(agents []AgentMetadataCache) st
 	sb.WriteString("Run a specialized agent to perform complex multi-step tasks. ")
 	sb.WriteString("Each agent creates a plan with visible nested tool calls and produces artifacts.\n\n")
 	sb.WriteString("Parameters:\n")
-	sb.WriteString("- agent_type (required): The type of agent to run\n")
+	sb.WriteString("- type (required): The type of agent to run (alias: agent_type)\n")
 	sb.WriteString("- prompt (required): The task description for the agent\n")
 	sb.WriteString("- model (optional): The model to use. If not provided, uses the first available model\n")
 	sb.WriteString("- options (optional): Agent-specific options (e.g., research_depth, num_slides, format)\n")
+	sb.WriteString("\nIf type is slide_creator, require and provide in options:\n")
+	sb.WriteString("- topic: summarized topic for the deck\n")
+	sb.WriteString("- tone: template tone (must be one of the predefined tones)\n")
+	sb.WriteString("- num_slides: target number of slides (default: 5)\n")
+	sb.WriteString("- user_input: original user prompt (must match user request)\n")
+	sb.WriteString("Available slide_creator tones:\n- ")
+	sb.WriteString(strings.Join(slideCreatorTones, "\n- "))
+	sb.WriteString("\n")
 	sb.WriteString("Available agents:\n")
 
 	for _, agent := range agents {
@@ -435,6 +463,38 @@ func (a *AgentProxyMCP) buildRunAgentDescription(agents []AgentMetadataCache) st
 	}
 
 	return sb.String()
+}
+
+var slideCreatorTones = []string{
+	"Corporate Consulting",
+	"Creative Studio",
+	"Data Analyst",
+	"Editorial Serif",
+	"Education Friendly",
+	"Finance Professional",
+	"Government/Public Sector",
+	"Gradient Modern",
+	"Healthcare Calm",
+	"Luxury Elegant",
+	"Marketing Vibrant",
+	"Minimal Clean",
+	"Monochrome",
+	"Neon Cyberpunk",
+	"Playful Pastel",
+	"Retro",
+	"Sports/Energy",
+	"Startup Bold",
+	"Sustainability Earthy",
+	"Tech Dark",
+}
+
+func isSlideCreatorTone(tone string) bool {
+	for _, candidate := range slideCreatorTones {
+		if tone == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func isAgentDisabled(agentType string) bool {

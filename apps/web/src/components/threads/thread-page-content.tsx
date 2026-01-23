@@ -227,6 +227,59 @@ export function ThreadPageContent({
     return lastAssistantMessageIsCompleteWithToolCalls({ messages });
   };
 
+  const getLatestUserPrompt = useCallback((): string => {
+    const currentMessages = getCurrentMessages();
+    for (let i = currentMessages.length - 1; i >= 0; i--) {
+      const message = currentMessages[i];
+      if (message.role !== MESSAGE_ROLE.USER) {
+        continue;
+      }
+
+      const textParts =
+        message.parts?.filter(
+          (part) =>
+            part.type === CONTENT_TYPE.TEXT &&
+            "text" in part &&
+            typeof part.text === "string",
+        ) ?? [];
+      const combined = textParts.map((part) => part.text).join("").trim();
+      if (combined) {
+        return combined;
+      }
+    }
+
+    return "";
+  }, [getCurrentMessages]);
+
+  const normalizeRunAgentArguments = useCallback(
+    (toolArguments: Record<string, unknown>) => {
+      const originalPrompt = getLatestUserPrompt();
+      const agentType =
+        (toolArguments.type as string | undefined) ??
+        (toolArguments.agent_type as string | undefined) ??
+        "";
+      const prompt = (toolArguments.prompt as string | undefined) ?? "";
+
+      const normalized: Record<string, unknown> = {
+        ...toolArguments,
+        type: agentType || toolArguments.type,
+        prompt: prompt || originalPrompt,
+      };
+
+      if (agentType === "slide_creator") {
+        const options =
+          (normalized.options as Record<string, unknown> | undefined) ?? {};
+        if (!("user_input" in options)) {
+          options.user_input = prompt || originalPrompt;
+        }
+        normalized.options = options;
+      }
+
+      return normalized;
+    },
+    [getLatestUserPrompt],
+  );
+
   const {
     messages,
     status,
@@ -271,6 +324,7 @@ export function ThreadPageContent({
           let toolArguments = toolCall.input as Record<string, unknown>;
           if (toolCall.toolName === "run_agent") {
             ranAgent = true; // Mark that we ran an agent - always set regardless of model injection
+            toolArguments = normalizeRunAgentArguments(toolArguments);
             if (!toolArguments.model && selectedModel?.id) {
               toolArguments = {
                 ...toolArguments,

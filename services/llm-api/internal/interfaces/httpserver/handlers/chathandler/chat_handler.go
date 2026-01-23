@@ -1683,7 +1683,9 @@ func (h *ChatHandler) trackMessageSent(reqCtx *gin.Context, request chatrequests
 	}
 
 	mode := "normal"
-	if request.DeepResearch != nil && *request.DeepResearch {
+	if request.Agent != nil && *request.Agent {
+		mode = "agent"
+	} else if request.DeepResearch != nil && *request.DeepResearch {
 		mode = "deep_research"
 	} else if request.Image != nil && *request.Image {
 		mode = "image"
