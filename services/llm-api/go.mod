@@ -1,6 +1,8 @@
 module jan-server/services/llm-api
 
-go 1.25.0
+go 1.24.0
+
+toolchain go1.24.7
 
 require (
 	github.com/MicahParks/keyfunc/v2 v2.1.0

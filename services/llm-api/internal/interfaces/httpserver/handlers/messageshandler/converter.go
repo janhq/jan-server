@@ -424,7 +424,10 @@ func ConvertOpenAIStreamChunkToAnthropic(
 
 		// Handle tool calls
 		for _, toolCall := range choice.Delta.ToolCalls {
-			toolIndex := toolCall.Index
+			var toolIndex int
+			if toolCall.Index != nil {
+				toolIndex = *toolCall.Index
+			}
 			if toolIndex < 0 {
 				toolIndex = 0
 			}

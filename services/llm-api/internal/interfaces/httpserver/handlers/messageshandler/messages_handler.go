@@ -346,12 +346,14 @@ func (h *MessagesHandler) storeToConversation(
 
 	if userContent != "" {
 		askItemID, _ := idgen.GenerateSecureID("msg", 16)
-		askItem := &conversation.Item{
+		userRole := conversation.ItemRoleUser
+		completedStatus := conversation.ItemStatusCompleted
+		askItem := conversation.Item{
 			PublicID: askItemID,
 			Type:     conversation.ItemTypeMessage,
-			Role:     conversation.ItemRoleUser,
-			Content:  &userContent,
-			Status:   conversation.ItemStatusCompleted,
+			Role:     &userRole,
+			Content:  []conversation.Content{conversation.NewTextContent(userContent)},
+			Status:   &completedStatus,
 		}
 		conv.Items = append(conv.Items, askItem)
 	}
@@ -360,12 +362,14 @@ func (h *MessagesHandler) storeToConversation(
 	if len(resp.Choices) > 0 && resp.Choices[0].Message.Content != "" {
 		completionItemID, _ := idgen.GenerateSecureID("msg", 16)
 		content := resp.Choices[0].Message.Content
-		completionItem := &conversation.Item{
+		assistantRole := conversation.ItemRoleAssistant
+		completedStatus := conversation.ItemStatusCompleted
+		completionItem := conversation.Item{
 			PublicID: completionItemID,
 			Type:     conversation.ItemTypeMessage,
-			Role:     conversation.ItemRoleAssistant,
-			Content:  &content,
-			Status:   conversation.ItemStatusCompleted,
+			Role:     &assistantRole,
+			Content:  []conversation.Content{conversation.NewTextContent(content)},
+			Status:   &completedStatus,
 		}
 		conv.Items = append(conv.Items, completionItem)
 	}
