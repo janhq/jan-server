@@ -108,7 +108,41 @@ func (e *SlideCreatorExecutor) executeOutlineReasoning(ctx context.Context, para
 		singleSlideNote = "\n\nFor single-slide requests, avoid listing full URLs; summarize sources by publisher name only."
 	}
 	prompt := fmt.Sprintf(
-		"Analyze and plan the slide structure. %s\n\nBrief:\n%s\n\nResearch findings:\n%s%s\n\nExtract concrete data for any requested tables (column headers + row entries) and include them in the outline.\nProvide a clear, concise outline for the presentation.\nReturn plain text only.",
+		`You are creating a detailed presentation outline. %s
+
+USER REQUEST:
+%s
+
+RESEARCH DATA:
+%s%s
+
+OUTLINE REQUIREMENTS (CRITICAL - must follow):
+1. RICH DATA: Every slide MUST include specific statistics, numbers, percentages, or metrics. NO vague statements.
+   - BAD: "Sales increased significantly"
+   - GOOD: "Sales grew 47%% from $2.3M to $3.4M in Q3 2024"
+
+2. DETAILED BULLETS: Each bullet point should be 2-3 sentences with supporting evidence.
+   - BAD: "Lions hunt at night"
+   - GOOD: "Lions hunt primarily between 8PM-6AM (78%% of kills), using darkness to offset their 30%% slower sprint speed vs prey. Studies show success rates drop to 17%% in daylight vs 32%% at night."
+
+3. DATA VISUALIZATIONS: Include at least 2-3 slides with:
+   - Charts: Specify type (bar/line/pie), exact categories and values
+     Format: "CHART: [type] - [title] - Categories: [X, Y, Z] - Values: [10, 20, 30]"
+   - Tables: Include full data with headers and rows
+     Format: "TABLE: [title] | Col1 | Col2 | Col3 | Row1: val1, val2, val3 | Row2: ..."
+
+4. IMAGE SUGGESTIONS: For each slide that needs visuals, suggest:
+   - "IMAGE: [description of ideal image, specific subject, composition]"
+
+5. KEY METRICS: Include a "KEY STATS" section on appropriate slides:
+   - Format: "STATS: [Metric1: Value1] | [Metric2: Value2] | [Metric3: Value3]"
+
+6. STRUCTURE: For each slide include:
+   - Clear title (action-oriented, not generic)
+   - 4-6 detailed bullet points with data
+   - Visual element suggestion (chart/table/image/stats)
+
+OUTPUT: Plain text outline with slide headers and detailed content. Be comprehensive and data-rich.`,
 		description,
 		brief,
 		contextData,

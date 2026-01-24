@@ -52,17 +52,24 @@ type ChartData struct {
 	Overlay    *bool         `json:"overlay,omitempty"`
 }
 
+// SlideStatItem represents a key metric/stat for a slide.
+type SlideStatItem struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
 // SlidePlan defines a single slide in the plan.
 type SlidePlan struct {
-	ID       int          `json:"id"`
-	Layout   string       `json:"layout,omitempty"`
-	Title    string       `json:"title"`
-	Subtitle string       `json:"subtitle,omitempty"`
-	Bullets  []string     `json:"bullets,omitempty"`
-	Images   []SlideImage `json:"images,omitempty"`
-	Table    *TableData   `json:"table,omitempty"`
-	Chart    *ChartData   `json:"chart,omitempty"`
-	Notes    string       `json:"notes,omitempty"`
+	ID       int             `json:"id"`
+	Layout   string          `json:"layout,omitempty"`
+	Title    string          `json:"title"`
+	Subtitle string          `json:"subtitle,omitempty"`
+	Bullets  []string        `json:"bullets,omitempty"`
+	Images   []SlideImage    `json:"images,omitempty"`
+	Table    *TableData      `json:"table,omitempty"`
+	Chart    *ChartData      `json:"chart,omitempty"`
+	Stats    []SlideStatItem `json:"stats,omitempty"`
+	Notes    string          `json:"notes,omitempty"`
 }
 
 // DeckPlan defines the full deck plan.

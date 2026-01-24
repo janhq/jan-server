@@ -64,7 +64,7 @@ func (e *SlideCreatorExecutor) executeSlidePlan(ctx context.Context, params map[
 		briefParts = append(briefParts, "Image assets:\n"+string(assetsJSON))
 	}
 
-	planPrompt := fmt.Sprintf(`You are a slide planning assistant.
+	planPrompt := fmt.Sprintf(`You are a slide planning assistant creating DATA-RICH, visually engaging presentations.
 
 Return ONLY JSON with this shape:
 {
@@ -82,7 +82,8 @@ Return ONLY JSON with this shape:
       "layout": "split|bullets|hero|title|table|chart",
       "title": "...",
       "subtitle": "...",
-      "bullets": ["..."],
+      "bullets": ["Detailed point with specific data and context..."],
+      "stats": [{"value": "47%%", "label": "Growth Rate"}, {"value": "$2.3M", "label": "Revenue"}],
       "images": [{"src":"https://...","alt":"...","caption":"..."}],
       "table": {"title": "...", "columns": ["..."], "rows": [["..."]], "notes": "optional"},
       "chart": {"type": "bar", "title": "...", "categories": ["..."], "series": [{"name": "...", "values": [1,2]}], "notes": "optional"},
@@ -93,17 +94,23 @@ Return ONLY JSON with this shape:
 
 HARD RULES (must follow):
 - Use exactly %d slides.
+- RICH CONTENT (critical):
+  - Bullets MUST be detailed sentences with specific data (50-150 chars each).
+  - BAD: "Lions hunt at night" (too simple)
+  - GOOD: "Lions conduct 78%% of hunts between 8PM-6AM, achieving 32%% success rate vs 17%% in daylight"
+  - Include stats array with 2-4 key metrics per slide when data is available.
+  - stats format: [{"value": "47%%", "label": "Metric Name"}]
 - Fit-safety (prevent overlap):
-  - title: 6-60 characters (aim 1 line, max 2 lines).
-  - subtitle: 0-110 characters (max 2 lines).
-  - bullets: 3-6 items, each 25-75 characters, no wrapping paragraphs.
-  - table: 3-6 columns, 3-9 rows, keep cells <= 24 chars.
-  - chart: 3-6 categories, 1-3 series, use bar|line|pie.
-  - Avoid colons + long clauses; prefer short phrases.
+  - title: 6-70 characters (aim 1 line, max 2 lines).
+  - subtitle: 0-120 characters (max 2 lines).
+  - bullets: 4-6 items, each 50-150 characters with specific data.
+  - table: 3-6 columns, 3-9 rows, keep cells <= 30 chars.
+  - chart: 3-8 categories, 1-3 series, use bar|line|pie.
 - Every slide must include at least one content block: bullets OR table OR chart.
-- If a table or chart is not possible, include bullets instead (3-6 items).
+- Include stats array whenever numeric data is available.
+- If a table or chart is not possible, include detailed bullets (4-6 items).
 - Avoid title-only slides; do NOT use layout "title".
-- If a draft outline is provided, preserve its slide order and intent.
+- If a draft outline is provided, preserve its slide order, intent, AND data.
 - Theme safety (prevent low contrast):
   - Choose a background that is either VERY dark or VERY light (avoid mid-tone grays/blues).
     - Good dark examples: #0B1220, #0F172A, #111827
