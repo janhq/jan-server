@@ -1,11 +1,9 @@
-// Package planners contains agent planner implementations.
-package planners
+package deepresearch
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"jan-server/services/response-api/internal/domain/agent"
@@ -16,380 +14,22 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// DeepResearchPlanner creates execution plans for deep research tasks.
-type DeepResearchPlanner struct {
-	planService plan.Service
-}
-
-// NewDeepResearchPlanner creates a new deep research planner.
-func NewDeepResearchPlanner(planService plan.Service) *DeepResearchPlanner {
-	return &DeepResearchPlanner{
-		planService: planService,
-	}
-}
-
-// Name returns the planner's unique identifier.
-func (p *DeepResearchPlanner) Name() string {
-	return string(plan.AgentTypeDeepResearch)
-}
-
-// CanHandle determines if this planner can handle the given request.
-func (p *DeepResearchPlanner) CanHandle(ctx context.Context, request *agent.PlanRequest) bool {
-	if request.Metadata == nil {
-		return false
-	}
-	agentType, ok := request.Metadata["agent_type"]
-	if !ok {
-		return false
-	}
-	agentTypeStr, ok := agentType.(string)
-	if !ok {
-		return false
-	}
-	return agentTypeStr == string(plan.AgentTypeDeepResearch)
-}
-
-// CreatePlan analyzes the request and creates an execution plan.
-func (p *DeepResearchPlanner) CreatePlan(ctx context.Context, request *agent.PlanRequest) (*agent.PlanResult, error) {
-	log.Debug().Interface("request", request).Msg("[deep_research] CreatePlan started")
-	// Check if the request involves code execution
-	requiresCodeExecution := p.detectCodeExecutionNeed(request)
-	log.Debug().Bool("requires_code_execution", requiresCodeExecution).Msg("[deep_research] detected code execution need")
-
-	// Determine estimated steps based on whether code execution is needed
-	estimatedSteps := 9
-	if requiresCodeExecution {
-		estimatedSteps = 11 // Add 2 more steps for code execution
-	}
-	log.Debug().Int("estimated_steps", estimatedSteps).Msg("[deep_research] calculated estimated steps")
-
-	// Create the plan
-	createdPlan, err := p.planService.Create(ctx, plan.CreateParams{
-		ResponseID:     request.ResponseID,
-		Model:          request.Model,
-		AgentType:      plan.AgentTypeDeepResearch,
-		EstimatedSteps: estimatedSteps,
-		Config: &plan.PlanConfig{
-			MaxRetries:        3,
-			TimeoutPerStep:    300000000000, // 5 minutes in nanoseconds
-			EnableFallback:    true,
-			UserApproval:      false,
-			StreamProgress:    true,
-			ArtifactRetention: "session",
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	log.Debug().Msg("[deep_research] creating research task")
-	// Create Task 1: Research
-	researchTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
-		Sequence:    1,
-		TaskType:    plan.TaskTypeResearch,
-		Title:       "Research",
-		Description: strPtr("Search and gather information from multiple sources"),
-	})
-	if err != nil {
-		return nil, err
-	}
-	log.Debug().Str("task_id", researchTask.ID).Msg("[deep_research] research task created")
-
-	// Create research steps with actual user query
-	// Extract the user's question/query from the request
-	userQuery := request.UserMessage
-	if userQuery == "" {
-		userQuery = "research query" // Fallback
-	}
-
-	searchParams1, _ := json.Marshal(map[string]interface{}{
-		"tool":        "google_search",
-		"q":           userQuery,
-		"description": "Primary search query for main question",
-	})
-	_, err = p.planService.CreateStep(ctx, researchTask.ID, plan.CreateStepParams{
-		Sequence:    1,
-		Action:      plan.ActionTypeToolCall,
-		Title:       "Search primary sources",
-		Description: strPtr("Search the web for the main research question"),
-		InputParams: searchParams1,
-		MaxRetries:  3,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// For the second search, use a variant/expansion of the original query
-	secondQuery := userQuery + " detailed explanation examples"
-	searchParams2, _ := json.Marshal(map[string]interface{}{
-		"tool":        "google_search",
-		"q":           secondQuery,
-		"description": "Secondary search query for additional context",
-	})
-	_, err = p.planService.CreateStep(ctx, researchTask.ID, plan.CreateStepParams{
-		Sequence:    2,
-		Action:      plan.ActionTypeToolCall,
-		Title:       "Search supporting sources",
-		Description: strPtr("Find additional context, explanations, and examples"),
-		InputParams: searchParams2,
-		MaxRetries:  3,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	scrapeParams, _ := json.Marshal(map[string]interface{}{
-		"tool":        "scrape",
-		"description": "Extract content from top search results",
-	})
-	_, err = p.planService.CreateStep(ctx, researchTask.ID, plan.CreateStepParams{
-		Sequence:    3,
-		Action:      plan.ActionTypeToolCall,
-		Title:       "Scrape top sources",
-		Description: strPtr("Extract content from the most relevant sources"),
-		InputParams: scrapeParams,
-		MaxRetries:  2,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	log.Debug().Msg("[deep_research] creating synthesis task")
-	// Create Task 2: Synthesis
-	synthesisTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
-		Sequence:    2,
-		TaskType:    plan.TaskTypeValidation,
-		Title:       "Synthesis",
-		Description: strPtr("Cross-reference and synthesize findings"),
-	})
-	if err != nil {
-		return nil, err
-	}
-	log.Debug().Str("task_id", synthesisTask.ID).Msg("[deep_research] synthesis task created")
-
-	synthesisParams, _ := json.Marshal(map[string]interface{}{
-		"action":      "reasoning",
-		"description": "Cross-reference claims and identify key themes",
-	})
-	_, err = p.planService.CreateStep(ctx, synthesisTask.ID, plan.CreateStepParams{
-		Sequence:    1,
-		Action:      plan.ActionTypeLLMCall,
-		Title:       "Synthesize findings",
-		Description: strPtr("Cross-reference claims and identify key themes"),
-		InputParams: synthesisParams,
-		MaxRetries:  2,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Track task sequence for dynamic task ordering
-	taskSequence := 3
-
-	// Create Task 3: Code Execution (conditional - only if code is requested)
-	if requiresCodeExecution {
-		log.Debug().Msg("[deep_research] creating code execution task")
-		codeTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
-			Sequence:    taskSequence,
-			TaskType:    plan.TaskTypeExecution,
-			Title:       "Code Execution",
-			Description: strPtr("Generate and execute code to demonstrate concepts"),
-		})
-		if err != nil {
-			return nil, err
-		}
-		log.Debug().Str("task_id", codeTask.ID).Msg("[deep_research] code execution task created")
-
-		// Step 1: Generate code based on research findings
-		codeGenParams, _ := json.Marshal(map[string]interface{}{
-			"action":      "generate_code",
-			"description": "Generate Python code based on research findings",
-		})
-		_, err = p.planService.CreateStep(ctx, codeTask.ID, plan.CreateStepParams{
-			Sequence:    1,
-			Action:      plan.ActionTypeLLMCall,
-			Title:       "Generate code",
-			Description: strPtr("Generate Python code based on research findings"),
-			InputParams: codeGenParams,
-			MaxRetries:  5, // Increased from 2 to handle LLM empty responses
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		// Step 2: Execute the generated code using aio_code_execute
-		codeExecParams, _ := json.Marshal(map[string]interface{}{
-			"tool":        "aio_code_execute",
-			"language":    "python",
-			"description": "Execute the generated Python code in sandbox",
-		})
-		_, err = p.planService.CreateStep(ctx, codeTask.ID, plan.CreateStepParams{
-			Sequence:    2,
-			Action:      plan.ActionTypeToolCall,
-			Title:       "Run code",
-			Description: strPtr("Execute the generated Python code in the sandbox"),
-			InputParams: codeExecParams,
-			MaxRetries:  2,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		taskSequence++
-	}
-
-	log.Debug().Int("task_sequence", taskSequence).Msg("[deep_research] creating report generation task")
-	// Create Task 4 (or 3): Report Generation
-	reportTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
-		Sequence:    taskSequence,
-		TaskType:    plan.TaskTypeGeneration,
-		Title:       "Report",
-		Description: strPtr("Generate comprehensive analysis with citations"),
-	})
-	if err != nil {
-		return nil, err
-	}
-	log.Debug().Str("task_id", reportTask.ID).Msg("[deep_research] report task created")
-
-	generateParams, _ := json.Marshal(map[string]interface{}{
-		"action":      "generate_content",
-		"description": "Write comprehensive analysis",
-	})
-	_, err = p.planService.CreateStep(ctx, reportTask.ID, plan.CreateStepParams{
-		Sequence:    1,
-		Action:      plan.ActionTypeLLMCall,
-		Title:       "Write report",
-		Description: strPtr("Generate comprehensive analysis with citations"),
-		InputParams: generateParams,
-		MaxRetries:  2,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	artifactParams, _ := json.Marshal(map[string]interface{}{
-		"action":        "store_artifact",
-		"description":   "Store report as an artifact",
-		"artifact_type": "report",
-		"config": map[string]interface{}{
-			"format":           "markdown",
-			"retention_policy": "session",
-		},
-	})
-	_, err = p.planService.CreateStep(ctx, reportTask.ID, plan.CreateStepParams{
-		Sequence:    2,
-		Action:      plan.ActionTypeArtifactCreate,
-		Title:       "Save report",
-		Description: strPtr("Store the report as a downloadable artifact"),
-		InputParams: artifactParams,
-		MaxRetries:  1,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Reload plan with tasks
-	planWithDetails, err := p.planService.GetPlanWithDetails(ctx, createdPlan.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Build result
-	result := &agent.PlanResult{
-		Plan:             planWithDetails,
-		Tasks:            make([]*plan.Task, len(planWithDetails.Tasks)),
-		RequiresApproval: false,
-	}
-
-	for i := range planWithDetails.Tasks {
-		result.Tasks[i] = &planWithDetails.Tasks[i]
-	}
-
-	log.Info().
-		Str("plan_id", createdPlan.ID).
-		Str("response_id", request.ResponseID).
-		Int("num_tasks", len(result.Tasks)).
-		Bool("requires_code_execution", requiresCodeExecution).
-		Int("estimated_steps", estimatedSteps).
-		Msg("[deep_research] created deep research plan")
-
-	return result, nil
-}
-
-// strPtr returns a pointer to the given string.
-func strPtr(s string) *string {
-	return &s
-}
-
-// detectCodeExecutionNeed checks if the request involves code generation/execution
-func (p *DeepResearchPlanner) detectCodeExecutionNeed(request *agent.PlanRequest) bool {
-	// Check metadata for explicit code execution flag
-	if request.Metadata != nil {
-		if codeExec, ok := request.Metadata["require_code_execution"].(bool); ok && codeExec {
-			return true
-		}
-	}
-
-	// Check the input for code-related keywords
-	input := strings.ToLower(request.UserMessage)
-	codeKeywords := []string{
-		"python", "script", "code", "program", "execute", "run",
-		"aio_code_execute", "aio_shell_exec", "implementation",
-		"demonstrate", "example code", "working example",
-		"analysis script", "data analysis", "visualization",
-	}
-
-	for _, keyword := range codeKeywords {
-		if strings.Contains(input, keyword) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// Verify interface compliance at compile time
-var _ agent.Planner = (*DeepResearchPlanner)(nil)
-
-// DeepResearchExecutor executes steps for deep research plans.
-type DeepResearchExecutor struct {
+// Executor executes steps for deep research plans.
+type Executor struct {
 	mcpClient   MCPClient
 	llmProvider LLMProvider
 }
 
-// MCPClient interface for tool execution - matches tool.MCPClient
-type MCPClient interface {
-	CallTool(ctx context.Context, req tool.CallRequest) (*tool.Result, error)
-}
-
-// LLMProvider interface for LLM calls to fix code and generate content.
-type LLMProvider interface {
-	FixCode(ctx context.Context, code string, errorMsg string, language string) (string, error)
-	Generate(ctx context.Context, prompt string) (string, error)
-	GenerateWithModel(ctx context.Context, prompt string, model string) (string, error)
-	GenerateWithModelWithMaxTokens(ctx context.Context, prompt string, model string, maxTokens *int) (string, error)
-	GenerateWithSystemPrompt(ctx context.Context, systemPrompt string, userPrompt string, model string) (string, error)
-	GenerateWithSystemPromptWithMaxTokens(ctx context.Context, systemPrompt string, userPrompt string, model string, maxTokens *int) (string, error)
-	GenerateWithStructuredOutput(ctx context.Context, systemPrompt string, userPrompt string, model string, schema map[string]any) (string, error)
-	GenerateWithStructuredOutputWithMaxTokens(ctx context.Context, systemPrompt string, userPrompt string, model string, schema map[string]any, maxTokens *int) (string, error)
-}
-
-// MaxInstallRetries is the maximum number of package install retry attempts.
-const MaxInstallRetries = 3
-
-// MaxCodeFixRetries is the maximum number of LLM code fix retry attempts.
-const MaxCodeFixRetries = 5
-
-// NewDeepResearchExecutor creates a new deep research executor.
-func NewDeepResearchExecutor(mcpClient MCPClient, llmProvider LLMProvider) *DeepResearchExecutor {
-	return &DeepResearchExecutor{
+// NewExecutor creates a new deep research executor.
+func NewExecutor(mcpClient MCPClient, llmProvider LLMProvider) *Executor {
+	return &Executor{
 		mcpClient:   mcpClient,
 		llmProvider: llmProvider,
 	}
 }
 
 // Execute runs a single step and returns the result.
-func (e *DeepResearchExecutor) Execute(ctx context.Context, step *plan.Step, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
+func (e *Executor) Execute(ctx context.Context, step *plan.Step, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
 	switch step.Action {
 	case plan.ActionTypeToolCall:
 		return e.executeToolCall(ctx, step, input)
@@ -403,22 +43,12 @@ func (e *DeepResearchExecutor) Execute(ctx context.Context, step *plan.Step, inp
 	}
 }
 
-func (e *DeepResearchExecutor) executeToolCall(ctx context.Context, step *plan.Step, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
+func (e *Executor) executeToolCall(ctx context.Context, step *plan.Step, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
 	return e.executeToolCallWithRetry(ctx, step, input, 0, nil, nil, 0)
 }
 
-// codeExecutionState tracks the state of code execution retries.
-type codeExecutionState struct {
-	originalCode      string
-	currentCode       string
-	installedPackages []string
-	installRetryCount int
-	codeFixRetryCount int
-	executionErrors   []string
-}
-
 // executeToolCallWithRetry executes a tool call with automatic package installation and LLM code fix retry.
-func (e *DeepResearchExecutor) executeToolCallWithRetry(ctx context.Context, step *plan.Step, input agent.ExecutionInput, installRetryCount int, installedPackages []string, currentCode *string, codeFixRetryCount int) (*agent.ExecutionResult, error) {
+func (e *Executor) executeToolCallWithRetry(ctx context.Context, step *plan.Step, input agent.ExecutionInput, installRetryCount int, installedPackages []string, currentCode *string, codeFixRetryCount int) (*agent.ExecutionResult, error) {
 	log.Debug().
 		Str("step_id", step.ID).
 		Int("install_retry_count", installRetryCount).
@@ -519,12 +149,12 @@ func (e *DeepResearchExecutor) executeToolCallWithRetry(ctx context.Context, ste
 
 	// Check for errors in code execution results
 	// The tool might return is_error=false but still have errors in the content
-	hasError := result.IsError || (isCodeExecTool && e.hasErrorInResult(result))
+	hasError := result.IsError || (isCodeExecTool && hasErrorInResult(result))
 	log.Debug().Bool("has_error", hasError).Bool("is_code_exec_tool", isCodeExecTool).Msg("[deep_research] error check completed")
 
 	// Handle errors for code execution tools
 	if hasError && isCodeExecTool {
-		errorText := e.extractErrorText(result)
+		errorText := extractErrorText(result)
 		codeErr := agent.ParseCodeExecutionError(errorText)
 
 		// Strategy 1: Try installing missing packages first
@@ -637,9 +267,9 @@ func (e *DeepResearchExecutor) executeToolCallWithRetry(ctx context.Context, ste
 	output, _ := json.Marshal(outputMap)
 
 	// Determine if execution failed (check both IsError flag and content)
-	executionFailed := result.IsError || (isCodeExecTool && e.hasErrorInResult(result))
+	executionFailed := result.IsError || (isCodeExecTool && hasErrorInResult(result))
 	if executionFailed {
-		errorMsg := e.extractErrorText(result)
+		errorMsg := extractErrorText(result)
 
 		// Determine severity based on retry exhaustion
 		// If we've exhausted all inner retries (install + LLM fix), mark as fatal
@@ -665,102 +295,8 @@ func (e *DeepResearchExecutor) executeToolCallWithRetry(ctx context.Context, ste
 	}, nil
 }
 
-// getErrorType extracts a simple error type from the error text.
-func getErrorType(errorText string) string {
-	if strings.Contains(errorText, "SyntaxError") {
-		return "SyntaxError"
-	}
-	if strings.Contains(errorText, "ModuleNotFoundError") {
-		return "ModuleNotFoundError"
-	}
-	if strings.Contains(errorText, "ImportError") {
-		return "ImportError"
-	}
-	if strings.Contains(errorText, "NameError") {
-		return "NameError"
-	}
-	if strings.Contains(errorText, "TypeError") {
-		return "TypeError"
-	}
-	if strings.Contains(errorText, "ValueError") {
-		return "ValueError"
-	}
-	if strings.Contains(errorText, "AttributeError") {
-		return "AttributeError"
-	}
-	return "RuntimeError"
-}
-
-// mustMarshal marshals to JSON, returning empty object on error.
-func mustMarshal(v interface{}) []byte {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return []byte("{}")
-	}
-	return b
-}
-
-// hasErrorInResult checks if the tool result contains an error in its content,
-// even if the IsError flag is false. This handles cases where code execution
-// returns success=true but error_details contains actual errors.
-func (e *DeepResearchExecutor) hasErrorInResult(result *tool.Result) bool {
-	if result == nil || len(result.Content) == 0 {
-		return false
-	}
-
-	for _, content := range result.Content {
-		if content.Type != "text" || content.Text == "" {
-			continue
-		}
-
-		// Try to parse as JSON to check for error_details
-		var parsed map[string]interface{}
-		if err := json.Unmarshal([]byte(content.Text), &parsed); err == nil {
-			// Check for error_details.error_name
-			if errDetails, ok := parsed["error_details"].(map[string]interface{}); ok {
-				if errName, ok := errDetails["error_name"].(string); ok && errName != "" {
-					return true
-				}
-			}
-
-			// Check for is_error field
-			if isError, ok := parsed["is_error"].(bool); ok && isError {
-				return true
-			}
-		}
-
-		// Check for common Python error patterns in text
-		errorPatterns := []string{
-			"ModuleNotFoundError:",
-			"ImportError:",
-			"SyntaxError:",
-			"TypeError:",
-			"ValueError:",
-			"NameError:",
-			"AttributeError:",
-			"IndexError:",
-			"KeyError:",
-			"FileNotFoundError:",
-			"RuntimeError:",
-			"ZeroDivisionError:",
-			"RecursionError:",
-			"MemoryError:",
-			"Traceback (most recent call last)",
-		}
-
-		for _, pattern := range errorPatterns {
-			if strings.Contains(content.Text, pattern) {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
 // buildAccumulatedContext combines outputs from all previous tasks into a single context string.
-// This ensures LLM calls have full context from research, synthesis, and other preceding steps.
-func (e *DeepResearchExecutor) buildAccumulatedContext(input agent.ExecutionInput) string {
+func (e *Executor) buildAccumulatedContext(input agent.ExecutionInput) string {
 	var contextParts []string
 
 	// Add accumulated outputs from previous tasks (research results, synthesis, etc.)
@@ -790,7 +326,7 @@ func (e *DeepResearchExecutor) buildAccumulatedContext(input agent.ExecutionInpu
 }
 
 // extractContextFromOutput extracts meaningful text content from a step output.
-func (e *DeepResearchExecutor) extractContextFromOutput(output json.RawMessage) string {
+func (e *Executor) extractContextFromOutput(output json.RawMessage) string {
 	if len(output) == 0 {
 		return ""
 	}
@@ -849,27 +385,8 @@ func (e *DeepResearchExecutor) extractContextFromOutput(output json.RawMessage) 
 	return rawStr
 }
 
-// extractErrorText extracts the error message from a tool result.
-func (e *DeepResearchExecutor) extractErrorText(result *tool.Result) string {
-	if result == nil || len(result.Content) == 0 {
-		return ""
-	}
-
-	var texts []string
-	for _, content := range result.Content {
-		if content.Type == "text" && content.Text != "" {
-			texts = append(texts, content.Text)
-		}
-	}
-	return strings.Join(texts, "\n")
-}
-
 // extractCodeFromPreviousOutput extracts Python code from the previous step's output.
-// The previous step (LLM code generation) may output code in various formats:
-// - As a JSON object with "code" field
-// - As a JSON object with "content" field containing markdown with code blocks
-// - As raw text with Python code blocks
-func (e *DeepResearchExecutor) extractCodeFromPreviousOutput(output json.RawMessage) string {
+func (e *Executor) extractCodeFromPreviousOutput(output json.RawMessage) string {
 	if len(output) == 0 {
 		log.Debug().Msg("extractCodeFromPreviousOutput: empty input")
 		return ""
@@ -943,57 +460,8 @@ func (e *DeepResearchExecutor) extractCodeFromPreviousOutput(output json.RawMess
 	return ""
 }
 
-// extractCodeBlock extracts Python code from markdown code blocks.
-func extractCodeBlock(text string) string {
-	// Look for Python code block (```python ... ```)
-	pythonBlockRegex := regexp.MustCompile("(?s)```python\\s*\n(.*?)```")
-	if matches := pythonBlockRegex.FindStringSubmatch(text); len(matches) > 1 {
-		return strings.TrimSpace(matches[1])
-	}
-
-	// Look for generic code block (``` ... ```)
-	genericBlockRegex := regexp.MustCompile("(?s)```\\s*\n(.*?)```")
-	if matches := genericBlockRegex.FindStringSubmatch(text); len(matches) > 1 {
-		return strings.TrimSpace(matches[1])
-	}
-
-	// If the entire text looks like code (has def/import/class statements), return it
-	codeIndicators := []string{"import ", "from ", "def ", "class ", "print(", "if __name__"}
-	for _, indicator := range codeIndicators {
-		if strings.Contains(text, indicator) {
-			return strings.TrimSpace(text)
-		}
-	}
-
-	return ""
-}
-
-func looksLikeCode(text string) bool {
-	trimmed := strings.TrimSpace(text)
-	if trimmed == "" {
-		return false
-	}
-	if strings.Contains(trimmed, "```") {
-		return true
-	}
-	codePattern := regexp.MustCompile(`(?m)^\s*(def|class|import|from)\b`)
-	if codePattern.MatchString(trimmed) {
-		return true
-	}
-	if strings.Contains(trimmed, "if __name__") {
-		return true
-	}
-	if strings.Contains(trimmed, "return ") && strings.Contains(trimmed, "\n") {
-		return true
-	}
-	if strings.Contains(trimmed, "print(") && strings.Contains(trimmed, "\n") {
-		return true
-	}
-	return false
-}
-
 // buildToolArguments constructs proper tool arguments from step params and context.
-func (e *DeepResearchExecutor) buildToolArguments(toolName string, params map[string]interface{}, input agent.ExecutionInput, description string, currentCode *string) (map[string]interface{}, error) {
+func (e *Executor) buildToolArguments(toolName string, params map[string]interface{}, input agent.ExecutionInput, description string, currentCode *string) (map[string]interface{}, error) {
 	switch toolName {
 	case "google_search":
 		// Priority: params["q"] > params["query"] > description > error
@@ -1112,7 +580,7 @@ func (e *DeepResearchExecutor) buildToolArguments(toolName string, params map[st
 }
 
 // extractURLsFromPreviousOutput extracts URLs from search results.
-func (e *DeepResearchExecutor) extractURLsFromPreviousOutput(previousOutput json.RawMessage) []string {
+func (e *Executor) extractURLsFromPreviousOutput(previousOutput json.RawMessage) []string {
 	if len(previousOutput) == 0 {
 		return nil
 	}
@@ -1175,7 +643,7 @@ func (e *DeepResearchExecutor) extractURLsFromPreviousOutput(previousOutput json
 }
 
 // installPackage calls aio_install_packages to install a missing package.
-func (e *DeepResearchExecutor) installPackage(ctx context.Context, packageName string, input agent.ExecutionInput) (*tool.Result, error) {
+func (e *Executor) installPackage(ctx context.Context, packageName string, input agent.ExecutionInput) (*tool.Result, error) {
 	callReq := tool.CallRequest{
 		Name: "aio_install_packages",
 		Arguments: map[string]interface{}{
@@ -1190,7 +658,7 @@ func (e *DeepResearchExecutor) installPackage(ctx context.Context, packageName s
 	return e.mcpClient.CallTool(ctx, callReq)
 }
 
-func (e *DeepResearchExecutor) executeLLMCall(ctx context.Context, step *plan.Step, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
+func (e *Executor) executeLLMCall(ctx context.Context, step *plan.Step, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
 	var params map[string]interface{}
 	if err := json.Unmarshal(step.InputParams, &params); err != nil {
 		return &agent.ExecutionResult{
@@ -1336,44 +804,8 @@ func (e *DeepResearchExecutor) executeLLMCall(ctx context.Context, step *plan.St
 	}, nil
 }
 
-func isNonCriticalTool(toolName string) bool {
-	switch toolName {
-	case "google_search", "scrape":
-		return true
-	default:
-		return false
-	}
-}
-
-func buildSkippedToolResult(toolName string, reason string, statusCode string) *agent.ExecutionResult {
-	output, _ := json.Marshal(map[string]interface{}{
-		"type":    "tool_result",
-		"tool":    toolName,
-		"status":  "skipped",
-		"reason":  reason,
-		"code":    statusCode,
-		"skipped": true,
-	})
-	return &agent.ExecutionResult{
-		Status: status.StatusCompleted,
-		Output: output,
-	}
-}
-
-// truncateForLog truncates a byte slice for safe logging
-func truncateForLog(data json.RawMessage, maxLen int) string {
-	if len(data) == 0 {
-		return ""
-	}
-	s := string(data)
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
-}
-
 // CanExecute checks if this executor can handle the given action type.
-func (e *DeepResearchExecutor) CanExecute(action plan.ActionType) bool {
+func (e *Executor) CanExecute(action plan.ActionType) bool {
 	switch action {
 	case plan.ActionTypeToolCall, plan.ActionTypeLLMCall:
 		return true
@@ -1383,10 +815,10 @@ func (e *DeepResearchExecutor) CanExecute(action plan.ActionType) bool {
 }
 
 // Rollback attempts to undo a step's effects (optional).
-func (e *DeepResearchExecutor) Rollback(ctx context.Context, step *plan.Step) error {
+func (e *Executor) Rollback(ctx context.Context, step *plan.Step) error {
 	// Deep research steps are generally not rollback-able
 	return nil
 }
 
-// Verify interface compliance at compile time
-var _ agent.Executor = (*DeepResearchExecutor)(nil)
+// Verify interface compliance at compile time.
+var _ agent.Executor = (*Executor)(nil)
