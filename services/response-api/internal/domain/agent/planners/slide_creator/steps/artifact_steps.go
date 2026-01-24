@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"jan-server/services/response-api/internal/domain/agent"
-	"jan-server/services/response-api/internal/domain/agent/planners"
+	"jan-server/services/response-api/internal/domain/agent/planners/skill"
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/plan"
 	"jan-server/services/response-api/internal/domain/status"
@@ -412,7 +412,7 @@ func (e *SlideCreatorExecutor) storeGenericArtifact(ctx context.Context, input a
 	artifactType, _ := params["artifact_type"].(string)
 
 	if input.PreviousOutput != nil {
-		var skillOutput planners.SkillExecuteOutput
+		var skillOutput skill.ExecuteOutput
 		if err := json.Unmarshal(input.PreviousOutput, &skillOutput); err == nil && skillOutput.Success {
 			return e.uploadSkillArtifact(ctx, input, skillOutput, artifactType, retentionPolicy)
 		}
@@ -517,7 +517,7 @@ func (e *SlideCreatorExecutor) storeGenericArtifact(ctx context.Context, input a
 	}, nil
 }
 
-func (e *SlideCreatorExecutor) uploadSkillArtifact(ctx context.Context, input agent.ExecutionInput, skillOutput planners.SkillExecuteOutput, artifactType string, retentionPolicy string) (*agent.ExecutionResult, error) {
+func (e *SlideCreatorExecutor) uploadSkillArtifact(ctx context.Context, input agent.ExecutionInput, skillOutput skill.ExecuteOutput, artifactType string, retentionPolicy string) (*agent.ExecutionResult, error) {
 	log.Debug().
 		Str("artifact_type", artifactType).
 		Str("filename", skillOutput.FileName).
