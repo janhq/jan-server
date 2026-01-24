@@ -29,14 +29,26 @@ type ExtractedChartHint struct {
 	Type       string // bar, line, pie
 	Title      string
 	Categories []string
-	Values     []string
+	Values     []float64
+	YAxisLabel string
+	XAxisLabel string
+}
+
+// ExtractedDataPoint represents a single data point from inline data.
+type ExtractedDataPoint struct {
+	Label string
+	Value float64
 }
 
 var (
-	pipeTableRowRE = regexp.MustCompile(`^\s*\|(.+)\|\s*$`)
-	chartHintRE    = regexp.MustCompile(`(?i)\b(bar|line|pie)\s*(chart|graph)\b`)
-	percentageRE   = regexp.MustCompile(`(\d+(?:\.\d+)?)\s*%`)
-	numberValueRE  = regexp.MustCompile(`(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:M|B|K|million|billion|thousand)?`)
+	pipeTableRowRE    = regexp.MustCompile(`^\s*\|(.+)\|\s*$`)
+	chartHintRE       = regexp.MustCompile(`(?i)\b(bar|line|pie)\s*(chart|graph)\b`)
+	percentageRE      = regexp.MustCompile(`(\d+(?:\.\d+)?)\s*%`)
+	numberValueRE     = regexp.MustCompile(`(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:M|B|K|T|million|billion|thousand|trillion)?`)
+	inlineDataRE      = regexp.MustCompile(`(?i)([A-Za-z]+)\s*:\s*\$?([\d.,]+)\s*([MBKT]?)`)
+	xAxisRE           = regexp.MustCompile(`(?i)x-?\s*axis\s*:\s*(.+)`)
+	yAxisRE           = regexp.MustCompile(`(?i)y-?\s*axis\s*:\s*(.+)`)
+	dataPointsLabelRE = regexp.MustCompile(`(?i)data\s*points?\s*[:\(]`)
 )
 
 // ExtractSlideContent parses an outline block and extracts structured content.
@@ -50,6 +62,9 @@ func ExtractSlideContent(block outlineBlock) OutlineSlideContent {
 	bullets := []string{}
 	tableLines := []string{}
 	inTable := false
+	var chartDataPoints []ExtractedDataPoint
+	var xAxisCategories []string
+	var yAxisLabel string
 
 	for _, line := range block.Lines {
 		trimmed := strings.TrimSpace(line)
@@ -70,6 +85,27 @@ func ExtractSlideContent(block outlineBlock) OutlineSlideContent {
 		// End table if we hit non-table content
 		if inTable {
 			inTable = false
+		}
+
+		// Check for X-axis categories
+		if matches := xAxisRE.FindStringSubmatch(trimmed); matches != nil {
+			xAxisCategories = parseCommaSeparatedValues(matches[1])
+			continue
+		}
+
+		// Check for Y-axis label
+		if matches := yAxisRE.FindStringSubmatch(trimmed); matches != nil {
+			yAxisLabel = strings.TrimSpace(matches[1])
+			continue
+		}
+
+		// Check for inline data series (e.g., "Jan: $1.7T | Feb: $1.8T")
+		if dataPointsLabelRE.MatchString(trimmed) || strings.Contains(trimmed, ": $") || strings.Contains(trimmed, ": 1.") || strings.Contains(trimmed, ": 2.") {
+			points := parseInlineDataSeries(trimmed)
+			if len(points) > 0 {
+				chartDataPoints = append(chartDataPoints, points...)
+				continue
+			}
 		}
 
 		// Check for bullet points
@@ -94,6 +130,25 @@ func ExtractSlideContent(block outlineBlock) OutlineSlideContent {
 	// Parse table if found
 	if len(tableLines) >= 2 {
 		content.TableData = parseTableFromLines(tableLines)
+	}
+
+	// If we found chart data points, add them to the chart hint
+	if len(chartDataPoints) > 0 {
+		if content.ChartHint == nil {
+			content.ChartHint = &ExtractedChartHint{Type: "line"}
+		}
+		content.ChartHint.Categories = make([]string, len(chartDataPoints))
+		content.ChartHint.Values = make([]float64, len(chartDataPoints))
+		for i, dp := range chartDataPoints {
+			content.ChartHint.Categories[i] = dp.Label
+			content.ChartHint.Values[i] = dp.Value
+		}
+		if len(xAxisCategories) > 0 {
+			content.ChartHint.Categories = xAxisCategories
+		}
+		if yAxisLabel != "" {
+			content.ChartHint.YAxisLabel = yAxisLabel
+		}
 	}
 
 	// Determine if data bank is needed
@@ -307,7 +362,23 @@ func FormatSlideContentForPrompt(content OutlineSlideContent) string {
 			sb.WriteString(" - ")
 			sb.WriteString(content.ChartHint.Title)
 		}
-		sb.WriteString("\n\n")
+		sb.WriteString("\n")
+		if content.ChartHint.YAxisLabel != "" {
+			sb.WriteString("Y-Axis: ")
+			sb.WriteString(content.ChartHint.YAxisLabel)
+			sb.WriteString("\n")
+		}
+		if len(content.ChartHint.Categories) > 0 && len(content.ChartHint.Values) > 0 {
+			sb.WriteString("Data Points:\n")
+			for i := 0; i < len(content.ChartHint.Categories) && i < len(content.ChartHint.Values); i++ {
+				sb.WriteString("  ")
+				sb.WriteString(content.ChartHint.Categories[i])
+				sb.WriteString(": ")
+				sb.WriteString(formatChartValue(content.ChartHint.Values[i]))
+				sb.WriteString("\n")
+			}
+		}
+		sb.WriteString("\n")
 	}
 
 	if content.ImageHint != "" {
@@ -349,4 +420,142 @@ func ConvertExtractedTableToTableData(ext *ExtractedTable) *TableData {
 		Columns: ext.Headers,
 		Rows:    rows,
 	}
+}
+
+// parseInlineDataSeries parses data series like "Jan: $1.7T | Feb: $1.8T | Mar: $1.9T"
+func parseInlineDataSeries(line string) []ExtractedDataPoint {
+	var points []ExtractedDataPoint
+
+	// Split by | or ∣ (both pipe characters)
+	parts := strings.FieldsFunc(line, func(r rune) bool {
+		return r == '|' || r == '∣'
+	})
+
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		// Match patterns like "Jan: $1.7T" or "Jan: 1.7T" or "Jan: 100,000"
+		matches := inlineDataRE.FindStringSubmatch(part)
+		if matches != nil && len(matches) >= 3 {
+			label := strings.TrimSpace(matches[1])
+			valueStr := strings.ReplaceAll(matches[2], ",", "")
+			multiplier := 1.0
+
+			if len(matches) >= 4 {
+				switch strings.ToUpper(matches[3]) {
+				case "T":
+					multiplier = 1e12
+				case "B":
+					multiplier = 1e9
+				case "M":
+					multiplier = 1e6
+				case "K":
+					multiplier = 1e3
+				}
+			}
+
+			value := parseFloatSimple(valueStr)
+			if value > 0 {
+				points = append(points, ExtractedDataPoint{
+					Label: label,
+					Value: value * multiplier,
+				})
+			}
+		}
+	}
+
+	return points
+}
+
+// parseCommaSeparatedValues parses comma-separated values like "Jan, Feb, Mar, ..."
+func parseCommaSeparatedValues(s string) []string {
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			result = append(result, part)
+		}
+	}
+	return result
+}
+
+// parseFloatSimple parses a simple float from string
+func parseFloatSimple(s string) float64 {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
+	}
+
+	var val float64
+	var decimal float64 = 0.1
+	inDecimal := false
+
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			if inDecimal {
+				val += float64(r-'0') * decimal
+				decimal /= 10
+			} else {
+				val = val*10 + float64(r-'0')
+			}
+		} else if r == '.' {
+			inDecimal = true
+		}
+	}
+
+	return val
+}
+
+// formatChartValue formats a chart value for display
+func formatChartValue(v float64) string {
+	if v >= 1e12 {
+		return formatFloat(v/1e12) + "T"
+	}
+	if v >= 1e9 {
+		return formatFloat(v/1e9) + "B"
+	}
+	if v >= 1e6 {
+		return formatFloat(v/1e6) + "M"
+	}
+	if v >= 1e3 {
+		return formatFloat(v/1e3) + "K"
+	}
+	return formatFloat(v)
+}
+
+// formatFloat formats a float with up to 2 decimal places
+func formatFloat(v float64) string {
+	intPart := int(v)
+	fracPart := int((v - float64(intPart)) * 100)
+	if fracPart == 0 {
+		return intToStr(intPart)
+	}
+	if fracPart%10 == 0 {
+		return intToStr(intPart) + "." + intToStr(fracPart/10)
+	}
+	return intToStr(intPart) + "." + intToStr(fracPart)
+}
+
+// intToStr converts int to string
+func intToStr(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	var digits []byte
+	for n > 0 {
+		digits = append([]byte{byte('0' + n%10)}, digits...)
+		n /= 10
+	}
+	if neg {
+		digits = append([]byte{'-'}, digits...)
+	}
+	return string(digits)
 }

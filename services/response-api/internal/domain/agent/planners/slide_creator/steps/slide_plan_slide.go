@@ -113,9 +113,11 @@ func (e *SlideCreatorExecutor) executeSlidePlanSlide(ctx context.Context, params
 	// Add table/chart instruction if outline indicates need
 	if slideContent.TableData != nil {
 		rules = append(rules, "MUST include table with the provided data")
+		rules = append(rules, "layout MUST be 'table'")
 	}
 	if slideContent.ChartHint != nil {
-		rules = append(rules, fmt.Sprintf("MUST include %s chart", slideContent.ChartHint.Type))
+		rules = append(rules, fmt.Sprintf("MUST include %s chart with ALL data points from outline", slideContent.ChartHint.Type))
+		rules = append(rules, "layout MUST be 'chart'")
 	}
 
 	promptParts = append(promptParts, "Rules: "+strings.Join(rules, "; "))
@@ -139,6 +141,23 @@ func (e *SlideCreatorExecutor) executeSlidePlanSlide(ctx context.Context, params
 	if slideContent.TableData != nil {
 		tableJSON, _ := json.Marshal(slideContent.TableData)
 		promptParts = append(promptParts, "Table data from outline:\n"+string(tableJSON))
+	}
+
+	// Include pre-extracted chart data if found in outline
+	if slideContent.ChartHint != nil && len(slideContent.ChartHint.Values) > 0 {
+		chartData := map[string]interface{}{
+			"type":       slideContent.ChartHint.Type,
+			"title":      slideContent.ChartHint.Title,
+			"categories": slideContent.ChartHint.Categories,
+			"series": []map[string]interface{}{
+				{
+					"name":   "Data",
+					"values": slideContent.ChartHint.Values,
+				},
+			},
+		}
+		chartJSON, _ := json.Marshal(chartData)
+		promptParts = append(promptParts, "Chart data from outline (MUST use these exact values):\n"+string(chartJSON))
 	}
 
 	// Include data bank if needed (already size-limited above)
