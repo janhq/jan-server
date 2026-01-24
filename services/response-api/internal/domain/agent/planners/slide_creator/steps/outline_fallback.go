@@ -28,6 +28,13 @@ func applyOutlineFallbacks(plan *DeckPlan, outline string) {
 		return
 	}
 
+	// Also parse outline blocks for structured content extraction
+	outlineBlocks := parseOutlineBlocks(outline)
+	blocksByIndex := make(map[int]outlineBlock)
+	for _, block := range outlineBlocks {
+		blocksByIndex[block.Index] = block
+	}
+
 	for i := range plan.Slides {
 		slide := &plan.Slides[i]
 		outlineSlide, ok := outlineSlides[slide.ID]
@@ -37,6 +44,24 @@ func applyOutlineFallbacks(plan *DeckPlan, outline string) {
 
 		if shouldReplaceTitle(slide.Title) && outlineSlide.Title != "" {
 			slide.Title = trimToRunesNoEllipsis(outlineSlide.Title, 60)
+		}
+
+		// Extract structured content from outline block
+		if block, hasBlock := blocksByIndex[slide.ID]; hasBlock {
+			content := ExtractSlideContent(block)
+
+			// Apply extracted table if slide doesn't have one
+			if slide.Table == nil && content.TableData != nil {
+				slide.Table = ConvertExtractedTableToTableData(content.TableData)
+				if slide.Table != nil {
+					slide.Layout = "table"
+				}
+			}
+
+			// Apply extracted bullets if slide doesn't have content
+			if !hasSlideContent(*slide) && len(content.Bullets) > 0 {
+				slide.Bullets = clampBullets(content.Bullets, 6)
+			}
 		}
 
 		if !hasSlideContent(*slide) && len(outlineSlide.Bullets) > 0 {

@@ -273,15 +273,27 @@ func mergeSlideImagesFromSearch(plan DeckPlan, input agent.ExecutionInput) DeckP
 		if slideHasImage(*slide) || !slideNeedsImage(*slide) {
 			continue
 		}
-		assets := perSlide[slideIndex]
+
+		// Filter assets to only valid images
+		assets := FilterValidImages(perSlide[slideIndex])
 		if len(assets) == 0 {
 			continue
 		}
-		image := slideImageFromAsset(assets[0], slide.Title)
-		if strings.TrimSpace(image.Src) == "" {
+
+		// Try each asset until we find a valid image
+		var validImage SlideImage
+		for _, asset := range assets {
+			image := slideImageFromAsset(asset, slide.Title)
+			if strings.TrimSpace(image.Src) != "" {
+				validImage = image
+				break
+			}
+		}
+
+		if strings.TrimSpace(validImage.Src) == "" {
 			continue
 		}
-		slide.Images = []SlideImage{image}
+		slide.Images = []SlideImage{validImage}
 	}
 
 	return plan
@@ -321,9 +333,20 @@ func collectPerSlideImageAssets(input agent.ExecutionInput) map[int][]map[string
 }
 
 func slideImageFromAsset(asset map[string]any, fallbackAlt string) SlideImage {
-	src := assetImageURL(asset)
-	if strings.TrimSpace(src) == "" {
-		return SlideImage{}
+	// Use PreferredImageURL which validates and sanitizes the URL
+	src := PreferredImageURL(asset)
+	if src == "" {
+		// Fallback to basic extraction if preferred fails
+		src = assetImageURL(asset)
+		if strings.TrimSpace(src) == "" {
+			return SlideImage{}
+		}
+		// Validate the fallback URL
+		result := ValidateImageURL(src)
+		if !result.IsValid {
+			return SlideImage{}
+		}
+		src = SanitizeImageURL(src)
 	}
 
 	title := strings.TrimSpace(firstString(asset, "title", "altText", "alt"))
@@ -331,6 +354,11 @@ func slideImageFromAsset(asset map[string]any, fallbackAlt string) SlideImage {
 	if alt == "" {
 		alt = strings.TrimSpace(fallbackAlt)
 	}
+	// Ensure alt text is not empty
+	if alt == "" {
+		alt = "Slide image"
+	}
+
 	image := SlideImage{
 		Src: src,
 		Alt: alt,
