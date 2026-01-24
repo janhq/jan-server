@@ -1,4 +1,5 @@
-package planners
+// Package pdf contains the PDF generator planner.
+package pdf
 
 import (
 	"context"
@@ -11,43 +12,41 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// DocGeneratorPlanner creates execution plans for document generation.
-type DocGeneratorPlanner struct {
+// Planner creates execution plans for PDF generation.
+type Planner struct {
 	planService     plan.Service
 	artifactService artifact.Service
 }
 
-// DocGeneratorConfig holds configuration for document generation.
-type DocGeneratorConfig struct {
-	Template      string `json:"template"`
-	Format        string `json:"format"`         // docx, pdf
-	ResearchDepth string `json:"research_depth"` // minimal, standard, deep
+// Config holds configuration for PDF generation.
+type Config struct {
+	PageSize    string `json:"page_size"`
+	Orientation string `json:"orientation"`
 }
 
-// DefaultDocGeneratorConfig returns defaults.
-func DefaultDocGeneratorConfig() DocGeneratorConfig {
-	return DocGeneratorConfig{
-		Template:      "professional",
-		Format:        "docx",
-		ResearchDepth: "standard",
+// DefaultConfig returns defaults.
+func DefaultConfig() Config {
+	return Config{
+		PageSize:    "A4",
+		Orientation: "portrait",
 	}
 }
 
-// NewDocGeneratorPlanner creates a new doc generator planner.
-func NewDocGeneratorPlanner(planService plan.Service, artifactService artifact.Service) *DocGeneratorPlanner {
-	return &DocGeneratorPlanner{
+// NewPlanner creates a new PDF generator planner.
+func NewPlanner(planService plan.Service, artifactService artifact.Service) *Planner {
+	return &Planner{
 		planService:     planService,
 		artifactService: artifactService,
 	}
 }
 
 // Name returns the planner's unique identifier.
-func (p *DocGeneratorPlanner) Name() string {
-	return string(plan.AgentTypeDocGenerator)
+func (p *Planner) Name() string {
+	return string(plan.AgentTypePDFGenerator)
 }
 
 // CanHandle determines if this planner can handle the given request.
-func (p *DocGeneratorPlanner) CanHandle(ctx context.Context, request *agent.PlanRequest) bool {
+func (p *Planner) CanHandle(ctx context.Context, request *agent.PlanRequest) bool {
 	if request.Metadata == nil {
 		return false
 	}
@@ -59,20 +58,20 @@ func (p *DocGeneratorPlanner) CanHandle(ctx context.Context, request *agent.Plan
 	if !ok {
 		return false
 	}
-	return agentTypeStr == string(plan.AgentTypeDocGenerator)
+	return agentTypeStr == string(plan.AgentTypePDFGenerator)
 }
 
-// CreatePlan creates a plan for document generation.
-func (p *DocGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.PlanRequest) (*agent.PlanResult, error) {
-	log.Debug().Interface("request", request).Msg("[doc_generator] CreatePlan started")
+// CreatePlan creates a plan for PDF generation.
+func (p *Planner) CreatePlan(ctx context.Context, request *agent.PlanRequest) (*agent.PlanResult, error) {
+	log.Debug().Interface("request", request).Msg("[pdf_generator] CreatePlan started")
 	config := p.parseConfig(request)
-	log.Debug().Interface("config", config).Msg("[doc_generator] parsed config")
+	log.Debug().Interface("config", config).Msg("[pdf_generator] parsed config")
 	estimatedSteps := 3
 
 	createdPlan, err := p.planService.Create(ctx, plan.CreateParams{
 		ResponseID:     request.ResponseID,
 		Model:          request.Model,
-		AgentType:      plan.AgentTypeDocGenerator,
+		AgentType:      plan.AgentTypePDFGenerator,
 		EstimatedSteps: estimatedSteps,
 		Config: &plan.PlanConfig{
 			MaxRetries:        3,
@@ -86,28 +85,24 @@ func (p *DocGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	if err != nil {
 		return nil, err
 	}
-	log.Debug().Str("plan_id", createdPlan.ID).Msg("[doc_generator] plan created")
 
-	// Task 1: Content Generation
-	log.Debug().Msg("[doc_generator] creating content generation task")
 	contentTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
 		Sequence:    1,
 		TaskType:    plan.TaskTypeGeneration,
 		Title:       "Generate Content",
-		Description: strPtr("Generate document sections as structured JSON"),
+		Description: strPtr("Generate PDF sections as structured JSON"),
 	})
 	if err != nil {
 		return nil, err
 	}
-	log.Debug().Str("task_id", contentTask.ID).Msg("[doc_generator] content task created")
 
 	contentParams, _ := json.Marshal(map[string]interface{}{
-		"action":      "generate_doc_json",
-		"description": "Generate structured document JSON for python-docx",
+		"action":      "generate_pdf_json",
+		"description": "Generate structured PDF JSON for reportlab",
 		"config": map[string]interface{}{
-			"template": config.Template,
-			"format":   config.Format,
-			"prompt":   request.UserMessage,
+			"page_size":   config.PageSize,
+			"orientation": config.Orientation,
+			"prompt":      request.UserMessage,
 		},
 	})
 	_, err = p.planService.CreateStep(ctx, contentTask.ID, plan.CreateStepParams{
@@ -120,24 +115,22 @@ func (p *DocGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		return nil, err
 	}
 
-	log.Debug().Msg("[doc_generator] creating skill execution task")
-	// Task 2: Skill Execution
 	execTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
 		Sequence:    2,
 		TaskType:    plan.TaskTypeExecution,
-		Title:       "Generate Document",
-		Description: strPtr("Generate DOCX file using skill execution"),
+		Title:       "Generate PDF",
+		Description: strPtr("Generate PDF file using skill execution"),
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	skillParams, _ := json.Marshal(map[string]interface{}{
-		"skill_type": "docs",
+		"skill_type": "pdfs",
 		"options": map[string]interface{}{
-			"template": config.Template,
-			"format":   config.Format,
-			"title":    request.UserMessage,
+			"page_size":   config.PageSize,
+			"orientation": config.Orientation,
+			"title":       request.UserMessage,
 		},
 	})
 	_, err = p.planService.CreateStep(ctx, execTask.ID, plan.CreateStepParams{
@@ -150,12 +143,11 @@ func (p *DocGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		return nil, err
 	}
 
-	// Task 3: Artifact Creation
 	artifactTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
 		Sequence:    3,
 		TaskType:    plan.TaskTypeFinalization,
 		Title:       "Finalize",
-		Description: strPtr("Store document as artifact"),
+		Description: strPtr("Store PDF as artifact"),
 	})
 	if err != nil {
 		return nil, err
@@ -163,10 +155,10 @@ func (p *DocGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 
 	artifactParams, _ := json.Marshal(map[string]interface{}{
 		"action":        "store_artifact",
-		"description":   "Store document as downloadable artifact",
+		"description":   "Store PDF as downloadable artifact",
 		"artifact_type": "document",
 		"config": map[string]interface{}{
-			"format":           config.Format,
+			"format":           "pdf",
 			"retention_policy": "session",
 		},
 	})
@@ -197,23 +189,25 @@ func (p *DocGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	return result, nil
 }
 
-func (p *DocGeneratorPlanner) parseConfig(request *agent.PlanRequest) DocGeneratorConfig {
-	config := DefaultDocGeneratorConfig()
+func (p *Planner) parseConfig(request *agent.PlanRequest) Config {
+	config := DefaultConfig()
 	if request.Metadata == nil {
 		return config
 	}
 	if options, ok := request.Metadata["options"].(map[string]interface{}); ok {
-		if template, ok := options["template"].(string); ok {
-			config.Template = template
+		if pageSize, ok := options["page_size"].(string); ok {
+			config.PageSize = pageSize
 		}
-		if format, ok := options["format"].(string); ok {
-			config.Format = format
-		}
-		if depth, ok := options["research_depth"].(string); ok {
-			config.ResearchDepth = depth
+		if orientation, ok := options["orientation"].(string); ok {
+			config.Orientation = orientation
 		}
 	}
 	return config
 }
 
-var _ agent.Planner = (*DocGeneratorPlanner)(nil)
+// strPtr returns a pointer to the given string.
+func strPtr(s string) *string {
+	return &s
+}
+
+var _ agent.Planner = (*Planner)(nil)

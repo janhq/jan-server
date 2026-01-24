@@ -1,4 +1,5 @@
-package planners
+// Package doc contains the document generator planner.
+package doc
 
 import (
 	"context"
@@ -11,39 +12,43 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// SpreadsheetGeneratorPlanner creates execution plans for spreadsheet generation.
-type SpreadsheetGeneratorPlanner struct {
+// Planner creates execution plans for document generation.
+type Planner struct {
 	planService     plan.Service
 	artifactService artifact.Service
 }
 
-// SpreadsheetGeneratorConfig holds configuration for spreadsheet generation.
-type SpreadsheetGeneratorConfig struct {
-	IncludeCharts bool `json:"include_charts"`
+// Config holds configuration for document generation.
+type Config struct {
+	Template      string `json:"template"`
+	Format        string `json:"format"`         // docx, pdf
+	ResearchDepth string `json:"research_depth"` // minimal, standard, deep
 }
 
-// DefaultSpreadsheetGeneratorConfig returns defaults.
-func DefaultSpreadsheetGeneratorConfig() SpreadsheetGeneratorConfig {
-	return SpreadsheetGeneratorConfig{
-		IncludeCharts: false,
+// DefaultConfig returns defaults.
+func DefaultConfig() Config {
+	return Config{
+		Template:      "professional",
+		Format:        "docx",
+		ResearchDepth: "standard",
 	}
 }
 
-// NewSpreadsheetGeneratorPlanner creates a new spreadsheet generator planner.
-func NewSpreadsheetGeneratorPlanner(planService plan.Service, artifactService artifact.Service) *SpreadsheetGeneratorPlanner {
-	return &SpreadsheetGeneratorPlanner{
+// NewPlanner creates a new doc generator planner.
+func NewPlanner(planService plan.Service, artifactService artifact.Service) *Planner {
+	return &Planner{
 		planService:     planService,
 		artifactService: artifactService,
 	}
 }
 
 // Name returns the planner's unique identifier.
-func (p *SpreadsheetGeneratorPlanner) Name() string {
-	return string(plan.AgentTypeSpreadsheetGenerator)
+func (p *Planner) Name() string {
+	return string(plan.AgentTypeDocGenerator)
 }
 
 // CanHandle determines if this planner can handle the given request.
-func (p *SpreadsheetGeneratorPlanner) CanHandle(ctx context.Context, request *agent.PlanRequest) bool {
+func (p *Planner) CanHandle(ctx context.Context, request *agent.PlanRequest) bool {
 	if request.Metadata == nil {
 		return false
 	}
@@ -55,20 +60,20 @@ func (p *SpreadsheetGeneratorPlanner) CanHandle(ctx context.Context, request *ag
 	if !ok {
 		return false
 	}
-	return agentTypeStr == string(plan.AgentTypeSpreadsheetGenerator)
+	return agentTypeStr == string(plan.AgentTypeDocGenerator)
 }
 
-// CreatePlan creates a plan for spreadsheet generation.
-func (p *SpreadsheetGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.PlanRequest) (*agent.PlanResult, error) {
-	log.Debug().Interface("request", request).Msg("[spreadsheet_generator] CreatePlan started")
+// CreatePlan creates a plan for document generation.
+func (p *Planner) CreatePlan(ctx context.Context, request *agent.PlanRequest) (*agent.PlanResult, error) {
+	log.Debug().Interface("request", request).Msg("[doc_generator] CreatePlan started")
 	config := p.parseConfig(request)
-	log.Debug().Interface("config", config).Msg("[spreadsheet_generator] parsed config")
+	log.Debug().Interface("config", config).Msg("[doc_generator] parsed config")
 	estimatedSteps := 3
 
 	createdPlan, err := p.planService.Create(ctx, plan.CreateParams{
 		ResponseID:     request.ResponseID,
 		Model:          request.Model,
-		AgentType:      plan.AgentTypeSpreadsheetGenerator,
+		AgentType:      plan.AgentTypeDocGenerator,
 		EstimatedSteps: estimatedSteps,
 		Config: &plan.PlanConfig{
 			MaxRetries:        3,
@@ -82,23 +87,28 @@ func (p *SpreadsheetGeneratorPlanner) CreatePlan(ctx context.Context, request *a
 	if err != nil {
 		return nil, err
 	}
+	log.Debug().Str("plan_id", createdPlan.ID).Msg("[doc_generator] plan created")
 
+	// Task 1: Content Generation
+	log.Debug().Msg("[doc_generator] creating content generation task")
 	contentTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
 		Sequence:    1,
 		TaskType:    plan.TaskTypeGeneration,
-		Title:       "Generate Data",
-		Description: strPtr("Generate spreadsheet JSON with sheets, rows, and formulas"),
+		Title:       "Generate Content",
+		Description: strPtr("Generate document sections as structured JSON"),
 	})
 	if err != nil {
 		return nil, err
 	}
+	log.Debug().Str("task_id", contentTask.ID).Msg("[doc_generator] content task created")
 
 	contentParams, _ := json.Marshal(map[string]interface{}{
-		"action":      "generate_spreadsheet_json",
-		"description": "Generate structured spreadsheet JSON for openpyxl",
+		"action":      "generate_doc_json",
+		"description": "Generate structured document JSON for python-docx",
 		"config": map[string]interface{}{
-			"include_charts": config.IncludeCharts,
-			"prompt":         request.UserMessage,
+			"template": config.Template,
+			"format":   config.Format,
+			"prompt":   request.UserMessage,
 		},
 	})
 	_, err = p.planService.CreateStep(ctx, contentTask.ID, plan.CreateStepParams{
@@ -111,21 +121,24 @@ func (p *SpreadsheetGeneratorPlanner) CreatePlan(ctx context.Context, request *a
 		return nil, err
 	}
 
+	log.Debug().Msg("[doc_generator] creating skill execution task")
+	// Task 2: Skill Execution
 	execTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
 		Sequence:    2,
 		TaskType:    plan.TaskTypeExecution,
-		Title:       "Generate Spreadsheet",
-		Description: strPtr("Generate XLSX file using skill execution"),
+		Title:       "Generate Document",
+		Description: strPtr("Generate DOCX file using skill execution"),
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	skillParams, _ := json.Marshal(map[string]interface{}{
-		"skill_type": "spreadsheets",
+		"skill_type": "docs",
 		"options": map[string]interface{}{
-			"include_charts": config.IncludeCharts,
-			"title":          request.UserMessage,
+			"template": config.Template,
+			"format":   config.Format,
+			"title":    request.UserMessage,
 		},
 	})
 	_, err = p.planService.CreateStep(ctx, execTask.ID, plan.CreateStepParams{
@@ -138,11 +151,12 @@ func (p *SpreadsheetGeneratorPlanner) CreatePlan(ctx context.Context, request *a
 		return nil, err
 	}
 
+	// Task 3: Artifact Creation
 	artifactTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
 		Sequence:    3,
 		TaskType:    plan.TaskTypeFinalization,
 		Title:       "Finalize",
-		Description: strPtr("Store spreadsheet as artifact"),
+		Description: strPtr("Store document as artifact"),
 	})
 	if err != nil {
 		return nil, err
@@ -150,10 +164,10 @@ func (p *SpreadsheetGeneratorPlanner) CreatePlan(ctx context.Context, request *a
 
 	artifactParams, _ := json.Marshal(map[string]interface{}{
 		"action":        "store_artifact",
-		"description":   "Store spreadsheet as downloadable artifact",
-		"artifact_type": "spreadsheet",
+		"description":   "Store document as downloadable artifact",
+		"artifact_type": "document",
 		"config": map[string]interface{}{
-			"format":           "xlsx",
+			"format":           config.Format,
 			"retention_policy": "session",
 		},
 	})
@@ -184,17 +198,28 @@ func (p *SpreadsheetGeneratorPlanner) CreatePlan(ctx context.Context, request *a
 	return result, nil
 }
 
-func (p *SpreadsheetGeneratorPlanner) parseConfig(request *agent.PlanRequest) SpreadsheetGeneratorConfig {
-	config := DefaultSpreadsheetGeneratorConfig()
+func (p *Planner) parseConfig(request *agent.PlanRequest) Config {
+	config := DefaultConfig()
 	if request.Metadata == nil {
 		return config
 	}
 	if options, ok := request.Metadata["options"].(map[string]interface{}); ok {
-		if includeCharts, ok := options["include_charts"].(bool); ok {
-			config.IncludeCharts = includeCharts
+		if template, ok := options["template"].(string); ok {
+			config.Template = template
+		}
+		if format, ok := options["format"].(string); ok {
+			config.Format = format
+		}
+		if depth, ok := options["research_depth"].(string); ok {
+			config.ResearchDepth = depth
 		}
 	}
 	return config
 }
 
-var _ agent.Planner = (*SpreadsheetGeneratorPlanner)(nil)
+// strPtr returns a pointer to the given string.
+func strPtr(s string) *string {
+	return &s
+}
+
+var _ agent.Planner = (*Planner)(nil)

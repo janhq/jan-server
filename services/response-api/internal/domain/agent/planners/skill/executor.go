@@ -1,4 +1,4 @@
-package planners
+package skill
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 
 	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/plan"
-	"jan-server/services/response-api/internal/domain/skill"
+	domainskill "jan-server/services/response-api/internal/domain/skill"
 	"jan-server/services/response-api/internal/domain/status"
 	"jan-server/services/response-api/internal/domain/tool"
 	"jan-server/services/response-api/internal/utils/idgen"
@@ -121,35 +121,35 @@ func stripJSONComments(input string) string {
 	return b.String()
 }
 
-// SkillExecutor handles ActionTypeSkillExecute steps.
-type SkillExecutor struct {
+// Executor handles ActionTypeSkillExecute steps.
+type Executor struct {
 	mcpClient          MCPClient
 	llmProvider        LLMProvider
-	skillService       skill.Service
+	skillService       domainskill.Service
 	enabled            bool
 	maxInstallRetries  int
 	maxCodeFixRetries  int
 	maxFileSize        int64
-	skillEnabledByType map[skill.SkillType]bool
+	skillEnabledByType map[domainskill.SkillType]bool
 	defaultTimeout     time.Duration
 }
 
-// NewSkillExecutor creates a new skill executor.
-func NewSkillExecutor(
+// NewExecutor creates a new skill executor.
+func NewExecutor(
 	mcpClient MCPClient,
 	llmProvider LLMProvider,
-	skillService skill.Service,
+	skillService domainskill.Service,
 	enabled bool,
 	maxInstallRetries int,
 	maxCodeFixRetries int,
 	maxFileSize int64,
 	defaultTimeout time.Duration,
-	skillEnabledByType map[skill.SkillType]bool,
-) *SkillExecutor {
+	skillEnabledByType map[domainskill.SkillType]bool,
+) *Executor {
 	if skillEnabledByType == nil {
-		skillEnabledByType = map[skill.SkillType]bool{}
+		skillEnabledByType = map[domainskill.SkillType]bool{}
 	}
-	return &SkillExecutor{
+	return &Executor{
 		mcpClient:          mcpClient,
 		llmProvider:        llmProvider,
 		skillService:       skillService,
@@ -163,7 +163,7 @@ func NewSkillExecutor(
 }
 
 // Execute runs a skill execution step.
-func (e *SkillExecutor) Execute(ctx context.Context, step *plan.Step, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
+func (e *Executor) Execute(ctx context.Context, step *plan.Step, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
 	log.Debug().
 		Str("step_id", step.ID).
 		Str("action", string(step.Action)).
@@ -174,7 +174,7 @@ func (e *SkillExecutor) Execute(ctx context.Context, step *plan.Step, input agen
 		return e.failedResult("SKILL_DISABLED", "skill execution is disabled", status.ErrorSeverityFatal), nil
 	}
 
-	var params SkillExecuteParams
+	var params executeParams
 	if err := json.Unmarshal(step.InputParams, &params); err != nil {
 		log.Error().Err(err).Msg("[skill_executor] failed to parse skill parameters")
 		return e.failedResult("PARSE_ERROR", "failed to parse skill parameters", status.ErrorSeverityFatal), nil
@@ -209,7 +209,7 @@ func (e *SkillExecutor) Execute(ctx context.Context, step *plan.Step, input agen
 	}
 
 	outputPath := e.resolveOutputPath(params)
-	code, err := e.skillService.GenerateCode(ctx, skill.GenerateCodeRequest{
+	code, err := e.skillService.GenerateCode(ctx, domainskill.GenerateCodeRequest{
 		SkillType:  params.SkillType,
 		Content:    content,
 		Options:    params.Options,
@@ -225,41 +225,28 @@ func (e *SkillExecutor) Execute(ctx context.Context, step *plan.Step, input agen
 }
 
 // CanExecute checks if this executor can handle the given action type.
-func (e *SkillExecutor) CanExecute(action plan.ActionType) bool {
+func (e *Executor) CanExecute(action plan.ActionType) bool {
 	return action == plan.ActionTypeSkillExecute
 }
 
 // Rollback attempts to undo a step's effects (optional).
-func (e *SkillExecutor) Rollback(ctx context.Context, step *plan.Step) error {
+func (e *Executor) Rollback(ctx context.Context, step *plan.Step) error {
 	// Skill execution is not reversible in the sandbox context.
 	return nil
 }
 
-type SkillExecuteParams struct {
-	SkillType  skill.SkillType        `json:"skill_type"`
+type executeParams struct {
+	SkillType  domainskill.SkillType  `json:"skill_type"`
 	OutputPath string                 `json:"output_path,omitempty"`
 	Options    map[string]interface{} `json:"options,omitempty"`
 }
 
-// SkillExecuteOutput contains the result of skill execution.
-// Note: file_content_base64 is intentionally omitted from outputs to avoid large payloads.
-// Artifacts are uploaded from sandbox files in the artifact creation step.
-type SkillExecuteOutput struct {
-	Success           bool   `json:"success"`
-	SkillType         string `json:"skill_type"`
-	OutputPath        string `json:"output_path"`
-	FileContentBase64 string `json:"file_content_base64,omitempty"` // Sanitized in API responses
-	FileName          string `json:"file_name"`
-	MimeType          string `json:"mime_type"`
-	FileSize          int64  `json:"file_size,omitempty"` // Size in bytes
-}
-
-func (e *SkillExecutor) executeWithRetry(
+func (e *Executor) executeWithRetry(
 	ctx context.Context,
 	step *plan.Step,
 	input agent.ExecutionInput,
 	code string,
-	params SkillExecuteParams,
+	params executeParams,
 	outputPath string,
 	installRetryCount int,
 	installedPackages []string,
@@ -322,7 +309,7 @@ func (e *SkillExecutor) executeWithRetry(
 
 	fileName := e.getFileName(params)
 	mimeType := e.getMimeType(params.SkillType)
-	output := SkillExecuteOutput{
+	output := ExecuteOutput{
 		Success:    true,
 		SkillType:  string(params.SkillType),
 		OutputPath: outputPath,
@@ -338,7 +325,7 @@ func (e *SkillExecutor) executeWithRetry(
 	}, nil
 }
 
-func (e *SkillExecutor) installPackage(ctx context.Context, packageName string, input agent.ExecutionInput) (*tool.Result, error) {
+func (e *Executor) installPackage(ctx context.Context, packageName string, input agent.ExecutionInput) (*tool.Result, error) {
 	callReq := tool.CallRequest{
 		Name: "aio_install_packages",
 		Arguments: map[string]interface{}{
@@ -354,7 +341,7 @@ func (e *SkillExecutor) installPackage(ctx context.Context, packageName string, 
 
 // readFileFromSandbox reads a file from the sandbox, supporting both text and binary files.
 // For binary files (like PPTX, DOCX), it uses base64 encoding via shell command.
-func (e *SkillExecutor) readFileFromSandbox(ctx context.Context, path string, input agent.ExecutionInput) ([]byte, error) {
+func (e *Executor) readFileFromSandbox(ctx context.Context, path string, input agent.ExecutionInput) ([]byte, error) {
 	ext := strings.ToLower(filepath.Ext(path))
 
 	// For binary files, use shell command with base64 encoding
@@ -408,7 +395,7 @@ func (e *SkillExecutor) readFileFromSandbox(ctx context.Context, path string, in
 
 // readBinaryFileFromSandbox reads a binary file using Python code execution with base64 encoding.
 // This is more reliable than shell base64 command for large binary files.
-func (e *SkillExecutor) readBinaryFileFromSandbox(ctx context.Context, path string, input agent.ExecutionInput) ([]byte, error) {
+func (e *Executor) readBinaryFileFromSandbox(ctx context.Context, path string, input agent.ExecutionInput) ([]byte, error) {
 	// Use Python to read and base64-encode the file, which is more reliable than shell base64 for large binary files
 	code := fmt.Sprintf(`import base64
 import json
@@ -503,33 +490,7 @@ else:
 	return decoded, nil
 }
 
-// cleanBase64String removes all non-base64 characters from a string and ensures proper padding.
-func cleanBase64String(s string) string {
-	// Base64 valid characters: A-Z, a-z, 0-9, +, /
-	// Handle = padding separately at the end
-	var result strings.Builder
-	result.Grow(len(s))
-
-	for _, c := range s {
-		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '+' || c == '/' {
-			result.WriteRune(c)
-		}
-	}
-
-	cleaned := result.String()
-
-	// Ensure proper padding - base64 must be multiple of 4 characters
-	switch len(cleaned) % 4 {
-	case 2:
-		cleaned += "=="
-	case 3:
-		cleaned += "="
-	}
-
-	return cleaned
-}
-
-func (e *SkillExecutor) extractContentFromPreviousOutput(output json.RawMessage) interface{} {
+func (e *Executor) extractContentFromPreviousOutput(output json.RawMessage) interface{} {
 	if len(output) == 0 {
 		return nil
 	}
@@ -553,7 +514,7 @@ func (e *SkillExecutor) extractContentFromPreviousOutput(output json.RawMessage)
 
 // findContentInAccumulatedOutputs searches through accumulated outputs from previous tasks
 // to find content suitable for skill execution (e.g., JSON slides data from LLM generation)
-func (e *SkillExecutor) findContentInAccumulatedOutputs(outputs []json.RawMessage, skillType skill.SkillType) interface{} {
+func (e *Executor) findContentInAccumulatedOutputs(outputs []json.RawMessage, skillType domainskill.SkillType) interface{} {
 	// Search backwards through accumulated outputs to find the most recent valid content
 	for i := len(outputs) - 1; i >= 0; i-- {
 		output := outputs[i]
@@ -599,7 +560,7 @@ func (e *SkillExecutor) findContentInAccumulatedOutputs(outputs []json.RawMessag
 // extractAndValidateContent extracts content from a value and validates it for the skill type.
 // If the content is a string with markdown code blocks, it extracts and parses the JSON.
 // Returns the parsed content if valid, nil otherwise.
-func (e *SkillExecutor) extractAndValidateContent(content interface{}, skillType skill.SkillType) interface{} {
+func (e *Executor) extractAndValidateContent(content interface{}, skillType domainskill.SkillType) interface{} {
 	// Handle string content - extract JSON from markdown if needed
 	if str, ok := content.(string); ok {
 		cleanedStr := extractJSONFromMarkdown(str)
@@ -623,93 +584,8 @@ func (e *SkillExecutor) extractAndValidateContent(content interface{}, skillType
 	return nil
 }
 
-// isValidSkillContent checks if the content is valid for the given skill type
-func (e *SkillExecutor) isValidSkillContent(content interface{}, skillType skill.SkillType) bool {
-	// Handle string content - try to parse as JSON
-	if str, ok := content.(string); ok {
-		// Extract JSON from markdown code blocks if present
-		cleanedStr := extractJSONFromMarkdown(str)
-
-		var parsed interface{}
-		if err := json.Unmarshal([]byte(cleanedStr), &parsed); err != nil {
-			return false
-		}
-		return e.isValidSkillContent(parsed, skillType)
-	}
-
-	// Handle array content (slides are typically an array)
-	if arr, ok := content.([]interface{}); ok {
-		if len(arr) > 0 {
-			// Check if first element looks like a slide
-			if slide, ok := arr[0].(map[string]interface{}); ok {
-				if _, hasTitle := slide["slide_title"]; hasTitle {
-					return true
-				}
-				if _, hasContent := slide["content"]; hasContent {
-					return true
-				}
-			}
-		}
-		// For slides, an array is valid
-		if skillType == skill.SkillTypeSlides && len(arr) > 0 {
-			return true
-		}
-	}
-
-	// Handle map content
-	contentMap, ok := content.(map[string]interface{})
-	if !ok {
-		return false
-	}
-
-	switch skillType {
-	case skill.SkillTypeSlides:
-		// For slides, look for "slides" array or presentation structure
-		if _, hasSlides := contentMap["slides"]; hasSlides {
-			return true
-		}
-		if _, hasTitle := contentMap["title"]; hasTitle {
-			if _, hasSlides := contentMap["slides"]; hasSlides {
-				return true
-			}
-		}
-		// Also check for slide_title (individual slide structure)
-		if _, hasSlideTitle := contentMap["slide_title"]; hasSlideTitle {
-			return true
-		}
-	case skill.SkillTypeDocs:
-		// For docs, look for document structure
-		if _, hasSections := contentMap["sections"]; hasSections {
-			return true
-		}
-		if _, hasContent := contentMap["content"]; hasContent {
-			return true
-		}
-	case skill.SkillTypeSpreadsheets:
-		// For spreadsheets, look for sheets or data
-		if _, hasSheets := contentMap["sheets"]; hasSheets {
-			return true
-		}
-		if _, hasData := contentMap["data"]; hasData {
-			return true
-		}
-	case skill.SkillTypePDFs:
-		// For PDFs, look for content structure
-		if _, hasPages := contentMap["pages"]; hasPages {
-			return true
-		}
-		if _, hasContent := contentMap["content"]; hasContent {
-			return true
-		}
-	}
-
-	// Generic check - if content has substantial structure, consider it valid
-	return len(contentMap) > 0
-}
-
 // isValidSkillContentValue checks if the already-parsed content is valid for the given skill type.
-// This does NOT handle string parsing - use isValidSkillContent for that.
-func (e *SkillExecutor) isValidSkillContentValue(content interface{}, skillType skill.SkillType) bool {
+func (e *Executor) isValidSkillContentValue(content interface{}, skillType domainskill.SkillType) bool {
 	// Handle array content (slides are typically an array)
 	if arr, ok := content.([]interface{}); ok {
 		if len(arr) > 0 {
@@ -724,7 +600,7 @@ func (e *SkillExecutor) isValidSkillContentValue(content interface{}, skillType 
 			}
 		}
 		// For slides, an array is valid
-		if skillType == skill.SkillTypeSlides && len(arr) > 0 {
+		if skillType == domainskill.SkillTypeSlides && len(arr) > 0 {
 			return true
 		}
 	}
@@ -736,7 +612,7 @@ func (e *SkillExecutor) isValidSkillContentValue(content interface{}, skillType 
 	}
 
 	switch skillType {
-	case skill.SkillTypeSlides:
+	case domainskill.SkillTypeSlides:
 		// For slides, look for "slides" array or presentation structure
 		if _, hasSlides := contentMap["slides"]; hasSlides {
 			return true
@@ -744,21 +620,21 @@ func (e *SkillExecutor) isValidSkillContentValue(content interface{}, skillType 
 		if _, hasSlideTitle := contentMap["slide_title"]; hasSlideTitle {
 			return true
 		}
-	case skill.SkillTypeDocs:
+	case domainskill.SkillTypeDocs:
 		if _, hasSections := contentMap["sections"]; hasSections {
 			return true
 		}
 		if _, hasContent := contentMap["content"]; hasContent {
 			return true
 		}
-	case skill.SkillTypeSpreadsheets:
+	case domainskill.SkillTypeSpreadsheets:
 		if _, hasSheets := contentMap["sheets"]; hasSheets {
 			return true
 		}
 		if _, hasData := contentMap["data"]; hasData {
 			return true
 		}
-	case skill.SkillTypePDFs:
+	case domainskill.SkillTypePDFs:
 		if _, hasPages := contentMap["pages"]; hasPages {
 			return true
 		}
@@ -770,7 +646,7 @@ func (e *SkillExecutor) isValidSkillContentValue(content interface{}, skillType 
 	return len(contentMap) > 0
 }
 
-func (e *SkillExecutor) resolveOutputPath(params SkillExecuteParams) string {
+func (e *Executor) resolveOutputPath(params executeParams) string {
 	if strings.TrimSpace(params.OutputPath) != "" {
 		return params.OutputPath
 	}
@@ -780,43 +656,43 @@ func (e *SkillExecutor) resolveOutputPath(params SkillExecuteParams) string {
 	return "/tmp/" + id + ext
 }
 
-func (e *SkillExecutor) getFileExtension(skillType skill.SkillType) string {
+func (e *Executor) getFileExtension(skillType domainskill.SkillType) string {
 	switch skillType {
-	case skill.SkillTypeSlides:
+	case domainskill.SkillTypeSlides:
 		return ".pptx"
-	case skill.SkillTypeDocs:
+	case domainskill.SkillTypeDocs:
 		return ".docx"
-	case skill.SkillTypePDFs:
+	case domainskill.SkillTypePDFs:
 		return ".pdf"
-	case skill.SkillTypeSpreadsheets:
+	case domainskill.SkillTypeSpreadsheets:
 		return ".xlsx"
 	default:
 		return ".bin"
 	}
 }
 
-func (e *SkillExecutor) getFileName(params SkillExecuteParams) string {
+func (e *Executor) getFileName(params executeParams) string {
 	ext := e.getFileExtension(params.SkillType)
 	id := idgen.MustGenerateSecureID(string(params.SkillType), 10)
 	return id + ext
 }
 
-func (e *SkillExecutor) getMimeType(skillType skill.SkillType) string {
+func (e *Executor) getMimeType(skillType domainskill.SkillType) string {
 	switch skillType {
-	case skill.SkillTypeSlides:
+	case domainskill.SkillTypeSlides:
 		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-	case skill.SkillTypeDocs:
+	case domainskill.SkillTypeDocs:
 		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-	case skill.SkillTypePDFs:
+	case domainskill.SkillTypePDFs:
 		return "application/pdf"
-	case skill.SkillTypeSpreadsheets:
+	case domainskill.SkillTypeSpreadsheets:
 		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	default:
 		return "application/octet-stream"
 	}
 }
 
-func (e *SkillExecutor) failedResult(code string, message string, severity status.ErrorSeverity) *agent.ExecutionResult {
+func (e *Executor) failedResult(code string, message string, severity status.ErrorSeverity) *agent.ExecutionResult {
 	return &agent.ExecutionResult{
 		Status: status.StatusFailed,
 		Error: &agent.ExecutionError{
@@ -827,7 +703,7 @@ func (e *SkillExecutor) failedResult(code string, message string, severity statu
 	}
 }
 
-func (e *SkillExecutor) hasErrorInResult(result *tool.Result) bool {
+func (e *Executor) hasErrorInResult(result *tool.Result) bool {
 	if result == nil || len(result.Content) == 0 {
 		return false
 	}
@@ -857,7 +733,7 @@ func (e *SkillExecutor) hasErrorInResult(result *tool.Result) bool {
 	return false
 }
 
-func (e *SkillExecutor) extractErrorText(result *tool.Result) string {
+func (e *Executor) extractErrorText(result *tool.Result) string {
 	if result == nil || len(result.Content) == 0 {
 		return ""
 	}
@@ -911,4 +787,4 @@ func contains(values []string, target string) bool {
 	return false
 }
 
-var _ agent.Executor = (*SkillExecutor)(nil)
+var _ agent.Executor = (*Executor)(nil)

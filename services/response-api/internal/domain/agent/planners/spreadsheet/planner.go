@@ -1,4 +1,5 @@
-package planners
+// Package spreadsheet contains the spreadsheet generator planner.
+package spreadsheet
 
 import (
 	"context"
@@ -11,41 +12,39 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// PDFGeneratorPlanner creates execution plans for PDF generation.
-type PDFGeneratorPlanner struct {
+// Planner creates execution plans for spreadsheet generation.
+type Planner struct {
 	planService     plan.Service
 	artifactService artifact.Service
 }
 
-// PDFGeneratorConfig holds configuration for PDF generation.
-type PDFGeneratorConfig struct {
-	PageSize    string `json:"page_size"`
-	Orientation string `json:"orientation"`
+// Config holds configuration for spreadsheet generation.
+type Config struct {
+	IncludeCharts bool `json:"include_charts"`
 }
 
-// DefaultPDFGeneratorConfig returns defaults.
-func DefaultPDFGeneratorConfig() PDFGeneratorConfig {
-	return PDFGeneratorConfig{
-		PageSize:    "A4",
-		Orientation: "portrait",
+// DefaultConfig returns defaults.
+func DefaultConfig() Config {
+	return Config{
+		IncludeCharts: false,
 	}
 }
 
-// NewPDFGeneratorPlanner creates a new PDF generator planner.
-func NewPDFGeneratorPlanner(planService plan.Service, artifactService artifact.Service) *PDFGeneratorPlanner {
-	return &PDFGeneratorPlanner{
+// NewPlanner creates a new spreadsheet generator planner.
+func NewPlanner(planService plan.Service, artifactService artifact.Service) *Planner {
+	return &Planner{
 		planService:     planService,
 		artifactService: artifactService,
 	}
 }
 
 // Name returns the planner's unique identifier.
-func (p *PDFGeneratorPlanner) Name() string {
-	return string(plan.AgentTypePDFGenerator)
+func (p *Planner) Name() string {
+	return string(plan.AgentTypeSpreadsheetGenerator)
 }
 
 // CanHandle determines if this planner can handle the given request.
-func (p *PDFGeneratorPlanner) CanHandle(ctx context.Context, request *agent.PlanRequest) bool {
+func (p *Planner) CanHandle(ctx context.Context, request *agent.PlanRequest) bool {
 	if request.Metadata == nil {
 		return false
 	}
@@ -57,20 +56,20 @@ func (p *PDFGeneratorPlanner) CanHandle(ctx context.Context, request *agent.Plan
 	if !ok {
 		return false
 	}
-	return agentTypeStr == string(plan.AgentTypePDFGenerator)
+	return agentTypeStr == string(plan.AgentTypeSpreadsheetGenerator)
 }
 
-// CreatePlan creates a plan for PDF generation.
-func (p *PDFGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.PlanRequest) (*agent.PlanResult, error) {
-	log.Debug().Interface("request", request).Msg("[pdf_generator] CreatePlan started")
+// CreatePlan creates a plan for spreadsheet generation.
+func (p *Planner) CreatePlan(ctx context.Context, request *agent.PlanRequest) (*agent.PlanResult, error) {
+	log.Debug().Interface("request", request).Msg("[spreadsheet_generator] CreatePlan started")
 	config := p.parseConfig(request)
-	log.Debug().Interface("config", config).Msg("[pdf_generator] parsed config")
+	log.Debug().Interface("config", config).Msg("[spreadsheet_generator] parsed config")
 	estimatedSteps := 3
 
 	createdPlan, err := p.planService.Create(ctx, plan.CreateParams{
 		ResponseID:     request.ResponseID,
 		Model:          request.Model,
-		AgentType:      plan.AgentTypePDFGenerator,
+		AgentType:      plan.AgentTypeSpreadsheetGenerator,
 		EstimatedSteps: estimatedSteps,
 		Config: &plan.PlanConfig{
 			MaxRetries:        3,
@@ -88,20 +87,19 @@ func (p *PDFGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	contentTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
 		Sequence:    1,
 		TaskType:    plan.TaskTypeGeneration,
-		Title:       "Generate Content",
-		Description: strPtr("Generate PDF sections as structured JSON"),
+		Title:       "Generate Data",
+		Description: strPtr("Generate spreadsheet JSON with sheets, rows, and formulas"),
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	contentParams, _ := json.Marshal(map[string]interface{}{
-		"action":      "generate_pdf_json",
-		"description": "Generate structured PDF JSON for reportlab",
+		"action":      "generate_spreadsheet_json",
+		"description": "Generate structured spreadsheet JSON for openpyxl",
 		"config": map[string]interface{}{
-			"page_size":   config.PageSize,
-			"orientation": config.Orientation,
-			"prompt":      request.UserMessage,
+			"include_charts": config.IncludeCharts,
+			"prompt":         request.UserMessage,
 		},
 	})
 	_, err = p.planService.CreateStep(ctx, contentTask.ID, plan.CreateStepParams{
@@ -117,19 +115,18 @@ func (p *PDFGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	execTask, err := p.planService.CreateTask(ctx, createdPlan.ID, plan.CreateTaskParams{
 		Sequence:    2,
 		TaskType:    plan.TaskTypeExecution,
-		Title:       "Generate PDF",
-		Description: strPtr("Generate PDF file using skill execution"),
+		Title:       "Generate Spreadsheet",
+		Description: strPtr("Generate XLSX file using skill execution"),
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	skillParams, _ := json.Marshal(map[string]interface{}{
-		"skill_type": "pdfs",
+		"skill_type": "spreadsheets",
 		"options": map[string]interface{}{
-			"page_size":   config.PageSize,
-			"orientation": config.Orientation,
-			"title":       request.UserMessage,
+			"include_charts": config.IncludeCharts,
+			"title":          request.UserMessage,
 		},
 	})
 	_, err = p.planService.CreateStep(ctx, execTask.ID, plan.CreateStepParams{
@@ -146,7 +143,7 @@ func (p *PDFGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 		Sequence:    3,
 		TaskType:    plan.TaskTypeFinalization,
 		Title:       "Finalize",
-		Description: strPtr("Store PDF as artifact"),
+		Description: strPtr("Store spreadsheet as artifact"),
 	})
 	if err != nil {
 		return nil, err
@@ -154,10 +151,10 @@ func (p *PDFGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 
 	artifactParams, _ := json.Marshal(map[string]interface{}{
 		"action":        "store_artifact",
-		"description":   "Store PDF as downloadable artifact",
-		"artifact_type": "document",
+		"description":   "Store spreadsheet as downloadable artifact",
+		"artifact_type": "spreadsheet",
 		"config": map[string]interface{}{
-			"format":           "pdf",
+			"format":           "xlsx",
 			"retention_policy": "session",
 		},
 	})
@@ -188,20 +185,22 @@ func (p *PDFGeneratorPlanner) CreatePlan(ctx context.Context, request *agent.Pla
 	return result, nil
 }
 
-func (p *PDFGeneratorPlanner) parseConfig(request *agent.PlanRequest) PDFGeneratorConfig {
-	config := DefaultPDFGeneratorConfig()
+func (p *Planner) parseConfig(request *agent.PlanRequest) Config {
+	config := DefaultConfig()
 	if request.Metadata == nil {
 		return config
 	}
 	if options, ok := request.Metadata["options"].(map[string]interface{}); ok {
-		if pageSize, ok := options["page_size"].(string); ok {
-			config.PageSize = pageSize
-		}
-		if orientation, ok := options["orientation"].(string); ok {
-			config.Orientation = orientation
+		if includeCharts, ok := options["include_charts"].(bool); ok {
+			config.IncludeCharts = includeCharts
 		}
 	}
 	return config
 }
 
-var _ agent.Planner = (*PDFGeneratorPlanner)(nil)
+// strPtr returns a pointer to the given string.
+func strPtr(s string) *string {
+	return &s
+}
+
+var _ agent.Planner = (*Planner)(nil)
