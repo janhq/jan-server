@@ -1,3 +1,0 @@
-[submodule "packages/jan-browser-extension"]
-	path = packages/jan-browser-extension
-	url = https://github.com/janhq/jan-browser-extension.git
