@@ -2,9 +2,12 @@ package infrastructure
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/wire"
 	"github.com/rs/zerolog/log"
+
+	"github.com/janhq/jan-server/packages/go-common/analytics"
 
 	"jan-server/services/mcp-tools/internal/domain/search"
 	"jan-server/services/mcp-tools/internal/infrastructure/auth"
@@ -38,6 +41,9 @@ var InfrastructureProvider = wire.NewSet(
 
 	// LLM-API client for tool tracking
 	ProvideLLMAPIClient,
+
+	// Analytics
+	ProvideAnalyticsTracker,
 )
 
 // ProvideConfig loads and provides the application configuration
@@ -48,13 +54,36 @@ func ProvideConfig() (*config.Config, error) {
 // ProvideSearchClient provides the search client
 func ProvideSearchClient(cfg *config.Config) search.SearchClient {
 	return searchclient.NewSearchClient(searchclient.ClientConfig{
-		Engine:        searchclient.Engine(cfg.SearchEngine),
-		SerperAPIKey:  cfg.SerperAPIKey,
-		SearxngURL:    cfg.SearxngURL,
-		DomainFilters: cfg.SerperDomainFilter,
-		LocationHint:  cfg.SerperLocationHint,
-		OfflineMode:   cfg.SerperOfflineMode,
-		CBEnabled:     cfg.SearchCBEnabled,
+		Engine:             searchclient.Engine(cfg.SearchEngine),
+		SerperAPIKey:       cfg.SerperAPIKey,
+		SerperEnabled:      cfg.SerperEnabled,
+		SearxngURL:         cfg.SearxngURL,
+		SearxngEnabled:     cfg.SearxngEnabled,
+		DomainFilters:      cfg.SerperDomainFilter,
+		LocationHint:       cfg.SerperLocationHint,
+		OfflineMode:        cfg.SerperOfflineMode,
+		ExaAPIKey:          cfg.ExaAPIKey,
+		ExaEnabled:         cfg.ExaEnabled,
+		ExaEndpoint:        cfg.ExaSearchEndpoint,
+		ExaTimeout:         cfg.ExaTimeout,
+		TavilyAPIKey:       cfg.TavilyAPIKey,
+		TavilyEnabled:      cfg.TavilyEnabled,
+		TavilyEndpoint:     cfg.TavilySearchEndpoint,
+		TavilyTimeout:      cfg.TavilyTimeout,
+		CBEnabled:          cfg.SearchCBEnabled,
+		CBFailureThreshold: cfg.SerperCBFailureThreshold,
+		CBSuccessThreshold: cfg.SerperCBSuccessThreshold,
+		CBTimeout:          time.Duration(cfg.SerperCBTimeout) * time.Second,
+		CBMaxHalfOpen:      cfg.SerperCBMaxHalfOpen,
+		HTTPTimeout:        time.Duration(cfg.SerperHTTPTimeout) * time.Second,
+		ScrapeTimeout:      time.Duration(cfg.SerperScrapeTimeout) * time.Second,
+		MaxConnsPerHost:    cfg.SerperMaxConnsPerHost,
+		MaxIdleConns:       cfg.SerperMaxIdleConns,
+		IdleConnTimeout:    time.Duration(cfg.SerperIdleConnTimeout) * time.Second,
+		RetryMaxAttempts:   cfg.SerperRetryMaxAttempts,
+		RetryInitialDelay:  time.Duration(cfg.SerperRetryInitialDelay) * time.Millisecond,
+		RetryMaxDelay:      time.Duration(cfg.SerperRetryMaxDelay) * time.Millisecond,
+		RetryBackoffFactor: cfg.SerperRetryBackoffFactor,
 	})
 }
 
@@ -104,4 +133,45 @@ func ProvideLLMAPIClient(cfg *config.Config) *llmapi.Client {
 		Str("llm_api_url", cfg.LLMAPIBaseURL).
 		Msg("LLM-API client initialized for tool tracking")
 	return llmapi.NewClient(cfg.LLMAPIBaseURL)
+}
+
+// ProvideAnalyticsTracker creates the analytics tracker from config
+func ProvideAnalyticsTracker(cfg *config.Config) analytics.Tracker {
+	logger := log.Logger
+
+	analyticsCfg := analytics.Config{
+		Enabled:     cfg.AnalyticsEnabled,
+		Environment: cfg.AnalyticsEnvironment,
+		PIILevel:    cfg.AnalyticsPIILevel,
+		PostHog: analytics.PostHogConfig{
+			Enabled:       cfg.PostHogEnabled,
+			APIKey:        cfg.PostHogAPIKey,
+			Host:          cfg.PostHogHost,
+			Debug:         cfg.PostHogDebug,
+			BatchSize:     cfg.PostHogBatchSize,
+			FlushInterval: cfg.PostHogFlushInterval,
+		},
+		OTel: analytics.OTelConfig{
+			Enabled:  cfg.OTelAnalyticsEnabled,
+			Endpoint: cfg.OTLPEndpoint,
+		},
+	}
+
+	// Create sanitizer for PII protection
+	sanitizer := analytics.NewSanitizer(analytics.PIILevel(cfg.AnalyticsPIILevel), cfg.ServiceName)
+
+	tracker, err := analytics.NewTracker(analyticsCfg, sanitizer)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to create analytics tracker, using no-op")
+		return analytics.NewNoopTracker()
+	}
+
+	logger.Info().
+		Bool("enabled", analyticsCfg.Enabled).
+		Bool("posthog", analyticsCfg.PostHog.Enabled).
+		Bool("otel", analyticsCfg.OTel.Enabled).
+		Str("environment", analyticsCfg.Environment).
+		Msg("Analytics tracker initialized")
+
+	return tracker
 }

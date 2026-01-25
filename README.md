@@ -20,8 +20,8 @@ Before running Jan Server locally make sure you have:
 
 ```bash
 # Clone and enter the repo
-git clone https://github.com/janhq/jan-server.git
-cd jan-server
+git clone https://github.com/janhq/server.git
+cd server
 
 # Interactive setup (runs jan-cli wizard and docker compose)
 make quickstart

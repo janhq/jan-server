@@ -7,14 +7,16 @@ import { memo } from "react";
 interface NavHeaderProps {
   conversationId?: string;
   conversationTitle?: string;
+  showModelSelector?: boolean;
 }
 
 export const NavHeader = memo(function NavHeader({
   conversationId,
   conversationTitle,
-}: NavHeaderProps = {}) {
+  showModelSelector = true,
+}: NavHeaderProps) {
   const { state, isMobile } = useSidebar();
-  
+
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 justify-between">
@@ -22,7 +24,7 @@ export const NavHeader = memo(function NavHeader({
         {(isMobile || state === "collapsed") && (
           <SidebarTrigger className="text-muted-foreground" />
         )}
-        <ModelSelector />
+        {showModelSelector && <ModelSelector />}
       </div>
       <div className="ml-auto px-3 flex items-center gap-2">
         <ThemeToggle />

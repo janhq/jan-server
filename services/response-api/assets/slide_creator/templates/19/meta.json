@@ -1,0 +1,14 @@
+{
+  "id": 19,
+  "dir": "19",
+  "name": "Carbon Studio",
+  "tone": "Tech Dark",
+  "description": "Dark glass + glow, strong contrast, product/engineering feel.",
+  "variants": {
+    "base": 5,
+    "bullets": 4,
+    "split": 2,
+    "hero": 1,
+    "title": 4
+  }
+}

@@ -57,6 +57,14 @@ on:
         type: string
         default: ".env"
         description: "The .env file to use for this job"
+      include-posthog-key:
+        required: false
+        type: boolean
+        default: false
+        description: "Whether to include PostHog API key in build args"
+    secrets:
+      POSTHOG_API_KEY:
+        required: false
 
 jobs:
   build-docker-x64:
@@ -102,5 +110,7 @@ jobs:
           file: ${{ inputs.docker-file }}
           push: ${{ inputs.is_push }}
           tags: ${{ inputs.tags }}
-          build-args: ${{ inputs.build-args }}
+          build-args: |
+             ${{ inputs.build-args }}
+             ${{ inputs.include-posthog-key && format('POSTHOG_API_KEY={0}', secrets.POSTHOG_API_KEY) || '' }}
           build-contexts: ${{ inputs.build-contexts }}

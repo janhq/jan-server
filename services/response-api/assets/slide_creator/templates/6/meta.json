@@ -1,0 +1,14 @@
+{
+  "id": 6,
+  "dir": "6",
+  "name": "Ivory Minimal",
+  "tone": "Minimal Clean",
+  "description": "Whitespace-forward, neutral framing, restrained accents.",
+  "variants": {
+    "base": 2,
+    "bullets": 1,
+    "split": 2,
+    "hero": 1,
+    "title": 1
+  }
+}

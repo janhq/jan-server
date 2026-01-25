@@ -99,7 +99,7 @@ function RootLayout() {
           onOpenChange={(open: boolean) => !open && handleCloseModal()}
         >
           <DialogContent>
-            <LoginForm />
+            <LoginForm onSuccess={handleCloseModal} />
           </DialogContent>
         </Dialog>
 

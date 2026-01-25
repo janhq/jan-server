@@ -1,8 +1,11 @@
 package httpserver
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"jan-server/services/llm-api/internal/config"
 	"jan-server/services/llm-api/internal/domain/apikey"
@@ -12,12 +15,68 @@ import (
 	v1 "jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1"
 
 	"github.com/gin-gonic/gin"
+	"github.com/janhq/jan-server/packages/go-common/analytics"
+	analyticsMiddleware "github.com/janhq/jan-server/packages/go-common/analytics/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
 	_ "jan-server/services/llm-api/docs/swagger"
 )
+
+// extractUserIDFromJWT extracts the user ID (subject) from a JWT token without validation.
+// This is used for analytics purposes only - actual auth validation happens in auth middleware.
+func extractUserIDFromJWT(c *gin.Context) string {
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		return ""
+	}
+
+	// Check for Bearer token
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
+		return ""
+	}
+
+	token := parts[1]
+
+	// Skip API keys (sk_*)
+	if strings.HasPrefix(token, "sk_") {
+		return ""
+	}
+
+	// JWT has 3 parts: header.payload.signature
+	jwtParts := strings.Split(token, ".")
+	if len(jwtParts) != 3 {
+		return ""
+	}
+
+	// Decode payload (second part) - handle both standard and raw URL encoding
+	payload, err := base64.RawURLEncoding.DecodeString(jwtParts[1])
+	if err != nil {
+		// Try with padding added
+		paddedPayload := jwtParts[1]
+		if pad := len(paddedPayload) % 4; pad > 0 {
+			paddedPayload += strings.Repeat("=", 4-pad)
+		}
+		payload, err = base64.URLEncoding.DecodeString(paddedPayload)
+		if err != nil {
+			return ""
+		}
+	}
+
+	// Parse JSON to get 'sub' claim
+	var claims map[string]interface{}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return ""
+	}
+
+	if sub, ok := claims["sub"].(string); ok {
+		return sub
+	}
+
+	return ""
+}
 
 type HTTPServer struct {
 	engine        *gin.Engine
@@ -26,6 +85,7 @@ type HTTPServer struct {
 	authRoute     *auth.AuthRoute
 	config        *config.Config
 	apiKeyService *apikey.Service
+	tracker       analytics.Tracker
 }
 
 func (s *HTTPServer) bindSwagger() {
@@ -49,21 +109,30 @@ func NewHttpServer(
 	infra *infrastructure.Infrastructure,
 	cfg *config.Config,
 	apiKeyService *apikey.Service,
+	tracker analytics.Tracker,
 ) *HTTPServer {
 	gin.SetMode(gin.ReleaseMode)
 	server := HTTPServer{
-		gin.New(),
-		infra,
-		v1Route,
-		authRoute,
-		cfg,
-		apiKeyService,
+		engine:        gin.New(),
+		infra:         infra,
+		v1Route:       v1Route,
+		authRoute:     authRoute,
+		config:        cfg,
+		apiKeyService: apiKeyService,
+		tracker:       tracker,
 	}
 	server.engine.Use(middleware.RequestID())
 	server.engine.Use(middleware.TracingMiddleware(cfg.ServiceName))
 	server.engine.Use(middleware.LoggingMiddleware(infra.Logger))
 	server.engine.Use(middleware.CORSMiddleware())
 	server.engine.Use(middleware.MetricsMiddleware())
+
+	// Analytics middleware - adds tracker and user context to requests
+	server.engine.Use(analyticsMiddleware.Analytics(analyticsMiddleware.Config{
+		Tracker:           tracker,
+		TrackHTTPRequests: false,
+		ExtractDistinctID: extractUserIDFromJWT,
+	}))
 
 	// Root health check (for backwards compatibility)
 	server.engine.GET("/healthz", func(c *gin.Context) {

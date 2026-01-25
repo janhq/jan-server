@@ -153,11 +153,11 @@ func (h *ResponseHandler) Create(c *gin.Context) {
 			toolName = req.ToolChoice.Tool
 		}
 		if _, ok := metadata["agent_type"]; !ok && toolName == "generate_slide" {
-			metadata["agent_type"] = "slide_generator"
+			metadata["agent_type"] = "slide_creator"
 		}
-		if metadata["agent_type"] == "slide_generator" {
+		if metadata["agent_type"] == "slide_creator" {
 			if _, ok := metadata["research_depth"]; !ok {
-				metadata["research_depth"] = "deep"
+				metadata["research_depth"] = "standard"
 			}
 			if _, ok := metadata["num_slides"]; !ok {
 				metadata["num_slides"] = 10
@@ -167,6 +167,9 @@ func (h *ResponseHandler) Create(c *gin.Context) {
 			}
 			if _, ok := metadata["format"]; !ok {
 				metadata["format"] = "pptx"
+			}
+			if _, ok := metadata["body_mode"]; !ok {
+				metadata["body_mode"] = "template"
 			}
 		}
 		if req.ToolChoice.Options != nil {
@@ -262,6 +265,27 @@ func (h *ResponseHandler) Cancel(c *gin.Context) {
 	resp, err := h.service.Cancel(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, responses.FromDomain(resp))
+}
+
+// Retry handles POST /v1/responses/:id/retry
+// @Summary Retry the last failed plan step for a response
+// @Tags Responses
+// @Produce json
+// @Param response_id path string true "Response ID"
+// @Success 200 {object} responses.ResponsePayload
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /v1/responses/{response_id}/retry [post]
+func (h *ResponseHandler) Retry(c *gin.Context) {
+	id := c.Param("response_id")
+	resp, err := h.service.Retry(c.Request.Context(), id)
+	if err != nil {
+		h.log.Error().Err(err).Str("response_id", id).Msg("response retry failed")
+		responses.HandleError(c, err, "failed to retry response")
 		return
 	}
 	c.JSON(http.StatusOK, responses.FromDomain(resp))

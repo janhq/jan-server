@@ -1,0 +1,14 @@
+{
+  "id": 13,
+  "dir": "13",
+  "name": "Executive Slate",
+  "tone": "Corporate Consulting",
+  "description": "Executive framing, clear hierarchy, client-ready polish.",
+  "variants": {
+    "base": 9,
+    "bullets": 3,
+    "split": 5,
+    "hero": 3,
+    "title": 3
+  }
+}

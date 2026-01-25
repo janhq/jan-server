@@ -1,0 +1,14 @@
+{
+  "id": 17,
+  "dir": "17",
+  "name": "Night Ops",
+  "tone": "Tech Dark",
+  "description": "Dark glass + glow, strong contrast, product/engineering feel.",
+  "variants": {
+    "base": 5,
+    "bullets": 2,
+    "split": 5,
+    "hero": 2,
+    "title": 2
+  }
+}

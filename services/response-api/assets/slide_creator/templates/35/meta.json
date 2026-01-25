@@ -1,0 +1,14 @@
+{
+  "id": 35,
+  "dir": "35",
+  "name": "Notebook Editorial",
+  "tone": "Editorial Serif",
+  "description": "Paper/grid editorial vibe; strong reading flow.",
+  "variants": {
+    "base": 6,
+    "bullets": 5,
+    "split": 1,
+    "hero": 2,
+    "title": 1
+  }
+}

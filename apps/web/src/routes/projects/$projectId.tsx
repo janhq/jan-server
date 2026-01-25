@@ -26,6 +26,7 @@ import {
 import { useModels } from "@/stores/models-store";
 import { useEffect, useRef, useState } from "react";
 import { useProjects } from "@/stores/projects-store";
+import { useCapabilities } from "@/stores/capabilities-store";
 import { Separator } from "@janhq/interfaces/separator";
 import { cn } from "@/lib/utils";
 import { Button } from "@janhq/interfaces/button";
@@ -55,6 +56,11 @@ function ProjectPageContent() {
   const params = useParams({ strict: false });
   const projectId = params.projectId as string | undefined;
   const selectedModel = useModels((state) => state.selectedModel);
+  const agentModeEnabled = useCapabilities((state) => state.agentModeEnabled);
+  const agentModeAvailable = useCapabilities(
+    (state) => state.agentModeAvailable,
+  );
+  const agentModeActive = agentModeEnabled && agentModeAvailable;
   const getProject = useProjects((state) => state.getProject);
   const deleteProject = useProjects((state) => state.deleteProject);
   const [project, setProject] = useState<Project | null>(null);
@@ -106,7 +112,14 @@ function ProjectPageContent() {
     }
   };
 
-  const provider = janProvider();
+  const provider = janProvider(
+    undefined,
+    undefined,
+    false,
+    false,
+    undefined,
+    agentModeActive,
+  );
 
   const { status, sendMessage } = useChat(provider(selectedModel?.id), {
     onFinish: () => {

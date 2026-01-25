@@ -1,0 +1,14 @@
+{
+  "id": 60,
+  "dir": "60",
+  "name": "Green Path",
+  "tone": "Sustainability Earthy",
+  "description": "Grid/paper background pairs well with earthy palettes.",
+  "variants": {
+    "base": 6,
+    "bullets": 5,
+    "split": 1,
+    "hero": 2,
+    "title": 1
+  }
+}

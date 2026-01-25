@@ -1,0 +1,14 @@
+{
+  "id": 14,
+  "dir": "14",
+  "name": "Strategy Pack",
+  "tone": "Corporate Consulting",
+  "description": "Executive framing, clear hierarchy, client-ready polish.",
+  "variants": {
+    "base": 9,
+    "bullets": 4,
+    "split": 1,
+    "hero": 1,
+    "title": 4
+  }
+}

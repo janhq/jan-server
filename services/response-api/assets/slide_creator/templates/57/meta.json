@@ -1,0 +1,14 @@
+{
+  "id": 57,
+  "dir": "57",
+  "name": "Forest Notes",
+  "tone": "Sustainability Earthy",
+  "description": "Grid/paper background pairs well with earthy palettes.",
+  "variants": {
+    "base": 6,
+    "bullets": 2,
+    "split": 3,
+    "hero": 2,
+    "title": 2
+  }
+}

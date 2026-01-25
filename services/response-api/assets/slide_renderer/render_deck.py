@@ -40,10 +40,17 @@ except ImportError:
     HAS_REQUESTS = False
     print(">>> MODULE LOAD: requests NOT available", file=sys.stderr, flush=True)
 
+try:
+    from PIL import Image
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
+
 print(">>> MODULE LOAD: importing pptx...", file=sys.stderr, flush=True)
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
+from pptx.oxml.ns import qn
 from pptx.enum.text import PP_ALIGN, MSO_VERTICAL_ANCHOR, MSO_AUTO_SIZE
 from pptx.enum.shapes import MSO_SHAPE, MSO_CONNECTOR
 from pptx.chart.data import ChartData
@@ -116,6 +123,58 @@ def rect_in(rect: dict):
     w = convert_to_inches(float(rect.get("w", 0)))
     h = convert_to_inches(float(rect.get("h", 0)))
     return (emu_in(x), emu_in(y), emu_in(w), emu_in(h))
+
+def rect_from_grid(grid: dict, y: float, h: float, theme: dict):
+    """Compute rect (in deck units) from grid + y/h using theme.canvas.safeMargins."""
+    if not grid:
+        return None
+    canvas = (theme or {}).get("canvas", {}) or {}
+    safe = canvas.get("safeMargins", {"top": 36, "right": 36, "bottom": 36, "left": 36})
+    grid_cfg = (theme or {}).get("grid", {}) or {}
+    columns = int(grid_cfg.get("columns", 12) or 12)
+    gutter = float(grid_cfg.get("gutter", 16) or 0)
+    baseline = float(grid_cfg.get("baseline", 8) or 8)
+    snap = bool(grid_cfg.get("snap", True))
+
+    slide_w = 960.0
+    usable_w = slide_w - float(safe.get("left", 36)) - float(safe.get("right", 36))
+    col_w = (usable_w - gutter * (columns - 1)) / columns
+    col = int(grid.get("col", 1))
+    span = int(grid.get("span", 1))
+    x = float(safe.get("left", 36)) + (col - 1) * (col_w + gutter)
+    w = span * col_w + (span - 1) * gutter
+    if snap and baseline:
+        y = round(float(y) / baseline) * baseline
+        h = round(float(h) / baseline) * baseline
+    return {"x": x, "y": y, "w": w, "h": h}
+
+def resolve_slot_rects(layout: dict, elements: list, theme: dict):
+    """Fill rects for elements that reference slotId."""
+    if not layout:
+        return
+    slots = {s.get("id"): s for s in layout.get("slots", []) if isinstance(s, dict)}
+    if not slots:
+        return
+    for el in elements or []:
+        if not isinstance(el, dict):
+            continue
+        if el.get("rect"):
+            continue
+        slot_id = el.get("slotId")
+        if not slot_id:
+            continue
+        slot = slots.get(slot_id)
+        if not slot:
+            continue
+        if isinstance(slot.get("rect"), dict):
+            rect = slot.get("rect")
+        else:
+            grid = slot.get("grid", {}) or {}
+            y = slot.get("y", 0)
+            h = slot.get("h", 0)
+            rect = rect_from_grid(grid, y, h, theme)
+        if rect:
+            el["rect"] = rect
 
 ALIGN_MAP = {
     "left": PP_ALIGN.LEFT,
@@ -551,14 +610,40 @@ def add_table(slide, el, theme_defaults_text, slide_number: int):
     table_shape = slide.shapes.add_table(nrows, ncols, left, top, width, height)
     table = table_shape.table
 
+    def _col_header(col):
+        if isinstance(col, dict):
+            for key in ("header", "title", "name", "label", "text"):
+                val = col.get(key)
+                if val is not None:
+                    return str(val)
+            return ""
+        if col is None:
+            return ""
+        return str(col)
+
+    def _col_width(col):
+        if isinstance(col, dict):
+            width_val = col.get("width")
+            if isinstance(width_val, (int, float)):
+                return float(width_val)
+        return None
+
     for c in range(ncols):
         hdr = cols[c] if c < len(cols) else ""
-        table.cell(0, c).text = hdr
+        table.cell(0, c).text = _col_header(hdr)
+        col_width = _col_width(hdr)
+        if col_width is not None:
+            table.columns[c].width = Pt(col_width)
 
     for r_i, row in enumerate(rows, start=1):
         for c in range(ncols):
             val = row[c] if c < len(row) else ""
-            table.cell(r_i, c).text = str(val)
+            if isinstance(val, dict):
+                for key in ("text", "value", "label", "name"):
+                    if key in val:
+                        val = val[key]
+                        break
+            table.cell(r_i, c).text = "" if val is None else str(val)
 
     style = t.get("style", {})
     hdr_style = style.get("headerTextStyle", {})
@@ -613,20 +698,14 @@ def add_chart(slide, el, datasets_by_id):
     ds_id = c.get("datasetRef")
     ds = datasets_by_id.get(ds_id) if ds_id else None
     
-    # If no dataset found, create placeholder data
     if not ds:
-        logger.warning(f"Chart datasetRef '{ds_id}' not found, using placeholder data")
-        categories = ["Category 1", "Category 2", "Category 3"]
-        series = [{"name": "Placeholder", "values": [10, 20, 30]}]
-    else:
-        data = ds.get("data", {})
-        categories = data.get("labels", ["A", "B", "C"])
-        series = data.get("series", [{"name": "Data", "values": [1, 2, 3]}])
-        # Ensure we have valid data
-        if not categories:
-            categories = ["A", "B", "C"]
-        if not series:
-            series = [{"name": "Data", "values": [1, 2, 3]}]
+        raise ValueError(f"Chart datasetRef '{ds_id}' not found")
+
+    data = ds.get("data", {})
+    categories = data.get("labels", [])
+    series = data.get("series", [])
+    if not categories or not series:
+        raise ValueError(f"Chart dataset '{ds_id}' missing labels/series")
 
     chart_data = ChartData()
     chart_data.categories = categories
@@ -638,9 +717,10 @@ def add_chart(slide, el, datasets_by_id):
         "line": XL_CHART_TYPE.LINE,
         "pie": XL_CHART_TYPE.PIE,
         "bar": XL_CHART_TYPE.BAR_CLUSTERED,
-        "area": XL_CHART_TYPE.AREA,
     }
-    xl_type = CHART_TYPE_MAP.get(chart_type, XL_CHART_TYPE.BAR_CLUSTERED)
+    if chart_type not in CHART_TYPE_MAP:
+        raise ValueError(f"Unsupported chart type: {chart_type}")
+    xl_type = CHART_TYPE_MAP.get(chart_type)
 
     chart_shape = slide.shapes.add_chart(xl_type, left, top, width, height, chart_data)
     chart = chart_shape.chart
@@ -741,6 +821,16 @@ def add_image(slide, el, assets_by_id):
         prompt = src.get("prompt", "")
         logger.warning(f"Generated image type not yet supported. Prompt: {prompt[:50]}...")
         return None
+
+    elif source_type == "base64":
+        encoded = src.get("base64")
+        if not encoded:
+            raise ValueError(f"Image source type is 'base64' but no base64 provided for ref: {ref}")
+        try:
+            import base64
+            image_stream = io.BytesIO(base64.b64decode(encoded))
+        except Exception as e:
+            raise ValueError(f"Failed to decode base64 image for ref {ref}: {e}")
     
     else:
         raise ValueError(f"Unsupported image source type: {source_type}. Use 'file' or 'url'.")
@@ -748,13 +838,46 @@ def add_image(slide, el, assets_by_id):
     if image_stream is None:
         return None
     
-    pic = slide.shapes.add_picture(image_stream, left, top, width=width, height=height)
-    
-    # Apply rotation if specified
+    fit = img.get("fit", "cover")
+
+    if fit == "stretch":
+        pic = slide.shapes.add_picture(image_stream, left, top, width=width, height=height)
+    else:
+        pic = slide.shapes.add_picture(image_stream, left, top)
+        try:
+            img_w_px, img_h_px = pic.image.size
+        except Exception:
+            img_w_px, img_h_px = (1, 1)
+        img_ar = float(img_w_px) / float(img_h_px) if img_h_px else 1.0
+        target_ar = float(width) / float(height) if height else 1.0
+
+        if fit == "contain":
+            if img_ar > target_ar:
+                new_w = float(width)
+                new_h = new_w / img_ar
+            else:
+                new_h = float(height)
+                new_w = new_h * img_ar
+            pic.width = int(new_w)
+            pic.height = int(new_h)
+            pic.left = int(left + (float(width) - new_w) / 2)
+            pic.top = int(top + (float(height) - new_h) / 2)
+        else:
+            pic.width = int(width)
+            pic.height = int(height)
+            if img_ar > target_ar:
+                crop = (1 - target_ar / img_ar) / 2
+                pic.crop_left = crop
+                pic.crop_right = crop
+            elif img_ar < target_ar:
+                crop = (1 - img_ar / target_ar) / 2
+                pic.crop_top = crop
+                pic.crop_bottom = crop
+
     rotation = el.get("rotation")
     if rotation:
         pic.rotation = float(rotation)
-    
+
     return pic
 
 def flatten_elements(elements, dx: float = 0.0, dy: float = 0.0, dz: int = 0):
@@ -774,15 +897,37 @@ def flatten_elements(elements, dx: float = 0.0, dy: float = 0.0, dz: int = 0):
             try:
                 gx = float(g_rect.get("x", 0))
                 gy = float(g_rect.get("y", 0))
+                gw = float(g_rect.get("w", 0))
+                gh = float(g_rect.get("h", 0))
             except (TypeError, ValueError):
-                gx, gy = 0.0, 0.0
+                gx, gy, gw, gh = 0.0, 0.0, 0.0, 0.0
 
             try:
                 gz = int(el.get("zIndex", 0))
             except (TypeError, ValueError):
                 gz = 0
+            adjusted_children = []
+            for child in children:
+                if isinstance(child, dict) and isinstance(child.get("rel"), dict) and gw > 0 and gh > 0:
+                    rel = child.get("rel", {})
+                    try:
+                        rx = float(rel.get("x", 0))
+                        ry = float(rel.get("y", 0))
+                        rw = float(rel.get("w", 0))
+                        rh = float(rel.get("h", 0))
+                        child = dict(child)
+                        child["rect"] = {
+                            "x": gx + rx * gw,
+                            "y": gy + ry * gh,
+                            "w": rw * gw,
+                            "h": rh * gh,
+                        }
+                        child.pop("rel", None)
+                    except (TypeError, ValueError):
+                        pass
+                adjusted_children.append(child)
 
-            flat.extend(flatten_elements(children, dx + gx, dy + gy, dz + gz))
+            flat.extend(flatten_elements(adjusted_children, dx + gx, dy + gy, dz + gz))
             continue
 
         # Non-group: copy and offset rect
@@ -968,6 +1113,7 @@ def render(deck: dict, out_path: Path):
                 all_elements.extend(comp.get("elements", []))
         all_elements.extend(s.get("elements", []))
 
+        resolve_slot_rects(layout, all_elements, theme)
         all_elements = flatten_elements(all_elements)
         all_elements.sort(key=lambda e: e.get("zIndex", 0))
 

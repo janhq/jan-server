@@ -2,6 +2,7 @@
 package plan
 
 import (
+	"bytes"
 	"encoding/json"
 	"time"
 
@@ -35,12 +36,12 @@ type Plan struct {
 type AgentType string
 
 const (
-	AgentTypeSlideGenerator AgentType = "slide_generator"
-	AgentTypeDeepResearch   AgentType = "deep_research"
-	AgentTypeDocGenerator   AgentType = "doc_generator"
-	AgentTypePDFGenerator   AgentType = "pdf_generator"
+	AgentTypeSlideCreator         AgentType = "slide_creator"
+	AgentTypeDeepResearch         AgentType = "deep_research"
+	AgentTypeDocGenerator         AgentType = "doc_generator"
+	AgentTypePDFGenerator         AgentType = "pdf_generator"
 	AgentTypeSpreadsheetGenerator AgentType = "spreadsheet_generator"
-	AgentTypeCustom         AgentType = "custom"
+	AgentTypeCustom               AgentType = "custom"
 )
 
 // String returns the string representation of the agent type.
@@ -113,6 +114,8 @@ type Step struct {
 	Sequence      int                  `json:"sequence"`
 	Action        ActionType           `json:"action"`
 	Status        status.Status        `json:"status"`
+	Title         string               `json:"title"`
+	Description   *string              `json:"description,omitempty"`
 	PlannedParams json.RawMessage      `json:"planned_params,omitempty"` // Original planned parameters
 	ActualParams  json.RawMessage      `json:"actual_params,omitempty"`  // Actual execution parameters (may differ if agent changed tool)
 	InputParams   json.RawMessage      `json:"input_params,omitempty"`   // Deprecated: use PlannedParams
@@ -247,12 +250,20 @@ type StepOutput struct {
 // MediaArtifact represents an artifact uploaded to media-api.
 // These are accessible files with jan_file_* IDs and download URLs.
 type MediaArtifact struct {
-	ID          string `json:"id"`   // jan_file_xxx format
-	Type        string `json:"type"` // code, image, document, etc.
-	Filename    string `json:"filename"`
-	DownloadURL string `json:"download_url"` // Pre-signed or permanent URL
-	Size        int64  `json:"size"`
-	ContentType string `json:"content_type"` // MIME type
+	ID           string               `json:"id"`   // jan_file_xxx format
+	Type         string               `json:"type"` // code, image, document, etc.
+	Filename     string               `json:"filename"`
+	DownloadURL  string               `json:"download_url"` // Pre-signed or permanent URL
+	Size         int64                `json:"size"`
+	ContentType  string               `json:"content_type"` // MIME type
+	SlidesImages []MediaArtifactImage `json:"slides_images,omitempty"`
+}
+
+// MediaArtifactImage represents a slide preview image.
+type MediaArtifactImage struct {
+	ID    string `json:"id"`
+	URL   string `json:"url"`
+	Thumb string `json:"thumb,omitempty"`
 }
 
 // Citation represents a source citation from research steps.
@@ -279,13 +290,20 @@ func (s *Step) SetActualParams(params json.RawMessage) {
 
 // GetEffectiveParams returns the actual params if set, otherwise planned params.
 func (s *Step) GetEffectiveParams() json.RawMessage {
-	if len(s.ActualParams) > 0 {
+	if len(s.ActualParams) > 0 && !isJSONNull(s.ActualParams) {
 		return s.ActualParams
 	}
-	if len(s.PlannedParams) > 0 {
+	if len(s.PlannedParams) > 0 && !isJSONNull(s.PlannedParams) {
 		return s.PlannedParams
 	}
 	return s.InputParams
+}
+
+func isJSONNull(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return true
+	}
+	return bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
 }
 
 // HasOutputData returns true if the step has output data set.

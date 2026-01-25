@@ -151,7 +151,7 @@ SELECT
   r.id,
   'completed',
   100,
-  'slide_generator',
+  'slide_creator',
   '{}'::jsonb,
   1,
   1,

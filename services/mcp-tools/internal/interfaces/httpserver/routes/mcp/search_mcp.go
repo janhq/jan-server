@@ -37,6 +37,21 @@ type SearchArgs struct {
 	UserID         string `json:"user_id,omitempty"`
 }
 
+// ImageSearchArgs defines the arguments for the image_search tool
+type ImageSearchArgs struct {
+	Q           string  `json:"q"`
+	GL          *string `json:"gl,omitempty"`
+	HL          *string `json:"hl,omitempty"`
+	Num         *int    `json:"num,omitempty"`
+	Autocorrect *bool   `json:"autocorrect,omitempty"`
+	OfflineMode *bool   `json:"offline_mode,omitempty"`
+	// Context passthrough
+	ToolCallID     string `json:"tool_call_id,omitempty"`
+	RequestID      string `json:"request_id,omitempty"`
+	ConversationID string `json:"conversation_id,omitempty"`
+	UserID         string `json:"user_id,omitempty"`
+}
+
 // ScrapeArgs defines the arguments for the scrape tool
 type ScrapeArgs struct {
 	Url             string `json:"url"`
@@ -101,6 +116,32 @@ type scrapeToolPayload struct {
 	FetchedAt   string         `json:"fetched_at"`
 }
 
+type imageSearchToolResult struct {
+	Position        int    `json:"position"`
+	Title           string `json:"title"`
+	ImageURL        string `json:"image_url"`
+	ImageWidth      int    `json:"image_width"`
+	ImageHeight     int    `json:"image_height"`
+	ThumbnailURL    string `json:"thumbnail_url"`
+	ThumbnailWidth  int    `json:"thumbnail_width,omitempty"`
+	ThumbnailHeight int    `json:"thumbnail_height,omitempty"`
+	Source          string `json:"source"`
+	Domain          string `json:"domain"`
+	Link            string `json:"link"`
+	Creator         string `json:"creator,omitempty"`
+	Credit          string `json:"credit,omitempty"`
+}
+
+type imageSearchToolPayload struct {
+	Query       string                            `json:"query"`
+	Engine      string                            `json:"engine"`
+	Live        bool                              `json:"live"`
+	CacheStatus string                            `json:"cache_status"`
+	Metadata    map[string]any                    `json:"metadata"`
+	Results     []imageSearchToolResult           `json:"results"`
+	Raw         *domainsearch.ImageSearchResponse `json:"raw,omitempty"`
+}
+
 // SearchMCP handles MCP tool registration for search tooling.
 type SearchMCP struct {
 	searchService         *domainsearch.SearchService
@@ -163,6 +204,7 @@ func (s *SearchMCP) SetToolConfigCache(cache *toolconfig.Cache) {
 // Tool key constants (matching llm-api mcptool domain)
 const (
 	ToolKeyGoogleSearch    = "google_search"
+	ToolKeyImageSearch     = "image_search"
 	ToolKeyScrape          = "scrape"
 	ToolKeyFileSearchIndex = "file_search_index"
 	ToolKeyFileSearchQuery = "file_search_query"
@@ -171,6 +213,7 @@ const (
 // Default tool descriptions (fallback when cache is unavailable)
 var defaultToolDescriptions = map[string]string{
 	ToolKeyGoogleSearch:    "Perform web searches via the configured engines (Serper, Exa, Tavily, or SearXNG) and fetch structured citations.",
+	ToolKeyImageSearch:     "Search for images using Serper API. Returns image URLs, dimensions, thumbnails, and source information.",
 	ToolKeyScrape:          "Scrape a webpage and retrieve the text with optional markdown formatting using the configured providers.",
 	ToolKeyFileSearchIndex: "Index arbitrary text into the lightweight vector store used for MCP automations.",
 	ToolKeyFileSearchQuery: "Run a semantic query against documents indexed via file_search_index.",
@@ -420,6 +463,180 @@ func (s *SearchMCP) RegisterTools(server *mcp.Server) {
 		metrics.RecordToolCall("google_search", provider, "success", time.Since(startTime).Seconds())
 		if estimatedTokens > 0 {
 			metrics.RecordToolTokens("google_search", provider, estimatedTokens)
+		}
+
+		return nil, payload, nil
+	})
+
+	// Register image_search tool
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        ToolKeyImageSearch,
+		Description: s.getToolDescription(ctx, ToolKeyImageSearch),
+	}, func(ctx context.Context, req *mcp.CallToolRequest, input ImageSearchArgs) (*mcp.CallToolResult, imageSearchToolPayload, error) {
+		// Check if tool is active
+		if !s.isToolActive(ctx, ToolKeyImageSearch) {
+			disabledPayload := imageSearchToolPayload{
+				Query:       input.Q,
+				Engine:      "disabled",
+				Live:        false,
+				CacheStatus: "disabled",
+				Metadata: map[string]any{
+					"error": "tool is disabled",
+				},
+				Results: []imageSearchToolResult{},
+			}
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: "tool is disabled"}},
+				IsError: true,
+			}, disabledPayload, nil
+		}
+
+		startTime := time.Now()
+		callCtx := extractAllContext(req)
+
+		// Check for tracking context from headers
+		tracking, trackingEnabled := GetToolTracking(ctx)
+
+		log.Info().
+			Str("tool", "image_search").
+			Str("tool_call_id", callCtx["tool_call_id"]).
+			Str("request_id", callCtx["request_id"]).
+			Str("conversation_id", callCtx["conversation_id"]).
+			Str("user_id", callCtx["user_id"]).
+			Bool("tracking_enabled", trackingEnabled).
+			Msg("MCP tool call received")
+
+		log.Debug().
+			Str("tool", "image_search").
+			Str("query", input.Q).
+			Interface("gl", input.GL).
+			Interface("hl", input.HL).
+			Interface("num", input.Num).
+			Interface("offline_mode", input.OfflineMode).
+			Msg("image_search request details")
+
+		imageSearchReq := domainsearch.ImageSearchRequest{
+			Q: input.Q,
+		}
+		if input.GL != nil {
+			imageSearchReq.GL = input.GL
+		}
+		if input.HL != nil {
+			imageSearchReq.HL = input.HL
+		}
+		if input.Num != nil && *input.Num > 0 {
+			imageSearchReq.Num = input.Num
+		}
+		autocorrect := true
+		if input.Autocorrect != nil {
+			autocorrect = *input.Autocorrect
+		}
+		imageSearchReq.Autocorrect = &autocorrect
+		if input.OfflineMode != nil {
+			imageSearchReq.OfflineMode = input.OfflineMode
+		}
+
+		var payload imageSearchToolPayload
+		var toolErr error
+
+		imageSearchResp, err := s.searchService.ImageSearch(ctx, imageSearchReq)
+		if err != nil {
+			log.Warn().Err(err).Str("tool", "image_search").Str("query", imageSearchReq.Q).Msg("image search service failed")
+			toolErr = err
+			payload = imageSearchToolPayload{
+				Query:       imageSearchReq.Q,
+				Engine:      "error",
+				Live:        false,
+				CacheStatus: "error",
+				Metadata: map[string]any{
+					"error": toolErr.Error(),
+				},
+				Results: []imageSearchToolResult{},
+			}
+		} else {
+			log.Debug().
+				Str("tool", "image_search").
+				Str("query", imageSearchReq.Q).
+				Int("result_count", len(imageSearchResp.Images)).
+				Interface("engine", imageSearchResp.SearchParameters["engine"]).
+				Msg("image_search response received")
+			payload = s.buildImageSearchPayload(imageSearchReq.Q, imageSearchResp)
+		}
+
+		// If tracking is enabled, save result to LLM-API
+		if trackingEnabled && s.llmClient != nil {
+			inputCopy := input
+			go func() {
+				saveCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+
+				outputBytes, _ := json.Marshal(payload)
+				outputStr := string(outputBytes)
+
+				argsBytes, _ := json.Marshal(inputCopy)
+				argsStr := string(argsBytes)
+
+				var errStr *string
+				if toolErr != nil {
+					e := toolErr.Error()
+					errStr = &e
+				}
+
+				result := s.llmClient.UpdateToolCallResult(
+					saveCtx,
+					tracking.AuthToken,
+					tracking.ConversationID,
+					tracking.ToolCallID,
+					"image_search",
+					argsStr,
+					"Jan MCP Server",
+					outputStr,
+					errStr,
+				)
+
+				if !result.Success && result.Error != nil {
+					log.Error().
+						Err(result.Error).
+						Str("call_id", tracking.ToolCallID).
+						Str("conv_id", tracking.ConversationID).
+						Int64("duration_ms", time.Since(startTime).Milliseconds()).
+						Msg("Failed to update tool result in LLM-API")
+				}
+			}()
+		}
+
+		if toolErr != nil {
+			if payload.Metadata == nil {
+				payload.Metadata = map[string]any{
+					"error": toolErr.Error(),
+				}
+			}
+			if payload.Results == nil {
+				payload.Results = []imageSearchToolResult{}
+			}
+			metrics.RecordToolCall("image_search", "none", "error", time.Since(startTime).Seconds())
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: toolErr.Error()}},
+				IsError: true,
+			}, payload, nil
+		}
+		if payload.Metadata == nil {
+			payload.Metadata = map[string]any{}
+		}
+		if payload.Results == nil {
+			payload.Results = []imageSearchToolResult{}
+		}
+
+		// Estimate payload tokens for observability
+		estimatedTokens := estimateTokensFromImageSearchPayload(payload)
+
+		provider := payload.Engine
+		if provider == "" {
+			provider = "unknown"
+		}
+		metrics.RecordToolCall("image_search", provider, "success", time.Since(startTime).Seconds())
+		if estimatedTokens > 0 {
+			metrics.RecordToolTokens("image_search", provider, estimatedTokens)
 		}
 
 		return nil, payload, nil
@@ -885,6 +1102,76 @@ func estimateTokensFromSearchPayload(payload searchToolPayload) float64 {
 
 func estimateTokensFromScrapePayload(payload scrapeToolPayload) float64 {
 	return float64(len(payload.Text)+len(payload.TextPreview)) / 4
+}
+
+func (s *SearchMCP) buildImageSearchPayload(query string, resp *domainsearch.ImageSearchResponse) imageSearchToolPayload {
+	metadata := map[string]any{}
+	if resp != nil && resp.SearchParameters != nil {
+		metadata = resp.SearchParameters
+	}
+
+	engine := "serper"
+	if resp != nil && resp.SearchParameters != nil {
+		if val, ok := resp.SearchParameters["engine"].(string); ok && val != "" {
+			engine = val
+		}
+	}
+
+	live := true
+	if resp != nil && resp.SearchParameters != nil {
+		if val, ok := resp.SearchParameters["live"].(bool); ok {
+			live = val
+		}
+	}
+
+	cacheStatus := "live"
+	if !live {
+		cacheStatus = "fallback"
+	}
+
+	results := make([]imageSearchToolResult, 0)
+	if resp != nil {
+		for _, img := range resp.Images {
+			results = append(results, imageSearchToolResult{
+				Position:        img.Position,
+				Title:           img.Title,
+				ImageURL:        img.ImageURL,
+				ImageWidth:      img.ImageWidth,
+				ImageHeight:     img.ImageHeight,
+				ThumbnailURL:    img.ThumbnailURL,
+				ThumbnailWidth:  img.ThumbnailWidth,
+				ThumbnailHeight: img.ThumbnailHeight,
+				Source:          img.Source,
+				Domain:          img.Domain,
+				Link:            img.Link,
+				Creator:         img.Creator,
+				Credit:          img.Credit,
+			})
+		}
+	}
+
+	return imageSearchToolPayload{
+		Query:       query,
+		Engine:      engine,
+		Live:        live,
+		CacheStatus: cacheStatus,
+		Metadata:    metadata,
+		Results:     results,
+		Raw:         resp,
+	}
+}
+
+func estimateTokensFromImageSearchPayload(payload imageSearchToolPayload) float64 {
+	charCount := len(payload.Query)
+	for _, result := range payload.Results {
+		charCount += len(result.Title)
+		charCount += len(result.ImageURL)
+		charCount += len(result.ThumbnailURL)
+		charCount += len(result.Source)
+		charCount += len(result.Domain)
+		charCount += len(result.Link)
+	}
+	return float64(charCount) / 4
 }
 
 func stringFromMap(data map[string]any, key string) string {

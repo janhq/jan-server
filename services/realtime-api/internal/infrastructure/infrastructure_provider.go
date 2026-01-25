@@ -6,6 +6,8 @@ import (
 	"github.com/google/wire"
 	"github.com/rs/zerolog"
 
+	"github.com/janhq/jan-server/packages/go-common/analytics"
+
 	"jan-server/services/realtime-api/internal/config"
 	"jan-server/services/realtime-api/internal/domain/session"
 	"jan-server/services/realtime-api/internal/infrastructure/auth"
@@ -54,6 +56,45 @@ func ProvideAuthValidator(ctx context.Context, cfg *config.Config, log zerolog.L
 	return auth.NewValidator(ctx, cfg, log)
 }
 
+// ProvideAnalyticsTracker creates the analytics tracker from config.
+func ProvideAnalyticsTracker(cfg *config.Config, log zerolog.Logger) analytics.Tracker {
+	analyticsCfg := analytics.Config{
+		Enabled:     cfg.AnalyticsEnabled,
+		Environment: cfg.AnalyticsEnvironment,
+		PIILevel:    cfg.AnalyticsPIILevel,
+		PostHog: analytics.PostHogConfig{
+			Enabled:       cfg.PostHogEnabled,
+			APIKey:        cfg.PostHogAPIKey,
+			Host:          cfg.PostHogHost,
+			Debug:         cfg.PostHogDebug,
+			BatchSize:     cfg.PostHogBatchSize,
+			FlushInterval: cfg.PostHogFlushInterval,
+		},
+		OTel: analytics.OTelConfig{
+			Enabled:  cfg.OTelAnalyticsEnabled,
+			Endpoint: cfg.OTLPEndpoint,
+		},
+	}
+
+	// Create sanitizer for PII protection
+	sanitizer := analytics.NewSanitizer(analytics.PIILevel(cfg.AnalyticsPIILevel), cfg.ServiceName)
+
+	tracker, err := analytics.NewTracker(analyticsCfg, sanitizer)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to create analytics tracker, using no-op")
+		return analytics.NewNoopTracker()
+	}
+
+	log.Info().
+		Bool("enabled", analyticsCfg.Enabled).
+		Bool("posthog", analyticsCfg.PostHog.Enabled).
+		Bool("otel", analyticsCfg.OTel.Enabled).
+		Str("environment", analyticsCfg.Environment).
+		Msg("Analytics tracker initialized")
+
+	return tracker
+}
+
 // InfrastructureProvider provides all infrastructure dependencies.
 var InfrastructureProvider = wire.NewSet(
 	// Config
@@ -72,4 +113,7 @@ var InfrastructureProvider = wire.NewSet(
 
 	// Auth
 	ProvideAuthValidator,
+
+	// Analytics
+	ProvideAnalyticsTracker,
 )

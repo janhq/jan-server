@@ -1,0 +1,14 @@
+{
+  "id": 91,
+  "dir": "91",
+  "name": "Studio Deck",
+  "tone": "Creative Studio",
+  "description": "Gallery/glass composition for portfolios and creative pitches.",
+  "variants": {
+    "base": 1,
+    "bullets": 1,
+    "split": 4,
+    "hero": 1,
+    "title": 1
+  }
+}

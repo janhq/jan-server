@@ -1,0 +1,14 @@
+{
+  "id": 81,
+  "dir": "81",
+  "name": "Gradient Flow",
+  "tone": "Gradient Modern",
+  "description": "Band gradient + modern spacing; works with gradient palettes.",
+  "variants": {
+    "base": 4,
+    "bullets": 1,
+    "split": 2,
+    "hero": 1,
+    "title": 1
+  }
+}

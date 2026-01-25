@@ -130,7 +130,10 @@ services:
       # Database Configuration
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /kong/kong.yml
-      
+
+      # JWT Issuer (for declarative config)
+      ISSUER: ${ISSUER:-http://localhost:8085/realms/jan}
+
       # Logging
       KONG_LOG_LEVEL: ${KONG_LOG_LEVEL:-info}
       

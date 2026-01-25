@@ -21,6 +21,7 @@ jobs:
       vector-store: ${{ steps.filter.outputs.vector-store }}
       realtime-api: ${{ steps.filter.outputs.realtime-api }}
       pkg: ${{ steps.filter.outputs.pkg }}
+      go-common: ${{ steps.filter.outputs.go-common }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -44,10 +45,12 @@ jobs:
               - 'services/realtime-api/**'
             pkg:
               - 'pkg/**'
+            go-common:
+              - 'packages/go-common/**'
 
   build-llm-api:
     needs: changes
-    if: needs.changes.outputs.llm-api == 'true' || needs.changes.outputs.pkg == 'true'
+    if: needs.changes.outputs.llm-api == 'true' || needs.changes.outputs.pkg == 'true' || needs.changes.outputs.go-common == 'true'
     uses: ./.github/workflows/_reusable-docker.yml
     secrets: inherit
     with:
@@ -59,10 +62,12 @@ jobs:
       is_push: ${{ github.event_name == 'push' }}
       build-args: |
         VERSION_TAG=dev-${{ github.sha }}
+      build-contexts: |
+        go-common=packages/go-common
 
   build-mcp-tools:
     needs: changes
-    if: needs.changes.outputs.mcp-tools == 'true' || needs.changes.outputs.pkg == 'true'
+    if: needs.changes.outputs.mcp-tools == 'true' || needs.changes.outputs.pkg == 'true' || needs.changes.outputs.go-common == 'true'
     uses: ./.github/workflows/_reusable-docker.yml
     secrets: inherit
     with:
@@ -74,10 +79,12 @@ jobs:
       is_push: ${{ github.event_name == 'push' }}
       build-args: |
         VERSION_TAG=dev-${{ github.sha }}
+      build-contexts: |
+        go-common=packages/go-common
 
   build-media-api:
     needs: changes
-    if: needs.changes.outputs.media-api == 'true' || needs.changes.outputs.pkg == 'true'
+    if: needs.changes.outputs.media-api == 'true' || needs.changes.outputs.pkg == 'true' || needs.changes.outputs.go-common == 'true'
     uses: ./.github/workflows/_reusable-docker.yml
     secrets: inherit
     with:
@@ -89,10 +96,12 @@ jobs:
       is_push: ${{ github.event_name == 'push' }}
       build-args: |
         VERSION_TAG=dev-${{ github.sha }}
+      build-contexts: |
+        go-common=packages/go-common
 
   build-response-api:
     needs: changes
-    if: needs.changes.outputs.response-api == 'true' || needs.changes.outputs.pkg == 'true'
+    if: needs.changes.outputs.response-api == 'true' || needs.changes.outputs.pkg == 'true' || needs.changes.outputs.go-common == 'true'
     uses: ./.github/workflows/_reusable-docker.yml
     secrets: inherit
     with:
@@ -104,6 +113,8 @@ jobs:
       is_push: ${{ github.event_name == 'push' }}
       build-args: |
         VERSION_TAG=dev-${{ github.sha }}
+      build-contexts: |
+        go-common=packages/go-common
 
   build-memory-tools:
     needs: changes
@@ -137,7 +148,7 @@ jobs:
 
   build-realtime-api:
     needs: changes
-    if: needs.changes.outputs.realtime-api == 'true' || needs.changes.outputs.pkg == 'true'
+    if: needs.changes.outputs.realtime-api == 'true' || needs.changes.outputs.pkg == 'true' || needs.changes.outputs.go-common == 'true'
     uses: ./.github/workflows/_reusable-docker.yml
     secrets: inherit
     with:
@@ -149,3 +160,5 @@ jobs:
       is_push: ${{ github.event_name == 'push' }}
       build-args: |
         VERSION_TAG=dev-${{ github.sha }}
+      build-contexts: |
+        go-common=packages/go-common

@@ -5,3 +5,4 @@ export * from "./reasoning";
 export * from "./tool";
 export * from "./code-block";
 export * from "./shimmer";
+export * from "./artifact";

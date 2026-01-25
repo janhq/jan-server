@@ -1,0 +1,14 @@
+{
+  "id": 94,
+  "dir": "94",
+  "name": "Art Direction",
+  "tone": "Creative Studio",
+  "description": "Gallery/glass composition for portfolios and creative pitches.",
+  "variants": {
+    "base": 1,
+    "bullets": 4,
+    "split": 2,
+    "hero": 1,
+    "title": 4
+  }
+}

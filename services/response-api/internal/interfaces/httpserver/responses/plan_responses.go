@@ -76,6 +76,8 @@ type StepResponse struct {
 	Sequence      int             `json:"sequence"`
 	Action        string          `json:"action"`
 	Status        string          `json:"status"`
+	Title         string          `json:"title,omitempty"`
+	Description   *string         `json:"description,omitempty"`
 	RetryCount    int             `json:"retry_count"`
 	MaxRetries    int             `json:"max_retries"`
 	Error         *string         `json:"error,omitempty"`
@@ -235,13 +237,15 @@ func MapStepToResponse(s *plan.Step) StepResponse {
 		Sequence:      s.Sequence,
 		Action:        string(s.Action),
 		Status:        string(s.Status),
+		Title:         s.Title,
+		Description:   s.Description,
 		RetryCount:    s.RetryCount,
 		MaxRetries:    s.MaxRetries,
 		Error:         s.ErrorMessage,
 		DurationMs:    s.DurationMs,
 		PlannedParams: sanitizePlannedParams(s.PlannedParams),
 		ActualParams:  s.ActualParams,
-		InputParams:   s.InputParams, // Deprecated, kept for compatibility
+		InputParams:   sanitizeInputParams(s.InputParams), // Deprecated, kept for compatibility
 		OutputData:    sanitizeStepOutputData(s.OutputData),
 	}
 
@@ -291,6 +295,36 @@ func sanitizePlannedParams(plannedParams json.RawMessage) json.RawMessage {
 
 	// No schema field found, return original
 	return plannedParams
+}
+
+// sanitizeInputParams removes the large schema field from input parameters.
+// The schema field can be very large and is not typically used by the API consumers.
+func sanitizeInputParams(inputParams json.RawMessage) json.RawMessage {
+	if len(inputParams) == 0 {
+		return inputParams
+	}
+
+	var params map[string]interface{}
+	if err := json.Unmarshal(inputParams, &params); err != nil {
+		// Not a JSON object, return as-is
+		return inputParams
+	}
+
+	// Remove the schema field if it exists
+	if _, exists := params["schema"]; exists {
+		delete(params, "schema")
+
+		// Re-marshal without the schema field
+		sanitized, err := json.Marshal(params)
+		if err != nil {
+			// If marshaling fails, return original
+			return inputParams
+		}
+		return sanitized
+	}
+
+	// No schema field found, return original
+	return inputParams
 }
 
 // sanitizeStepOutputData removes large binary content (like base64) from step output data.

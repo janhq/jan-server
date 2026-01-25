@@ -16,6 +16,7 @@ import (
 	"jan-server/services/media-api/internal/infrastructure/database"
 	"jan-server/services/media-api/internal/infrastructure/logger"
 	repo "jan-server/services/media-api/internal/infrastructure/repository/media"
+	"jan-server/services/media-api/internal/infrastructure/storage"
 	"jan-server/services/media-api/internal/interfaces/httpserver"
 )
 
@@ -34,6 +35,7 @@ func BuildApplication(ctx context.Context) (*Application, error) {
 		auth.NewValidator,
 		newDatabaseConfig,
 		newGormDB,
+		newAnalyticsTracker,
 		mediaSet,
 		httpserver.New,
 		NewApplication,

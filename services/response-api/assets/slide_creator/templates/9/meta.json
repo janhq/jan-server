@@ -1,0 +1,14 @@
+{
+  "id": 9,
+  "dir": "9",
+  "name": "Calm Minimal",
+  "tone": "Minimal Clean",
+  "description": "Whitespace-forward, neutral framing, restrained accents.",
+  "variants": {
+    "base": 2,
+    "bullets": 4,
+    "split": 5,
+    "hero": 1,
+    "title": 4
+  }
+}

@@ -26,6 +26,8 @@ export interface StepResponse {
   sequence: number;
   action: string;
   status: string;
+  title?: string;
+  description?: string;
   retry_count: number;
   max_retries: number;
   error?: string;

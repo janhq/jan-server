@@ -1,0 +1,14 @@
+{
+  "id": 10,
+  "dir": "10",
+  "name": "Mono Minimal",
+  "tone": "Minimal Clean",
+  "description": "Whitespace-forward, neutral framing, restrained accents.",
+  "variants": {
+    "base": 2,
+    "bullets": 5,
+    "split": 1,
+    "hero": 2,
+    "title": 1
+  }
+}

@@ -8,6 +8,10 @@ package main
 
 import (
 	"context"
+	"github.com/google/wire"
+	"github.com/rs/zerolog"
+	"gorm.io/gorm"
+	logger2 "gorm.io/gorm/logger"
 	"jan-server/services/media-api/internal/config"
 	media2 "jan-server/services/media-api/internal/domain/media"
 	"jan-server/services/media-api/internal/infrastructure/auth"
@@ -16,11 +20,6 @@ import (
 	"jan-server/services/media-api/internal/infrastructure/repository/media"
 	"jan-server/services/media-api/internal/infrastructure/storage"
 	"jan-server/services/media-api/internal/interfaces/httpserver"
-
-	"github.com/google/wire"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
-	logger2 "gorm.io/gorm/logger"
 )
 
 // Injectors from wire.go:
@@ -38,23 +37,24 @@ func BuildApplication(ctx context.Context) (*Application, error) {
 		return nil, err
 	}
 	repository := media.NewRepository(db)
-	s3Storage, err := storage.NewS3Storage(ctx, configConfig, zerologLogger)
+	storage, err := provideStorage(ctx, configConfig, zerologLogger)
 	if err != nil {
 		return nil, err
 	}
-	service := media2.NewService(configConfig, repository, s3Storage, zerologLogger)
+	service := media2.NewService(configConfig, repository, storage, zerologLogger)
 	validator, err := auth.NewValidator(ctx, configConfig, zerologLogger)
 	if err != nil {
 		return nil, err
 	}
-	httpServer := httpserver.New(configConfig, zerologLogger, service, validator)
+	tracker := newAnalyticsTracker(configConfig, zerologLogger)
+	httpServer := httpserver.New(configConfig, zerologLogger, service, validator, tracker)
 	application := NewApplication(httpServer, zerologLogger)
 	return application, nil
 }
 
 // wire.go:
 
-var mediaSet = wire.NewSet(media.NewRepository, wire.Bind(new(media2.Repository), new(*media.Repository)), storage.NewS3Storage, wire.Bind(new(media2.Storage), new(*storage.S3Storage)), media2.NewService)
+var mediaSet = wire.NewSet(media.NewRepository, wire.Bind(new(media2.Repository), new(*media.Repository)), provideStorage, media2.NewService)
 
 func newDatabaseConfig(cfg *config.Config) database.Config {
 	return database.Config{
@@ -75,4 +75,21 @@ func newGormDB(ctx context.Context, cfg database.Config, log zerolog.Logger) (*g
 		return nil, err
 	}
 	return db, nil
+}
+
+// provideStorage creates the appropriate storage backend based on configuration.
+func provideStorage(ctx context.Context, cfg *config.Config, log zerolog.Logger) (media2.Storage, error) {
+	if cfg.IsLocalStorage() {
+		localStorage, err := storage.NewLocalStorage(cfg, log)
+		if err != nil {
+			return nil, err
+		}
+		return localStorage, nil
+	}
+
+	s3Storage, err := storage.NewS3Storage(ctx, cfg, log)
+	if err != nil {
+		return nil, err
+	}
+	return s3Storage, nil
 }

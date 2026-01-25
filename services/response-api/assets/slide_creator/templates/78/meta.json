@@ -1,0 +1,14 @@
+{
+  "id": 78,
+  "dir": "78",
+  "name": "Grayscale",
+  "tone": "Monochrome",
+  "description": "Minimal frame tuned for black/white/gray palettes.",
+  "variants": {
+    "base": 2,
+    "bullets": 3,
+    "split": 3,
+    "hero": 3,
+    "title": 3
+  }
+}

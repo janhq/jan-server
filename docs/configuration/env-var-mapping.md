@@ -110,6 +110,7 @@ This document maps centralized configuration (`pkg/config/types.go`) environment
 | `SANDBOXFUSION_URL`            | string   | `http://sandboxfusion:8080`     | `SANDBOXFUSION_URL`        | OK Aligned       |
 | `MCP_SANDBOX_REQUIRE_APPROVAL` | bool     | `true`                          | `SANDBOX_REQUIRE_APPROVAL` | TODO Need prefix |
 | `MCP_CONFIG_FILE`              | string   | `configs/mcp-providers.yml`     | `MCP_CONFIG_FILE`          | OK Aligned       |
+| `MCP_AGENT_PROXY_ENABLED`      | bool     | `true`                          | `MCP_AGENT_PROXY_ENABLED`  | New              |
 
 **Migration Notes:**
 
@@ -196,6 +197,8 @@ This document maps centralized configuration (`pkg/config/types.go`) environment
 | `RESPONSE_MEDIA_API_URL`  | string   | `http://media-api:8285` | `MEDIA_API_URL`  | TODO Need prefix |
 | `RESPONSE_MAX_TOOL_DEPTH` | int      | `8`                     | `MAX_TOOL_DEPTH` | TODO Need prefix |
 | `RESPONSE_TOOL_TIMEOUT`   | duration | `45s`                   | `TOOL_TIMEOUT`   | TODO Need prefix |
+| `RESPONSE_LLM_DISABLE_CUSTOM_TEMPERATURE` | bool | `false` | `RESPONSE_LLM_DISABLE_CUSTOM_TEMPERATURE` | New |
+| `RESPONSE_LLM_STREAM_MODE` | string | `auto` | `RESPONSE_LLM_STREAM_MODE` | New |
 | `SLIDE_RENDERER_SCRIPT`   | string   | (empty)                 | `SLIDE_RENDERER_SCRIPT` | New |
 | `SLIDE_RENDERER_ENABLED`  | bool     | `true`                  | `SLIDE_RENDERER_ENABLED` | New |
 

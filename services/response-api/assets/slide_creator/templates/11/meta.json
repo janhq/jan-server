@@ -1,0 +1,14 @@
+{
+  "id": 11,
+  "dir": "11",
+  "name": "Consulting Edge",
+  "tone": "Corporate Consulting",
+  "description": "Executive framing, clear hierarchy, client-ready polish.",
+  "variants": {
+    "base": 9,
+    "bullets": 1,
+    "split": 3,
+    "hero": 1,
+    "title": 1
+  }
+}

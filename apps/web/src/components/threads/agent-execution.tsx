@@ -11,10 +11,12 @@ import type { StepWithResults } from "@/stores/right-sidebar-store";
 import { useAgentExecution, useAgentExecutionStore } from "@/stores/agent-execution-store";
 import {
   convertTaskToStepWithResults,
+  extractArtifactsFromTasks,
   getStepLabel,
   getStepToolName,
 } from "@/lib/step-output-parser";
 import type { TaskResponse, StepResponse } from "@/services/response-api-service";
+import { CircleCheck, Circle, Loader2 } from "lucide-react";
 
 interface AgentExecutionPanelProps {
   toolState?: string;
@@ -24,6 +26,7 @@ interface AgentExecutionPanelProps {
 const AgentExecutionPanel = ({ toolState, responseId }: AgentExecutionPanelProps) => {
   const setAllSteps = useRightSidebarStore((state) => state.setAllSteps);
   const setCurrentStep = useRightSidebarStore((state) => state.setCurrentStep);
+  const setArtifacts = useRightSidebarStore((state) => state.setArtifacts);
   const loadHistoricalExecution = useAgentExecutionStore((state) => state.loadHistoricalExecution);
   const execution = useAgentExecution(responseId);
 
@@ -55,6 +58,9 @@ const AgentExecutionPanel = ({ toolState, responseId }: AgentExecutionPanelProps
     });
   });
 
+  // Extract artifacts from tasks
+  const artifacts = extractArtifactsFromTasks(tasks);
+
   useEffect(() => {
     if (completedStepIds.length === 0) return;
 
@@ -70,9 +76,14 @@ const AgentExecutionPanel = ({ toolState, responseId }: AgentExecutionPanelProps
         setCurrentStep(latestIndex);
       }
 
+      // Update artifacts whenever steps complete
+      if (artifacts.length > 0) {
+        setArtifacts(artifacts);
+      }
+
       prevCompletedStepIdsRef.current = new Set(completedStepIds);
     }
-  }, [completedStepIds.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [completedStepIds.join(","), artifacts.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!execution) {
     if (toolState || responseId) {
@@ -167,16 +178,38 @@ const AgentExecutionPanel = ({ toolState, responseId }: AgentExecutionPanelProps
                   {task.description}
                 </p>
               )}
-              {task.steps?.map((step: StepResponse, stepIndex: number) => (
-                <AgentExecutionStep
-                  key={step.id}
-                  icon={getToolIcon(getStepToolName(step))}
-                  label={getStepLabel(step)}
-                  status={mapStatus(step.status)}
-                  searchResults={taskSteps[stepIndex]?.results || []}
-                  onStepClick={() => handleStepClick(step.id)}
-                />
-              ))}
+              {task.steps?.map((step: StepResponse, stepIndex: number) => {
+                const stepsLength = task.steps?.length ?? 0;
+                const isLast = stepIndex === stepsLength - 1;
+                return (
+                  taskSteps[stepIndex]?.results.length === 0 ? 
+                    <div className="flex items-center gap-2 ml-2">
+                      <div className="bg-background z-20 relative flex shrink-0 items-center justify-center size-4">
+                        {!isLast && <div className="absolute z-30 -bottom-4 h-full left-2 w-px bg-border transition-all last:hidden" />}
+                        {mapStatus(step.status) === "complete" && (
+                          <CircleCheck className="size-3 text-muted-foreground" />
+                        )}
+                        {mapStatus(step.status) === "pending" && (
+                          <Circle className="size-3 text-muted-foreground fill-background" />
+                        )}
+                        {mapStatus(step.status) === "active" && (
+                          <Loader2 className="size-3 animate-spin text-muted-foreground" />
+                        )}
+                      </div>
+                      <div className="text-muted-foreground">
+                        {getStepLabel(step)}
+                      </div>
+                    </div> : (
+                  <AgentExecutionStep
+                    key={step.id}
+                    icon={getToolIcon(getStepToolName(step))}
+                    label={getStepLabel(step)}
+                    status={mapStatus(step.status)}
+                    searchResults={taskSteps[stepIndex]?.results || []}
+                    onStepClick={() => handleStepClick(step.id)}
+                  />
+                ))
+              })}
             </AgentExecutionContent>
           </AgentExecution>
         );

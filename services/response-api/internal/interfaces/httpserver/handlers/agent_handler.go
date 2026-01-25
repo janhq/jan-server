@@ -42,7 +42,7 @@ func (h *AgentHandler) List(c *gin.Context) {
 // @Description Returns detailed information about a specific agent type
 // @Tags Agents
 // @Produce json
-// @Param type path string true "Agent type (e.g., deep_research, slide_generator)"
+// @Param type path string true "Agent type (e.g., deep_research, slide_creator)"
 // @Success 200 {object} responses.AgentDetailResponse
 // @Failure 404 {object} map[string]string
 // @Router /v1/agents/{type} [get]
@@ -67,7 +67,7 @@ func (h *AgentHandler) Get(c *gin.Context) {
 // @Description Returns the input/output schemas for a specific agent type
 // @Tags Agents
 // @Produce json
-// @Param type path string true "Agent type (e.g., deep_research, slide_generator)"
+// @Param type path string true "Agent type (e.g., deep_research, slide_creator)"
 // @Success 200 {object} responses.AgentSchemaResponse
 // @Failure 404 {object} map[string]string
 // @Router /v1/agents/{type}/schema [get]

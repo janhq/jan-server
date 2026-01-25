@@ -1,0 +1,14 @@
+{
+  "id": 90,
+  "dir": "90",
+  "name": "Gov Pack",
+  "tone": "Government/Public Sector",
+  "description": "Formal, legible, and conservative layout for public comms.",
+  "variants": {
+    "base": 9,
+    "bullets": 5,
+    "split": 2,
+    "hero": 2,
+    "title": 1
+  }
+}

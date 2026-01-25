@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/janhq/jan-server/packages/go-common/analytics"
+	analyticsMiddleware "github.com/janhq/jan-server/packages/go-common/analytics/middleware"
 	openai "github.com/sashabaranov/go-openai"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -99,11 +101,19 @@ func (h *ChatHandler) CreateChatCompletion(
 		attribute.Int("user.id", int(userID)),
 	)
 
+	// Track message_sent event for analytics
+	h.trackMessageSent(reqCtx, request)
+
 	var conv *conversation.Conversation
 	var conversationID string
 	var projectInstruction string
 	var err error
 	newMessages := append([]openai.ChatCompletionMessage(nil), request.Messages...)
+	skipPromptCustomization := shouldBypassPromptCustomization(reqCtx)
+
+	if skipPromptCustomization {
+		observability.AddSpanEvent(ctx, "bypassing_prompt_customization")
+	}
 
 	// Extract referrer from context or query parameters
 	referrer := strings.TrimSpace(reqCtx.GetString(ConversationReferrerContextKey))
@@ -133,7 +143,9 @@ func (h *ChatHandler) CreateChatCompletion(
 		request.Messages = h.prependConversationItems(conv, request.Messages)
 
 		// Load project instruction for this conversation (if any)
-		projectInstruction = h.getProjectInstruction(ctx, userID, conv)
+		if !skipPromptCustomization {
+			projectInstruction = h.getProjectInstruction(ctx, userID, conv)
+		}
 	}
 	// If no conversation.id exists, bypass as non-conversation completion
 
@@ -145,23 +157,26 @@ func (h *ChatHandler) CreateChatCompletion(
 	}
 
 	// Load memory context (best-effort) when a conversation is present
-	loadedMemory := h.collectPromptMemory(conv, reqCtx)
-
-	// Load user settings once for prompt orchestration and m	emory (best-effort)
+	var loadedMemory []string
 	var userSettings *usersettings.UserSettings
-	if h.userSettingsService != nil {
-		userSettings, err = h.userSettingsService.GetOrCreateSettings(ctx, userID)
-		if err != nil {
-			userSettings = nil
-		}
-	}
+	if !skipPromptCustomization {
+		loadedMemory = h.collectPromptMemory(conv, reqCtx)
 
-	// Load memory using memory_handler (respects MEMORY_ENABLED and user settings)
-	// Memory injection is controlled by PROMPT_ORCHESTRATION_MEMORY in the prompt processor
-	if h.memoryHandler != nil && conversationID != "" {
-		memoryContext, memErr := h.memoryHandler.LoadMemoryContext(ctx, userID, conversationID, conv, newMessages, userSettings)
-		if memErr == nil && len(memoryContext) > 0 {
-			loadedMemory = append(loadedMemory, memoryContext...)
+		// Load user settings once for prompt orchestration and memory (best-effort)
+		if h.userSettingsService != nil {
+			userSettings, err = h.userSettingsService.GetOrCreateSettings(ctx, userID)
+			if err != nil {
+				userSettings = nil
+			}
+		}
+
+		// Load memory using memory_handler (respects MEMORY_ENABLED and user settings)
+		// Memory injection is controlled by PROMPT_ORCHESTRATION_MEMORY in the prompt processor
+		if h.memoryHandler != nil && conversationID != "" {
+			memoryContext, memErr := h.memoryHandler.LoadMemoryContext(ctx, userID, conversationID, conv, newMessages, userSettings)
+			if memErr == nil && len(memoryContext) > 0 {
+				loadedMemory = append(loadedMemory, memoryContext...)
+			}
 		}
 	}
 
@@ -227,12 +242,12 @@ func (h *ChatHandler) CreateChatCompletion(
 	}
 
 	// Ensure project instruction is the first system message when available
-	if projectInstruction != "" {
+	if projectInstruction != "" && !skipPromptCustomization {
 		request.Messages = prompt.PrependProjectInstruction(request.Messages, projectInstruction)
 	}
 
 	// Apply prompt orchestration (if enabled)
-	if h.promptProcessor != nil {
+	if h.promptProcessor != nil && !skipPromptCustomization {
 		observability.AddSpanEvent(ctx, "processing_prompts")
 
 		preferences := make(map[string]interface{})
@@ -256,6 +271,12 @@ func (h *ChatHandler) CreateChatCompletion(
 		if request.Image != nil && *request.Image {
 			preferences["image"] = true
 			observability.AddSpanAttributes(ctx, attribute.Bool("chat.image", true))
+		}
+
+		// Pass agent flag to prompt orchestration to prioritize agent tool usage
+		if request.Agent != nil && *request.Agent {
+			preferences["agent"] = true
+			observability.AddSpanAttributes(ctx, attribute.Bool("chat.agent", true))
 		}
 
 		var profileSettings *usersettings.ProfileSettings
@@ -1631,10 +1652,94 @@ func (h *ChatHandler) writeSSEData(reqCtx *gin.Context, data string) error {
 	return nil
 }
 
+func shouldBypassPromptCustomization(reqCtx *gin.Context) bool {
+	if reqCtx == nil {
+		return false
+	}
+	if src := strings.TrimSpace(reqCtx.GetHeader("X-REQUEST-SRC")); strings.EqualFold(src, "Response API") {
+		return true
+	}
+	if src := strings.TrimSpace(reqCtx.GetHeader("X-JAN-SRC")); strings.EqualFold(src, "RESPONSE") {
+		return true
+	}
+	return false
+}
+
 // min returns the minimum of two integers
 func min(a, b int) int {
 	if a < b {
 		return a
 	}
 	return b
+}
+
+// trackMessageSent tracks a message_sent analytics event
+func (h *ChatHandler) trackMessageSent(reqCtx *gin.Context, request chatrequests.ChatCompletionRequest) {
+	ctx := reqCtx.Request.Context()
+	values := analytics.ValuesFromContext(ctx)
+
+	if values.DistinctID == "" {
+		return
+	}
+
+	mode := "normal"
+	if request.Agent != nil && *request.Agent {
+		mode = "agent"
+	} else if request.DeepResearch != nil && *request.DeepResearch {
+		mode = "deep_research"
+	} else if request.Image != nil && *request.Image {
+		mode = "image"
+	}
+
+	messageLength := 0
+	hasAttachments := false
+	attachmentCount := 0
+	var attachmentTypes []string
+
+	for i := len(request.Messages) - 1; i >= 0; i-- {
+		msg := request.Messages[i]
+		if msg.Role == openai.ChatMessageRoleUser {
+			messageLength = len(msg.Content)
+			if len(msg.MultiContent) > 0 {
+				for _, part := range msg.MultiContent {
+					if part.Type == openai.ChatMessagePartTypeText {
+						messageLength += len(part.Text)
+					} else if part.Type == openai.ChatMessagePartTypeImageURL {
+						hasAttachments = true
+						attachmentCount++
+						attachmentTypes = append(attachmentTypes, "image")
+					}
+				}
+			}
+			break
+		}
+	}
+
+	conversationID := ""
+	if request.Conversation != nil {
+		conversationID = request.Conversation.GetID()
+	}
+
+	props := map[string]interface{}{
+		analytics.PropModel:           request.Model,
+		analytics.PropMode:            mode,
+		analytics.PropIsStreaming:     request.Stream,
+		analytics.PropMessageLength:   messageLength,
+		analytics.PropHasAttachments:  hasAttachments,
+		analytics.PropAttachmentCount: attachmentCount,
+		analytics.PropUserStatus:      values.UserStatus,
+		analytics.PropPlatform:        values.Platform,
+	}
+
+	if conversationID != "" {
+		props[analytics.PropConversationID] = conversationID
+	}
+
+	if len(attachmentTypes) > 0 {
+		props[analytics.PropAttachmentTypes] = attachmentTypes
+	}
+
+	if err := analyticsMiddleware.TrackEvent(reqCtx, analytics.EventMessageSent, props); err != nil {
+		observability.AddSpanEvent(ctx, "analytics_error", attribute.String("error", err.Error()))
+	}
 }

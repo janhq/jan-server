@@ -72,7 +72,10 @@ services:
 
   # MCP Tools API - Unified MCP interface
   mcp-tools:
-    build: ../../services/mcp-tools
+    build:
+      context: ../../services/mcp-tools
+      additional_contexts:
+        go-common: ../../packages/go-common
     restart: unless-stopped
     env_file:
       - ${ENV_FILE:-../../.env}

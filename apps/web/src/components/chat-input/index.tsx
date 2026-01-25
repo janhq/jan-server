@@ -65,6 +65,7 @@ import {
   uploadMedia,
   createJanMediaUrl,
 } from "@/services/media-upload-service";
+import { mcpService } from "@/services/mcp-service";
 import type { UploadServiceConfig } from "@janhq/interfaces/ai-elements/prompt-input";
 
 /**
@@ -194,7 +195,16 @@ const ChatInput = ({
     (state) => state.toggleImageGeneration,
   );
   const agentModeEnabled = useCapabilities((state) => state.agentModeEnabled);
+  const agentModeAvailable = useCapabilities(
+    (state) => state.agentModeAvailable,
+  );
   const toggleAgentMode = useCapabilities((state) => state.toggleAgentMode);
+  const setAgentModeAvailable = useCapabilities(
+    (state) => state.setAgentModeAvailable,
+  );
+  const setAgentModeEnabled = useCapabilities(
+    (state) => state.setAgentModeEnabled,
+  );
   const hydrateCapabilities = useCapabilities((state) => state.hydrate);
 
   // Typewriter animation for placeholder
@@ -323,10 +333,48 @@ const ChatInput = ({
   }, []);
 
   useEffect(() => {
+    let isActive = true;
+
+    const fetchAgentAvailability = async () => {
+      try {
+        const toolsResponse = await mcpService.getTools();
+        if (!isActive) {
+          return;
+        }
+        const hasAgentTool = toolsResponse.data.some(
+          (tool) => tool.name === "run_agent",
+        );
+        setAgentModeAvailable(hasAgentTool);
+      } catch (error) {
+        console.error(
+          "Failed to fetch MCP tools for agent availability:",
+          error,
+        );
+        if (!isActive) {
+          return;
+        }
+        setAgentModeAvailable(false);
+      }
+    };
+
+    fetchAgentAvailability();
+
+    return () => {
+      isActive = false;
+    };
+  }, [setAgentModeAvailable]);
+
+  useEffect(() => {
     if (pref) {
       hydrateCapabilities(pref.preferences);
     }
   }, [pref, hydrateCapabilities]);
+
+  useEffect(() => {
+    if (!agentModeAvailable && agentModeEnabled) {
+      setAgentModeEnabled(false);
+    }
+  }, [agentModeAvailable, agentModeEnabled, setAgentModeEnabled]);
 
   // Auto-disable image generation when server doesn't support it
   useEffect(() => {
@@ -543,31 +591,38 @@ const ChatInput = ({
                     <Settings2 className="size-4 text-muted-foreground" />
                   </Button>
                 </SettingChatInput>
-                {!imageGenerationEnabled && (
+                {!imageGenerationEnabled && agentModeAvailable && (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <button
+                      <Button
+                        variant="secondary"
                         className={cn(
-                          "inline-flex items-center justify-center rounded-full h-8 transition-all duration-300 ease-in-out disabled:opacity-50",
-                          agentModeEnabled
-                            ? "bg-primary text-primary-foreground hover:bg-primary/90 px-3 gap-1.5"
-                            : "w-8 text-muted-foreground hover:text-primary-foreground hover:bg-primary/80"
+                          "rounded-full size-8 transition-all duration-300 ease-in-out overflow-hidden group",
+                          agentModeEnabled && "w-22 px-3 gap-1.5"
                         )}
                         disabled={status === CHAT_STATUS.STREAMING}
                         onClick={toggleAgentMode}
                       >
-                        <BotIcon className="size-4 flex-shrink-0" />
+                        <BotIcon
+                          className={cn(
+                            "size-4 shrink-0 text-muted-foreground ml-2",
+                            agentModeEnabled && "text-primary group-hover:hidden ml-0"
+                          )}
+                        />
+                        {agentModeEnabled && (
+                          <X className="size-4 shrink-0 text-primary hidden group-hover:block" />
+                        )}
                         <span
                           className={cn(
-                            "text-sm font-medium transition-all duration-300 ease-in-out overflow-hidden",
+                            "text-sm font-medium transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden",
                             agentModeEnabled
-                              ? "w-[46px] opacity-100"
-                              : "w-0 opacity-0"
+                              ? "opacity-100 max-w-12.5 text-primary"
+                              : "opacity-0 max-w-0"
                           )}
                         >
                           Agent
                         </span>
-                      </button>
+                      </Button>
                     </TooltipTrigger>
                     {!agentModeEnabled && (
                       <TooltipContent>Agent Mode</TooltipContent>
@@ -724,11 +779,13 @@ const ChatInput = ({
             </div>
           )}
         </PromptInputProvider>
-        {/* {status !== CHAT_STATUS.STREAMING && (
+        {status !== CHAT_STATUS.STREAMING &&
+          agentModeEnabled &&
+          agentModeAvailable && (
         <div className="absolute inset-0 scale-90 opacity-50 dark:opacity-25 blur-xl transition-all duration-100">
           <div className="bg-linear-to-r/increasing animate-hue-rotate absolute inset-x-0 bottom-0 top-6 from-pink-300 to-purple-300" />
         </div>
-      )} */}
+      )}
       </div>
       {conversationId && (
         <div className="mt-2 text-xs text-muted-foreground text-center">

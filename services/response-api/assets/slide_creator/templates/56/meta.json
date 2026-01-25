@@ -1,0 +1,14 @@
+{
+  "id": 56,
+  "dir": "56",
+  "name": "Earth Brief",
+  "tone": "Sustainability Earthy",
+  "description": "Grid/paper background pairs well with earthy palettes.",
+  "variants": {
+    "base": 6,
+    "bullets": 1,
+    "split": 2,
+    "hero": 1,
+    "title": 1
+  }
+}

@@ -40,12 +40,14 @@ interface CapabilitiesState {
   reasoningEnabled: boolean;
   imageGenerationEnabled: boolean;
   agentModeEnabled: boolean;
+  agentModeAvailable: boolean;
   setSearchEnabled: (enabled: boolean) => void;
   setDeepResearchEnabled: (enabled: boolean) => void;
   setBrowserEnabled: (enabled: boolean) => void;
   setReasoningEnabled: (enabled: boolean) => void;
   setImageGenerationEnabled: (enabled: boolean) => void;
   setAgentModeEnabled: (enabled: boolean) => void;
+  setAgentModeAvailable: (available: boolean) => void;
   toggleSearch: () => void;
   toggleDeepResearch: () => void;
   toggleBrowser: () => void;
@@ -64,6 +66,7 @@ export const useCapabilities = create<CapabilitiesState>()(
       reasoningEnabled: false,
       imageGenerationEnabled: false,
       agentModeEnabled: false,
+      agentModeAvailable: true,
       setSearchEnabled: (enabled: boolean) => {
         set({ searchEnabled: enabled });
         updatePreferencesInBackground({ enable_search: enabled });
@@ -86,6 +89,9 @@ export const useCapabilities = create<CapabilitiesState>()(
       setAgentModeEnabled: (enabled: boolean) => {
         set({ agentModeEnabled: enabled });
         updatePreferencesInBackground({ enable_agent_mode: enabled });
+      },
+      setAgentModeAvailable: (available: boolean) => {
+        set({ agentModeAvailable: available });
       },
       toggleSearch: () =>
         set((state) => {
@@ -171,6 +177,9 @@ export const useCapabilities = create<CapabilitiesState>()(
         }),
       toggleAgentMode: () =>
         set((state) => {
+          if (!state.agentModeAvailable) {
+            return state;
+          }
           const newValue = !state.agentModeEnabled;
           const previousMode = getCurrentMode(state);
           if (newValue) {
@@ -209,6 +218,14 @@ export const useCapabilities = create<CapabilitiesState>()(
     {
       name: "capabilities-storage",
       storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({
+        searchEnabled: state.searchEnabled,
+        deepResearchEnabled: state.deepResearchEnabled,
+        browserEnabled: state.browserEnabled,
+        reasoningEnabled: state.reasoningEnabled,
+        imageGenerationEnabled: state.imageGenerationEnabled,
+        agentModeEnabled: state.agentModeEnabled,
+      }),
     },
   ),
 );

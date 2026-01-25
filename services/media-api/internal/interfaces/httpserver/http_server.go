@@ -11,6 +11,8 @@ import (
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
+	"github.com/janhq/jan-server/packages/go-common/analytics"
+
 	mediaapidocs "jan-server/services/media-api/docs/swagger"
 	"jan-server/services/media-api/internal/config"
 	domain "jan-server/services/media-api/internal/domain/media"
@@ -21,14 +23,15 @@ import (
 
 // HTTPServer wraps the gin engine with graceful shutdown helpers.
 type HTTPServer struct {
-	cfg    *config.Config
-	engine *gin.Engine
-	log    zerolog.Logger
-	auth   *auth.Validator
+	cfg     *config.Config
+	engine  *gin.Engine
+	log     zerolog.Logger
+	auth    *auth.Validator
+	tracker analytics.Tracker
 }
 
 // New constructs the HTTP server with default middleware and routes.
-func New(cfg *config.Config, log zerolog.Logger, mediaService *domain.Service, authValidator *auth.Validator) *HTTPServer {
+func New(cfg *config.Config, log zerolog.Logger, mediaService *domain.Service, authValidator *auth.Validator, tracker analytics.Tracker) *HTTPServer {
 	if cfg.Environment == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -55,10 +58,11 @@ func New(cfg *config.Config, log zerolog.Logger, mediaService *domain.Service, a
 	routeProvider.Register(engine.Group("/"))
 
 	return &HTTPServer{
-		cfg:    cfg,
-		engine: engine,
-		log:    log,
-		auth:   authValidator,
+		cfg:     cfg,
+		engine:  engine,
+		log:     log,
+		auth:    authValidator,
+		tracker: tracker,
 	}
 }
 

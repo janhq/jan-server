@@ -1005,6 +1005,11 @@ func (m *ToolInstructionsModule) Apply(ctx context.Context, promptCtx *Context, 
 		log.Debug().Msg("ToolInstructionsModule: Using fallback hardcoded prompt")
 	}
 
+	if shouldPreferAgentTool(promptCtx, vars) {
+		agentName, _ := vars["AgentToolName"].(string)
+		toolText = appendAgentToolGuidance(toolText, agentName)
+	}
+
 	result := appendSystemContent(messages, toolText, m.Name(), "")
 	return result, nil
 }
@@ -1026,6 +1031,8 @@ func buildToolTemplateVars(promptCtx *Context) map[string]any {
 		"ImageGenerateToolName": "",
 		"HasImageEditTool":      false,
 		"ImageEditToolName":     "",
+		"HasAgentTool":          false,
+		"AgentToolName":         "",
 	}
 
 	if promptCtx == nil || len(promptCtx.Tools) == 0 {
@@ -1133,10 +1140,50 @@ func buildToolTemplateVars(promptCtx *Context) map[string]any {
 			vars["HasImageEditTool"] = true
 			vars["ImageEditToolName"] = toolName
 		}
+
+		if toolNameLower == "run_agent" {
+			vars["HasAgentTool"] = true
+			vars["AgentToolName"] = toolName
+		}
 	}
 
 	vars["Tools"] = tools
 	return vars
+}
+
+func shouldPreferAgentTool(promptCtx *Context, vars map[string]any) bool {
+	if promptCtx == nil || vars == nil {
+		return false
+	}
+	hasAgentTool, _ := vars["HasAgentTool"].(bool)
+	if !hasAgentTool {
+		return false
+	}
+	if promptCtx.Preferences == nil {
+		return false
+	}
+	preferAgent, ok := promptCtx.Preferences["agent"].(bool)
+	return ok && preferAgent
+}
+
+func appendAgentToolGuidance(toolText, agentName string) string {
+	trimmed := strings.TrimSpace(toolText)
+	if trimmed == "" {
+		return trimmed
+	}
+	if agentName == "" {
+		agentName = "run_agent"
+	}
+	var builder strings.Builder
+	builder.WriteString(trimmed)
+	builder.WriteString("\n\nAGENT TOOL PRIORITY:\n")
+	builder.WriteString("- If the task matches an available agent, prefer calling ")
+	builder.WriteString(agentName)
+	builder.WriteString(" rather than handling it manually.\n")
+	builder.WriteString("- Use ")
+	builder.WriteString(agentName)
+	builder.WriteString(" for multi-step or specialized tasks that benefit from a dedicated agent.\n")
+	return strings.TrimSpace(builder.String())
 }
 
 // CodeAssistantModule adds code-specific instructions.

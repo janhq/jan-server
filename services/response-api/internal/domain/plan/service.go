@@ -35,6 +35,7 @@ type Service interface {
 	RetryStep(ctx context.Context, stepID string) (*Step, error)
 	SkipStep(ctx context.Context, stepID string, reason string) error
 	ResetTaskStepsForRetry(ctx context.Context, taskID string, maxSequence int) error
+	ResetTaskForRetry(ctx context.Context, taskID string) error
 
 	// Detail operations
 	AddStepDetail(ctx context.Context, stepID string, detail *StepDetail) error
@@ -66,6 +67,8 @@ type CreateTaskParams struct {
 type CreateStepParams struct {
 	Sequence    int
 	Action      ActionType
+	Title       string
+	Description *string
 	InputParams []byte
 	MaxRetries  int
 }
@@ -303,11 +306,34 @@ func (s *DefaultService) CreateStep(ctx context.Context, taskID string, params C
 		maxRetries = 3
 	}
 
+	title := params.Title
+	description := params.Description
+	if title == "" || description == nil {
+		var input map[string]interface{}
+		if err := json.Unmarshal(params.InputParams, &input); err == nil {
+			if title == "" {
+				if t, ok := input["title"].(string); ok && t != "" {
+					title = t
+				}
+			}
+			if description == nil {
+				if d, ok := input["description"].(string); ok && d != "" {
+					description = &d
+				}
+			}
+		}
+	}
+	if title == "" {
+		title = string(params.Action)
+	}
+
 	step := &Step{
 		TaskID:        taskID,
 		Sequence:      params.Sequence,
 		Action:        params.Action,
 		Status:        status.StatusPending,
+		Title:         title,
+		Description:   description,
 		PlannedParams: params.InputParams, // Store as planned params
 		InputParams:   params.InputParams, // Keep for backward compatibility
 		RetryCount:    0,
@@ -437,6 +463,21 @@ func (s *DefaultService) ResetTaskStepsForRetry(ctx context.Context, taskID stri
 		}
 	}
 	return nil
+}
+
+// ResetTaskForRetry resets a failed task so it can be started again.
+func (s *DefaultService) ResetTaskForRetry(ctx context.Context, taskID string) error {
+	task, err := s.repo.FindTaskByID(ctx, taskID)
+	if err != nil {
+		return err
+	}
+
+	task.Status = status.StatusPending
+	task.ErrorMessage = nil
+	task.CompletedAt = nil
+	task.UpdatedAt = time.Now().UTC()
+
+	return s.repo.UpdateTask(ctx, task)
 }
 
 // SkipStep marks a step as skipped.

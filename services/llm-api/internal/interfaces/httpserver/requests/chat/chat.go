@@ -135,6 +135,8 @@ type ChatCompletionRequest struct {
 	// Image indicates the user wants to generate images.
 	// When true, image generation tools will be made available.
 	Image *bool `json:"image,omitempty"`
+	// Agent indicates the client prefers agent tool usage when available.
+	Agent *bool `json:"agent,omitempty"`
 }
 
 // ConversationReference can unmarshal from either a string (ID) or an object

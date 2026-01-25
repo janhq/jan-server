@@ -1,0 +1,14 @@
+{
+  "id": 42,
+  "dir": "42",
+  "name": "Care Path",
+  "tone": "Healthcare Calm",
+  "description": "Clean, calm, accessible layouts; works well with light themes.",
+  "variants": {
+    "base": 2,
+    "bullets": 2,
+    "split": 5,
+    "hero": 2,
+    "title": 2
+  }
+}

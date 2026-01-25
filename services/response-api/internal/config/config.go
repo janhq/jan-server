@@ -46,9 +46,11 @@ type Config struct {
 	// Tool Execution
 	MaxToolDepth int           `env:"RESPONSE_MAX_TOOL_DEPTH" envDefault:"50"`
 	ToolTimeout  time.Duration `env:"TOOL_EXECUTION_TIMEOUT" envDefault:"300s"`
+	LLMStreamMode string        `env:"RESPONSE_LLM_STREAM_MODE" envDefault:"auto"`
 
 	// Code Execution Retry
-	CodeFixModel string `env:"CODE_FIX_MODEL" envDefault:"gpt-4o-mini"`
+	CodeFixModel                string `env:"CODE_FIX_MODEL" envDefault:"gpt-4o-mini"`
+	LLMDisableCustomTemperature bool   `env:"RESPONSE_LLM_DISABLE_CUSTOM_TEMPERATURE" envDefault:"false"`
 
 	// Skill Execution
 	SkillExecutionEnabled    bool          `env:"SKILL_EXECUTION_ENABLED" envDefault:"true"`
@@ -68,6 +70,18 @@ type Config struct {
 	WebhookTimeout         time.Duration `env:"WEBHOOK_TIMEOUT" envDefault:"10s"`
 	WebhookMaxRetries      int           `env:"WEBHOOK_MAX_RETRIES" envDefault:"3"`
 	WebhookRetryDelay      time.Duration `env:"WEBHOOK_RETRY_DELAY" envDefault:"2s"`
+
+	// Analytics (PostHog + OTel)
+	AnalyticsEnabled     bool          `env:"ANALYTICS_ENABLED" envDefault:"true"`
+	PostHogEnabled       bool          `env:"POSTHOG_ENABLED" envDefault:"false"`
+	PostHogAPIKey        string        `env:"POSTHOG_API_KEY"`
+	PostHogHost          string        `env:"POSTHOG_HOST" envDefault:"https://eu.posthog.com"`
+	PostHogDebug         bool          `env:"POSTHOG_DEBUG" envDefault:"false"`
+	PostHogBatchSize     int           `env:"POSTHOG_BATCH_SIZE" envDefault:"100"`
+	PostHogFlushInterval time.Duration `env:"POSTHOG_FLUSH_INTERVAL" envDefault:"10s"`
+	OTelAnalyticsEnabled bool          `env:"OTEL_ANALYTICS" envDefault:"false"`
+	AnalyticsPIILevel    string        `env:"ANALYTICS_PII_LEVEL" envDefault:"hashed"`
+	AnalyticsEnvironment string        `env:"ANALYTICS_ENVIRONMENT" envDefault:"dev"`
 }
 
 // Load parses environment variables into Config.
@@ -98,6 +112,13 @@ func Load() (*Config, error) {
 
 	if cfg.ToolTimeout <= 0 {
 		cfg.ToolTimeout = 300 * time.Second
+	}
+
+	cfg.LLMStreamMode = strings.ToLower(strings.TrimSpace(cfg.LLMStreamMode))
+	switch cfg.LLMStreamMode {
+	case "auto", "rest", "sse":
+	default:
+		cfg.LLMStreamMode = "auto"
 	}
 
 	return cfg, nil

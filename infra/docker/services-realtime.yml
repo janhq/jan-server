@@ -2,7 +2,10 @@
 
 services:
   realtime-api:
-    build: ../../services/realtime-api
+    build:
+      context: ../../services/realtime-api
+      additional_contexts:
+        go-common: ../../packages/go-common
     restart: unless-stopped
     env_file:
       - ${ENV_FILE:-../../.env}

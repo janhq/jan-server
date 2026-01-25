@@ -1062,6 +1062,8 @@ func mapStepToEntity(step *domain.Step, taskID uint) *entities.PlanStep {
 		Sequence:      step.Sequence,
 		Action:        string(step.Action),
 		Status:        string(step.Status),
+		Title:         step.Title,
+		Description:   step.Description,
 		PlannedParams: plannedParams,
 		ActualParams:  actualParams,
 		InputParams:   inputParams, // Deprecated, kept for compatibility
@@ -1083,6 +1085,8 @@ func mapStepFromEntity(entity *entities.PlanStep, taskID string) *domain.Step {
 		Sequence:      entity.Sequence,
 		Action:        domain.ActionType(entity.Action),
 		Status:        status.Status(entity.Status),
+		Title:         entity.Title,
+		Description:   entity.Description,
 		PlannedParams: json.RawMessage(entity.PlannedParams),
 		ActualParams:  json.RawMessage(entity.ActualParams),
 		InputParams:   json.RawMessage(entity.InputParams), // Deprecated

@@ -7,9 +7,9 @@ services:
     environment:
       # Use Docker-internal hostname for server-to-server communication
       KEYCLOAK_BASE_URL: http://keycloak:8085
-      # Use localhost for browser redirects (public-facing)
-      KEYCLOAK_PUBLIC_URL: http://localhost:8085
-      ISSUER: http://localhost:8085/realms/jan
+      # Use public host for browser redirects (public-facing)
+      KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8085}
+      ISSUER: ${ISSUER:-http://localhost:8085/realms/jan}
       # JWKS_URL uses Docker-internal hostname for token validation
       JWKS_URL: http://keycloak:8085/realms/jan/protocol/openid-connect/certs
 
@@ -22,15 +22,15 @@ services:
 
   platform:
     environment:
-      # Use localhost for browser access in dev mode
-      NEXT_PUBLIC_JAN_BASE_URL: http://localhost:8000
+      # Use public host for browser access in dev mode
+      NEXT_PUBLIC_JAN_BASE_URL: ${KONG_PUBLIC_URL:-http://localhost:8000}
 
   web:
     build:
       args:
-        # Use localhost for browser access in dev mode
-        JAN_API_BASE_URL: http://localhost:8000/
-        VITE_AUTH_URL: http://localhost:8085/
-        VITE_AUTH_REALM: jan
-        VITE_AUTH_CLIENT_ID: jan-client
-        VITE_OAUTH_REDIRECT_URI: http://localhost:3001/auth/callback
+        # Use public host for browser access in dev mode
+        JAN_API_BASE_URL: ${KONG_PUBLIC_URL:-http://localhost:8000/}
+        VITE_AUTH_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8085/}
+        VITE_AUTH_REALM: ${KEYCLOAK_REALM:-jan}
+        VITE_AUTH_CLIENT_ID: ${TARGET_CLIENT_ID:-jan-client}
+        VITE_OAUTH_REDIRECT_URI: ${WEB_OAUTH_REDIRECT_URI:-http://localhost:3001/auth/callback}

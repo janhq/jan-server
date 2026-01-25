@@ -1,0 +1,14 @@
+{
+  "id": 34,
+  "dir": "34",
+  "name": "Classic Journal",
+  "tone": "Editorial Serif",
+  "description": "Paper/grid editorial vibe; strong reading flow.",
+  "variants": {
+    "base": 6,
+    "bullets": 4,
+    "split": 5,
+    "hero": 1,
+    "title": 4
+  }
+}

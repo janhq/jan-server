@@ -197,6 +197,7 @@ func (route *MCPRoute) RegisterRouter(router *gin.RouterGroup) {
 // @Failure 500 {object} responses.ErrorResponse "Internal server error"
 // @Router /v1/mcp [post]
 func (route *MCPRoute) serveMCP(reqCtx *gin.Context) {
+ HEAD
 	// Read body to check method
 	bodyBytes, err := io.ReadAll(reqCtx.Request.Body)
 	if err != nil || len(bodyBytes) == 0 {
@@ -232,7 +233,25 @@ func (route *MCPRoute) serveMCP(reqCtx *gin.Context) {
 			route.handleE2BToolCall(reqCtx, payload.ID, toolName, payload.Params)
 			return
 		}
+	} else {
+		// Check if this is a tools/list request and intercept it to provide dynamic descriptions
+	// and filter out internal-only tools.
+	bodyBytes, err := io.ReadAll(reqCtx.Request.Body)
+	if err == nil && len(bodyBytes) > 0 {
+		// Restore body for potential re-use
+		reqCtx.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+		var payload struct {
+			Method string      `json:"method"`
+			ID     interface{} `json:"id"`
+		}
+		if json.Unmarshal(bodyBytes, &payload) == nil && payload.Method == "tools/list" {
+			route.handleToolsListWithDynamicDescriptions(reqCtx, payload.ID)
+		}
+		return
 	}
+
+	
 
 	// Default: pass to MCP SDK
 	reqCtx.Request.Header.Set("Accept", "application/json, text/event-stream")
@@ -407,6 +426,19 @@ func (route *MCPRoute) handleToolsListWithDynamicDescriptions(reqCtx *gin.Contex
 		reqCtx.Writer.Write(responseBody)
 		return
 	}
+
+	filteredTools := make([]struct {
+		Name        string                 `json:"name"`
+		Description string                 `json:"description"`
+		InputSchema map[string]interface{} `json:"inputSchema,omitempty"`
+	}, 0, len(rpcResponse.Result.Tools))
+	for _, tool := range rpcResponse.Result.Tools {
+		if strings.HasPrefix(tool.Name, "aio_") {
+			continue
+		}
+		filteredTools = append(filteredTools, tool)
+	}
+	rpcResponse.Result.Tools = filteredTools
 
 	// Override descriptions from cache
 	for i := range rpcResponse.Result.Tools {
