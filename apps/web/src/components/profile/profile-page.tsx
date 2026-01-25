@@ -13,7 +13,7 @@ export function ProfilePage() {
     <>
       <AppSidebar />
       <SidebarInset>
-        <NavHeader />
+        <NavHeader showModelSelector={false} />
         <div className="flex-1 overflow-auto">
           <div className="container max-w-screen-lg py-10 px-4 md:px-6">
             <h1 className="mb-8 text-3xl font-bold">Profile</h1>

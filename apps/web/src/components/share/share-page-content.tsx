@@ -123,6 +123,7 @@ export function SharePageContent({ slug }: SharePageContentProps) {
       <SidebarInset>
         <NavHeader
           conversationTitle={shareData?.title || "Shared Conversation"}
+          showModelSelector={false}
         />
         {error || !shareData ? (
           <div className="flex items-center justify-center h-full">
