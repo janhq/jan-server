@@ -96,6 +96,21 @@ export type ExtendedFileUIPart = FileUIPart & {
   uploadError?: string;
   /** Blob URL for local preview (separate from url which will contain jan media URL after upload) */
   previewUrl?: string;
+  // Document-specific fields (for OCR-scanned documents)
+  /** Whether this file is a document (non-image) that was OCR scanned */
+  isDocument?: boolean;
+  /** Document content ID from OCR processing */
+  documentId?: string;
+  /** OCR extracted text content */
+  extractedText?: string;
+  /** Number of pages in the document */
+  pageCount?: number;
+  /** Word count of extracted text */
+  wordCount?: number;
+  /** Document processing status */
+  documentStatus?: "pending" | "processing" | "completed" | "failed";
+  /** Document processing error message */
+  documentError?: string;
 };
 import {
   type ChangeEvent,
@@ -263,7 +278,7 @@ export function PromptInputProvider({
       if (incoming.length && accepted.length === 0) {
         onError?.({
           code: "accept",
-          message: "Only JPEG and PNG images are supported.",
+          message: "File type not supported. Please upload images or documents.",
         });
         return;
       }
@@ -795,7 +810,7 @@ export const PromptInput = ({
       if (incoming.length && accepted.length === 0) {
         onError?.({
           code: "accept",
-          message: "Only JPEG and PNG images are supported.",
+          message: "File type not supported. Please upload images or documents.",
         });
         return;
       }

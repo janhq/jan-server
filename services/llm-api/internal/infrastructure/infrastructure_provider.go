@@ -201,6 +201,9 @@ var InfrastructureProvider = wire.NewSet(
 	// Bind ZImageService to ImageService interface
 	wire.Bind(new(inference.ImageService), new(*inference.ZImageService)),
 
+	// Document OCR service
+	inference.NewDocumentOCRService,
+
 	// Media client for uploading images
 	ProvideMediaClient,
 

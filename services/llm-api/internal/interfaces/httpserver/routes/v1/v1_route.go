@@ -11,6 +11,7 @@ import (
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/chat"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/conversation"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/image"
+	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/llm/documents"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/llm/projects"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/messages"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/model"
@@ -36,6 +37,7 @@ type V1Route struct {
 	publicShare           *public.PublicShareRoute
 	messages              *messages.MessagesRoute
 	usage                 *usage.UsageRoute
+	documents             *documents.DocumentRoute
 }
 
 func NewV1Route(
@@ -53,6 +55,7 @@ func NewV1Route(
 	publicShare *public.PublicShareRoute,
 	messagesRoute *messages.MessagesRoute,
 	usageRoute *usage.UsageRoute,
+	documentsRoute *documents.DocumentRoute,
 ) *V1Route {
 	return &V1Route{
 		model,
@@ -69,6 +72,7 @@ func NewV1Route(
 		publicShare,
 		messagesRoute,
 		usageRoute,
+		documentsRoute,
 	}
 }
 
@@ -88,6 +92,7 @@ func (v1Route *V1Route) RegisterRouter(router gin.IRouter) {
 	v1Route.users.RegisterRouter(v1Router)
 	v1Route.messages.RegisterRouter(v1Router)
 	v1Route.usage.RegisterRouter(v1Router)
+	v1Route.documents.RegisterRoutes(v1Router)
 
 	// Share routes (authenticated, under /conversations)
 	conversations := v1Router.Group("/conversations")

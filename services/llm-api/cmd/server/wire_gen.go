@@ -10,6 +10,7 @@ import (
 	"jan-server/services/llm-api/internal/domain"
 	"jan-server/services/llm-api/internal/domain/apikey"
 	"jan-server/services/llm-api/internal/domain/conversation"
+	"jan-server/services/llm-api/internal/domain/document"
 	"jan-server/services/llm-api/internal/domain/mcptool"
 	"jan-server/services/llm-api/internal/domain/model"
 	"jan-server/services/llm-api/internal/domain/modelprompttemplate"
@@ -23,6 +24,7 @@ import (
 	"jan-server/services/llm-api/internal/infrastructure/crontab"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/apikeyrepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/conversationrepo"
+	"jan-server/services/llm-api/internal/infrastructure/database/repository/documentrepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/mcptoolrepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/modelprompttemplaterepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/modelrepo"
@@ -41,6 +43,7 @@ import (
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/authhandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/chathandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/conversationhandler"
+	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/documenthandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/guesthandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/imagehandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/mcptoolhandler"
@@ -61,6 +64,7 @@ import (
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/chat"
 	conversation2 "jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/conversation"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/image"
+	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/llm/documents"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/llm/projects"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/messages"
 	model2 "jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/model"
@@ -158,7 +162,15 @@ func CreateApplication() (*Application, error) {
 	messagesHandler := messageshandler.NewMessagesHandler(inferenceProvider, providerHandler, conversationService)
 	messagesRoute := messages.NewMessagesRoute(messagesHandler, authHandler)
 	usageRoute := usage.NewUsageRoute(usageHandler, authHandler)
-	v1Route := v1.NewV1Route(modelRoute, chatRoute, imageRoute, conversationRoute, branchRoute, projectRoute, adminRoute, usersRoute, promptTemplateHandler, mcpToolHandler, shareRoute, publicShareRoute, messagesRoute, usageRoute)
+	// Document OCR service and routes
+	documentOCRService := inference.NewDocumentOCRService(config)
+	documentContentRepository := documentrepo.NewDocumentContentGormRepository(db)
+	projectFileRepository := documentrepo.NewProjectFileGormRepository(db)
+	documentService := document.NewDocumentService(documentContentRepository, projectFileRepository, config)
+	projectFileService := document.NewProjectFileService(projectFileRepository, documentContentRepository)
+	documentHandler := documenthandler.NewDocumentHandler(documentService, projectFileService, projectService, providerService, documentOCRService, mediaclientClient, config)
+	documentRoute := documents.NewDocumentRoute(documentHandler, authHandler)
+	v1Route := v1.NewV1Route(modelRoute, chatRoute, imageRoute, conversationRoute, branchRoute, projectRoute, adminRoute, usersRoute, promptTemplateHandler, mcpToolHandler, shareRoute, publicShareRoute, messagesRoute, usageRoute, documentRoute)
 	guestHandler := guestauth.NewGuestHandler(client, zerologLogger)
 	upgradeHandler := guestauth.NewUpgradeHandler(client, zerologLogger)
 	tokenHandler := authhandler.NewTokenHandler(client, zerologLogger)

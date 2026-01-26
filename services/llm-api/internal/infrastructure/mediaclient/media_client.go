@@ -116,3 +116,59 @@ func (c *Client) UploadBase64Image(ctx context.Context, base64Data string, mimeT
 
 	return &result, nil
 }
+
+// MediaInfo contains metadata about a media object
+type MediaInfo struct {
+	ID          string `json:"id"`
+	URL         string `json:"url"`
+	ContentType string `json:"content_type"`
+	Filename    string `json:"filename"`
+	Size        int64  `json:"size"`
+}
+
+// Resolve retrieves metadata about a media object by its ID (jan_* ID)
+func (c *Client) Resolve(ctx context.Context, mediaObjectID string) (*MediaInfo, error) {
+	if c == nil {
+		return nil, fmt.Errorf("media client not configured")
+	}
+
+	// The media API resolve endpoint: MEDIA_RESOLVE_URL/<media_object_id>
+	resolveURL := fmt.Sprintf("%s/%s", c.cfg.MediaResolveURL, mediaObjectID)
+
+	c.log.Debug().
+		Str("media_object_id", mediaObjectID).
+		Str("resolve_url", resolveURL).
+		Msg("[MediaClient] Resolving media object")
+
+	resp, err := c.client.R().
+		SetContext(ctx).
+		SetQueryParam("presign", "true"). // Request a presigned URL for downloading
+		Get(resolveURL)
+
+	if err != nil {
+		c.log.Error().Err(err).Str("media_object_id", mediaObjectID).Msg("[MediaClient] Failed to resolve media object")
+		return nil, fmt.Errorf("media resolve failed: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		c.log.Error().
+			Int("status", resp.StatusCode).
+			Str("body", resp.String()).
+			Str("media_object_id", mediaObjectID).
+			Msg("[MediaClient] Media API returned error on resolve")
+		return nil, fmt.Errorf("media API returned status %d: %s", resp.StatusCode, resp.String())
+	}
+
+	var result MediaInfo
+	if err := json.Unmarshal(resp.Bytes(), &result); err != nil {
+		c.log.Error().Err(err).Str("body", resp.String()).Msg("[MediaClient] Failed to parse resolve response")
+		return nil, fmt.Errorf("failed to parse media resolve response: %w", err)
+	}
+
+	c.log.Debug().
+		Str("media_url", result.URL).
+		Str("content_type", result.ContentType).
+		Msg("[MediaClient] Media object resolved successfully")
+
+	return &result, nil
+}

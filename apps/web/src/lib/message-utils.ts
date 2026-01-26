@@ -91,8 +91,23 @@ export function buildMessageContent(
     });
   }
 
+  // Process files - separate images from documents
   message.files?.forEach((file) => {
-    if (file.url) {
+    if (!file.url) return;
+
+    // Check if this is a document with extracted text
+    if (file.isDocument && file.extractedText) {
+      // Inject document content as text wrapped in XML tags
+      const pageInfo = file.pageCount ? ` pages="${file.pageCount}"` : "";
+      const wordInfo = file.wordCount ? ` words="${file.wordCount}"` : "";
+      const documentContent = `<attached_document name="${file.filename || "document"}"${pageInfo}${wordInfo}>\n${file.extractedText}\n</attached_document>`;
+
+      content.push({
+        type: CONTENT_TYPE.INPUT_TEXT,
+        input_text: documentContent,
+      });
+    } else if (file.mediaType?.startsWith("image/")) {
+      // Handle image files
       content.push({
         type: "image",
         image: { url: file.url },

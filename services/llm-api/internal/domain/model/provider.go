@@ -37,8 +37,9 @@ const (
 type ProviderCategory string
 
 const (
-	ProviderCategoryLLM   ProviderCategory = "llm"   // Default: Language model providers
-	ProviderCategoryImage ProviderCategory = "image" // Image generation providers
+	ProviderCategoryLLM     ProviderCategory = "llm"     // Default: Language model providers
+	ProviderCategoryImage   ProviderCategory = "image"   // Image generation providers
+	ProviderCategoryDocling ProviderCategory = "docling" // Document OCR providers
 )
 
 type Provider struct {

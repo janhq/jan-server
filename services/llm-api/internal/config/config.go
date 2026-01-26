@@ -118,6 +118,13 @@ type Config struct {
 	ImageDefaultResponseFormat string        `env:"IMAGE_DEFAULT_RESPONSE_FORMAT" envDefault:"url"`
 	ImageMediaPresignTTL       time.Duration `env:"IMAGE_MEDIA_PRESIGN_TTL" envDefault:"1h"`
 
+	// Document OCR
+	DocumentOCREnabled     bool          `env:"DOCUMENT_OCR_ENABLED" envDefault:"false"`
+	DocumentOCRTimeout     time.Duration `env:"DOCUMENT_OCR_TIMEOUT" envDefault:"120s"`
+	DocumentOCRModel       string        `env:"DOCUMENT_OCR_MODEL" envDefault:"docling-v1"`
+	DocumentMaxBytes       int64         `env:"DOCUMENT_MAX_BYTES" envDefault:"52428800"` // 50MB
+	DocumentSupportedTypes string        `env:"DOCUMENT_SUPPORTED_TYPES" envDefault:"application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/html,application/rtf"`
+
 	// Analytics (PostHog + OTel)
 	AnalyticsEnabled     bool          `env:"ANALYTICS_ENABLED" envDefault:"true"`
 	PostHogEnabled       bool          `env:"POSTHOG_ENABLED" envDefault:"false"`

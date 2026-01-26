@@ -24,6 +24,7 @@ type Context struct {
 	Preferences        map[string]interface{}
 	Memory             []string
 	ProjectInstruction string
+	ProjectID          *uint // Internal project ID for fetching project files
 	AppliedModules     []string
 	Profile            *usersettings.ProfileSettings
 

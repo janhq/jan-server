@@ -732,3 +732,15 @@ func (s *ProviderService) FindAllActiveProvidersByCategory(ctx context.Context, 
 	}
 	return s.providerRepo.FindByFilter(ctx, filter, nil)
 }
+
+// GetProvidersByCategory returns providers by category with count
+func (s *ProviderService) GetProvidersByCategory(ctx context.Context, category ProviderCategory) ([]*Provider, int, error) {
+	filter := ProviderFilter{
+		Category: &category,
+	}
+	providers, err := s.providerRepo.FindByFilter(ctx, filter, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	return providers, len(providers), nil
+}
