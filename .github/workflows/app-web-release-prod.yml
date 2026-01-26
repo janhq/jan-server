@@ -39,8 +39,6 @@ jobs:
           node-version: 20
       
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Install jq
         uses: dcarbone/install-jq-action@v2.0.1
