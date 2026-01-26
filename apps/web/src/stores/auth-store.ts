@@ -68,8 +68,10 @@ export const useAuth = create<AuthState>()(
           const { useProjects } = await import("@/stores/projects-store");
           const { useConversations } =
             await import("@/stores/conversation-store");
+          const { useAdminStore } = await import("@/stores/admin-store");
           useProjects.getState().clearProjects();
           useConversations.getState().clearConversations();
+          useAdminStore.getState().clearAdminStatus();
           set({
             user: null,
             isAuthenticated: false,

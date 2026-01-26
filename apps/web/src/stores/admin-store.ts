@@ -6,12 +6,12 @@ interface AdminState {
   isAdmin: boolean | null;
   isLoading: boolean;
   lastChecked: number | null;
-  checkAdminStatus: () => Promise<boolean>;
+  checkAdminStatus: (forceCheck?: boolean) => Promise<boolean>;
   clearAdminStatus: () => void;
 }
 
-// Cache admin status for 5 minutes
-const CACHE_DURATION = 5 * 60 * 1000;
+// Cache admin status for 1 minute (reduced from 5 minutes for security)
+const CACHE_DURATION = 60 * 1000;
 
 export const useAdminStore = create<AdminState>()(
   persist(
@@ -20,7 +20,7 @@ export const useAdminStore = create<AdminState>()(
       isLoading: false,
       lastChecked: null,
 
-      checkAdminStatus: async () => {
+      checkAdminStatus: async (forceCheck = false) => {
         const { isAdmin, lastChecked, isLoading } = get();
 
         // If already loading, don't start another check
@@ -28,8 +28,9 @@ export const useAdminStore = create<AdminState>()(
           return isAdmin ?? false;
         }
 
-        // If we have a cached value and it's still valid, return it
+        // If we have a cached value and it's still valid, return it (unless forceCheck)
         if (
+          !forceCheck &&
           isAdmin !== null &&
           lastChecked &&
           Date.now() - lastChecked < CACHE_DURATION
