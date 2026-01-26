@@ -11,6 +11,7 @@ import { buildGoogleAuthUrl } from "@/lib/oauth";
 import { useState } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { URL_PARAM, URL_PARAM_VALUE } from "@/constants";
+import { useAuth } from "@/stores/auth-store";
 
 declare const JAN_API_BASE_URL: string;
 
@@ -30,6 +31,7 @@ export function RegisterForm({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const router = useRouter();
+  const { loginWithRegisterTokens } = useAuth();
 
   const handleGoogleRegister = async () => {
     try {
@@ -95,20 +97,40 @@ export function RegisterForm({
         throw new Error(data.message || data.error || "Registration failed");
       }
 
-      setSuccess("Account created successfully! You can now sign in.");
+      // Check if tokens are returned for auto-login
+      if (data.access_token && data.refresh_token) {
+        // Auto-login with the tokens
+        loginWithRegisterTokens({
+          access_token: data.access_token,
+          refresh_token: data.refresh_token,
+          token_type: data.token_type || "Bearer",
+          expires_in: data.expires_in || 3600,
+        });
 
-      // Clear form
-      setEmail("");
-      setUsername("");
-      setPassword("");
-      setConfirmPassword("");
-      setFirstName("");
-      setLastName("");
+        // Clear the modal parameter and redirect to home
+        const url = new URL(window.location.href);
+        url.searchParams.delete(URL_PARAM.MODAL);
+        router.navigate({ to: url.pathname + url.search });
 
-      // Switch to login after a short delay
-      setTimeout(() => {
-        handleSwitchToLogin();
-      }, 2000);
+        // Call onSuccess callback if provided
+        onSuccess?.();
+      } else {
+        // Fallback: tokens not available, user needs to login manually
+        setSuccess("Account created successfully! You can now sign in.");
+
+        // Clear form
+        setEmail("");
+        setUsername("");
+        setPassword("");
+        setConfirmPassword("");
+        setFirstName("");
+        setLastName("");
+
+        // Switch to login after a short delay
+        setTimeout(() => {
+          handleSwitchToLogin();
+        }, 2000);
+      }
     } catch (error) {
       console.error("Registration error:", error);
       setError(

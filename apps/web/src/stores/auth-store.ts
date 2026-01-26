@@ -1,10 +1,17 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { extractUserFromTokens } from "@/lib/oauth";
+import { extractUserFromTokens, decodeJWT } from "@/lib/oauth";
 import { fetchJsonWithAuth } from "@/lib/api-client";
 import { analytics } from "@/lib/analytics";
 
 declare const JAN_API_BASE_URL: string;
+
+interface RegisterTokens {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_in: number;
+}
 
 interface AuthState {
   user: User | null;
@@ -14,6 +21,7 @@ interface AuthState {
   refreshToken: string | null;
   login: (user: User) => void;
   loginWithOAuth: (tokens: OAuthTokenResponse) => void;
+  loginWithRegisterTokens: (tokens: RegisterTokens) => void;
   logout: () => Promise<void>;
   guestLogin: () => Promise<void>;
   refreshAccessToken: () => Promise<void>;
@@ -48,6 +56,34 @@ export const useAuth = create<AuthState>()(
         analytics.capture("user_logged_in", {
           method: "google",
           is_new_user: false,
+        });
+      },
+      loginWithRegisterTokens: (tokens) => {
+        // Decode user info from access token (same as OAuth but without id_token)
+        const claims = decodeJWT(tokens.access_token);
+        const userData = {
+          id: (claims.sub as string) || "",
+          name:
+            (claims.name as string) ||
+            (claims.preferred_username as string) ||
+            "",
+          email: (claims.email as string) || "",
+          avatar: (claims.picture as string) || undefined,
+          pro: false,
+        };
+
+        set({
+          user: userData,
+          isAuthenticated: true,
+          isGuest: false,
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token,
+        });
+
+        analytics.identify(userData.id);
+        analytics.capture("user_logged_in", {
+          method: "email",
+          is_new_user: true,
         });
       },
       logout: async () => {

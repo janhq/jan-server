@@ -36,8 +36,12 @@ type RegisterRequest struct {
 
 // RegisterResponse represents the registration response
 type RegisterResponse struct {
-	Message string `json:"message"`
-	UserID  string `json:"user_id"`
+	Message      string `json:"message"`
+	UserID       string `json:"user_id"`
+	AccessToken  string `json:"access_token,omitempty"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+	TokenType    string `json:"token_type,omitempty"`
+	ExpiresIn    int    `json:"expires_in,omitempty"`
 }
 
 // Register godoc
@@ -132,9 +136,25 @@ func (h *RegisterHandler) Register(c *gin.Context) {
 		Str("username", req.Username).
 		Msg("User registered successfully")
 
+	// Get tokens for the newly registered user to enable auto-login
+	tokens, err := h.kc.GetUserTokens(ctx, req.Email, req.Password)
+	if err != nil {
+		h.logger.Warn().Err(err).Str("user_id", userID).Msg("Failed to get tokens for new user, user will need to login manually")
+		// Return success without tokens - user can still login manually
+		c.JSON(http.StatusCreated, RegisterResponse{
+			Message: "User registered successfully",
+			UserID:  userID,
+		})
+		return
+	}
+
 	c.JSON(http.StatusCreated, RegisterResponse{
-		Message: "User registered successfully",
-		UserID:  userID,
+		Message:      "User registered successfully",
+		UserID:       userID,
+		AccessToken:  tokens.AccessToken,
+		RefreshToken: tokens.RefreshToken,
+		TokenType:    tokens.TokenType,
+		ExpiresIn:    tokens.ExpiresIn,
 	})
 }
 

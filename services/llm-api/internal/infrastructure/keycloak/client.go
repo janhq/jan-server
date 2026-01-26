@@ -454,6 +454,12 @@ func (c *Client) passwordGrantTokens(ctx context.Context, email, password string
 	return &token, nil
 }
 
+// GetUserTokens obtains tokens for a user using their email and password via password grant.
+// This is used after registration to enable auto-login.
+func (c *Client) GetUserTokens(ctx context.Context, email, password string) (*TokenSet, error) {
+	return c.passwordGrantTokens(ctx, email, password)
+}
+
 func (c *Client) getRealmRole(ctx context.Context, adminToken, roleName string) (map[string]any, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.adminEndpoint(fmt.Sprintf("/roles/%s", url.PathEscape(roleName))), nil)
 	if err != nil {
