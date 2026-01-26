@@ -23,6 +23,7 @@ config/*.local.env
 /todos
 
 /tests/requests
+/test-results
 
 # Kubernetes secret overrides (never commit these!)
 infra/k8s/**/values-*.local.yaml
