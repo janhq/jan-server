@@ -273,3 +273,34 @@ export function extractUserFromTokens(
     refreshToken: tokens.refresh_token,
   };
 }
+
+/**
+ * Build Keycloak authorization URL for registration
+ * Uses the same PKCE flow as login but triggers Keycloak registration action
+ */
+export async function buildRegistrationAuthUrl(
+  redirectUrl?: string,
+): Promise<string> {
+  const { codeVerifier, codeChallenge } = await generatePKCE();
+  const state = generateState();
+
+  // Store in localStorage as fallback
+  storeOAuthState({ state, codeVerifier, redirectUrl });
+
+  // Encode the OAuth data into the state parameter for iOS Safari compatibility
+  const encodedState = encodeOAuthData({ state, codeVerifier, redirectUrl });
+
+  const authEndpoint = `${VITE_AUTH_URL}/realms/${VITE_AUTH_REALM}/protocol/openid-connect/auth`;
+
+  const params = new URLSearchParams({
+    client_id: VITE_AUTH_CLIENT_ID,
+    redirect_uri: VITE_OAUTH_REDIRECT_URI,
+    response_type: "code",
+    scope: "openid",
+    state: encodedState,
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+  });
+
+  return `${authEndpoint}?${params.toString()}`;
+}
