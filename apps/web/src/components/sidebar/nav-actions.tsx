@@ -1,4 +1,4 @@
-import { HatGlassesIcon, XIcon, Share2Icon, UserPlusIcon } from "lucide-react";
+import { HatGlassesIcon, XIcon, Share2Icon } from "lucide-react";
 import { Button } from "@janhq/interfaces/button";
 import { useAuth } from "@/stores/auth-store";
 import { useRouter } from "@tanstack/react-router";
