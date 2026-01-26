@@ -1,7 +1,8 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import {
   PromptInput,
-  PromptInputActionAddAttachments,
+  PromptInputActionAddImages,
+  PromptInputActionAddFiles,
   PromptInputActionMenu,
   PromptInputActionMenuContent,
   PromptInputActionMenuTrigger,
@@ -639,7 +640,8 @@ const ChatInput = ({
                     variant="secondary"
                   />
                   <PromptInputActionMenuContent className="lg:w-56">
-                    <PromptInputActionAddAttachments label="Add photos or files" />
+                    <PromptInputActionAddImages label="Add images" />
+                    <PromptInputActionAddFiles label="Add files" />
                     {initialConversation && !projectId && !isPrivateChat && (
                       <ProjectsChatInput
                         currentProjectId={selectedProjectId || undefined}

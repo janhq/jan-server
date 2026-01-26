@@ -76,6 +76,8 @@ import {
   SquareIcon,
   XIcon,
   AlertCircleIcon,
+  ImageIcon,
+  FileTextIcon,
 } from "lucide-react";
 import { nanoid } from "nanoid";
 
@@ -145,6 +147,10 @@ export type AttachmentsContext = {
   remove: (id: string) => void;
   clear: () => void;
   openFileDialog: () => void;
+  /** Open file dialog for images only */
+  openImageDialog: () => void;
+  /** Open file dialog for documents only */
+  openDocumentDialog: () => void;
   fileInputRef: RefObject<HTMLInputElement | null>;
   /** Update a file's upload status and mediaId */
   updateFile: (id: string, updates: Partial<ExtendedFileUIPart>) => void;
@@ -161,6 +167,16 @@ export type PromptInputControllerProps = {
   attachments: AttachmentsContext;
   /** INTERNAL: Allows PromptInput to register its file textInput + "open" callback */
   __registerFileInput: (
+    ref: RefObject<HTMLInputElement | null>,
+    open: () => void,
+  ) => void;
+  /** INTERNAL: Register image file input */
+  __registerImageFileInput: (
+    ref: RefObject<HTMLInputElement | null>,
+    open: () => void,
+  ) => void;
+  /** INTERNAL: Register document file input */
+  __registerDocumentFileInput: (
     ref: RefObject<HTMLInputElement | null>,
     open: () => void,
   ) => void;
@@ -243,6 +259,11 @@ export function PromptInputProvider({
   >([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const openRef = useRef<() => void>(() => {});
+  // Separate refs for image and document file inputs
+  const imageFileInputRef = useRef<HTMLInputElement | null>(null);
+  const openImageRef = useRef<() => void>(() => {});
+  const documentFileInputRef = useRef<HTMLInputElement | null>(null);
+  const openDocumentRef = useRef<() => void>(() => {});
 
   const matchesAccept = useCallback(
     (f: File) => {
@@ -393,6 +414,14 @@ export function PromptInputProvider({
     openRef.current?.();
   }, []);
 
+  const openImageDialog = useCallback(() => {
+    openImageRef.current?.();
+  }, []);
+
+  const openDocumentDialog = useCallback(() => {
+    openDocumentRef.current?.();
+  }, []);
+
   const attachments = useMemo<AttachmentsContext>(
     () => ({
       files: attachmentFiles,
@@ -400,16 +429,34 @@ export function PromptInputProvider({
       remove,
       clear,
       openFileDialog,
+      openImageDialog,
+      openDocumentDialog,
       fileInputRef,
       updateFile,
     }),
-    [attachmentFiles, add, remove, clear, openFileDialog, updateFile],
+    [attachmentFiles, add, remove, clear, openFileDialog, openImageDialog, openDocumentDialog, updateFile],
   );
 
   const __registerFileInput = useCallback(
     (ref: RefObject<HTMLInputElement | null>, open: () => void) => {
       fileInputRef.current = ref.current;
       openRef.current = open;
+    },
+    [],
+  );
+
+  const __registerImageFileInput = useCallback(
+    (ref: RefObject<HTMLInputElement | null>, open: () => void) => {
+      imageFileInputRef.current = ref.current;
+      openImageRef.current = open;
+    },
+    [],
+  );
+
+  const __registerDocumentFileInput = useCallback(
+    (ref: RefObject<HTMLInputElement | null>, open: () => void) => {
+      documentFileInputRef.current = ref.current;
+      openDocumentRef.current = open;
     },
     [],
   );
@@ -423,6 +470,8 @@ export function PromptInputProvider({
       },
       attachments,
       __registerFileInput,
+      __registerImageFileInput,
+      __registerDocumentFileInput,
       uploadService,
       userId,
     }),
@@ -431,6 +480,8 @@ export function PromptInputProvider({
       clearInput,
       attachments,
       __registerFileInput,
+      __registerImageFileInput,
+      __registerDocumentFileInput,
       uploadService,
       userId,
     ],
@@ -701,6 +752,60 @@ export const PromptInputActionAddAttachments = ({
   );
 };
 
+export type PromptInputActionAddImagesProps = ComponentProps<
+  typeof DropDrawerItem
+> & {
+  label?: string;
+};
+
+export const PromptInputActionAddImages = ({
+  label = "Add images",
+  ...props
+}: PromptInputActionAddImagesProps) => {
+  const attachments = usePromptInputAttachments();
+
+  return (
+    <DropDrawerItem
+      {...props}
+      onSelect={(e) => {
+        e.preventDefault();
+        attachments.openImageDialog();
+      }}
+    >
+      <div className="flex gap-2 items-center">
+        <ImageIcon className="size-4 text-muted-foreground" /> {label}
+      </div>
+    </DropDrawerItem>
+  );
+};
+
+export type PromptInputActionAddFilesProps = ComponentProps<
+  typeof DropDrawerItem
+> & {
+  label?: string;
+};
+
+export const PromptInputActionAddFiles = ({
+  label = "Add files",
+  ...props
+}: PromptInputActionAddFilesProps) => {
+  const attachments = usePromptInputAttachments();
+
+  return (
+    <DropDrawerItem
+      {...props}
+      onSelect={(e) => {
+        e.preventDefault();
+        attachments.openDocumentDialog();
+      }}
+    >
+      <div className="flex gap-2 items-center">
+        <FileTextIcon className="size-4 text-muted-foreground" /> {label}
+      </div>
+    </DropDrawerItem>
+  );
+};
+
 export type PromptInputMessage = {
   text: string;
   files: ExtendedFileUIPart[];
@@ -760,6 +865,8 @@ export const PromptInput = ({
 
   // Refs
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const documentInputRef = useRef<HTMLInputElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
 
   // Track which files are currently being uploaded to prevent duplicate uploads
@@ -779,6 +886,14 @@ export const PromptInput = ({
 
   const openFileDialogLocal = useCallback(() => {
     inputRef.current?.click();
+  }, []);
+
+  const openImageDialogLocal = useCallback(() => {
+    imageInputRef.current?.click();
+  }, []);
+
+  const openDocumentDialogLocal = useCallback(() => {
+    documentInputRef.current?.click();
   }, []);
 
   const matchesAccept = useCallback(
@@ -934,11 +1049,19 @@ export const PromptInput = ({
   const openFileDialog = usingProvider
     ? controller.attachments.openFileDialog
     : openFileDialogLocal;
+  const openImageDialog = usingProvider
+    ? controller.attachments.openImageDialog
+    : openImageDialogLocal;
+  const openDocumentDialog = usingProvider
+    ? controller.attachments.openDocumentDialog
+    : openDocumentDialogLocal;
 
-  // Let provider know about our hidden file input so external menus can call openFileDialog()
+  // Let provider know about our hidden file inputs so external menus can call openFileDialog()
   useEffect(() => {
     if (!usingProvider) return;
     controller.__registerFileInput(inputRef, () => inputRef.current?.click());
+    controller.__registerImageFileInput(imageInputRef, () => imageInputRef.current?.click());
+    controller.__registerDocumentFileInput(documentInputRef, () => documentInputRef.current?.click());
   }, [usingProvider, controller]);
 
   // Note: File input cannot be programmatically set for security reasons
@@ -1108,10 +1231,12 @@ export const PromptInput = ({
       remove,
       clear,
       openFileDialog,
+      openImageDialog,
+      openDocumentDialog,
       fileInputRef: inputRef,
       updateFile,
     }),
-    [files, add, remove, clear, openFileDialog, updateFile],
+    [files, add, remove, clear, openFileDialog, openImageDialog, openDocumentDialog, updateFile],
   );
 
   const handleSubmit: FormEventHandler<HTMLFormElement> = (event) => {
@@ -1190,9 +1315,14 @@ export const PromptInput = ({
     }
   };
 
+  // Define accepted types for images and documents
+  const ACCEPTED_IMAGE_TYPES = "image/jpeg,image/jpg,image/png,image/gif,image/webp";
+  const ACCEPTED_DOCUMENT_TYPES = "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown,text/html,application/rtf";
+
   // Render with or without local provider
   const inner = (
     <>
+      {/* Combined file input (for drag & drop and backwards compatibility) */}
       <input
         accept={accept}
         aria-label="Upload files"
@@ -1201,6 +1331,28 @@ export const PromptInput = ({
         onChange={handleChange}
         ref={inputRef}
         title="Upload files"
+        type="file"
+      />
+      {/* Image-only file input */}
+      <input
+        accept={ACCEPTED_IMAGE_TYPES}
+        aria-label="Upload images"
+        className="hidden"
+        multiple={multiple}
+        onChange={handleChange}
+        ref={imageInputRef}
+        title="Upload images"
+        type="file"
+      />
+      {/* Document-only file input */}
+      <input
+        accept={ACCEPTED_DOCUMENT_TYPES}
+        aria-label="Upload documents"
+        className="hidden"
+        multiple={multiple}
+        onChange={handleChange}
+        ref={documentInputRef}
+        title="Upload documents"
         type="file"
       />
       <form

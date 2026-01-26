@@ -704,6 +704,62 @@ export function ThreadPageContent({
     [],
   );
 
+  /**
+   * Process message to handle documents properly:
+   * 1. Extract text from document files and add to message text
+   * 2. Filter out document files from attachments (keep only images)
+   * This ensures documents are sent as text content, not as file attachments
+   * which would cause "media type not supported" errors from the AI model.
+   */
+  const processDocumentFiles = useCallback(
+    (message: PromptInputMessage): PromptInputMessage => {
+      if (!message.files || message.files.length === 0) {
+        return message;
+      }
+
+      const documentTexts: string[] = [];
+      const imageFiles: typeof message.files = [];
+
+      message.files.forEach((file) => {
+        const mediaType = file.mediaType || "";
+        const isImage = mediaType.startsWith("image/");
+
+        if (isImage) {
+          // Keep image files as attachments
+          imageFiles.push(file);
+        } else if (file.isDocument && file.extractedText) {
+          // Document with extracted text - add text to message
+          const pageInfo = file.pageCount ? ` pages="${file.pageCount}"` : "";
+          const wordInfo = file.wordCount ? ` words="${file.wordCount}"` : "";
+          documentTexts.push(
+            `<attached_document name="${file.filename || "document"}"${pageInfo}${wordInfo}>\n${file.extractedText}\n</attached_document>`
+          );
+        } else if (!isImage) {
+          // Non-image file without extracted text - log warning and skip
+          console.warn(
+            `[processDocumentFiles] Skipping file without extracted text: ${file.filename} (${mediaType})`
+          );
+        }
+      });
+
+      // Build new text with document content
+      let newText = message.text || "";
+      if (documentTexts.length > 0) {
+        const documentsSection = documentTexts.join("\n\n");
+        newText = newText
+          ? `${newText}\n\n${documentsSection}`
+          : documentsSection;
+      }
+
+      return {
+        ...message,
+        text: newText,
+        files: imageFiles,
+      };
+    },
+    [],
+  );
+
   const handleSubmit = useCallback(
     async (message?: PromptInputMessage) => {
       // Get the current session to check its status directly
@@ -717,8 +773,11 @@ export function ThreadPageContent({
       ) {
         sessionData.tools = [];
 
+        // Process document files: extract text and filter out non-image files
+        const processedMessage = processDocumentFiles(message);
+
         const withImageUrls = appendImageUrlsToPrompt(
-          message,
+          processedMessage,
           imageGenerationEnabled,
         );
 
@@ -736,9 +795,10 @@ export function ThreadPageContent({
 
         // Normal message flow
 
-        // Persist to server (fire-and-forget, ID mapping handled in onFinish)
-        createUserMessageItem(withImageUrls);
+        // Persist to server with original message (includes all files for storage)
+        createUserMessageItem(message);
 
+        // Send to AI model with processed message (only images as files, documents as text)
         sendMessage({
           text: withImageUrls.text || "Sent with attachments",
           files: withImageUrls.files,
@@ -785,6 +845,7 @@ export function ThreadPageContent({
       setMessages,
       createUserMessageItem,
       appendImageUrlsToPrompt,
+      processDocumentFiles,
       imageGenerationEnabled,
       selectedModel,
       getCurrentMode,

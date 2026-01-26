@@ -227,6 +227,46 @@ func (h *MediaHandler) PublicServe(c *gin.Context) {
 	}
 }
 
+// metadataResponse is the response structure for GetMetadata
+type metadataResponse struct {
+	ID          string `json:"id"`
+	URL         string `json:"url"`
+	ContentType string `json:"content_type"`
+	Filename    string `json:"filename,omitempty"`
+	Size        int64  `json:"size"`
+}
+
+// GetMetadata godoc
+// @Summary      Get media metadata
+// @Description  Returns metadata about a media object including its URL, content type, and size.
+// @Tags         media
+// @Produce      json
+// @Param        id   path      string  true  "Media ID"
+// @Success      200  {object}  metadataResponse
+// @Failure      404  {object}  map[string]string
+// @Security     ApiKeyAuth
+// @Router       /v1/media/{id}/metadata [get]
+func (h *MediaHandler) GetMetadata(c *gin.Context) {
+	id := c.Param("id")
+
+	obj, err := h.service.Get(c.Request.Context(), id)
+	if err != nil {
+		h.log.Error().Err(err).Str("id", id).Msg("get metadata failed")
+		c.JSON(http.StatusNotFound, gin.H{"error": "media not found"})
+		return
+	}
+
+	// Build the direct URL
+	url := h.buildMediaURL(obj)
+
+	c.JSON(http.StatusOK, metadataResponse{
+		ID:          obj.ID,
+		URL:         url,
+		ContentType: obj.MimeType,
+		Size:        obj.Bytes,
+	})
+}
+
 // buildDirectURL constructs the public URL for direct media access
 func (h *MediaHandler) buildMediaURL(obj *domain.MediaObject) string {
 	return h.buildDirectURL(obj.ID)

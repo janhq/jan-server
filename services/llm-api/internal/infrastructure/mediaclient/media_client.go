@@ -127,23 +127,28 @@ type MediaInfo struct {
 }
 
 // Resolve retrieves metadata about a media object by its ID (jan_* ID)
-func (c *Client) Resolve(ctx context.Context, mediaObjectID string) (*MediaInfo, error) {
+func (c *Client) Resolve(ctx context.Context, mediaObjectID string, authHeader string) (*MediaInfo, error) {
 	if c == nil {
 		return nil, fmt.Errorf("media client not configured")
 	}
 
-	// The media API resolve endpoint: MEDIA_RESOLVE_URL/<media_object_id>
-	resolveURL := fmt.Sprintf("%s/%s", c.cfg.MediaResolveURL, mediaObjectID)
+	// The media API metadata endpoint: MEDIA_RESOLVE_URL/<media_object_id>/metadata
+	metadataURL := fmt.Sprintf("%s/%s/metadata", c.cfg.MediaResolveURL, mediaObjectID)
 
 	c.log.Debug().
 		Str("media_object_id", mediaObjectID).
-		Str("resolve_url", resolveURL).
-		Msg("[MediaClient] Resolving media object")
+		Str("metadata_url", metadataURL).
+		Msg("[MediaClient] Getting media object metadata")
 
-	resp, err := c.client.R().
-		SetContext(ctx).
-		SetQueryParam("presign", "true"). // Request a presigned URL for downloading
-		Get(resolveURL)
+	req := c.client.R().
+		SetContext(ctx)
+
+	// Add auth header if provided
+	if authHeader != "" {
+		req.SetHeader("Authorization", authHeader)
+	}
+
+	resp, err := req.Get(metadataURL)
 
 	if err != nil {
 		c.log.Error().Err(err).Str("media_object_id", mediaObjectID).Msg("[MediaClient] Failed to resolve media object")

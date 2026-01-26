@@ -82,7 +82,7 @@ type Config struct {
 	EnableSwagger bool `env:"ENABLE_SWAGGER" envDefault:"true"`
 
 	// Media integration
-	MediaResolveURL     string        `env:"MEDIA_RESOLVE_URL" envDefault:"http://kong:8000/media/v1/media/resolve"`
+	MediaResolveURL     string        `env:"MEDIA_RESOLVE_URL" envDefault:"http://media-api:8285/v1/media"`
 	MediaIngestURL      string        `env:"MEDIA_INGEST_URL" envDefault:"http://kong:8000/media/v1/media"`
 	MediaResolveTimeout time.Duration `env:"MEDIA_RESOLVE_TIMEOUT" envDefault:"5s"`
 

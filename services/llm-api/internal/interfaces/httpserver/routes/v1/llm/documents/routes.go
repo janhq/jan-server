@@ -70,7 +70,10 @@ func (r *DocumentRoute) scanDocument(reqCtx *gin.Context) {
 		return
 	}
 
-	response, err := r.handler.ScanDocument(ctx, user.ID, req)
+	// Get auth header to pass to media client
+	authHeader := reqCtx.GetHeader("Authorization")
+
+	response, err := r.handler.ScanDocument(ctx, user.ID, req, authHeader)
 	if err != nil {
 		responses.HandleError(reqCtx, err, "Failed to scan document")
 		return
@@ -211,7 +214,10 @@ func (r *DocumentRoute) createProjectFile(reqCtx *gin.Context) {
 		return
 	}
 
-	response, err := r.handler.CreateProjectFile(ctx, user.ID, projectID, req)
+	// Get auth header to pass to media client
+	authHeader := reqCtx.GetHeader("Authorization")
+
+	response, err := r.handler.CreateProjectFile(ctx, user.ID, projectID, req, authHeader)
 	if err != nil {
 		responses.HandleError(reqCtx, err, "Failed to create project file")
 		return

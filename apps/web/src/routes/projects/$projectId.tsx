@@ -128,12 +128,58 @@ function ProjectPageContent() {
     },
   });
 
+  /**
+   * Process message to handle documents properly:
+   * Extract text from document files and filter out non-image files
+   */
+  const processDocumentFiles = (
+    msg: PromptInputMessage
+  ): PromptInputMessage => {
+    if (!msg.files || msg.files.length === 0) {
+      return msg;
+    }
+
+    const documentTexts: string[] = [];
+    const imageFiles: typeof msg.files = [];
+
+    msg.files.forEach((file) => {
+      const mediaType = file.mediaType || "";
+      const isImage = mediaType.startsWith("image/");
+
+      if (isImage) {
+        imageFiles.push(file);
+      } else if (file.isDocument && file.extractedText) {
+        const pageInfo = file.pageCount ? ` pages="${file.pageCount}"` : "";
+        const wordInfo = file.wordCount ? ` words="${file.wordCount}"` : "";
+        documentTexts.push(
+          `<attached_document name="${file.filename || "document"}"${pageInfo}${wordInfo}>\n${file.extractedText}\n</attached_document>`
+        );
+      }
+    });
+
+    let newText = msg.text || "";
+    if (documentTexts.length > 0) {
+      const documentsSection = documentTexts.join("\n\n");
+      newText = newText
+        ? `${newText}\n\n${documentsSection}`
+        : documentsSection;
+    }
+
+    return {
+      ...msg,
+      text: newText,
+      files: imageFiles,
+    };
+  };
+
   const handleSubmit = (message?: PromptInputMessage) => {
-    if (message)
+    if (message) {
+      const processed = processDocumentFiles(message);
       sendMessage({
-        text: message.text || "Sent with attachments",
-        files: message.files,
+        text: processed.text || "Sent with attachments",
+        files: processed.files,
       });
+    }
   };
 
   useEffect(() => {

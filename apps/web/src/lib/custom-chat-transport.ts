@@ -30,29 +30,43 @@ async function passUrlsDirectly(
 /**
  * Convert file parts to custom image_url format for the API.
  * The server expects: { type: "image_url", image_url: { url: "<image url>", detail: "auto" } }
+ * Also filters out non-image file parts (documents) that the model cannot process.
  */
 function convertToImageUrlFormat(messages: CoreMessage[]): CoreMessage[] {
   return messages.map((message) => {
     if (message.role === MESSAGE_ROLE.USER && Array.isArray(message.content)) {
       return {
         ...message,
-        content: message.content.map((part) => {
-          // Convert image parts to image_url format
-          if (part.type === "image" && "image" in part) {
-            const imageData = part.image;
-            // If it's a URL string
-            if (typeof imageData === "string") {
-              return {
-                type: "image_url",
-                image_url: {
-                  url: imageData,
-                  detail: "auto",
-                },
-              };
+        content: message.content
+          .map((part) => {
+            // Convert image parts to image_url format
+            if (part.type === "image" && "image" in part) {
+              const imageData = part.image;
+              // If it's a URL string
+              if (typeof imageData === "string") {
+                return {
+                  type: "image_url",
+                  image_url: {
+                    url: imageData,
+                    detail: "auto",
+                  },
+                };
+              }
             }
-          }
-          return part;
-        }),
+            // Filter out file parts with non-image media types
+            // These are documents that should have been converted to text by the frontend
+            if (part.type === "file" && "file" in part) {
+              const filePart = part as { type: "file"; file: { mediaType?: string } };
+              const mediaType = filePart.file?.mediaType || "";
+              // Only allow image types through
+              if (!mediaType.startsWith("image/")) {
+                console.warn(`[CustomChatTransport] Filtering out non-image file part: ${mediaType}`);
+                return null;
+              }
+            }
+            return part;
+          })
+          .filter((part): part is NonNullable<typeof part> => part !== null),
       };
     }
     return message;

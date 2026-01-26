@@ -69,7 +69,7 @@ type ScanDocumentResponse struct {
 }
 
 // ScanDocument performs OCR on a document
-func (h *DocumentHandler) ScanDocument(ctx context.Context, userID uint, req ScanDocumentRequest) (*ScanDocumentResponse, error) {
+func (h *DocumentHandler) ScanDocument(ctx context.Context, userID uint, req ScanDocumentRequest, authHeader string) (*ScanDocumentResponse, error) {
 	// Check if OCR is enabled
 	if !h.documentService.IsOCREnabled() {
 		return nil, platformerrors.NewError(ctx, platformerrors.LayerHandler, platformerrors.ErrorTypeValidation,
@@ -86,7 +86,7 @@ func (h *DocumentHandler) ScanDocument(ctx context.Context, userID uint, req Sca
 	}
 
 	// Resolve media object to get file URL and metadata
-	mediaInfo, err := h.mediaClient.Resolve(ctx, req.MediaObjectID)
+	mediaInfo, err := h.mediaClient.Resolve(ctx, req.MediaObjectID, authHeader)
 	if err != nil {
 		return nil, platformerrors.AsError(ctx, platformerrors.LayerHandler, err, "failed to resolve media object")
 	}
@@ -230,7 +230,7 @@ type ProjectFileResponse struct {
 }
 
 // CreateProjectFile adds a file to a project
-func (h *DocumentHandler) CreateProjectFile(ctx context.Context, userID uint, projectPublicID string, req CreateProjectFileRequest) (*ProjectFileResponse, error) {
+func (h *DocumentHandler) CreateProjectFile(ctx context.Context, userID uint, projectPublicID string, req CreateProjectFileRequest, authHeader string) (*ProjectFileResponse, error) {
 	// Verify project ownership
 	proj, err := h.projectService.GetProjectByPublicIDAndUserID(ctx, projectPublicID, userID)
 	if err != nil {
@@ -241,7 +241,7 @@ func (h *DocumentHandler) CreateProjectFile(ctx context.Context, userID uint, pr
 	scanResp, err := h.ScanDocument(ctx, userID, ScanDocumentRequest{
 		MediaObjectID: req.MediaObjectID,
 		Filename:      req.Filename,
-	})
+	}, authHeader)
 	if err != nil {
 		return nil, platformerrors.AsError(ctx, platformerrors.LayerHandler, err, "failed to process document")
 	}
