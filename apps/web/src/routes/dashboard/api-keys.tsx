@@ -21,6 +21,6 @@ function DashboardApiKeysRoute() {
   );
 }
 
-export const Route = createFileRoute("/dashboard/api-keys" as "/")({
+export const Route = createFileRoute("/dashboard/api-keys")({
   component: DashboardApiKeysRoute,
 });

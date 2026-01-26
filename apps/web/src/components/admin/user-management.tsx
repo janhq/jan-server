@@ -279,7 +279,7 @@ export function UserManagement() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Link to={"/admin/users/feature-flags" as "/admin/users"}>
+          <Link to="/admin/users/feature-flags">
             <Button variant="outline">
               <Flag className="w-4 h-4 mr-2" />
               Feature Flags

@@ -13,6 +13,6 @@ function AdminFeatureFlagsRoute() {
   );
 }
 
-export const Route = createFileRoute("/admin/users/feature-flags" as "/admin/users")({
+export const Route = createFileRoute("/admin/users/feature-flags")({
   component: AdminFeatureFlagsRoute,
 });
