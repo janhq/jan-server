@@ -88,8 +88,8 @@ type shellCommandResult struct {
 }
 
 type shellExecResponse struct {
-	Success bool               `json:"success"`
-	Message *string            `json:"message"`
+	Success bool                `json:"success"`
+	Message *string             `json:"message"`
 	Data    *shellCommandResult `json:"data"`
 }
 

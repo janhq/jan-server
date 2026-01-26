@@ -9,6 +9,7 @@ import (
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/projectrepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/prompttemplaterepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/sharerepo"
+	"jan-server/services/llm-api/internal/infrastructure/database/repository/tokenusagerepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/userrepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/usersettingsrepo"
 
@@ -29,4 +30,5 @@ var RepositoryProvider = wire.NewSet(
 	modelprompttemplaterepo.NewModelPromptTemplateGormRepository,
 	sharerepo.NewShareGormRepository,
 	mcptoolrepo.NewMCPToolGormRepository,
+	tokenusagerepo.NewTokenUsageGormRepository,
 )

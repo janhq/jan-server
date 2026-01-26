@@ -174,12 +174,16 @@ import (
 )
 ```
 
-### Git Conventions
+## Git Instructions
 
-- **Branch format:** `type/short-description` (e.g., `feat/add-streaming`, `fix/auth-bug`)
-- **Commit messages:** Use [Conventional Commits](https://www.conventionalcommits.org/)
-  - `feat:`, `fix:`, `docs:`, `test:`, `chore:`, `refactor:`
-  - Example: `feat(llm-api): add conversation branching`
+### Branch Naming (REQUIRED)
+- Always create branches with prefix: `feat/`, `fix/`, or `chore/`
+- Example: `feat/add-payment-module`, `fix/resolve-timeout-issue`
+- Never commit directly to `main` or `develop`
+
+### Commits
+- Do NOT include any AI attribution in commit messages
+- Use conventional commit format: `feat:`, `fix:`, `chore:`
 
 ---
 

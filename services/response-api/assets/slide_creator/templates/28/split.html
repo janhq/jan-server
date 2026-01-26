@@ -1,0 +1,60 @@
+{{define "body"}}
+<section style="height:100%; display:grid; grid-template-columns:repeat(12, 1fr); gap:28px; align-items:stretch;">
+  <article style="grid-column:1 / span 7; height:100%; display:flex; flex-direction:column; overflow:hidden;">
+    <div style="font-size:13px; font-weight:900; letter-spacing:0.16em; text-transform:uppercase; color:{{.Theme.AccentColor}};">{{.Split.Label}}</div>
+    <h1 style="margin:12px 0 0 0; font-size:52px; line-height:1.08; font-weight:900; letter-spacing:-0.02em; color:{{.Theme.TextColor}}; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Slide.Title 80}}</h1>
+    {{if .Split.Subtitle}}<p style="margin:14px 0 0 0; font-size:24px; line-height:1.3; font-weight:600; color:{{.Muted}}; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Split.Subtitle 120}}</p>{{end}}
+
+    {{if .Split.Stats}}
+    <div style="margin-top:18px; display:flex; gap:14px; flex-wrap:wrap;">
+      {{range .Split.Stats}}
+      <div style="background:{{withAlpha $.Theme.AccentColor 0.1}}; border:1px solid {{withAlpha $.Theme.AccentColor 0.18}}; border-radius:12px; padding:12px 16px; min-width:85px;">
+        <div style="font-size:26px; font-weight:800; color:{{$.Theme.AccentColor}}; line-height:1.1;">{{.Value}}</div>
+        <div style="font-size:11px; font-weight:700; color:{{$.Muted}}; text-transform:uppercase; letter-spacing:0.06em; margin-top:4px;">{{trimToRunes .Label 20}}</div>
+      </div>
+      {{end}}
+    </div>
+    {{end}}
+
+    <div style="margin-top:18px; flex:1; overflow:hidden;">
+      <ul style="margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:14px; overflow:hidden;">
+        {{range .Split.Bullets}}
+        <li style="display:flex; gap:14px; align-items:flex-start;">
+          <div style="margin-top:9px; width:8px; height:8px; border-radius:999px; background:{{$.Theme.AccentColor}}; flex:0 0 auto;"></div>
+          <div style="font-size:{{$.Split.BulletFont}}px; line-height:1.35; font-weight:600; color:{{$.Theme.TextColor}}; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes . 180}}</div>
+        </li>
+        {{end}}
+      </ul>
+    </div>
+  </article>
+
+  {{if .Split.HasImage}}
+  <figure style="grid-column:8 / span 5; margin:0; height:100%; border-radius:22px; overflow:hidden; border:1px solid {{.BodyBorder}}; position:relative; background:{{withAlpha .Theme.TextColor 0.06}};">
+    <img src="{{.Split.Image.Src}}" alt="{{.Split.ImageAlt}}" style="width:100%; height:100%; display:block; object-fit:cover;"/>
+    <div style="position:absolute; inset:0; background:linear-gradient(to bottom, rgba(0,0,0,0) 55%, rgba(0,0,0,0.58) 100%);"></div>
+    {{if .Split.ImageCaption}}<figcaption style="position:absolute; left:22px; right:22px; bottom:20px; color:#FFFFFF; font-size:20px; font-weight:700; line-height:1.25; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Split.ImageCaption 100}}</figcaption>{{end}}
+  </figure>
+  {{else}}
+  {{/* No image - show stats panel or highlights */}}
+  <div style="grid-column:8 / span 5; height:100%; border-radius:22px; border:1px solid {{.BodyBorder}}; background:{{withAlpha .Theme.TextColor 0.04}}; display:flex; flex-direction:column; padding:28px; box-sizing:border-box; overflow:hidden;">
+    <div style="font-size:13px; font-weight:900; letter-spacing:0.16em; text-transform:uppercase; color:{{.Theme.AccentColor}};">Key Insights</div>
+
+    {{if .Bullets.Stats}}
+    <div style="margin-top:20px; display:grid; grid-template-columns:repeat(2, 1fr); gap:16px;">
+      {{range .Bullets.Stats}}
+      <div style="background:{{withAlpha $.Theme.AccentColor 0.08}}; border-radius:14px; padding:18px; text-align:center;">
+        <div style="font-size:36px; font-weight:800; color:{{$.Theme.AccentColor}}; line-height:1;">{{.Value}}</div>
+        <div style="font-size:12px; font-weight:700; color:{{$.Muted}}; text-transform:uppercase; letter-spacing:0.05em; margin-top:8px;">{{trimToRunes .Label 24}}</div>
+      </div>
+      {{end}}
+    </div>
+    {{else}}
+    <div style="margin-top:18px; flex:1; display:flex; flex-direction:column; justify-content:center;">
+      <div style="font-size:28px; font-weight:800; line-height:1.15; color:{{.Theme.TextColor}}; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Slide.Title 80}}</div>
+      {{if .Slide.Subtitle}}<div style="margin-top:16px; font-size:18px; font-weight:600; line-height:1.4; color:{{.Muted}}; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Slide.Subtitle 160}}</div>{{end}}
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+</section>
+{{end}}

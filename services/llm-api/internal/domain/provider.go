@@ -14,6 +14,7 @@ import (
 	"jan-server/services/llm-api/internal/domain/prompt"
 	"jan-server/services/llm-api/internal/domain/prompttemplate"
 	"jan-server/services/llm-api/internal/domain/share"
+	"jan-server/services/llm-api/internal/domain/tokenusage"
 	"jan-server/services/llm-api/internal/domain/user"
 	"jan-server/services/llm-api/internal/domain/usersettings"
 )
@@ -57,6 +58,9 @@ var ServiceProvider = wire.NewSet(
 
 	// Share domain
 	share.NewShareService,
+
+	// Token usage
+	tokenusage.NewService,
 )
 
 func ProvideAPIKeyConfig(cfg *config.Config) apikey.Config {

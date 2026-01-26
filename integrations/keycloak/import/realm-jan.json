@@ -67,38 +67,16 @@
       "implicitFlowEnabled": false,
       "authorizationServicesEnabled": false,
       "redirectUris": [
-        "http://localhost:8000/auth/callback",
-        "http://localhost:8000/auth/google/callback",
-        "http://localhost:8080/auth/callback",
-        "http://localhost:8080/auth/google/callback",
-        "http://localhost:3000/*",
-        "http://localhost:3001/*",
-        "http://127.0.0.1:8000/auth/callback",
-        "http://127.0.0.1:8000/auth/google/callback",
-        "http://127.0.0.1:8080/auth/callback",
-        "http://127.0.0.1:8080/auth/google/callback",
-        "http://127.0.0.1:3000/*",
-        "http://127.0.0.1:3001/*",
-        "https://yourdomain.com/auth/callback",
-        "https://yourdomain.com/auth/google/callback"
+        "*"
       ],
       "webOrigins": [
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://localhost:8000",
-        "http://localhost:8080",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001",
-        "http://127.0.0.1:8000",
-        "http://127.0.0.1:8080",
-        "https://yourdomain.com"
+        "+"
       ],
       "attributes": {
         "oauth2.device.authorization.grant.enabled": "true",
         "access.token.lifespan": "3600",
         "refresh.token.lifespan": "2592000",
-        "token.exchange.grant.enabled": "true",
-        "pkce.code.challenge.method": "S256"
+        "token.exchange.grant.enabled": "true"
       },
       "protocolMappers": [
         {

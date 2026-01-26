@@ -33,4 +33,7 @@ type Repository interface {
 
 	// GetUsageByProvider retrieves usage grouped by provider within a date range
 	GetUsageByProvider(ctx context.Context, startDate, endDate time.Time) ([]UsageSummary, error)
+
+	// GetActivityBuckets retrieves 5-minute bucket usage data for a user
+	GetActivityBuckets(ctx context.Context, userID string, startDate, endDate time.Time) ([]ActivityBucket, error)
 }

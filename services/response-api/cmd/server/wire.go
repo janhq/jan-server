@@ -15,7 +15,12 @@ import (
 	"jan-server/services/response-api/internal/config"
 	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/agent/planners"
+	deepresearch "jan-server/services/response-api/internal/domain/agent/planners/deep_research"
+	docplanner "jan-server/services/response-api/internal/domain/agent/planners/doc"
+	pdfplanner "jan-server/services/response-api/internal/domain/agent/planners/pdf"
+	skillexec "jan-server/services/response-api/internal/domain/agent/planners/skill"
 	slide_creator "jan-server/services/response-api/internal/domain/agent/planners/slide_creator"
+	spreadsheetplanner "jan-server/services/response-api/internal/domain/agent/planners/spreadsheet"
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/conversation"
 	"jan-server/services/response-api/internal/domain/llm"
@@ -56,7 +61,6 @@ var responseSet = wire.NewSet(
 	wire.Bind(new(llm.ModelInfoProvider), new(*llmprovider.Client)),
 	newMCPClient,
 	wire.Bind(new(tool.MCPClient), new(*mcp.Client)),
-	wire.Bind(new(planners.MCPClient), new(*mcp.Client)),
 	newMediaClient,
 	newSkillService,
 	wire.Bind(new(skill.Service), new(*skillinfra.Service)),
@@ -149,7 +153,7 @@ func newAgentRegistry(planService plan.Service, mcpClient tool.MCPClient, llmPro
 	registry := agent.NewRegistry()
 
 	// Register the deep research planner
-	deepResearchPlanner := planners.NewDeepResearchPlanner(planService)
+	deepResearchPlanner := deepresearch.NewPlanner(planService)
 	if err := registry.RegisterPlanner(deepResearchPlanner); err != nil {
 		// Log but don't fail - planner registration is not critical
 		_ = err
@@ -161,17 +165,17 @@ func newAgentRegistry(planService plan.Service, mcpClient tool.MCPClient, llmPro
 		_ = err
 	}
 
-	docGeneratorPlanner := planners.NewDocGeneratorPlanner(planService, artifactService)
+	docGeneratorPlanner := docplanner.NewPlanner(planService, artifactService)
 	if err := registry.RegisterPlanner(docGeneratorPlanner); err != nil {
 		_ = err
 	}
 
-	pdfGeneratorPlanner := planners.NewPDFGeneratorPlanner(planService, artifactService)
+	pdfGeneratorPlanner := pdfplanner.NewPlanner(planService, artifactService)
 	if err := registry.RegisterPlanner(pdfGeneratorPlanner); err != nil {
 		_ = err
 	}
 
-	spreadsheetGeneratorPlanner := planners.NewSpreadsheetGeneratorPlanner(planService, artifactService)
+	spreadsheetGeneratorPlanner := spreadsheetplanner.NewPlanner(planService, artifactService)
 	if err := registry.RegisterPlanner(spreadsheetGeneratorPlanner); err != nil {
 		_ = err
 	}
@@ -181,10 +185,10 @@ func newAgentRegistry(planService plan.Service, mcpClient tool.MCPClient, llmPro
 	codeFixer.SetDisableCustomTemperature(cfg.LLMDisableCustomTemperature)
 
 	// Register the deep research executor for tool calls and LLM calls
-	deepResearchExecutor := planners.NewDeepResearchExecutor(mcpClient, codeFixer)
+	deepResearchExecutor := deepresearch.NewExecutor(mcpClient, codeFixer)
 
-	// Register the slide generator executor for artifact creation
-	skillExecutor := planners.NewSkillExecutor(
+	// Register the skill executor for artifact creation
+	skillExecutor := skillexec.NewExecutor(
 		mcpClient,
 		codeFixer,
 		skillService,

@@ -29,12 +29,24 @@ type SplitTemplateData struct {
 	ImageAlt     string
 	ImageCaption string
 	HasImage     bool
+	Stats        []StatItem
+}
+
+type StatItem struct {
+	Value string
+	Label string
 }
 
 type BulletsTemplateData struct {
-	Bullets  []string
-	ItemFont int
-	Subtitle string
+	Bullets      []string
+	ItemFont     int
+	Subtitle     string
+	Label        string
+	Stats        []StatItem
+	Image        SlideImage
+	ImageAlt     string
+	ImageCaption string
+	HasImage     bool
 }
 
 type HeroTemplateData struct {
@@ -180,18 +192,25 @@ func buildTemplateData(plan DeckPlan, slide SlidePlan, index, total int, bodyHTM
 		BodyBorder: bodyBorder,
 		Split: SplitTemplateData{
 			Bullets:      slide.Bullets,
-			BulletFont:   ternaryInt(len(slide.Bullets) > 4, 22, 24),
+			BulletFont:   ternaryInt(len(slide.Bullets) > 4, 20, 22),
 			Label:        splitLabel,
 			Subtitle:     slide.Subtitle,
 			Image:        splitImage,
 			ImageAlt:     splitImage.Alt,
 			ImageCaption: splitImage.Caption,
 			HasImage:     splitImage.Src != "",
+			Stats:        extractStats(slide),
 		},
 		Bullets: BulletsTemplateData{
-			Bullets:  slide.Bullets,
-			ItemFont: ternaryInt(len(slide.Bullets) > 4, 26, 28),
-			Subtitle: slide.Subtitle,
+			Bullets:      slide.Bullets,
+			ItemFont:     ternaryInt(len(slide.Bullets) > 4, 22, 24),
+			Subtitle:     slide.Subtitle,
+			Label:        extractBulletsLabel(slide),
+			Stats:        extractStats(slide),
+			Image:        splitImage,
+			ImageAlt:     splitImage.Alt,
+			ImageCaption: splitImage.Caption,
+			HasImage:     splitImage.Src != "",
 		},
 		Table: tableInfo,
 		Chart: chartInfo,
@@ -645,4 +664,39 @@ func buildPieChart(series []ChartSeries, colors []string) []ChartSlice {
 		start = end
 	}
 	return slices
+}
+
+func extractBulletsLabel(slide SlidePlan) string {
+	// Try to extract a label from notes or use a default
+	if strings.TrimSpace(slide.Notes) != "" {
+		// Use first line of notes as label if short enough
+		lines := strings.SplitN(slide.Notes, "\n", 2)
+		if len(lines[0]) <= 30 {
+			return strings.TrimSpace(lines[0])
+		}
+	}
+	return "Overview"
+}
+
+func extractStats(slide SlidePlan) []StatItem {
+	// Parse stats from slide data if available
+	// Stats can be embedded in slide.Stats field or parsed from notes
+	if slide.Stats != nil && len(slide.Stats) > 0 {
+		stats := make([]StatItem, 0, len(slide.Stats))
+		for _, s := range slide.Stats {
+			if s.Value != "" {
+				stats = append(stats, StatItem{
+					Value: s.Value,
+					Label: s.Label,
+				})
+			}
+		}
+		if len(stats) > 0 {
+			return stats
+		}
+	}
+
+	// Try to extract stats from bullets that look like metrics
+	// e.g., "47% growth rate" -> Value: "47%", Label: "growth rate"
+	return nil
 }

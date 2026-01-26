@@ -41,11 +41,13 @@ func normalizeDeckPlan(plan DeckPlan, wantSlides int) DeckPlan {
 		plan.Slides[i].Notes = strings.TrimSpace(plan.Slides[i].Notes)
 		plan.Slides[i].Bullets = clampBullets(plan.Slides[i].Bullets, 6)
 
+		// Validate and filter images
+		plan.Slides[i].Images = FilterValidSlideImages(plan.Slides[i].Images)
 		if len(plan.Slides[i].Images) > 2 {
 			plan.Slides[i].Images = plan.Slides[i].Images[:2]
 		}
 		for j := range plan.Slides[i].Images {
-			plan.Slides[i].Images[j].Src = strings.TrimSpace(plan.Slides[i].Images[j].Src)
+			plan.Slides[i].Images[j].Src = SanitizeImageURL(plan.Slides[i].Images[j].Src)
 			plan.Slides[i].Images[j].Alt = strings.TrimSpace(plan.Slides[i].Images[j].Alt)
 			plan.Slides[i].Images[j].Caption = strings.TrimSpace(plan.Slides[i].Images[j].Caption)
 			if plan.Slides[i].Images[j].Alt == "" {

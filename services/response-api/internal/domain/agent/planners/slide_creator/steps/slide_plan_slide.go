@@ -48,21 +48,44 @@ func (e *SlideCreatorExecutor) executeSlidePlanSlide(ctx context.Context, params
 	}
 
 	outlineText := strings.TrimSpace(collectOutlineText(input))
-	block, ok := outlineBlockForSlide(outlineText, slideIndex)
-	blockText := ""
-	if ok {
-		blockText = outlineBlockText(block)
-	}
-	if blockText == "" {
-		blockText = truncateWithSuffix(outlineText, slidePlanContextPerSlideLimit)
-	}
-	outlineURLs := extractOutlineURLs(blockText)
+	block, blockFound := outlineBlockForSlide(outlineText, slideIndex)
 
+	// Extract structured content from outline block
+	var slideContent OutlineSlideContent
+	if blockFound {
+		slideContent = ExtractSlideContent(block)
+	}
+
+	// Format structured content for prompt - this preserves all ideas from outline
+	structuredContent := ""
+	if blockFound {
+		structuredContent = FormatSlideContentForPrompt(slideContent)
+	}
+
+	// Fallback: if no structured content, use truncated outline
+	if structuredContent == "" && outlineText != "" {
+		// Keep context focused - limit to 2000 chars for single slide
+		maxLen := 2000
+		if len(outlineText) > maxLen {
+			structuredContent = outlineText[:maxLen] + "..."
+		} else {
+			structuredContent = outlineText
+		}
+	}
+
+	outlineURLs := extractOutlineURLs(structuredContent)
+	if len(outlineURLs) == 0 && blockFound {
+		outlineURLs = extractOutlineURLs(slideContent.RawText)
+	}
+
+	// Get data bank only if this slide needs data (table/chart)
 	dataBank := ""
-	if ok && outlineBlockNeedsDataBank(block) {
+	if slideContent.HasDataNeeds {
 		dataBank = collectDataBankText(input)
-	} else if !ok && outlineNeedsDataBank(outlineText) {
-		dataBank = collectDataBankText(input)
+		// Limit data bank size to keep context focused
+		if len(dataBank) > 1500 {
+			dataBank = dataBank[:1500] + "..."
+		}
 	}
 
 	deckTitle := extractDeckTitle(input)
@@ -70,48 +93,81 @@ func (e *SlideCreatorExecutor) executeSlidePlanSlide(ctx context.Context, params
 		deckTitle = fallbackDeckTitle(outlineText, brief)
 	}
 
+	// Build focused prompt - keep it concise
 	promptParts := []string{
-		fmt.Sprintf("Draft a single slide plan for slide %d.", slideIndex),
-		"Return ONLY JSON with this shape:",
-		`{"slide":{"id":1,"layout":"split|bullets|hero|table|chart","title":"...","subtitle":"...","bullets":["..."],"table":{"title":"...","columns":["..."],"rows":[["..."]],"notes":"optional"},"chart":{"type":"bar|line|pie","title":"...","categories":["..."],"series":[{"name":"...","values":[1,2]}],"notes":"optional"},"notes":"optional"},"image_required":true,"image_query":"..."}`,
-		"HARD RULES:",
-		"- slide.id must match the slide index.",
-		"- title: 6-60 characters.",
-		"- bullets: 3-6 items, 25-75 chars each when used.",
-		"- table: 3-6 columns, 3-9 rows when used.",
-		"- chart: 3-6 categories, 1-3 series when used.",
-		"- Include at most one of table or chart (not both).",
-		"- layout MUST match the primary content block:",
-		"  - if chart is present -> layout = \"chart\"",
-		"  - if table is present -> layout = \"table\"",
-		"  - if image + bullets -> layout = \"split\"",
-		"  - if image only -> layout = \"hero\"",
-		"  - otherwise -> layout = \"bullets\"",
-		"- If outline requests a table or chart (or mentions dataset/graph or pipe-delimited rows), include it and set layout accordingly.",
-		"- If outline requests an image or visual, set image_required true and provide image_query.",
-		"- Do NOT include images unless the outline provides a URL.",
-		"- Bullets must be plain text (no markdown or quotes).",
-		"- image_required true only if needed or requested.",
-		"- Output JSON only, no commentary.",
+		fmt.Sprintf("Create slide %d plan. Return ONLY valid JSON.", slideIndex),
 	}
 
+	// Add JSON schema (compact)
+	promptParts = append(promptParts, `Schema: {"slide":{"id":N,"layout":"split|bullets|hero|table|chart","title":"...","subtitle":"...","bullets":["..."],"table":{"columns":["..."],"rows":[["..."]]},"chart":{"type":"bar|line|pie","categories":["..."],"series":[{"name":"...","values":[N]}]}},"image_required":bool,"image_query":"..."}`)
+
+	// Add essential rules (condensed)
+	rules := []string{
+		fmt.Sprintf("slide.id=%d", slideIndex),
+		"title: 6-60 chars",
+		"bullets: 3-6 items when used",
+		"table OR chart, not both",
+		"layout must match content type",
+	}
+
+	// Add table/chart instruction if outline indicates need
+	if slideContent.TableData != nil {
+		rules = append(rules, "MUST include table with the provided data")
+		rules = append(rules, "layout MUST be 'table'")
+	}
+	if slideContent.ChartHint != nil {
+		rules = append(rules, fmt.Sprintf("MUST include %s chart with ALL data points from outline", slideContent.ChartHint.Type))
+		rules = append(rules, "layout MUST be 'chart'")
+	}
+
+	promptParts = append(promptParts, "Rules: "+strings.Join(rules, "; "))
+
+	// Add context - keep each section brief
 	if deckTitle != "" {
-		promptParts = append(promptParts, "Deck title:\n"+deckTitle)
+		promptParts = append(promptParts, "Deck: "+trimToRunesNoEllipsis(deckTitle, 60))
 	}
-	if brief != "" {
-		promptParts = append(promptParts, "Brief:\n"+strings.TrimSpace(brief))
+
+	// Include slide title from outline if available
+	if blockFound && block.Title != "" {
+		promptParts = append(promptParts, "Slide title: "+block.Title)
 	}
-	if themePref != "" {
-		promptParts = append(promptParts, "Theme preferences:\n"+themePref)
+
+	// Include structured content - this contains all ideas from outline
+	if structuredContent != "" {
+		promptParts = append(promptParts, "Content:\n"+structuredContent)
 	}
-	if ok && block.Title != "" {
-		promptParts = append(promptParts, "Slide title from outline:\n"+block.Title)
+
+	// Include pre-extracted table data if found in outline
+	if slideContent.TableData != nil {
+		tableJSON, _ := json.Marshal(slideContent.TableData)
+		promptParts = append(promptParts, "Table data from outline:\n"+string(tableJSON))
 	}
-	if blockText != "" {
-		promptParts = append(promptParts, "Slide outline:\n"+blockText)
+
+	// Include pre-extracted chart data if found in outline
+	if slideContent.ChartHint != nil && len(slideContent.ChartHint.Values) > 0 {
+		chartData := map[string]interface{}{
+			"type":       slideContent.ChartHint.Type,
+			"title":      slideContent.ChartHint.Title,
+			"categories": slideContent.ChartHint.Categories,
+			"series": []map[string]interface{}{
+				{
+					"name":   "Data",
+					"values": slideContent.ChartHint.Values,
+				},
+			},
+		}
+		chartJSON, _ := json.Marshal(chartData)
+		promptParts = append(promptParts, "Chart data from outline (MUST use these exact values):\n"+string(chartJSON))
 	}
+
+	// Include data bank if needed (already size-limited above)
 	if dataBank != "" {
 		promptParts = append(promptParts, "Data bank:\n"+dataBank)
+	}
+
+	// Theme preferences (brief)
+	if themePref != "" && len(themePref) <= 200 {
+		promptParts = append(promptParts, "Theme: "+themePref)
 	}
 
 	prompt := strings.Join(promptParts, "\n\n")
@@ -244,27 +300,40 @@ BAD_JSON:
 	draft.Slide.Subtitle = strings.TrimSpace(draft.Slide.Subtitle)
 	draft.Slide.Notes = strings.TrimSpace(draft.Slide.Notes)
 	draft.Slide.Bullets = clampBullets(draft.Slide.Bullets, 6)
-	if len(draft.Slide.Images) > 0 && len(outlineURLs) > 0 {
-		allowed := map[string]struct{}{}
-		for _, url := range outlineURLs {
-			allowed[url] = struct{}{}
-		}
-		filtered := make([]SlideImage, 0, len(draft.Slide.Images))
-		for _, img := range draft.Slide.Images {
-			src := strings.TrimSpace(img.Src)
-			if _, ok := allowed[src]; ok {
-				filtered = append(filtered, img)
+
+	// Validate and filter images
+	if len(draft.Slide.Images) > 0 {
+		// First, validate all image URLs
+		draft.Slide.Images = FilterValidSlideImages(draft.Slide.Images)
+
+		// If outline has URLs, only allow those specific URLs
+		if len(outlineURLs) > 0 {
+			allowed := map[string]struct{}{}
+			for _, url := range outlineURLs {
+				// Validate outline URLs too
+				if result := ValidateImageURL(url); result.IsValid {
+					allowed[url] = struct{}{}
+				}
 			}
+			filtered := make([]SlideImage, 0, len(draft.Slide.Images))
+			for _, img := range draft.Slide.Images {
+				src := strings.TrimSpace(img.Src)
+				if _, ok := allowed[src]; ok {
+					filtered = append(filtered, img)
+				}
+			}
+			draft.Slide.Images = filtered
 		}
-		draft.Slide.Images = filtered
 	}
+
+	// If no valid outline URLs, clear LLM-generated images (will be filled by image search)
 	if len(outlineURLs) == 0 {
 		draft.Slide.Images = nil
 	}
 
 	if draft.ImageRequired == nil {
 		required := slideNeedsImage(draft.Slide)
-		if !required && ok && outlineBlockNeedsImage(block) {
+		if !required && blockFound && outlineBlockNeedsImage(block) {
 			required = true
 		}
 		draft.ImageRequired = &required

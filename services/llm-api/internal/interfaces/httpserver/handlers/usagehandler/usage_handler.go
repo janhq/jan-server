@@ -1,11 +1,12 @@
 package usagehandler
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
 	"jan-server/services/llm-api/internal/domain/tokenusage"
-	middleware "jan-server/services/llm-api/internal/interfaces/httpserver/middlewares"
+	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/authhandler"
 
 	"github.com/gin-gonic/gin"
 )
@@ -35,11 +36,12 @@ func NewUsageHandler(usageService *tokenusage.Service) *UsageHandler {
 // @Failure 500 {object} map[string]string
 // @Router /v1/usage/me [get]
 func (h *UsageHandler) GetMyUsage(c *gin.Context) {
-	userID := middleware.GetUserIDFromContext(c)
-	if userID == "" {
+	user, ok := authhandler.GetUserFromContext(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+	userID := fmt.Sprintf("%d", user.ID)
 
 	startDate, endDate := parseDateRange(c)
 
@@ -65,11 +67,12 @@ func (h *UsageHandler) GetMyUsage(c *gin.Context) {
 // @Failure 500 {object} map[string]string
 // @Router /v1/usage/me/daily [get]
 func (h *UsageHandler) GetMyDailyUsage(c *gin.Context) {
-	userID := middleware.GetUserIDFromContext(c)
-	if userID == "" {
+	user, ok := authhandler.GetUserFromContext(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+	userID := fmt.Sprintf("%d", user.ID)
 
 	startDate, endDate := parseDateRange(c)
 
@@ -80,6 +83,37 @@ func (h *UsageHandler) GetMyDailyUsage(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, dailyUsage)
+}
+
+// GetMyActivityUsage godoc
+// @Summary Get current user's 5-minute bucket token usage
+// @Description Returns 5-minute bucket aggregated token usage for the authenticated user (for charts)
+// @Tags Usage
+// @Produce json
+// @Security BearerAuth
+// @Param start_date query string false "Start date (YYYY-MM-DD), defaults to 7 days ago"
+// @Param end_date query string false "End date (YYYY-MM-DD), defaults to today"
+// @Success 200 {array} tokenusage.ActivityBucket
+// @Failure 401 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /v1/usage/me/activity [get]
+func (h *UsageHandler) GetMyActivityUsage(c *gin.Context) {
+	user, ok := authhandler.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	userID := fmt.Sprintf("%d", user.ID)
+
+	startDate, endDate := parseActivityDateRange(c)
+
+	activityUsage, err := h.usageService.GetMyActivityUsage(c.Request.Context(), userID, startDate, endDate)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get activity usage"})
+		return
+	}
+
+	c.JSON(http.StatusOK, activityUsage)
 }
 
 // GetProjectUsage godoc
@@ -144,6 +178,27 @@ func parseDateRange(c *gin.Context) (time.Time, time.Time) {
 	now := time.Now()
 	endDate := now
 	startDate := now.AddDate(0, 0, -30) // Default to last 30 days
+
+	if startStr := c.Query("start_date"); startStr != "" {
+		if parsed, err := time.Parse("2006-01-02", startStr); err == nil {
+			startDate = parsed
+		}
+	}
+
+	if endStr := c.Query("end_date"); endStr != "" {
+		if parsed, err := time.Parse("2006-01-02", endStr); err == nil {
+			endDate = parsed.Add(24*time.Hour - time.Second) // End of day
+		}
+	}
+
+	return startDate, endDate
+}
+
+// parseActivityDateRange extracts start and end dates for activity queries (default 7 days)
+func parseActivityDateRange(c *gin.Context) (time.Time, time.Time) {
+	now := time.Now()
+	endDate := now
+	startDate := now.AddDate(0, 0, -7) // Default to last 7 days
 
 	if startStr := c.Query("start_date"); startStr != "" {
 		if parsed, err := time.Parse("2006-01-02", startStr); err == nil {

@@ -14,7 +14,12 @@ import (
 	"jan-server/services/response-api/internal/config"
 	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/agent/planners"
+	deepresearch "jan-server/services/response-api/internal/domain/agent/planners/deep_research"
+	docplanner "jan-server/services/response-api/internal/domain/agent/planners/doc"
+	pdfplanner "jan-server/services/response-api/internal/domain/agent/planners/pdf"
+	skillexec "jan-server/services/response-api/internal/domain/agent/planners/skill"
 	slide_creator "jan-server/services/response-api/internal/domain/agent/planners/slide_creator"
+	spreadsheetplanner "jan-server/services/response-api/internal/domain/agent/planners/spreadsheet"
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/llm"
 	"jan-server/services/response-api/internal/domain/plan"
@@ -137,7 +142,7 @@ func main() {
 
 	// Initialize agent registry with planners and executors
 	agentRegistry := agent.NewRegistry()
-	deepResearchPlanner := planners.NewDeepResearchPlanner(planService)
+	deepResearchPlanner := deepresearch.NewPlanner(planService)
 	if err := agentRegistry.RegisterPlanner(deepResearchPlanner); err != nil {
 		log.Warn().Err(err).Msg("failed to register deep research planner")
 	}
@@ -148,17 +153,17 @@ func main() {
 		log.Warn().Err(err).Msg("failed to register slide creator planner")
 	}
 
-	docGeneratorPlanner := planners.NewDocGeneratorPlanner(planService, artifactService)
+	docGeneratorPlanner := docplanner.NewPlanner(planService, artifactService)
 	if err := agentRegistry.RegisterPlanner(docGeneratorPlanner); err != nil {
 		log.Warn().Err(err).Msg("failed to register doc generator planner")
 	}
 
-	pdfGeneratorPlanner := planners.NewPDFGeneratorPlanner(planService, artifactService)
+	pdfGeneratorPlanner := pdfplanner.NewPlanner(planService, artifactService)
 	if err := agentRegistry.RegisterPlanner(pdfGeneratorPlanner); err != nil {
 		log.Warn().Err(err).Msg("failed to register pdf generator planner")
 	}
 
-	spreadsheetGeneratorPlanner := planners.NewSpreadsheetGeneratorPlanner(planService, artifactService)
+	spreadsheetGeneratorPlanner := spreadsheetplanner.NewPlanner(planService, artifactService)
 	if err := agentRegistry.RegisterPlanner(spreadsheetGeneratorPlanner); err != nil {
 		log.Warn().Err(err).Msg("failed to register spreadsheet generator planner")
 	}
@@ -168,10 +173,10 @@ func main() {
 	codeFixer.SetDisableCustomTemperature(cfg.LLMDisableCustomTemperature)
 
 	// Register executors for tool calls and LLM calls
-	deepResearchExecutor := planners.NewDeepResearchExecutor(mcpClient, codeFixer)
+	deepResearchExecutor := deepresearch.NewExecutor(mcpClient, codeFixer)
 
-	// Register slide generator executor for artifact creation
-	skillExecutor := planners.NewSkillExecutor(
+	// Register skill executor for artifact creation
+	skillExecutor := skillexec.NewExecutor(
 		mcpClient,
 		codeFixer,
 		skillService,

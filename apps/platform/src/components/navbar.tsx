@@ -198,7 +198,7 @@ export function Navbar() {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
                     <Link href="/docs" className="cursor-pointer">
-                      <Settings className="mr-1 h-4 w-4\" />
+                      <Settings className="mr-1 h-4 w-4" />
                       Settings
                     </Link>
                   </DropdownMenuItem>

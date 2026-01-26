@@ -2,7 +2,7 @@
 # JAN SERVER MAKEFILE
 # ============================================================================================================
 #
-# A comprehensive build system for Jan Server - a microservices-based LLM API platform
+# A comprehensive build system for Jan Server - a microservices-based LLM API 
 # with MCP (Model Context Protocol) tool integration.
 #
 # ============================================================================================================

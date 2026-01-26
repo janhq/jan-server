@@ -15,7 +15,12 @@ import (
 	"jan-server/services/response-api/internal/config"
 	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/agent/planners"
+	deepresearch "jan-server/services/response-api/internal/domain/agent/planners/deep_research"
+	docplanner "jan-server/services/response-api/internal/domain/agent/planners/doc"
+	pdfplanner "jan-server/services/response-api/internal/domain/agent/planners/pdf"
+	skillexec "jan-server/services/response-api/internal/domain/agent/planners/skill"
 	"jan-server/services/response-api/internal/domain/agent/planners/slide_creator"
+	spreadsheetplanner "jan-server/services/response-api/internal/domain/agent/planners/spreadsheet"
 	artifact2 "jan-server/services/response-api/internal/domain/artifact"
 	conversation2 "jan-server/services/response-api/internal/domain/conversation"
 	"jan-server/services/response-api/internal/domain/llm"
@@ -151,7 +156,7 @@ func newWebhookService(log zerolog.Logger) *webhook.HTTPService {
 func newAgentRegistry(planService plan2.Service, mcpClient tool.MCPClient, llmProvider llm.Provider, artifactService artifact2.Service, cfg *config.Config, mediaClient *media.Client, skillService skill.Service) agent.Registry {
 	registry := agent.NewRegistry()
 
-	deepResearchPlanner := planners.NewDeepResearchPlanner(planService)
+	deepResearchPlanner := deepresearch.NewPlanner(planService)
 	if err := registry.RegisterPlanner(deepResearchPlanner); err != nil {
 
 		_ = err
@@ -162,17 +167,17 @@ func newAgentRegistry(planService plan2.Service, mcpClient tool.MCPClient, llmPr
 		_ = err
 	}
 
-	docGeneratorPlanner := planners.NewDocGeneratorPlanner(planService, artifactService)
+	docGeneratorPlanner := docplanner.NewPlanner(planService, artifactService)
 	if err := registry.RegisterPlanner(docGeneratorPlanner); err != nil {
 		_ = err
 	}
 
-	pdfGeneratorPlanner := planners.NewPDFGeneratorPlanner(planService, artifactService)
+	pdfGeneratorPlanner := pdfplanner.NewPlanner(planService, artifactService)
 	if err := registry.RegisterPlanner(pdfGeneratorPlanner); err != nil {
 		_ = err
 	}
 
-	spreadsheetGeneratorPlanner := planners.NewSpreadsheetGeneratorPlanner(planService, artifactService)
+	spreadsheetGeneratorPlanner := spreadsheetplanner.NewPlanner(planService, artifactService)
 	if err := registry.RegisterPlanner(spreadsheetGeneratorPlanner); err != nil {
 		_ = err
 	}
@@ -180,9 +185,9 @@ func newAgentRegistry(planService plan2.Service, mcpClient tool.MCPClient, llmPr
 	codeFixer := llm.NewCodeFixer(llmProvider, cfg.CodeFixModel)
 	codeFixer.SetDisableCustomTemperature(cfg.LLMDisableCustomTemperature)
 
-	deepResearchExecutor := planners.NewDeepResearchExecutor(mcpClient, codeFixer)
+	deepResearchExecutor := deepresearch.NewExecutor(mcpClient, codeFixer)
 
-	skillExecutor := planners.NewSkillExecutor(
+	skillExecutor := skillexec.NewExecutor(
 		mcpClient,
 		codeFixer,
 		skillService,
