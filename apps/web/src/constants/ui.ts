@@ -27,6 +27,7 @@ export const URL_PARAM = {
 // URL param values
 export const URL_PARAM_VALUE = {
   LOGIN: "login",
+  REGISTER: "register",
   CREATE: "create",
   OPEN: "open",
 } as const;

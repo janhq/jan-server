@@ -1,4 +1,4 @@
-import { HatGlassesIcon, XIcon, Share2Icon } from "lucide-react";
+import { HatGlassesIcon, XIcon, Share2Icon, UserPlusIcon } from "lucide-react";
 import { Button } from "@janhq/interfaces/button";
 import { useAuth } from "@/stores/auth-store";
 import { useRouter } from "@tanstack/react-router";
@@ -37,6 +37,13 @@ export function NavActions({
     router.navigate({ to: url.pathname + url.search });
   };
 
+  const handleRegister = () => {
+    // Add modal=register search param to current route
+    const url = new URL(window.location.href);
+    url.searchParams.set(URL_PARAM.MODAL, URL_PARAM_VALUE.REGISTER);
+    router.navigate({ to: url.pathname + url.search });
+  };
+
   // Show login button and share button for unauthenticated/guest users
   if (!isAuthenticated || isGuest) {
     return (
@@ -52,6 +59,9 @@ export function NavActions({
             <Share2Icon className="size-4 text-muted-foreground" />
           </Button>
         )}
+        <Button size="sm" variant="outline" onClick={handleRegister}>
+          Register
+        </Button>
         <Button size="sm" onClick={handleLogin}>
           Log in
         </Button>

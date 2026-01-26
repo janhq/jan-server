@@ -7,6 +7,7 @@ import {
 import { useEffect, useRef } from "react";
 import { Dialog, DialogContent } from "@janhq/interfaces/dialog";
 import { LoginForm } from "@/components/form/login";
+import { RegisterForm } from "@/components/form/register";
 import { SettingsDialog } from "@/components/settings/settings-dialog";
 import { CreateProject } from "@/components/projects/create-project";
 import { SearchDialog } from "@/components/search/search-dialog";
@@ -70,6 +71,8 @@ function RootLayout() {
   const searchParams = new URLSearchParams(location.search);
   const isLoginModal =
     searchParams.get(URL_PARAM.MODAL) === URL_PARAM_VALUE.LOGIN;
+  const isRegisterModal =
+    searchParams.get(URL_PARAM.MODAL) === URL_PARAM_VALUE.REGISTER;
   const settingSection = searchParams.get(URL_PARAM.SETTING);
   const isSettingsOpen = !!settingSection;
   const projectsSection = searchParams.get(URL_PARAM.PROJECTS);
@@ -100,6 +103,16 @@ function RootLayout() {
         >
           <DialogContent>
             <LoginForm onSuccess={handleCloseModal} />
+          </DialogContent>
+        </Dialog>
+
+        {/* Register Modal */}
+        <Dialog
+          open={isRegisterModal}
+          onOpenChange={(open: boolean) => !open && handleCloseModal()}
+        >
+          <DialogContent>
+            <RegisterForm onSuccess={handleCloseModal} />
           </DialogContent>
         </Dialog>
 

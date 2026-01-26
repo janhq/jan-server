@@ -10,6 +10,8 @@ import { Google } from "@janhq/interfaces/svgs/google";
 import { buildGoogleAuthUrl } from "@/lib/oauth";
 import { useState } from "react";
 import { useAuth } from "@/stores/auth-store";
+import { useRouter } from "@tanstack/react-router";
+import { URL_PARAM, URL_PARAM_VALUE } from "@/constants";
 
 declare const VITE_AUTH_URL: string;
 declare const VITE_AUTH_REALM: string;
@@ -26,6 +28,7 @@ export function LoginForm({
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const { loginWithOAuth } = useAuth();
+  const router = useRouter();
 
   const handleGoogleLogin = async () => {
     try {
@@ -156,6 +159,21 @@ export function LoginForm({
         <Google className="size-4" />
         {isGoogleLoading ? "Redirecting..." : "Continue with Google"}
       </Button>
+
+      <div className="text-center text-sm text-muted-foreground">
+        Don't have an account?{" "}
+        <button
+          type="button"
+          onClick={() => {
+            const url = new URL(window.location.href);
+            url.searchParams.set(URL_PARAM.MODAL, URL_PARAM_VALUE.REGISTER);
+            router.navigate({ to: url.pathname + url.search });
+          }}
+          className="text-primary hover:underline font-medium"
+        >
+          Register
+        </button>
+      </div>
     </div>
   );
 }
