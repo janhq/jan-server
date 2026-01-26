@@ -16,6 +16,7 @@ type AuthRoute struct {
 	apiKeyHandler        *apikeyhandler.Handler
 	authHandler          *authhandler.AuthHandler
 	keycloakOAuthHandler *authhandler.KeycloakOAuthHandler
+	registerHandler      *authhandler.RegisterHandler
 }
 
 // NewAuthRoute creates a new auth route
@@ -26,6 +27,7 @@ func NewAuthRoute(
 	apiKeyHandler *apikeyhandler.Handler,
 	authHandler *authhandler.AuthHandler,
 	keycloakOAuthHandler *authhandler.KeycloakOAuthHandler,
+	registerHandler *authhandler.RegisterHandler,
 ) *AuthRoute {
 	return &AuthRoute{
 		guestHandler:         guestHandler,
@@ -34,6 +36,7 @@ func NewAuthRoute(
 		apiKeyHandler:        apiKeyHandler,
 		authHandler:          authHandler,
 		keycloakOAuthHandler: keycloakOAuthHandler,
+		registerHandler:      registerHandler,
 	}
 }
 
@@ -44,6 +47,9 @@ func (a *AuthRoute) RegisterRouter(router gin.IRouter, protectedRouter gin.IRout
 	router.POST("/auth/refresh-token", a.RefreshToken)
 	router.GET("/auth/logout", a.Logout)
 	router.POST("/auth/logout", a.Logout) // Support both GET and POST for logout
+
+	// Public routes - User registration
+	router.POST("/auth/register", a.Register)
 
 	// Public routes - Keycloak OAuth2/OIDC (simplified)
 	router.GET("/auth/login", a.KeycloakLogin)
@@ -275,5 +281,25 @@ func (a *AuthRoute) RevokeKeycloakToken(c *gin.Context) {
 		a.keycloakOAuthHandler.RevokeKeycloakToken(c)
 	} else {
 		c.JSON(500, gin.H{"error": "Keycloak OAuth is not configured"})
+	}
+}
+
+// Register godoc
+// @Summary Register a new user
+// @Description Creates a new user account with email, username, and password
+// @Tags Authentication API
+// @Accept json
+// @Produce json
+// @Param request body authhandler.RegisterRequest true "Registration details"
+// @Success 201 {object} authhandler.RegisterResponse "User created successfully"
+// @Failure 400 {object} responses.ErrorResponse "Invalid request - validation error"
+// @Failure 409 {object} responses.ErrorResponse "Conflict - user already exists"
+// @Failure 500 {object} responses.ErrorResponse "Internal server error"
+// @Router /auth/register [post]
+func (a *AuthRoute) Register(c *gin.Context) {
+	if a.registerHandler != nil {
+		a.registerHandler.Register(c)
+	} else {
+		c.JSON(500, gin.H{"error": "Registration is not configured"})
 	}
 }

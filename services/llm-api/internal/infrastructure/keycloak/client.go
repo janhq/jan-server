@@ -1540,6 +1540,45 @@ func (c *Client) DeleteUser(ctx context.Context, id string) error {
 	return nil
 }
 
+// SetUserPassword sets the password for a user.
+func (c *Client) SetUserPassword(ctx context.Context, userID, password string, temporary bool) error {
+	token, err := c.adminAuthToken(ctx)
+	if err != nil {
+		return err
+	}
+
+	credential := map[string]interface{}{
+		"type":      "password",
+		"value":     password,
+		"temporary": temporary,
+	}
+	body, err := json.Marshal(credential)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
+		c.adminEndpoint("/users/"+url.PathEscape(userID)+"/reset-password"),
+		bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		payload, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("set user password failed: %s", strings.TrimSpace(string(payload)))
+	}
+	return nil
+}
+
 // SetUserEnabled toggles enabled flag.
 func (c *Client) SetUserEnabled(ctx context.Context, id string, enabled bool) error {
 	current, err := c.GetUser(ctx, id)
