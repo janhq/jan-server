@@ -78,7 +78,7 @@ export function NavUser() {
             tooltip="Dashboard"
             className="hover:bg-sidebar-accent"
           >
-            <Link to="/profile" onClick={handleNavigation}>
+            <Link to="/dashboard" onClick={handleNavigation}>
               <LayoutDashboard className="size-4" />
               <span>Dashboard</span>
             </Link>

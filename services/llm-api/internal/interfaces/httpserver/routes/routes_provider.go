@@ -19,6 +19,7 @@ import (
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/projecthandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/prompttemplatehandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/sharehandler"
+	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/usagehandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/usersettingshandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/auth"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/public"
@@ -34,6 +35,7 @@ import (
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/model"
 	modelProvider "jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/model/provider"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/share"
+	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/usage"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/users"
 )
 
@@ -64,6 +66,7 @@ var RouteProvider = wire.NewSet(
 	mcptoolhandler.NewMCPToolHandler,
 	imagehandler.NewImageHandler,
 	messageshandler.NewMessagesHandler,
+	usagehandler.NewUsageHandler,
 
 	// Bind ModelHandler to ModelProvider interface for usersettings
 	wire.Bind(new(usersettings.ModelProvider), new(*modelhandler.ModelHandler)),
@@ -86,4 +89,5 @@ var RouteProvider = wire.NewSet(
 	public.NewPublicShareRoute,
 	image.NewImageRoute,
 	messages.NewMessagesRoute,
+	usage.NewUsageRoute,
 )

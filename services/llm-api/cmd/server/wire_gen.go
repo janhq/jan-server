@@ -16,6 +16,7 @@ import (
 	"jan-server/services/llm-api/internal/domain/project"
 	"jan-server/services/llm-api/internal/domain/prompttemplate"
 	"jan-server/services/llm-api/internal/domain/share"
+	"jan-server/services/llm-api/internal/domain/tokenusage"
 	"jan-server/services/llm-api/internal/domain/user"
 	"jan-server/services/llm-api/internal/domain/usersettings"
 	"jan-server/services/llm-api/internal/infrastructure"
@@ -28,6 +29,7 @@ import (
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/projectrepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/prompttemplaterepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/sharerepo"
+	"jan-server/services/llm-api/internal/infrastructure/database/repository/tokenusagerepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/userrepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/usersettingsrepo"
 	"jan-server/services/llm-api/internal/infrastructure/inference"
@@ -42,11 +44,13 @@ import (
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/guesthandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/imagehandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/mcptoolhandler"
+	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/messageshandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/modelhandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/modelprompthandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/projecthandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/prompttemplatehandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/sharehandler"
+	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/usagehandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/usersettingshandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/auth"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/public"
@@ -58,12 +62,12 @@ import (
 	conversation2 "jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/conversation"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/image"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/llm/projects"
+	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/messages"
 	model2 "jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/model"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/model/provider"
 	share2 "jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/share"
+	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/usage"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/users"
-	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/messageshandler"
-	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/messages"
 )
 
 import (
@@ -116,7 +120,9 @@ func CreateApplication() (*Application, error) {
 	usersettingsRepository := usersettingsrepo.NewUserSettingsGormRepository(db)
 	usersettingsService := usersettings.NewService(usersettingsRepository, modelHandler)
 	memoryHandler := handlers.ProvideMemoryHandler(memoryClient, config, usersettingsService)
-	chatHandler := chathandler.NewChatHandler(inferenceProvider, providerHandler, conversationHandler, conversationService, projectService, processorImpl, memoryHandler, usersettingsService)
+	tokenUsageRepository := tokenusagerepo.NewTokenUsageGormRepository(db)
+	tokenusageService := tokenusage.NewService(tokenUsageRepository)
+	chatHandler := chathandler.NewChatHandler(inferenceProvider, providerHandler, conversationHandler, conversationService, projectService, processorImpl, memoryHandler, usersettingsService, tokenusageService)
 	chatCompletionRoute := chat.NewChatCompletionRoute(chatHandler, authHandler)
 	chatRoute := chat.NewChatRoute(chatCompletionRoute)
 	zImageService := inference.NewZImageService(config)
@@ -140,7 +146,8 @@ func CreateApplication() (*Application, error) {
 	mcpToolRepository := mcptoolrepo.NewMCPToolGormRepository(database)
 	mcptoolService := mcptool.NewService(mcpToolRepository)
 	mcpToolHandler := mcptoolhandler.NewMCPToolHandler(mcptoolService, adminAuditLogger)
-	adminRoute := admin2.NewAdminRoute(adminModelRoute, adminProviderRoute, adminUserHandler, adminGroupHandler, featureFlagHandler, promptTemplateHandler, mcpToolHandler)
+	usageHandler := usagehandler.NewUsageHandler(tokenusageService)
+	adminRoute := admin2.NewAdminRoute(adminModelRoute, adminProviderRoute, adminUserHandler, adminGroupHandler, featureFlagHandler, promptTemplateHandler, mcpToolHandler, usageHandler)
 	userSettingsHandler := usersettingshandler.NewUserSettingsHandler(usersettingsService, providerService, config, zerologLogger)
 	usersRoute := users.NewUsersRoute(userSettingsHandler, authHandler)
 	itemRepository := conversationrepo.NewItemGormRepository(database)
@@ -150,7 +157,8 @@ func CreateApplication() (*Application, error) {
 	publicShareRoute := public.NewPublicShareRoute(shareHandler)
 	messagesHandler := messageshandler.NewMessagesHandler(inferenceProvider, providerHandler, conversationService)
 	messagesRoute := messages.NewMessagesRoute(messagesHandler, authHandler)
-	v1Route := v1.NewV1Route(modelRoute, chatRoute, imageRoute, conversationRoute, branchRoute, projectRoute, adminRoute, usersRoute, promptTemplateHandler, mcpToolHandler, shareRoute, publicShareRoute, messagesRoute)
+	usageRoute := usage.NewUsageRoute(usageHandler, authHandler)
+	v1Route := v1.NewV1Route(modelRoute, chatRoute, imageRoute, conversationRoute, branchRoute, projectRoute, adminRoute, usersRoute, promptTemplateHandler, mcpToolHandler, shareRoute, publicShareRoute, messagesRoute, usageRoute)
 	guestHandler := guestauth.NewGuestHandler(client, zerologLogger)
 	upgradeHandler := guestauth.NewUpgradeHandler(client, zerologLogger)
 	tokenHandler := authhandler.NewTokenHandler(client, zerologLogger)

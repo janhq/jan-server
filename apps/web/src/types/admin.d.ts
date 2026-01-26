@@ -298,3 +298,43 @@ interface CreateApiKeyResponse {
 interface ListApiKeysResponse {
   items: ApiKey[];
 }
+
+// Usage Types
+interface UsageSummary {
+  model: string;
+  provider: string;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  total_tokens: number;
+  request_count: number;
+  estimated_cost_usd: string;
+}
+
+interface UsagePeriod {
+  start_date: string;
+  end_date: string;
+}
+
+interface UsageResponse {
+  period: UsagePeriod;
+  total_usage: UsageSummary;
+  by_model: UsageSummary[];
+  by_provider: UsageSummary[];
+}
+
+interface ActivityBucket {
+  bucket_time: string;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  total_tokens: number;
+  request_count: number;
+}
+
+interface DailyAggregate {
+  date: string;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  total_tokens: number;
+  request_count: number;
+  estimated_cost_usd: string;
+}

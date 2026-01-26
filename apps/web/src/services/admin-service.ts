@@ -639,3 +639,36 @@ export const adminService = {
     }
   },
 };
+
+// ============================================================================
+// Usage Service
+// ============================================================================
+
+export const usageService = {
+  getMyUsage: async (
+    startDate: string,
+    endDate: string,
+  ): Promise<UsageResponse> => {
+    return fetchJsonWithAuth<UsageResponse>(
+      `${JAN_API_BASE_URL}v1/usage/me?start_date=${startDate}&end_date=${endDate}`,
+    );
+  },
+
+  getMyDailyUsage: async (
+    startDate: string,
+    endDate: string,
+  ): Promise<DailyAggregate[]> => {
+    return fetchJsonWithAuth<DailyAggregate[]>(
+      `${JAN_API_BASE_URL}v1/usage/me/daily?start_date=${startDate}&end_date=${endDate}`,
+    );
+  },
+
+  getMyActivityUsage: async (
+    startDate: string,
+    endDate: string,
+  ): Promise<ActivityBucket[]> => {
+    return fetchJsonWithAuth<ActivityBucket[]>(
+      `${JAN_API_BASE_URL}v1/usage/me/activity?start_date=${startDate}&end_date=${endDate}`,
+    );
+  },
+};

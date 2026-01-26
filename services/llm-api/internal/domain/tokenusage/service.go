@@ -52,6 +52,11 @@ func (s *Service) GetMyDailyUsage(ctx context.Context, userID string, startDate,
 	return s.repo.GetDailyAggregates(ctx, filter)
 }
 
+// GetMyActivityUsage retrieves 5-minute bucket usage data for a user
+func (s *Service) GetMyActivityUsage(ctx context.Context, userID string, startDate, endDate time.Time) ([]ActivityBucket, error) {
+	return s.repo.GetActivityBuckets(ctx, userID, startDate, endDate)
+}
+
 // GetProjectUsage retrieves usage summary for a project
 func (s *Service) GetProjectUsage(ctx context.Context, projectID string, startDate, endDate time.Time) (*UsageResponse, error) {
 	summaries, err := s.repo.GetProjectUsage(ctx, projectID, startDate, endDate)

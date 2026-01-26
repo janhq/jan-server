@@ -25,7 +25,7 @@ type TokenUsage struct {
 
 // TableName returns the table name for TokenUsage
 func (TokenUsage) TableName() string {
-	return "token_usage"
+	return "llm_api.token_usage"
 }
 
 // TokenUsageDaily represents aggregated daily token usage
@@ -47,7 +47,7 @@ type TokenUsageDaily struct {
 
 // TableName returns the table name for TokenUsageDaily
 func (TokenUsageDaily) TableName() string {
-	return "token_usage_daily"
+	return "llm_api.token_usage_daily"
 }
 
 // UsageSummary represents aggregated usage statistics
@@ -89,6 +89,36 @@ type UsageFilter struct {
 	Provider  string
 	StartDate time.Time
 	EndDate   time.Time
+}
+
+// ActivityBucket represents a 5-minute bucket of usage activity
+type ActivityBucket struct {
+	BucketTime            time.Time `json:"bucket_time"`
+	TotalPromptTokens     int64     `json:"total_prompt_tokens"`
+	TotalCompletionTokens int64     `json:"total_completion_tokens"`
+	TotalTokens           int64     `json:"total_tokens"`
+	RequestCount          int64     `json:"request_count"`
+}
+
+// TokenUsage5Min represents aggregated 5-minute token usage
+type TokenUsage5Min struct {
+	ID                    int64     `gorm:"primaryKey;autoIncrement"`
+	BucketTime            time.Time `gorm:"column:bucket_time;not null;index"`
+	UserID                string    `gorm:"column:user_id;not null;index"`
+	ProjectID             string    `gorm:"column:project_id;not null;default:''"`
+	Model                 string    `gorm:"column:model;not null"`
+	Provider              string    `gorm:"column:provider;not null"`
+	TotalPromptTokens     int64     `gorm:"column:total_prompt_tokens;not null;default:0"`
+	TotalCompletionTokens int64     `gorm:"column:total_completion_tokens;not null;default:0"`
+	TotalTokens           int64     `gorm:"column:total_tokens;not null;default:0"`
+	RequestCount          int       `gorm:"column:request_count;not null;default:0"`
+	CreatedAt             time.Time `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt             time.Time `gorm:"column:updated_at;autoUpdateTime"`
+}
+
+// TableName returns the table name for TokenUsage5Min
+func (TokenUsage5Min) TableName() string {
+	return "llm_api.token_usage_5min"
 }
 
 // Model pricing constants (USD per token) - can be configured externally

@@ -15,6 +15,7 @@ import (
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/messages"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/model"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/share"
+	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/usage"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/users"
 
 	"github.com/gin-gonic/gin"
@@ -34,6 +35,7 @@ type V1Route struct {
 	share                 *share.ShareRoute
 	publicShare           *public.PublicShareRoute
 	messages              *messages.MessagesRoute
+	usage                 *usage.UsageRoute
 }
 
 func NewV1Route(
@@ -50,6 +52,7 @@ func NewV1Route(
 	share *share.ShareRoute,
 	publicShare *public.PublicShareRoute,
 	messagesRoute *messages.MessagesRoute,
+	usageRoute *usage.UsageRoute,
 ) *V1Route {
 	return &V1Route{
 		model,
@@ -65,6 +68,7 @@ func NewV1Route(
 		share,
 		publicShare,
 		messagesRoute,
+		usageRoute,
 	}
 }
 
@@ -83,6 +87,7 @@ func (v1Route *V1Route) RegisterRouter(router gin.IRouter) {
 	v1Route.project.RegisterRoutes(v1Router)
 	v1Route.users.RegisterRouter(v1Router)
 	v1Route.messages.RegisterRouter(v1Router)
+	v1Route.usage.RegisterRouter(v1Router)
 
 	// Share routes (authenticated, under /conversations)
 	conversations := v1Router.Group("/conversations")

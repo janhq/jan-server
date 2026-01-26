@@ -4,10 +4,13 @@ import { SidebarInset } from "@/components/sidebar/sidebar";
 import { NavHeader } from "@/components/sidebar/nav-header";
 import { ApiKeysTab } from "./api-keys-tab";
 import { UserTab } from "./user-tab";
+import { UsageTab } from "./usage-tab";
 import { cn } from "@/lib/utils";
 
 export function ProfilePage() {
-  const [activeTab, setActiveTab] = useState<"user" | "api-keys">("user");
+  const [activeTab, setActiveTab] = useState<"user" | "api-keys" | "usage">(
+    "user",
+  );
 
   return (
     <>
@@ -40,12 +43,25 @@ export function ProfilePage() {
                       : "border-transparent text-muted-foreground hover:border-border hover:text-foreground",
                   )}
                 >
-                  User API keys
+                  API Keys
+                </button>
+                <button
+                  onClick={() => setActiveTab("usage")}
+                  className={cn(
+                    "whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium transition-colors",
+                    activeTab === "usage"
+                      ? "border-primary text-foreground"
+                      : "border-transparent text-muted-foreground hover:border-border hover:text-foreground",
+                  )}
+                >
+                  Usage
                 </button>
               </nav>
             </div>
 
-            {activeTab === "user" ? <UserTab /> : <ApiKeysTab />}
+            {activeTab === "user" && <UserTab />}
+            {activeTab === "api-keys" && <ApiKeysTab />}
+            {activeTab === "usage" && <UsageTab />}
           </div>
         </div>
       </SidebarInset>
