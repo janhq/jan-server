@@ -95,22 +95,34 @@ export function buildMessageContent(
   message.files?.forEach((file) => {
     if (!file.url) return;
 
-    // Check if this is a document with extracted text
-    if (file.isDocument && file.extractedText) {
-      // Inject document content as text wrapped in XML tags
-      const pageInfo = file.pageCount ? ` pages="${file.pageCount}"` : "";
-      const wordInfo = file.wordCount ? ` words="${file.wordCount}"` : "";
-      const documentContent = `<attached_document name="${file.filename || "document"}"${pageInfo}${wordInfo}>\n${file.extractedText}\n</attached_document>`;
+    const isImage = file.mediaType?.startsWith("image/");
 
-      content.push({
-        type: CONTENT_TYPE.INPUT_TEXT,
-        input_text: documentContent,
-      });
-    } else if (file.mediaType?.startsWith("image/")) {
-      // Handle image files
+    if (isImage) {
+      // Store images as image type (backward compatible with main branch)
       content.push({
         type: "image",
         image: { url: file.url },
+      });
+    } else if (file.isDocument) {
+      // For documents: store extracted text for AI context
+      if (file.extractedText) {
+        const pageInfo = file.pageCount ? ` pages="${file.pageCount}"` : "";
+        const wordInfo = file.wordCount ? ` words="${file.wordCount}"` : "";
+        const documentContent = `<attached_document name="${file.filename || "document"}"${pageInfo}${wordInfo}>\n${file.extractedText}\n</attached_document>`;
+
+        content.push({
+          type: CONTENT_TYPE.INPUT_TEXT,
+          input_text: documentContent,
+        });
+      }
+      // Also store file reference for display in UI
+      content.push({
+        type: "file",
+        file: {
+          url: file.url,
+          filename: file.filename,
+          mediaType: file.mediaType,
+        },
       });
     }
   });

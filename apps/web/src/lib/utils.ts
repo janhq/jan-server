@@ -20,6 +20,19 @@ export const stripAttachedUrlTags = (text: string): string => {
     .trim();
 };
 
+/**
+ * Check if text content is an attached document block
+ * These are stored separately for AI context but shouldn't be displayed as text
+ */
+const isAttachedDocumentContent = (text: string): boolean => {
+  if (!text) return false;
+  const trimmed = text.trim();
+  return (
+    trimmed.startsWith("<attached_document") &&
+    trimmed.endsWith("</attached_document>")
+  );
+};
+
 export const getInitialsAvatar = (name: string) => {
   const words = name.trim().split(/\s+/);
   if (words.length >= 2) {
@@ -50,9 +63,24 @@ export const convertToUIMessages = (items: ConversationItem[]): UIMessage[] => {
             content.type === CONTENT_TYPE.INPUT_TEXT ||
             content.type === CONTENT_TYPE.TEXT
           ) {
+            // Skip attached document content - it's stored for AI context but has a file part for display
+            const textContent = content.input_text || content.text?.text || content.text || "";
+            if (isAttachedDocumentContent(textContent)) {
+              return []; // Skip this content, the file part will be used for display
+            }
             contentType = CONTENT_TYPE.TEXT;
           } else if (content.type === "image") {
             contentType = CONTENT_TYPE.FILE;
+          } else if (content.type === "file") {
+            // Document file - return early with file-specific data
+            return [
+              {
+                type: CONTENT_TYPE.FILE,
+                mediaType: content.file?.mediaType || "application/octet-stream",
+                url: content.file?.url,
+                filename: content.file?.filename,
+              },
+            ];
           } else if (content.type === CONTENT_TYPE.TOOL_CALLS) {
             contentType = CONTENT_TYPE.TEXT;
             return (
