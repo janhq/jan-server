@@ -40,16 +40,28 @@ export function ModelSelector() {
       try {
         const preferences = await fetchPreferences();
         const selectedModelId = preferences?.preferences.selected_model;
+        // Get fresh models from store (not stale closure value)
+        const freshModels = useModels.getState().models;
+
         if (selectedModelId) {
-          // Get fresh models from store (not stale closure value)
-          const freshModels = useModels.getState().models;
           const model = freshModels.find((m) => m.id === selectedModelId);
           if (model) {
             setSelectedModel(model);
+          } else if (freshModels.length > 0) {
+            // Saved model no longer exists, fall back to first model
+            setSelectedModel(freshModels[0]);
           }
+        } else if (freshModels.length > 0) {
+          // No saved preference, auto-select the first model (which is sorted by order)
+          setSelectedModel(freshModels[0]);
         }
       } catch (error) {
         console.error("Failed to fetch preferences:", error);
+        // On preference fetch error, still try to select first model
+        const freshModels = useModels.getState().models;
+        if (freshModels.length > 0) {
+          setSelectedModel(freshModels[0]);
+        }
       }
       setIsReady(true);
       if (!modelSelectorAnimated) {

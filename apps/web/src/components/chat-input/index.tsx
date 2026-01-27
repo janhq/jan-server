@@ -285,6 +285,7 @@ const ChatInput = ({
   const shouldShowBrowserUI = isBrowserSupported && !isMobileDevice;
   const isSupportImageGeneration =
     settings?.server_capabilities?.image_generation_enabled ?? false;
+  const isSupportImages = modelDetail.supports_images;
 
   // Auto-disable capabilities when model doesn't support them
   useEffect(() => {
@@ -523,23 +524,28 @@ const ChatInput = ({
             </PromptInputBody>
             <PromptInputFooter>
               <PromptInputTools>
-                <PromptInputActionMenu>
-                  <PromptInputActionMenuTrigger
-                    className="rounded-full"
-                    variant="secondary"
-                  />
-                  <PromptInputActionMenuContent className="lg:w-56">
-                    <PromptInputActionAddAttachments label="Add photos" />
-                    {initialConversation && !projectId && !isPrivateChat && (
-                      <ProjectsChatInput
-                        currentProjectId={selectedProjectId || undefined}
-                        onProjectSelect={(projectId) => {
-                          setSelectedProjectId(projectId);
-                        }}
-                      />
-                    )}
-                  </PromptInputActionMenuContent>
-                </PromptInputActionMenu>
+                {(isSupportImages ||
+                  (initialConversation && !projectId && !isPrivateChat)) && (
+                  <PromptInputActionMenu>
+                    <PromptInputActionMenuTrigger
+                      className="rounded-full"
+                      variant="secondary"
+                    />
+                    <PromptInputActionMenuContent className="lg:w-56">
+                      {isSupportImages && (
+                        <PromptInputActionAddAttachments label="Add photos" />
+                      )}
+                      {initialConversation && !projectId && !isPrivateChat && (
+                        <ProjectsChatInput
+                          currentProjectId={selectedProjectId || undefined}
+                          onProjectSelect={(projectId) => {
+                            setSelectedProjectId(projectId);
+                          }}
+                        />
+                      )}
+                    </PromptInputActionMenuContent>
+                  </PromptInputActionMenu>
+                )}
                 <SettingChatInput
                   searchEnabled={searchEnabled}
                   deepResearchEnabled={deepResearchEnabled}
