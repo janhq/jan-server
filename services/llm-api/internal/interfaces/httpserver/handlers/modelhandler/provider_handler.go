@@ -71,8 +71,8 @@ func (providerHandler *ProviderHandler) RegisterProvider(addProviderRequest requ
 		return nil, platformerrors.AsError(ctx, platformerrors.LayerHandler, err, "register provider failed")
 	}
 
-	// Skip model sync for image providers (they don't have a /v1/models endpoint)
-	if result.Category == domainmodel.ProviderCategoryImage {
+	// Only LLM providers expose /v1/models; skip sync for OCR/image/custom non-LLM categories.
+	if result.Category != domainmodel.ProviderCategoryLLM {
 		return modelresponses.BuildProviderResponseWithModels(result, nil), nil
 	}
 

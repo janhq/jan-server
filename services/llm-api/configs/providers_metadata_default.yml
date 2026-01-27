@@ -253,5 +253,20 @@
       "file_upload": true,
       "schema": "files attached via S3 URI or inline base64 bytes"
     }
+  },
+  "ocr": {
+    "image_input": {
+      "supported": false,
+      "url": false,
+      "base64": false,
+      "schema": ""
+    },
+    "file_attachment": {
+      "supported": true,
+      "url": true,
+      "base64": false,
+      "file_upload": true,
+      "schema": "Docling OCR supports file upload (/v1/convert/file) or URL source (/v1/convert/source)"
+    }
   }
 }

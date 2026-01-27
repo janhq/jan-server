@@ -140,15 +140,12 @@ function ProjectPageContent() {
     }
 
     const documentTexts: string[] = [];
-    const imageFiles: typeof msg.files = [];
 
     msg.files.forEach((file) => {
       const mediaType = file.mediaType || "";
       const isImage = mediaType.startsWith("image/");
 
-      if (isImage) {
-        imageFiles.push(file);
-      } else if (file.isDocument && file.extractedText) {
+      if (!isImage && file.isDocument && file.extractedText) {
         const pageInfo = file.pageCount ? ` pages="${file.pageCount}"` : "";
         const wordInfo = file.wordCount ? ` words="${file.wordCount}"` : "";
         documentTexts.push(
@@ -168,7 +165,7 @@ function ProjectPageContent() {
     return {
       ...msg,
       text: newText,
-      files: imageFiles,
+      files: msg.files,
     };
   };
 

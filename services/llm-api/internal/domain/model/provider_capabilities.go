@@ -199,5 +199,17 @@ func getHardcodedDefaults() map[string]ProviderCapabilitiesDefaults {
 				Supported: false,
 			},
 		},
+		"ocr": {
+			ImageInput: ImageInputCapability{
+				Supported: false,
+			},
+			FileAttachment: FileAttachmentCapability{
+				Supported:  true,
+				URL:        true,
+				Base64:     false,
+				FileUpload: true,
+				Schema:     "Docling OCR supports file upload (/v1/convert/file) or URL source (/v1/convert/source)",
+			},
+		},
 	}
 }

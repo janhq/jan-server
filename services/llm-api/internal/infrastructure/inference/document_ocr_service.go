@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -63,6 +64,45 @@ type DocumentOCRResponse struct {
 	} `json:"error,omitempty"`
 }
 
+const (
+	doclingConvertFilePath   = "/convert/file"
+	doclingConvertSourcePath = "/convert/source"
+)
+
+var doclingDefaultOutputFormats = []string{"text", "md"}
+
+type doclingConvertSourceRequest struct {
+	Sources []doclingSource        `json:"sources"`
+	Options *doclingConvertOptions `json:"options,omitempty"`
+}
+
+type doclingSource struct {
+	Kind string `json:"kind"`
+	URL  string `json:"url"`
+}
+
+type doclingConvertOptions struct {
+	ToFormats []string `json:"to_formats,omitempty"`
+}
+
+type doclingConvertResponse struct {
+	Status   string                 `json:"status"`
+	Document *doclingExportDocument `json:"document"`
+	Errors   []doclingErrorItem     `json:"errors,omitempty"`
+}
+
+type doclingExportDocument struct {
+	Filename       string  `json:"filename"`
+	TextContent    *string `json:"text_content"`
+	MdContent      *string `json:"md_content"`
+	HtmlContent    *string `json:"html_content"`
+	DoctagsContent *string `json:"doctags_content"`
+}
+
+type doclingErrorItem struct {
+	ErrorMessage string `json:"error_message"`
+}
+
 // Scan performs OCR on a document using the configured provider.
 func (s *DocumentOCRService) Scan(ctx context.Context, provider *domainmodel.Provider, req *DocumentOCRRequest) (*DocumentOCRResponse, error) {
 	log.Debug().
@@ -83,7 +123,7 @@ func (s *DocumentOCRService) Scan(ctx context.Context, provider *domainmodel.Pro
 	}
 
 	// Call the provider
-	resp, err := s.callProvider(ctx, client, selectedURL, req)
+	resp, err := s.callProvider(ctx, provider, client, selectedURL, req)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +147,7 @@ func (s *DocumentOCRService) ScanWithFileData(ctx context.Context, provider *dom
 	}
 
 	// Call the provider with multipart form data
-	resp, err := s.callProviderWithFileData(ctx, client, selectedURL, fileData, mimeType, filename)
+	resp, err := s.callProviderWithFileData(ctx, provider, client, selectedURL, fileData, mimeType, filename)
 	if err != nil {
 		return nil, err
 	}
@@ -129,12 +169,18 @@ func (s *DocumentOCRService) IsEnabled() bool {
 }
 
 // callProvider makes the HTTP call to the OCR provider with JSON body.
-func (s *DocumentOCRService) callProvider(ctx context.Context, client *resty.Client, baseURL string, req *DocumentOCRRequest) (*DocumentOCRResponse, error) {
+func (s *DocumentOCRService) callProvider(ctx context.Context, provider *domainmodel.Provider, client *resty.Client, baseURL string, req *DocumentOCRRequest) (*DocumentOCRResponse, error) {
+	if s.isDoclingProvider(provider) {
+		return s.callDoclingSource(ctx, client, baseURL, req)
+	}
+
 	endpoint := s.resolveEndpoint(baseURL)
 
 	log.Debug().
 		Str("endpoint", endpoint).
 		Str("model", req.Model).
+		Bool("has_file_url", strings.TrimSpace(req.FileURL) != "").
+		Bool("has_file_data", strings.TrimSpace(req.FileData) != "").
 		Msg("[DocumentOCRService] Calling provider")
 
 	resp, err := client.R().
@@ -155,13 +201,18 @@ func (s *DocumentOCRService) callProvider(ctx context.Context, client *resty.Cli
 }
 
 // callProviderWithFileData makes the HTTP call to the OCR provider with multipart form data.
-func (s *DocumentOCRService) callProviderWithFileData(ctx context.Context, client *resty.Client, baseURL string, fileData []byte, mimeType, filename string) (*DocumentOCRResponse, error) {
+func (s *DocumentOCRService) callProviderWithFileData(ctx context.Context, provider *domainmodel.Provider, client *resty.Client, baseURL string, fileData []byte, mimeType, filename string) (*DocumentOCRResponse, error) {
+	if s.isDoclingProvider(provider) {
+		return s.callDoclingFile(ctx, client, baseURL, fileData, mimeType, filename)
+	}
+
 	endpoint := s.resolveEndpoint(baseURL)
 
 	log.Debug().
 		Str("endpoint", endpoint).
 		Str("mime_type", mimeType).
 		Str("filename", filename).
+		Int("data_size", len(fileData)).
 		Msg("[DocumentOCRService] Calling provider with file data")
 
 	// Determine filename extension
@@ -199,6 +250,184 @@ func (s *DocumentOCRService) callProviderWithFileData(ctx context.Context, clien
 	}
 
 	return s.parseResponse(ctx, resp)
+}
+
+func (s *DocumentOCRService) callDoclingSource(ctx context.Context, client *resty.Client, baseURL string, req *DocumentOCRRequest) (*DocumentOCRResponse, error) {
+	fileURL := strings.TrimSpace(req.FileURL)
+	if fileURL == "" {
+		return nil, platformerrors.NewError(ctx, platformerrors.LayerInfrastructure,
+			platformerrors.ErrorTypeValidation,
+			"file_url is required for docling source conversion",
+			nil, "doc-ocr-missing-file-url")
+	}
+
+	endpoint := s.resolveDoclingEndpoint(baseURL, doclingConvertSourcePath)
+	host, path, hasQuery := redactURLForLog(fileURL)
+
+	log.Debug().
+		Str("endpoint", endpoint).
+		Str("model", req.Model).
+		Str("file_url_host", host).
+		Str("file_url_path", path).
+		Bool("file_url_has_query", hasQuery).
+		Msg("[DocumentOCRService] Calling docling source endpoint")
+
+	payload := doclingConvertSourceRequest{
+		Sources: []doclingSource{
+			{
+				Kind: "http",
+				URL:  fileURL,
+			},
+		},
+		Options: &doclingConvertOptions{
+			ToFormats: doclingDefaultOutputFormats,
+		},
+	}
+
+	resp, err := client.R().
+		SetContext(ctx).
+		SetHeader("Content-Type", "application/json").
+		SetBody(payload).
+		Post(endpoint)
+
+	if err != nil {
+		log.Error().Err(err).Str("endpoint", endpoint).Msg("[DocumentOCRService] Docling provider call failed")
+		return nil, platformerrors.NewError(ctx, platformerrors.LayerInfrastructure,
+			platformerrors.ErrorTypeExternal,
+			fmt.Sprintf("document OCR provider call failed: %v", err),
+			nil, "doc-ocr-provider-error")
+	}
+
+	return s.parseDoclingResponse(ctx, resp, req.Model)
+}
+
+func (s *DocumentOCRService) callDoclingFile(ctx context.Context, client *resty.Client, baseURL string, fileData []byte, mimeType, filename string) (*DocumentOCRResponse, error) {
+	endpoint := s.resolveDoclingEndpoint(baseURL, doclingConvertFilePath)
+
+	log.Debug().
+		Str("endpoint", endpoint).
+		Str("mime_type", mimeType).
+		Str("filename", filename).
+		Int("data_size", len(fileData)).
+		Msg("[DocumentOCRService] Calling docling file endpoint")
+
+	// Determine filename extension
+	if filename == "" {
+		filename = "document"
+		switch mimeType {
+		case "application/pdf":
+			filename = "document.pdf"
+		case "application/msword":
+			filename = "document.doc"
+		case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+			filename = "document.docx"
+		case "text/plain":
+			filename = "document.txt"
+		case "text/markdown":
+			filename = "document.md"
+		}
+	}
+
+	form := url.Values{}
+	for _, format := range doclingDefaultOutputFormats {
+		form.Add("to_formats", format)
+	}
+
+	resp, err := client.R().
+		SetContext(ctx).
+		SetHeader("Accept", "application/json").
+		SetMultipartField("files", filename, mimeType, bytes.NewReader(fileData)).
+		SetFormDataFromValues(form).
+		Post(endpoint)
+
+	if err != nil {
+		log.Error().Err(err).Str("endpoint", endpoint).Msg("[DocumentOCRService] Docling provider call failed")
+		return nil, platformerrors.NewError(ctx, platformerrors.LayerInfrastructure,
+			platformerrors.ErrorTypeExternal,
+			fmt.Sprintf("document OCR provider call failed: %v", err),
+			nil, "doc-ocr-provider-error")
+	}
+
+	return s.parseDoclingResponse(ctx, resp, s.DefaultModel())
+}
+
+func (s *DocumentOCRService) parseDoclingResponse(ctx context.Context, resp *resty.Response, model string) (*DocumentOCRResponse, error) {
+	respBytes := resp.Bytes()
+
+	if resp.StatusCode() >= 400 {
+		msg := fmt.Sprintf("document OCR provider returned status %d: %s", resp.StatusCode(), truncateStringOCR(string(respBytes), 500))
+		var errResp struct {
+			Detail  any    `json:"detail"`
+			Message string `json:"message"`
+			Error   string `json:"error"`
+		}
+		if parseErr := json.Unmarshal(respBytes, &errResp); parseErr == nil {
+			switch {
+			case strings.TrimSpace(errResp.Message) != "":
+				msg = errResp.Message
+			case strings.TrimSpace(errResp.Error) != "":
+				msg = errResp.Error
+			}
+		}
+		return nil, platformerrors.NewError(ctx, platformerrors.LayerInfrastructure,
+			platformerrors.ErrorTypeExternal,
+			msg,
+			nil, "doc-ocr-provider-http-error")
+	}
+
+	var result doclingConvertResponse
+	if err := json.Unmarshal(respBytes, &result); err != nil {
+		log.Error().Err(err).Str("body", truncateStringOCR(string(respBytes), 500)).Msg("[DocumentOCRService] Failed to parse docling response")
+		return nil, platformerrors.NewError(ctx, platformerrors.LayerInfrastructure,
+			platformerrors.ErrorTypeInternal,
+			"failed to parse document OCR provider response",
+			err, "doc-ocr-parse-error")
+	}
+
+	text := s.pickDoclingText(result.Document)
+	if strings.TrimSpace(text) == "" {
+		msg := "document OCR provider returned empty content"
+		if len(result.Errors) > 0 && strings.TrimSpace(result.Errors[0].ErrorMessage) != "" {
+			msg = result.Errors[0].ErrorMessage
+		}
+		return nil, platformerrors.NewError(ctx, platformerrors.LayerInfrastructure,
+			platformerrors.ErrorTypeExternal,
+			msg,
+			nil, "doc-ocr-provider-error")
+	}
+
+	modelName := strings.TrimSpace(model)
+	if modelName == "" {
+		modelName = s.DefaultModel()
+	}
+
+	response := &DocumentOCRResponse{
+		Text:      text,
+		Model:     modelName,
+		PageCount: 1,
+		WordCount: len(strings.Fields(text)),
+	}
+
+	log.Debug().
+		Int("text_length", len(response.Text)).
+		Int("page_count", response.PageCount).
+		Int("word_count", response.WordCount).
+		Msg("[DocumentOCRService] Docling response received")
+
+	return response, nil
+}
+
+func (s *DocumentOCRService) pickDoclingText(doc *doclingExportDocument) string {
+	if doc == nil {
+		return ""
+	}
+	candidates := []*string{doc.TextContent, doc.MdContent, doc.HtmlContent, doc.DoctagsContent}
+	for _, val := range candidates {
+		if val != nil && strings.TrimSpace(*val) != "" {
+			return *val
+		}
+	}
+	return ""
 }
 
 // parseResponse parses the provider response.
@@ -244,7 +473,30 @@ func (s *DocumentOCRService) parseResponse(ctx context.Context, resp *resty.Resp
 	return &result, nil
 }
 
-// resolveEndpoint resolves the OCR endpoint from the base URL.
+func (s *DocumentOCRService) isDoclingProvider(provider *domainmodel.Provider) bool {
+	if provider == nil {
+		return false
+	}
+	if provider.Kind == domainmodel.ProviderOCR {
+		return true
+	}
+	switch provider.Category {
+	case domainmodel.ProviderCategoryOCR, domainmodel.ProviderCategoryDocling:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *DocumentOCRService) resolveDoclingEndpoint(baseURL, path string) string {
+	trimmedBase := strings.TrimSuffix(baseURL, "/")
+	if strings.HasSuffix(trimmedBase, "/v1") {
+		return trimmedBase + path
+	}
+	return trimmedBase + "/v1" + path
+}
+
+// resolveEndpoint resolves the legacy OCR endpoint from the base URL.
 func (s *DocumentOCRService) resolveEndpoint(baseURL string) string {
 	trimmedBase := strings.TrimSuffix(baseURL, "/")
 	// Default endpoint path for document OCR
@@ -296,7 +548,11 @@ func (s *DocumentOCRService) createRestyClient(ctx context.Context, provider *do
 				log.Warn().Err(err).Str("provider_id", provider.PublicID).
 					Msg("[DocumentOCRService] Failed to decrypt API key")
 			} else {
-				client.SetHeader("Authorization", fmt.Sprintf("Bearer %s", decrypted))
+				if s.isDoclingProvider(provider) {
+					client.SetHeader("X-Api-Key", decrypted)
+				} else {
+					client.SetHeader("Authorization", fmt.Sprintf("Bearer %s", decrypted))
+				}
 			}
 		}
 	}
@@ -311,6 +567,15 @@ func (s *DocumentOCRService) createRestyClient(ctx context.Context, provider *do
 
 // FetchFileFromURL fetches a file from a URL (e.g., presigned media URL).
 func (s *DocumentOCRService) FetchFileFromURL(ctx context.Context, fileURL string) ([]byte, string, error) {
+	host, path, hasQuery := redactURLForLog(fileURL)
+	startTime := time.Now()
+
+	log.Debug().
+		Str("url_host", host).
+		Str("url_path", path).
+		Bool("url_has_query", hasQuery).
+		Msg("[DocumentOCRService] Fetching file from URL")
+
 	client := &http.Client{
 		Timeout: s.timeout,
 	}
@@ -325,6 +590,11 @@ func (s *DocumentOCRService) FetchFileFromURL(ctx context.Context, fileURL strin
 
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Error().
+			Err(err).
+			Str("url_host", host).
+			Str("url_path", path).
+			Msg("[DocumentOCRService] File fetch failed")
 		return nil, "", platformerrors.NewError(ctx, platformerrors.LayerInfrastructure,
 			platformerrors.ErrorTypeExternal,
 			"failed to fetch file from URL",
@@ -333,6 +603,11 @@ func (s *DocumentOCRService) FetchFileFromURL(ctx context.Context, fileURL strin
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
+		log.Warn().
+			Int("status", resp.StatusCode).
+			Str("url_host", host).
+			Str("url_path", path).
+			Msg("[DocumentOCRService] File fetch returned error status")
 		return nil, "", platformerrors.NewError(ctx, platformerrors.LayerInfrastructure,
 			platformerrors.ErrorTypeExternal,
 			fmt.Sprintf("file fetch returned status %d", resp.StatusCode),
@@ -341,6 +616,11 @@ func (s *DocumentOCRService) FetchFileFromURL(ctx context.Context, fileURL strin
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
+		log.Error().
+			Err(err).
+			Str("url_host", host).
+			Str("url_path", path).
+			Msg("[DocumentOCRService] Failed to read file response body")
 		return nil, "", platformerrors.NewError(ctx, platformerrors.LayerInfrastructure,
 			platformerrors.ErrorTypeInternal,
 			"failed to read file data",
@@ -348,6 +628,13 @@ func (s *DocumentOCRService) FetchFileFromURL(ctx context.Context, fileURL strin
 	}
 
 	contentType := resp.Header.Get("Content-Type")
+	log.Debug().
+		Str("url_host", host).
+		Str("url_path", path).
+		Str("content_type", contentType).
+		Int("bytes", len(data)).
+		Dur("duration", time.Since(startTime)).
+		Msg("[DocumentOCRService] File fetch completed")
 	return data, contentType, nil
 }
 
@@ -357,4 +644,16 @@ func truncateStringOCR(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+func redactURLForLog(raw string) (host string, path string, hasQuery bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", "", false
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return "", "", strings.Contains(trimmed, "?")
+	}
+	return parsed.Hostname(), parsed.EscapedPath(), parsed.RawQuery != ""
 }

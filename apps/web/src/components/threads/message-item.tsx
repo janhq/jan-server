@@ -43,6 +43,8 @@ import {
   RefreshCcwIcon,
   DownloadIcon,
   XIcon,
+  FileTextIcon,
+  Loader2Icon,
 } from "lucide-react";
 import { Button } from "@janhq/interfaces/button";
 import { twMerge } from "tailwind-merge";
@@ -170,6 +172,14 @@ export const MessageItem = memo(
         .replace(/\n+$/, "")
         .trim();
     };
+
+    // Strip <attached_document ...>...</attached_document> blocks from display text
+    const stripAttachedDocumentTags = (text: string): string => {
+      return text
+        .replace(/<attached_document\b[^>]*>[\s\S]*?<\/attached_document>\n?/g, "")
+        .replace(/\n+$/, "")
+        .trim();
+    };
     // Render user text with code blocks only (no other markdown)
     const renderUserTextWithCodeBlocks = (text: string) => {
       const codeBlockRegex = /(```[\s\S]*?```)/g;
@@ -213,7 +223,7 @@ export const MessageItem = memo(
       // Strip attached_url tags from user messages for display
       const displayText =
         message.role === MESSAGE_ROLE.USER
-          ? stripAttachedUrlTags(part.text)
+          ? stripAttachedDocumentTags(stripAttachedUrlTags(part.text))
           : part.text;
 
       // Don't render if display text is empty after stripping
@@ -315,23 +325,54 @@ export const MessageItem = memo(
               isAssistant && "ml-0 mr-auto", // Left-align for assistant
             )}
           >
-            <MessageAttachment
-              data={part as any}
-              key={part.filename || "image"}
-              className={cn(
-                isAssistant && "size-64", // Bigger for assistant (size-64 = 16rem = 256px vs size-24 = 6rem = 96px)
-                isImage && !isLoading && displayUrl && "cursor-pointer",
-              )}
-              resolver={mediaResolver}
-              onClick={() => {
-                if (isImage && displayUrl && !isLoading) {
-                  setPreviewImage({
-                    url: displayUrl,
-                    filename: part.filename,
-                  });
-                }
-              }}
-            />
+            {isImage ? (
+              <MessageAttachment
+                data={part as any}
+                key={part.filename || "image"}
+                className={cn(
+                  isAssistant && "size-64", // Bigger for assistant (size-64 = 16rem = 256px vs size-24 = 6rem = 96px)
+                  isImage && !isLoading && displayUrl && "cursor-pointer",
+                )}
+                resolver={mediaResolver}
+                onClick={() => {
+                  if (isImage && displayUrl && !isLoading) {
+                    setPreviewImage({
+                      url: displayUrl,
+                      filename: part.filename,
+                    });
+                  }
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                disabled={!displayUrl || isLoading}
+                onClick={() => {
+                  if (displayUrl && !isLoading) {
+                    handleDownload(displayUrl, part.filename);
+                  }
+                }}
+                className={cn(
+                  "flex max-w-[280px] items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-left text-sm transition hover:bg-muted",
+                  (!displayUrl || isLoading) && "cursor-not-allowed opacity-70",
+                )}
+                title={part.filename || "Document"}
+              >
+                <div className="flex size-8 items-center justify-center rounded-md bg-muted">
+                  {isLoading ? (
+                    <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
+                  ) : (
+                    <FileTextIcon className="size-4 text-muted-foreground" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate font-medium">
+                    {part.filename || "Document"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Click to download</p>
+                </div>
+              </button>
+            )}
           </MessageAttachments>
 
           {/* Message actions for assistant images */}

@@ -42,12 +42,14 @@ const PROVIDER_TYPES = [
   { value: "openrouter", label: "OpenRouter" },
   { value: "ollama", label: "Ollama" },
   { value: "local", label: "Local" },
+  { value: "docling", label: "Docling" },
   { value: "custom", label: "Custom" },
 ];
 
 const CATEGORIES = [
   { value: "llm", label: "LLM" },
   { value: "image", label: "Image" },
+  { value: "ocr", label: "OCR" },
 ];
 
 interface ProviderFormData {

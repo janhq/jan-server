@@ -2,6 +2,7 @@ package document
 
 import (
 	"context"
+	"mime"
 	"strings"
 
 	"jan-server/services/llm-api/internal/config"
@@ -100,9 +101,14 @@ func (s *DocumentService) ListDocumentContents(ctx context.Context, userID uint,
 
 // IsSupportedMimeType checks if the given mime type is supported for OCR
 func (s *DocumentService) IsSupportedMimeType(mimeType string) bool {
+	normalized := strings.TrimSpace(mimeType)
+	if parsed, _, err := mime.ParseMediaType(normalized); err == nil && parsed != "" {
+		normalized = parsed
+	}
+
 	supportedTypes := strings.Split(s.config.DocumentSupportedTypes, ",")
 	for _, supported := range supportedTypes {
-		if strings.TrimSpace(supported) == mimeType {
+		if strings.TrimSpace(supported) == normalized {
 			return true
 		}
 	}

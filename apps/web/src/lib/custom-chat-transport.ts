@@ -39,6 +39,32 @@ function convertToImageUrlFormat(messages: CoreMessage[]): CoreMessage[] {
         ...message,
         content: message.content
           .map((part) => {
+            // Convert file parts (FileUIPart) to image_url or drop if non-image
+            if (part.type === "file") {
+              const filePart = part as {
+                type: "file";
+                mediaType?: string;
+                url?: string;
+              };
+              const mediaType = filePart.mediaType || "";
+              if (!mediaType.startsWith("image/")) {
+                console.warn(
+                  `[CustomChatTransport] Filtering out non-image file part: ${mediaType}`,
+                );
+                return null;
+              }
+              if (filePart.url) {
+                return {
+                  type: "image_url",
+                  image_url: {
+                    url: filePart.url,
+                    detail: "auto",
+                  },
+                };
+              }
+              return null;
+            }
+
             // Convert image parts to image_url format
             if (part.type === "image" && "image" in part) {
               const imageData = part.image;
@@ -51,17 +77,6 @@ function convertToImageUrlFormat(messages: CoreMessage[]): CoreMessage[] {
                     detail: "auto",
                   },
                 };
-              }
-            }
-            // Filter out file parts with non-image media types
-            // These are documents that should have been converted to text by the frontend
-            if (part.type === "file" && "file" in part) {
-              const filePart = part as { type: "file"; file: { mediaType?: string } };
-              const mediaType = filePart.file?.mediaType || "";
-              // Only allow image types through
-              if (!mediaType.startsWith("image/")) {
-                console.warn(`[CustomChatTransport] Filtering out non-image file part: ${mediaType}`);
-                return null;
               }
             }
             return part;

@@ -746,7 +746,7 @@ API_TEST_BASE_FLAGS := --env-file tests/e2e/.env \
 # Full flags with default auth mode
 API_TEST_FLAGS := $(API_TEST_BASE_FLAGS) --auto-auth $(AUTH_MODE) --debug
 
-.PHONY: test-all test-auth test-conversation test-response test-response-aio test-response-mcp test-request test-model test-media test-mcp test-user-management test-model-prompts test-image test-agent-slide test-messages test-dev
+.PHONY: test-all test-auth test-conversation test-conversation-ocr test-response test-response-aio test-response-mcp test-request test-model test-media test-mcp test-user-management test-model-prompts test-image test-agent-slide test-messages test-dev
 
 test-all:
 	$(API_TEST) $(COLLECTION_FILES) $(API_TEST_FLAGS) --timeout-request 120000
@@ -756,6 +756,9 @@ test-auth:
 
 test-conversation:
 	$(API_TEST) $(COLLECTIONS_DIR)/conversation.postman.json $(API_TEST_FLAGS)
+
+test-conversation-ocr: wait-api
+	$(API_TEST) $(COLLECTIONS_DIR)/conversation-ocr.postman.json $(API_TEST_FLAGS)
 
 test-response:
 	$(API_TEST) $(COLLECTIONS_DIR)/response.postman.json $(API_TEST_FLAGS) --timeout-request 120000
@@ -865,7 +868,14 @@ dev-full-down:
 # SECTION 9: HEALTH CHECKS
 # ============================================================================================================
 
-.PHONY: health-check health-api health-mcp health-infra
+.PHONY: health-check health-api health-mcp health-infra wait-api
+
+wait-api:
+ifeq ($(OS),Windows_NT)
+	@powershell -Command '$$max=30; $$ok=$$false; $$restarted=$$false; for ($$i=1; $$i -le $$max; $$i++) { $$llm=$$false; $$media=$$false; try { Invoke-WebRequest -Uri http://localhost:8080/healthz -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop | Out-Null; $$llm=$$true } catch {}; try { Invoke-WebRequest -Uri http://localhost:8285/healthz -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop | Out-Null; $$media=$$true } catch { try { if ($$_.Exception.Response.StatusCode.Value__ -eq 401) { $$media=$$true } } catch {} }; if ($$llm -and $$media) { $$gatewayOk=$$false; try { Invoke-WebRequest -Uri http://localhost:8000/v1/models -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop | Out-Null; $$gatewayOk=$$true } catch { try { $$status=$$_.Exception.Response.StatusCode.Value__; if ($$status -ne 502 -and $$status -ne 503) { $$gatewayOk=$$true } } catch {} }; if ($$gatewayOk) { Write-Host "API services ready"; $$ok=$$true; break }; if (-not $$restarted) { Write-Host "Gateway not ready, restarting Kong..."; docker compose restart kong | Out-Null; $$restarted=$$true; Start-Sleep -Seconds 3; continue } }; Write-Host ("Waiting for API services... attempt {0}/{1}" -f $$i, $$max); Start-Sleep -Seconds 2 } ; if (-not $$ok) { Write-Host "ERROR API services not ready"; exit 1 }'
+else
+	@bash -c 'set -e; max=30; restarted=0; for i in $$(seq 1 $$max); do if curl -sf http://localhost:8080/healthz >/dev/null && (curl -sf http://localhost:8285/healthz >/dev/null || [ "$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8285/healthz)" = "401" ]); then code=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/v1/models || echo 000); if [ "$$code" != "502" ] && [ "$$code" != "503" ] && [ "$$code" != "000" ]; then echo "API services ready"; exit 0; fi; if [ "$$restarted" -eq 0 ]; then echo "Gateway not ready, restarting Kong..."; docker compose restart kong >/dev/null; restarted=1; sleep 3; continue; fi; fi; echo "Waiting for API services... attempt $$i/$$max"; sleep 2; done; echo "ERROR API services not ready"; exit 1'
+endif
 
 health-check:
 ifeq ($(OS),Windows_NT)

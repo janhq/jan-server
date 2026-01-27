@@ -1,0 +1,1 @@
+-- No-op: avoid dropping llm_api.document_contents/project_files to prevent data loss

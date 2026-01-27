@@ -33,6 +33,19 @@ providers:
         image_input: '{"supported":true,"url":true,"base64":true,"schema":"messages[].content[].type=image_url; supports https:// or data:image/...;base64,..."}'
         file_attachment: '{"supported":true,"url":true,"base64":true,"file_upload":true,"schema":"messages[].content[].type=input_file; supports url, inline base64, or file_id"}'
 
+    # Document OCR Provider (Docling)
+    - name: Docling OCR Provider
+      enable: ${DOCLING_ENABLED:-false}
+      type: docling
+      category: ocr
+      url: ${DOCLING_PROVIDER_URL}
+      api_key: ${DOCLING_API_KEY}
+      description: "Docling OCR service"
+      auto_enable_new_models: false
+      sync_models: false
+      metadata:
+        environment: internal
+
     # Image Generation Provider (Z-Image / Flux)
     - name: Z-Image Provider
       enable: ${ZIMAGE_ENABLED:-false}

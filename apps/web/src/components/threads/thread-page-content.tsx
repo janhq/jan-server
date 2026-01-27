@@ -718,16 +718,12 @@ export function ThreadPageContent({
       }
 
       const documentTexts: string[] = [];
-      const imageFiles: typeof message.files = [];
 
       message.files.forEach((file) => {
         const mediaType = file.mediaType || "";
         const isImage = mediaType.startsWith("image/");
 
-        if (isImage) {
-          // Keep image files as attachments
-          imageFiles.push(file);
-        } else if (file.isDocument && file.extractedText) {
+        if (!isImage && file.isDocument && file.extractedText) {
           // Document with extracted text - add text to message
           const pageInfo = file.pageCount ? ` pages="${file.pageCount}"` : "";
           const wordInfo = file.wordCount ? ` words="${file.wordCount}"` : "";
@@ -754,7 +750,7 @@ export function ThreadPageContent({
       return {
         ...message,
         text: newText,
-        files: imageFiles,
+        files: message.files,
       };
     },
     [],
@@ -926,16 +922,18 @@ export function ThreadPageContent({
           sessionStorage.removeItem(initialItemsKey);
         }
 
+        // Process documents to avoid sending unsupported file parts to the model
+        const processedMessage = processDocumentFiles(message);
         const withImageUrls = appendImageUrlsToPrompt(
-          message,
+          processedMessage,
           imageGenerationEnabled,
         );
 
-        // Persist to server (fire-and-forget, ID mapping handled in onFinish)
-        createUserMessageItem(withImageUrls);
+        // Persist to server with original message (includes files for storage)
+        createUserMessageItem(message);
 
         sendMessage({
-          text: withImageUrls.text,
+          text: withImageUrls.text || "Sent with attachments",
           files: withImageUrls.files,
         });
         // Move conversation to top when initial message is sent
@@ -955,6 +953,7 @@ export function ThreadPageContent({
     moveConversationToTop,
     createUserMessageItem,
     appendImageUrlsToPrompt,
+    processDocumentFiles,
     imageGenerationEnabled,
   ]);
 

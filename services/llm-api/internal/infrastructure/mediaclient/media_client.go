@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/imroc/req/v3"
@@ -133,7 +135,7 @@ func (c *Client) Resolve(ctx context.Context, mediaObjectID string, authHeader s
 	}
 
 	// The media API metadata endpoint: MEDIA_RESOLVE_URL/<media_object_id>/metadata
-	metadataURL := fmt.Sprintf("%s/%s/metadata", c.cfg.MediaResolveURL, mediaObjectID)
+	metadataURL := buildMetadataURL(c.cfg.MediaResolveURL, mediaObjectID)
 
 	c.log.Debug().
 		Str("media_object_id", mediaObjectID).
@@ -176,4 +178,27 @@ func (c *Client) Resolve(ctx context.Context, mediaObjectID string, authHeader s
 		Msg("[MediaClient] Media object resolved successfully")
 
 	return &result, nil
+}
+
+func buildMetadataURL(baseURL string, mediaObjectID string) string {
+	trimmed := strings.TrimSpace(baseURL)
+	if trimmed == "" {
+		return fmt.Sprintf("%s/%s/metadata", trimmed, mediaObjectID)
+	}
+
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return fmt.Sprintf("%s/%s/metadata", strings.TrimSuffix(trimmed, "/"), mediaObjectID)
+	}
+
+	path := strings.TrimSuffix(parsed.Path, "/")
+	if strings.HasSuffix(path, "/resolve") {
+		path = strings.TrimSuffix(path, "/resolve")
+	}
+	if path == "" {
+		path = "/v1/media"
+	}
+
+	parsed.Path = fmt.Sprintf("%s/%s/metadata", strings.TrimSuffix(path, "/"), mediaObjectID)
+	return parsed.String()
 }
