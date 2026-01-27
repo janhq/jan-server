@@ -91,7 +91,7 @@ function FileItem({
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      await onDelete(file.public_id);
+      await onDelete(file.id);
       toast.success("File removed from project");
     } catch {
       toast.error("Failed to remove file");

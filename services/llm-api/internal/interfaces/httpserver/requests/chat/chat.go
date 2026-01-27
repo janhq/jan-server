@@ -159,7 +159,16 @@ func (p *FlexibleContentPart) ToOpenAIChatMessagePart() openai.ChatMessagePart {
 
 // IsFileURLPlaceholder checks if a text contains a file URL placeholder
 func IsFileURLPlaceholder(text string) bool {
-	return len(text) > 10 && text[:10] == "[FILE_URL:"
+	if len(text) < 12 {
+		return false
+	}
+	if !strings.HasPrefix(text, "[FILE_URL:") {
+		return false
+	}
+	if !strings.HasSuffix(text, "]") {
+		return false
+	}
+	return true
 }
 
 // ParseFileURLPlaceholder extracts URL, filename, and mime type from a file URL placeholder

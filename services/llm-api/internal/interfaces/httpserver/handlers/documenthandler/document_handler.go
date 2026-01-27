@@ -67,6 +67,7 @@ type ScanDocumentResponse struct {
 	MediaObjectID    string                    `json:"media_object_id"`
 	Filename         string                    `json:"filename,omitempty"`
 	MimeType         string                    `json:"mime_type,omitempty"`
+	FileSize         int64                     `json:"file_size,omitempty"`
 	ProcessingStatus document.ProcessingStatus `json:"processing_status"`
 	ExtractedText    string                    `json:"extracted_text,omitempty"`
 	PageCount        *int                      `json:"page_count,omitempty"`
@@ -438,7 +439,10 @@ func (h *DocumentHandler) CreateProjectFile(ctx context.Context, userID uint, pr
 	}
 
 	// Get current file count for display order
-	existingFiles, _, _ := h.projectFileService.ListProjectFiles(ctx, proj.ID, nil)
+	existingFiles, _, err := h.projectFileService.ListProjectFiles(ctx, proj.ID, nil)
+	if err != nil {
+		return nil, platformerrors.AsError(ctx, platformerrors.LayerHandler, err, "failed to load project files")
+	}
 	displayOrder := len(existingFiles)
 
 	// Create project file
@@ -572,6 +576,7 @@ func (h *DocumentHandler) toScanResponse(doc *document.DocumentContent) *ScanDoc
 		MediaObjectID:    doc.MediaObjectID,
 		Filename:         doc.Filename,
 		MimeType:         doc.MimeType,
+		FileSize:         doc.FileSize,
 		ProcessingStatus: doc.ProcessingStatus,
 		ExtractedText:    doc.ExtractedText,
 		PageCount:        doc.PageCount,

@@ -12,18 +12,18 @@ export type DocumentScanRequest = {
 // Document scan response from API
 export type DocumentScanResponse = {
   id: string;
-  public_id: string;
+  object?: string;
   media_object_id: string;
   filename: string;
   mime_type: string;
-  file_size: number;
+  file_size?: number;
   processing_status: "pending" | "processing" | "completed" | "failed";
   extracted_text?: string;
   page_count?: number;
   word_count?: number;
   error_message?: string;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
 };
 
 // Document types that require OCR scanning

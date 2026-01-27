@@ -5,26 +5,28 @@ declare const JAN_API_BASE_URL: string;
 // Project file response from API
 export type ProjectFile = {
   id: string;
-  public_id: string;
-  project_id: string;
+  object?: string;
+  project_id?: string;
   display_order: number;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
+  created_by?: string;
+  created_at?: number | string;
+  updated_at?: string;
+  // Legacy/back-compat fields (may not be present)
+  public_id?: string;
   document_content: {
     id: string;
-    public_id: string;
-    media_object_id: string;
-    filename: string;
-    mime_type: string;
-    file_size: number;
+    object?: string;
+    media_object_id?: string;
+    filename?: string;
+    mime_type?: string;
+    file_size?: number;
     processing_status: "pending" | "processing" | "completed" | "failed";
     extracted_text?: string;
     page_count?: number;
     word_count?: number;
     error_message?: string;
-    created_at: string;
-    updated_at: string;
+    created_at?: string;
+    updated_at?: string;
   } | null;
 };
 
@@ -43,7 +45,7 @@ export type CreateProjectFileRequest = {
 
 // Reorder project files request
 export type ReorderProjectFilesRequest = {
-  file_ids: string[];
+  file_orders: Record<string, number>;
 };
 
 /**

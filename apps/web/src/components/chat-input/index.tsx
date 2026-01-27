@@ -199,7 +199,7 @@ const DocumentScanHandler = () => {
 
           // Update file with scan results
           controller.attachments.updateFile(file.id, {
-            documentId: scanResult.public_id,
+            documentId: scanResult.id,
             extractedText: scanResult.extracted_text,
             pageCount: scanResult.page_count,
             wordCount: scanResult.word_count,

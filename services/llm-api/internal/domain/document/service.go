@@ -196,15 +196,5 @@ func (s *ProjectFileService) GetProjectFilesWithContent(ctx context.Context, pro
 		return nil, platformerrors.AsError(ctx, platformerrors.LayerDomain, err, "failed to get project files")
 	}
 
-	// Load document content for each file
-	for _, file := range files {
-		if file.DocumentContentID != nil {
-			content, err := s.contentRepo.GetByPublicID(ctx, file.PublicID)
-			if err == nil {
-				file.DocumentContent = content
-			}
-		}
-	}
-
 	return files, nil
 }

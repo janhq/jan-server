@@ -136,8 +136,13 @@ export const useProjectFiles = create<ProjectFilesState>((set, get) => ({
 
   reorderFiles: async (projectId: string, fileIds: string[]) => {
     try {
+      const fileOrders = fileIds.reduce<Record<string, number>>((acc, id, idx) => {
+        acc[id] = idx;
+        return acc;
+      }, {});
+
       await projectFilesService.reorderProjectFiles(projectId, {
-        file_ids: fileIds,
+        file_orders: fileOrders,
       });
 
       // Reorder local state to match
