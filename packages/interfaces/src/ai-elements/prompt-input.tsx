@@ -536,6 +536,18 @@ export const usePromptInputHasFailedUploads = () => {
   return attachments.files.some((f) => f.uploadStatus === UPLOAD_STATUS.FAILED);
 };
 
+/**
+ * Hook to check if any document attachments are currently being processed (OCR scan).
+ */
+export const usePromptInputIsScanning = () => {
+  const attachments = usePromptInputAttachments();
+  return attachments.files.some(
+    (f) =>
+      f.isDocument &&
+      (f.documentStatus === "processing" || f.documentStatus === "pending"),
+  );
+};
+
 export type PromptInputAttachmentProps = HTMLAttributes<HTMLDivElement> & {
   data: ExtendedFileUIPart & { id: string };
   className?: string;
@@ -1253,6 +1265,17 @@ export const PromptInput = ({
       return;
     }
 
+    // Block submission if any document files are still being processed
+    const hasProcessingDocuments = files.some(
+      (f) =>
+        f.isDocument &&
+        (f.documentStatus === "pending" || f.documentStatus === "processing"),
+    );
+    if (hasProcessingDocuments) {
+      console.warn("Cannot submit while documents are being processed");
+      return;
+    }
+
     // Block submission if any files failed to upload
     const hasFailedUploads = files.some(
       (f) => f.uploadStatus === UPLOAD_STATUS.FAILED,
@@ -1609,6 +1632,7 @@ export const PromptInputSubmit = ({
 }: PromptInputSubmitProps) => {
   const isUploading = usePromptInputIsUploading();
   const hasFailedUploads = usePromptInputHasFailedUploads();
+  const isScanning = usePromptInputIsScanning();
   const controller = useOptionalPromptInputController();
   const attachments = usePromptInputAttachments();
 
@@ -1629,6 +1653,7 @@ export const PromptInputSubmit = ({
   const isDisabled =
     disabled ||
     isUploading ||
+    isScanning ||
     hasFailedUploads ||
     (!hasContent &&
       status !== CHAT_STATUS.STREAMING &&

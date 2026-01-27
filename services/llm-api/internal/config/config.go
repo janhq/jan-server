@@ -120,7 +120,7 @@ type Config struct {
 
 	// Document OCR
 	DocumentOCREnabled     bool          `env:"DOCUMENT_OCR_ENABLED" envDefault:"false"`
-	DocumentOCRTimeout     time.Duration `env:"DOCUMENT_OCR_TIMEOUT" envDefault:"120s"`
+	DocumentOCRTimeout     time.Duration `env:"DOCUMENT_OCR_TIMEOUT" envDefault:"300s"`
 	DocumentOCRModel       string        `env:"DOCUMENT_OCR_MODEL" envDefault:"docling-v1"`
 	DocumentMaxBytes       int64         `env:"DOCUMENT_MAX_BYTES" envDefault:"52428800"` // 50MB
 	DocumentSupportedTypes string        `env:"DOCUMENT_SUPPORTED_TYPES" envDefault:"application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown,text/html,application/rtf"`
