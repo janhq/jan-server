@@ -281,13 +281,17 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
               this.enableBrowse ? "browse" : null,
             ].filter(Boolean) as string[]);
       const toolsResponse = await mcpService.getTools(servers);
-      const allowedImageTools = new Set(["generate_image", "edit_image"]);
+        const allowedImageTools = new Set(["generate_image", "edit_image"]);
+        const blockedTools = new Set(["image_search"]);
 
       // Filter tools based on mode
-      const filteredTools = toolsResponse.data.filter((tool) => {
-        // Always filter out AIO tools (prefix: aio_) - these are for internal agent use
-        if (tool.name.startsWith("aio_")) {
-          return false;
+        const filteredTools = toolsResponse.data.filter((tool) => {
+          if (blockedTools.has(tool.name)) {
+            return false;
+          }
+          // Always filter out AIO tools (prefix: aio_) - these are for internal agent use
+          if (tool.name.startsWith("aio_")) {
+            return false;
         }
 
         // Agent mode: only allow run_agent tool

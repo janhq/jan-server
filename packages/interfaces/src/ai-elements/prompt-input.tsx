@@ -1638,7 +1638,7 @@ export const PromptInputSubmit = ({
 
   let Icon = <ArrowUp className="size-4" />;
 
-  if (isUploading) {
+  if (isUploading || isScanning) {
     Icon = <Loader2Icon className="size-4 animate-spin" />;
   } else if (
     status === CHAT_STATUS.SUBMITTED ||
@@ -1660,12 +1660,13 @@ export const PromptInputSubmit = ({
       status !== CHAT_STATUS.SUBMITTED);
 
   return (
-    <InputGroupButton
-      aria-label="Submit"
-      className={cn(className)}
-      size={size}
-      type="submit"
-      variant={variant}
+      <InputGroupButton
+        aria-label="Submit"
+        aria-busy={isUploading || isScanning}
+        className={cn(className, isScanning && "rounded-full")}
+        size={size}
+        type="submit"
+        variant={variant}
       disabled={isDisabled}
       {...props}
     >
