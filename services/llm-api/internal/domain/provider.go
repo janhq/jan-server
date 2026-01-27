@@ -92,8 +92,15 @@ func ProvidePromptProcessor(
 	log zerolog.Logger,
 	templateService *prompttemplate.Service,
 	modelPromptService *modelprompttemplate.Service,
+	projectFileService *document.ProjectFileService,
 ) *prompt.ProcessorImpl {
 	processor := prompt.NewProcessorWithServices(config, log, templateService, modelPromptService)
+
+	// Register Project Files module if prompt orchestration is enabled
+	if config.Enabled && projectFileService != nil {
+		processor.RegisterModule(prompt.NewProjectFilesModule(projectFileService))
+		log.Info().Msg("registered Project Files prompt module")
+	}
 
 	// Register Deep Research module if prompt orchestration is enabled
 	if config.Enabled && templateService != nil {

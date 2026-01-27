@@ -116,6 +116,7 @@ func (h *ChatHandler) CreateChatCompletion(
 	var conv *conversation.Conversation
 	var conversationID string
 	var projectInstruction string
+	var projectID *uint
 	var err error
 	newMessages := append([]openai.ChatCompletionMessage(nil), request.Messages...)
 	skipPromptCustomization := shouldBypassPromptCustomization(reqCtx)
@@ -153,7 +154,7 @@ func (h *ChatHandler) CreateChatCompletion(
 
 		// Load project instruction for this conversation (if any)
 		if !skipPromptCustomization {
-			projectInstruction = h.getProjectInstruction(ctx, userID, conv)
+			projectInstruction, projectID = h.getProjectContext(ctx, userID, conv)
 		}
 	}
 	// If no conversation.id exists, bypass as non-conversation completion
@@ -310,6 +311,7 @@ func (h *ChatHandler) CreateChatCompletion(
 			Preferences:        preferences,
 			Memory:             loadedMemory,
 			ProjectInstruction: projectInstruction,
+			ProjectID:          projectID,
 			Profile:            profileSettings,
 			ModelCatalogID:     modelCatalogID,
 			Tools:              request.Tools,
@@ -676,40 +678,51 @@ func decimalToInt(val *decimal.Decimal) (int, bool) {
 	return int(val.IntPart()), true
 }
 
-// getProjectInstruction loads the project instruction for the conversation, falling back to the stored snapshot.
-func (h *ChatHandler) getProjectInstruction(ctx context.Context, userID uint, conv *conversation.Conversation) string {
+// getProjectContext loads the project instruction for the conversation, falling back to the stored snapshot.
+// It also resolves the internal project ID for downstream prompt modules (e.g., project file injection).
+func (h *ChatHandler) getProjectContext(ctx context.Context, userID uint, conv *conversation.Conversation) (string, *uint) {
 	if conv == nil || h.projectService == nil {
-		return ""
+		return "", nil
 	}
 	if ctx != nil && ctx.Err() != nil {
-		return ""
+		return "", nil
+	}
+
+	var instruction string
+	var projectID *uint
+
+	if conv.ProjectID != nil && *conv.ProjectID > 0 {
+		projectID = conv.ProjectID
 	}
 
 	if conv.EffectiveInstructionSnapshot != nil {
 		if snapshot := strings.TrimSpace(*conv.EffectiveInstructionSnapshot); snapshot != "" {
-			return snapshot
+			instruction = snapshot
 		}
 	}
 
 	if conv.ProjectPublicID == nil {
-		return ""
+		return instruction, projectID
 	}
 
-	projectID := strings.TrimSpace(*conv.ProjectPublicID)
-	if projectID == "" {
-		return ""
+	projectPublicID := strings.TrimSpace(*conv.ProjectPublicID)
+	if projectPublicID == "" {
+		return instruction, projectID
 	}
 
-	proj, err := h.projectService.GetProjectByPublicIDAndUserID(ctx, projectID, userID)
-	if err != nil {
-		return ""
+	if projectID == nil || instruction == "" {
+		proj, err := h.projectService.GetProjectByPublicIDAndUserID(ctx, projectPublicID, userID)
+		if err == nil && proj != nil {
+			if projectID == nil {
+				projectID = &proj.ID
+			}
+			if instruction == "" && proj.Instruction != nil {
+				instruction = strings.TrimSpace(*proj.Instruction)
+			}
+		}
 	}
 
-	if proj.Instruction == nil {
-		return ""
-	}
-
-	return strings.TrimSpace(*proj.Instruction)
+	return instruction, projectID
 }
 
 // collectPromptMemory gathers memory hints from request headers, conversation metadata, or recent turns.
