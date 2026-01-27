@@ -683,7 +683,8 @@ export function ThreadPageContent({
   const appendImageUrlsToPrompt = useCallback(
     (message: PromptInputMessage, enabled: boolean): PromptInputMessage => {
       if (!enabled) return message;
-      const urls = message.files
+      const urls = (message.files || [])
+        .filter((file) => (file.mediaType || "").startsWith("image/"))
         .map((file) => file.url)
         .filter(
           (url): url is string => typeof url === "string" && url.trim() !== "",
@@ -704,63 +705,6 @@ export function ThreadPageContent({
     [],
   );
 
-  /**
-   * Prepare message for sending to AI model:
-   * 1. Add document text to message text (for AI context)
-   * 2. Filter files to only include images (AI models don't support other file types)
-   *
-   * Note: For storage, use the original message - buildMessageContent handles
-   * storing both document text and file references properly.
-   */
-  const prepareMessageForAI = useCallback(
-    (message: PromptInputMessage): PromptInputMessage => {
-      if (!message.files || message.files.length === 0) {
-        return message;
-      }
-
-      const documentTexts: string[] = [];
-      const imageFiles: typeof message.files = [];
-
-      message.files.forEach((file) => {
-        const mediaType = file.mediaType || "";
-        const isImage = mediaType.startsWith("image/");
-
-        if (isImage) {
-          // Keep images for AI model
-          imageFiles.push(file);
-        } else if (file.isDocument && file.extractedText) {
-          // Document with extracted text - add text to message for AI
-          const pageInfo = file.pageCount ? ` pages="${file.pageCount}"` : "";
-          const wordInfo = file.wordCount ? ` words="${file.wordCount}"` : "";
-          documentTexts.push(
-            `<attached_document name="${file.filename || "document"}"${pageInfo}${wordInfo}>\n${file.extractedText}\n</attached_document>`
-          );
-        } else if (!isImage) {
-          // Non-image file without extracted text - log warning and skip
-          console.warn(
-            `[prepareMessageForAI] Skipping file without extracted text: ${file.filename} (${mediaType})`
-          );
-        }
-      });
-
-      // Build new text with document content for AI
-      let newText = message.text || "";
-      if (documentTexts.length > 0) {
-        const documentsSection = documentTexts.join("\n\n");
-        newText = newText
-          ? `${newText}\n\n${documentsSection}`
-          : documentsSection;
-      }
-
-      return {
-        ...message,
-        text: newText,
-        files: imageFiles, // Only images for AI model
-      };
-    },
-    [],
-  );
-
   const handleSubmit = useCallback(
     async (message?: PromptInputMessage) => {
       // Get the current session to check its status directly
@@ -774,11 +718,8 @@ export function ThreadPageContent({
       ) {
         sessionData.tools = [];
 
-        // Prepare message for AI: add document text to message, keep only images as files
-        const messageForAI = prepareMessageForAI(message);
-
         const withImageUrls = appendImageUrlsToPrompt(
-          messageForAI,
+          message,
           imageGenerationEnabled,
         );
 
@@ -797,10 +738,10 @@ export function ThreadPageContent({
         // Normal message flow
 
         // Persist to server with original message (includes all files for storage)
-        // buildMessageContent handles storing images and document files+text properly
+        // buildMessageContent handles storing images and document file references
         createUserMessageItem(message);
 
-        // Send to AI model (images only, documents converted to text)
+        // Send to AI model (attachments handled in transport)
         sendMessage({
           text: withImageUrls.text || "Sent with attachments",
           files: withImageUrls.files,
@@ -847,7 +788,6 @@ export function ThreadPageContent({
       setMessages,
       createUserMessageItem,
       appendImageUrlsToPrompt,
-      prepareMessageForAI,
       imageGenerationEnabled,
       selectedModel,
       getCurrentMode,
@@ -928,18 +868,16 @@ export function ThreadPageContent({
           sessionStorage.removeItem(initialItemsKey);
         }
 
-        // Prepare message for AI: add document text to message, keep only images as files
-        const messageForAI = prepareMessageForAI(message);
         const withImageUrls = appendImageUrlsToPrompt(
-          messageForAI,
+          message,
           imageGenerationEnabled,
         );
 
         // Persist to server with original message (includes all files for storage)
-        // buildMessageContent handles storing images and document files+text properly
+        // buildMessageContent handles storing images and document file references
         createUserMessageItem(message);
 
-        // Send to AI model (images only, documents converted to text)
+        // Send to AI model (attachments handled in transport)
         sendMessage({
           text: withImageUrls.text || "Sent with attachments",
           files: withImageUrls.files,
@@ -961,7 +899,6 @@ export function ThreadPageContent({
     moveConversationToTop,
     createUserMessageItem,
     appendImageUrlsToPrompt,
-    prepareMessageForAI,
     imageGenerationEnabled,
   ]);
 

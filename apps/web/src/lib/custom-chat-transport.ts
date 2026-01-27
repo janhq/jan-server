@@ -30,14 +30,14 @@ async function passUrlsDirectly(
 /**
  * Process file parts for the API:
  * - Images: Keep as 'file' type - the OpenAI-compatible provider will convert to image_url
- * - Documents: Convert to 'file_url' format for backend processing
+ * - Documents: Convert to text parts with providerOptions override to emit { type: "file", file: {...} }
  *
  * Note: AI SDK's convertToModelMessages converts FileUIPart.url -> FilePart.data
  * So we need to check for both 'url' and 'data' fields.
  *
  * The backend will:
  * - Pass image_url parts directly to the LLM provider
- * - Process file_url parts by looking up extracted text and injecting it
+ * - Convert file parts into [FILE_URL:...] placeholders and inject extracted text
  */
 function processFileParts(messages: CoreMessage[]): CoreMessage[] {
   return messages.map((message) => {
@@ -69,15 +69,22 @@ function processFileParts(messages: CoreMessage[]): CoreMessage[] {
                 return part;
               }
 
-              // Documents/files: Convert to file_url format for backend processing
-              // The backend will look up extracted text and inject it into the message
+              // Documents/files: Convert to text part with providerOptions override
+              // so the request emits { type: "file", file: {...} }
               if (fileUrl) {
                 return {
-                  type: "file_url",
-                  file_url: {
-                    url: fileUrl,
-                    filename: filePart.filename || "document",
-                    mime_type: mediaType || "application/octet-stream",
+                  type: CONTENT_TYPE.TEXT,
+                  // Non-empty to avoid AI SDK filtering out empty user text parts
+                  text: "[file]",
+                  providerOptions: {
+                    openaiCompatible: {
+                      type: "file",
+                      file: {
+                        url: fileUrl,
+                        name: filePart.filename || "document",
+                        mime_type: mediaType || "application/octet-stream",
+                      },
+                    },
                   },
                 };
               }
@@ -90,6 +97,48 @@ function processFileParts(messages: CoreMessage[]): CoreMessage[] {
       };
     }
     return message;
+  }) as CoreMessage[];
+}
+
+/**
+ * Convert user text parts to input_text parts in the outgoing request.
+ */
+function applyInputTextOverrides(messages: CoreMessage[]): CoreMessage[] {
+  return messages.map((message) => {
+    if (message.role !== MESSAGE_ROLE.USER || !Array.isArray(message.content)) {
+      return message;
+    }
+
+    return {
+      ...message,
+      content: message.content.map((part) => {
+        if (part.type !== CONTENT_TYPE.TEXT) {
+          return part;
+        }
+
+        const existingOptions =
+          (part as { providerOptions?: Record<string, unknown> })
+            .providerOptions ?? {};
+        const existingOpenAI =
+          (existingOptions.openaiCompatible as Record<string, unknown>) ?? {};
+
+        if (existingOpenAI.type === "file") {
+          return part;
+        }
+
+        return {
+          ...part,
+          providerOptions: {
+            ...existingOptions,
+            openaiCompatible: {
+              ...existingOpenAI,
+              type: "input_text",
+              input_text: "text" in part ? part.text : "",
+            },
+          },
+        };
+      }),
+    };
   }) as CoreMessage[];
 }
 
@@ -297,15 +346,16 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // Filter out base64 data from tool results
     const filteredMessages = filterBase64FromMessages(modelMessages);
 
-    // Process file parts: images stay as-is, documents become text with URL tags
+    // Process file parts: images stay as-is, documents become file parts
     const processedMessages = processFileParts(filteredMessages);
+    const normalizedMessages = applyInputTextOverrides(processedMessages);
 
     // Always include tools if we have any loaded
     // Search tools (google_search, scrape) are always sent regardless of user toggle
     const hasTools = Object.keys(this.tools).length > 0;
     const result = streamText({
       model: this.model,
-      messages: processedMessages,
+      messages: normalizedMessages,
       abortSignal: options.abortSignal,
       // Pass URLs directly to the model instead of downloading
       // This avoids CORS issues with presigned S3 URLs

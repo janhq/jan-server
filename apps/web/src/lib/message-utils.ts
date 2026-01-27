@@ -103,25 +103,19 @@ export function buildMessageContent(
         type: "image",
         image: { url: file.url },
       });
-    } else if (file.isDocument) {
-      // For documents: store extracted text for AI context
-      if (file.extractedText) {
-        const pageInfo = file.pageCount ? ` pages="${file.pageCount}"` : "";
-        const wordInfo = file.wordCount ? ` words="${file.wordCount}"` : "";
-        const documentContent = `<attached_document name="${file.filename || "document"}"${pageInfo}${wordInfo}>\n${file.extractedText}\n</attached_document>`;
-
-        content.push({
-          type: CONTENT_TYPE.INPUT_TEXT,
-          input_text: documentContent,
-        });
-      }
-      // Also store file reference for display in UI
+    } else {
+      const filename = file.filename || "document";
+      const mimeType = file.mediaType || "application/octet-stream";
+      // Store file reference for UI and backend attachment handling
       content.push({
         type: "file",
         file: {
           url: file.url,
-          filename: file.filename,
-          mediaType: file.mediaType,
+          name: filename,
+          mime_type: mimeType,
+          // Keep legacy keys for backward compatibility
+          filename,
+          mediaType: mimeType,
         },
       });
     }
