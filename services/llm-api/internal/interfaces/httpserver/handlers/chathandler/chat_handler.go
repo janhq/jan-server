@@ -1835,6 +1835,7 @@ var fileURLPlaceholderRegex = regexp.MustCompile(`\[FILE_URL:([^:]+(?::[^:]+)*):
 // attachedDocumentRegex matches <attached_document name="..." url="..." mime_type="..."> tags
 // Used to extract file metadata from injected content for storage
 var attachedDocumentRegex = regexp.MustCompile(`<attached_document\s+name="([^"]+)"\s+url="([^"]+)"\s+mime_type="([^"]+)"`)
+var mediaObjectIDRegex = regexp.MustCompile(`jan_[a-zA-Z0-9]+`)
 
 // extractAttachedDocumentInfo extracts file info from <attached_document> tag in text
 // Returns filename, url, mimeType, found
@@ -1934,17 +1935,5 @@ func (h *ChatHandler) getFileContentForInjection(ctx context.Context, userID uin
 // extractMediaObjectID extracts the media object ID from a URL
 // Supports formats: /api/media/jan_xxx, jan_xxx, https://.../.../api/media/jan_xxx
 func extractMediaObjectID(url string) string {
-	// Try to find jan_ prefix in the URL
-	idx := strings.LastIndex(url, "jan_")
-	if idx == -1 {
-		return ""
-	}
-	// Extract from jan_ to end of path segment
-	rest := url[idx:]
-	// Find end of ID (either end of string or next path separator/query)
-	endIdx := strings.IndexAny(rest, "/?#")
-	if endIdx == -1 {
-		return rest
-	}
-	return rest[:endIdx]
+	return mediaObjectIDRegex.FindString(url)
 }

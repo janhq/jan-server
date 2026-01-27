@@ -59,6 +59,8 @@ func (repo *DocumentContentGormRepository) GetByMediaObjectID(ctx context.Contex
 	var dbDoc dbschema.DocumentContent
 	err := repo.db.WithContext(ctx).
 		Where("media_object_id = ? AND user_id = ?", mediaObjectID, userID).
+		Order("CASE WHEN processing_status = 'completed' THEN 1 ELSE 0 END DESC").
+		Order("updated_at DESC").
 		First(&dbDoc).Error
 
 	if err != nil {
