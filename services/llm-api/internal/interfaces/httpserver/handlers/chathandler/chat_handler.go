@@ -1842,9 +1842,6 @@ func (h *ChatHandler) trackMessageSent(reqCtx *gin.Context, request chatrequests
 	}
 }
 
-// fileURLPlaceholderRegex matches [FILE_URL:url:filename:mime_type] placeholders
-var fileURLPlaceholderRegex = regexp.MustCompile(`\[FILE_URL:([^:]+(?::[^:]+)*):([^:]+):([^\]]+)\]`)
-
 // attachedDocumentRegex matches <attached_document name="..." url="..." mime_type="..."> tags
 // Used to extract file metadata from injected content for storage
 var attachedDocumentRegex = regexp.MustCompile(`<attached_document\s+name="([^"]+)"\s+url="([^"]+)"\s+mime_type="([^"]+)"`)

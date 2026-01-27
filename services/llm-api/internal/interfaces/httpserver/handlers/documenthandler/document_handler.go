@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"mime"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -601,23 +600,6 @@ func (h *DocumentHandler) toProjectFileResponse(file *document.ProjectFile) *Pro
 }
 
 // Helper to convert string to int for pagination cursor
-func parseUintCursor(s string) *uint {
-	if s == "" {
-		return nil
-	}
-	v, err := strconv.ParseUint(s, 10, 64)
-	if err != nil {
-		return nil
-	}
-	u := uint(v)
-	return &u
-}
-
-// Trim string utility
-func trimString(s string) string {
-	return strings.TrimSpace(s)
-}
-
 func safeIntPtr(v *int) int {
 	if v == nil {
 		return 0
