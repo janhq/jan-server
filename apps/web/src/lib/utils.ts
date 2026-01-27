@@ -71,14 +71,16 @@ export const convertToUIMessages = (items: ConversationItem[]): UIMessage[] => {
             contentType = CONTENT_TYPE.TEXT;
           } else if (content.type === "image") {
             contentType = CONTENT_TYPE.FILE;
-          } else if (content.type === "file") {
+          } else if (content.type === "file" || content.type === "file_url") {
             // Document file - return early with file-specific data
+            // Handle both "file" (stored format) and "file_url" (API format)
+            const fileData = content.file || content.file_url;
             return [
               {
                 type: CONTENT_TYPE.FILE,
-                mediaType: content.file?.mediaType || "application/octet-stream",
-                url: content.file?.url,
-                filename: content.file?.filename,
+                mediaType: fileData?.mediaType || fileData?.mime_type || "application/octet-stream",
+                url: fileData?.url,
+                filename: fileData?.filename || fileData?.name,
               },
             ];
           } else if (content.type === CONTENT_TYPE.TOOL_CALLS) {

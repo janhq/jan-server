@@ -548,10 +548,12 @@ type ImageContent struct {
 
 // File content for attachments
 type FileContent struct {
-	FileID   string `json:"file_id"`
-	Name     string `json:"name,omitempty"`
+	FileID   string `json:"file_id,omitempty"`
+	URL      string `json:"url,omitempty"`      // Direct URL to the file
+	Name     string `json:"name,omitempty"`     // Display name / filename
 	MimeType string `json:"mime_type,omitempty"`
 	Size     int64  `json:"size,omitempty"`
+	Detail   string `json:"detail,omitempty"` // "auto", "low", "high" for processing detail level
 }
 
 // Audio content for speech output
@@ -945,6 +947,19 @@ func NewAudioContent(id string, transcript *string, format *string) Content {
 			ID:         id,
 			Transcript: transcript,
 			Format:     format,
+		},
+	}
+}
+
+// NewFileContent creates a new file content for document attachments
+func NewFileContent(url, filename, mimeType, detail string) Content {
+	return Content{
+		Type: "file",
+		File: &FileContent{
+			URL:      url,
+			Name:     filename,
+			MimeType: mimeType,
+			Detail:   detail,
 		},
 	}
 }

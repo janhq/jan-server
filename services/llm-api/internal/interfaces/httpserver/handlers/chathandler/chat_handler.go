@@ -3,6 +3,7 @@ package chathandler
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 
 	"jan-server/services/llm-api/internal/config"
 	"jan-server/services/llm-api/internal/domain/conversation"
+	"jan-server/services/llm-api/internal/domain/document"
 	domainmodel "jan-server/services/llm-api/internal/domain/model"
 	"jan-server/services/llm-api/internal/domain/project"
 	"jan-server/services/llm-api/internal/domain/prompt"
@@ -56,6 +58,7 @@ type ChatHandler struct {
 	memoryHandler       *MemoryHandler
 	userSettingsService *usersettings.Service
 	tokenUsageService   *tokenusage.Service
+	documentService     *document.DocumentService
 }
 
 // NewChatHandler creates a new chat handler
@@ -69,6 +72,7 @@ func NewChatHandler(
 	memoryHandler *MemoryHandler,
 	userSettingsService *usersettings.Service,
 	tokenUsageService *tokenusage.Service,
+	documentService *document.DocumentService,
 ) *ChatHandler {
 	return &ChatHandler{
 		inferenceProvider:   inferenceProvider,
@@ -80,6 +84,7 @@ func NewChatHandler(
 		memoryHandler:       memoryHandler,
 		userSettingsService: userSettingsService,
 		tokenUsageService:   tokenUsageService,
+		documentService:     documentService,
 	}
 }
 
@@ -405,6 +410,10 @@ func (h *ChatHandler) CreateChatCompletion(
 	}
 
 	var response *openai.ChatCompletionResponse
+
+	// Inject file content for file_url placeholders
+	// This replaces [FILE_URL:...] markers with actual document text
+	request.Messages = h.injectFileContent(ctx, userID, request.Messages)
 
 	// Handle streaming vs non-streaming
 	llmRequest := chat.CompletionRequest{
@@ -1288,6 +1297,24 @@ func (h *ChatHandler) itemToMessage(item conversation.Item) *openai.ChatCompleti
 					ImageURL: imageURL,
 				})
 			}
+
+			// Handle file content - convert to file_url placeholder for re-injection
+			if content.File != nil && content.File.URL != "" {
+				filename := content.File.Name
+				if filename == "" {
+					filename = "document"
+				}
+				mimeType := content.File.MimeType
+				if mimeType == "" {
+					mimeType = "application/octet-stream"
+				}
+				// Create file_url placeholder that will be processed by injectFileContent
+				placeholder := "[FILE_URL:" + content.File.URL + ":" + filename + ":" + mimeType + "]"
+				multiContent = append(multiContent, openai.ChatMessagePart{
+					Type: openai.ChatMessagePartTypeText,
+					Text: placeholder,
+				})
+			}
 		}
 
 		// Use multimodal format if there are images or if it's a tool message with multiple parts
@@ -1573,12 +1600,32 @@ func (h *ChatHandler) messageToItem(msg openai.ChatCompletionMessage) conversati
 		}
 	}
 
-	// Handle multimodal content (text + images)
+	// Handle multimodal content (text + images + files)
 	if len(msg.MultiContent) > 0 {
 		for _, part := range msg.MultiContent {
 			switch part.Type {
 			case openai.ChatMessagePartTypeText:
 				if part.Text != "" {
+					// Check if this is a file_url placeholder (before injection)
+					if chatrequests.IsFileURLPlaceholder(part.Text) {
+						url, filename, mimeType, ok := chatrequests.ParseFileURLPlaceholder(part.Text)
+						if ok {
+							contents = append(contents, conversation.NewFileContent(url, filename, mimeType, "auto"))
+							continue
+						}
+					}
+					// Check if this is injected attached_document content (after injection)
+					// Extract file info and store ONLY as file type (like images)
+					// The extracted text is NOT stored - it will be re-injected at runtime
+					if isAttachedDocumentContent(part.Text) {
+						filename, url, mimeType, ok := extractAttachedDocumentInfo(part.Text)
+						if ok {
+							// Store only file reference for UI display (like images)
+							// Extracted text will be re-injected when loading conversation for LLM
+							contents = append(contents, conversation.NewFileContent(url, filename, mimeType, "auto"))
+						}
+						continue
+					}
 					switch role {
 					case conversation.ItemRoleUser:
 						contents = append(contents, conversation.NewInputTextContent(part.Text))
@@ -1780,4 +1827,124 @@ func (h *ChatHandler) trackMessageSent(reqCtx *gin.Context, request chatrequests
 	if err := analyticsMiddleware.TrackEvent(reqCtx, analytics.EventMessageSent, props); err != nil {
 		observability.AddSpanEvent(ctx, "analytics_error", attribute.String("error", err.Error()))
 	}
+}
+
+// fileURLPlaceholderRegex matches [FILE_URL:url:filename:mime_type] placeholders
+var fileURLPlaceholderRegex = regexp.MustCompile(`\[FILE_URL:([^:]+(?::[^:]+)*):([^:]+):([^\]]+)\]`)
+
+// attachedDocumentRegex matches <attached_document name="..." url="..." mime_type="..."> tags
+// Used to extract file metadata from injected content for storage
+var attachedDocumentRegex = regexp.MustCompile(`<attached_document\s+name="([^"]+)"\s+url="([^"]+)"\s+mime_type="([^"]+)"`)
+
+// extractAttachedDocumentInfo extracts file info from <attached_document> tag in text
+// Returns filename, url, mimeType, found
+func extractAttachedDocumentInfo(text string) (string, string, string, bool) {
+	matches := attachedDocumentRegex.FindStringSubmatch(text)
+	if len(matches) < 4 {
+		return "", "", "", false
+	}
+	return matches[1], matches[2], matches[3], true
+}
+
+// isAttachedDocumentContent checks if text contains an attached_document tag
+func isAttachedDocumentContent(text string) bool {
+	return strings.Contains(text, "<attached_document") && strings.Contains(text, "</attached_document>")
+}
+
+// injectFileContent replaces file URL placeholders with actual document content
+// This is called before sending messages to the LLM
+func (h *ChatHandler) injectFileContent(ctx context.Context, userID uint, messages []openai.ChatCompletionMessage) []openai.ChatCompletionMessage {
+	if h.documentService == nil {
+		return messages
+	}
+
+	result := make([]openai.ChatCompletionMessage, len(messages))
+	for i, msg := range messages {
+		result[i] = msg
+
+		// Process single content string
+		if msg.Content != "" && chatrequests.IsFileURLPlaceholder(msg.Content) {
+			url, filename, mimeType, ok := chatrequests.ParseFileURLPlaceholder(msg.Content)
+			if ok {
+				injectedContent := h.getFileContentForInjection(ctx, userID, url, filename, mimeType)
+				result[i].Content = injectedContent
+			}
+		}
+
+		// Process multi-content parts
+		if len(msg.MultiContent) > 0 {
+			newParts := make([]openai.ChatMessagePart, 0, len(msg.MultiContent))
+			for _, part := range msg.MultiContent {
+				if part.Type == openai.ChatMessagePartTypeText && chatrequests.IsFileURLPlaceholder(part.Text) {
+					url, filename, mimeType, ok := chatrequests.ParseFileURLPlaceholder(part.Text)
+					if ok {
+						injectedContent := h.getFileContentForInjection(ctx, userID, url, filename, mimeType)
+						newParts = append(newParts, openai.ChatMessagePart{
+							Type: openai.ChatMessagePartTypeText,
+							Text: injectedContent,
+						})
+						continue
+					}
+				}
+				newParts = append(newParts, part)
+			}
+			result[i].MultiContent = newParts
+		}
+	}
+
+	return result
+}
+
+// getFileContentForInjection retrieves and formats file content for LLM context injection
+// The returned content includes url and mime_type attributes so messageToItem can extract file metadata
+func (h *ChatHandler) getFileContentForInjection(ctx context.Context, userID uint, url, filename, mimeType string) string {
+	// Extract media object ID from URL (format: .../api/media/jan_xxx or jan_xxx)
+	mediaObjectID := extractMediaObjectID(url)
+	if mediaObjectID == "" {
+		return fmt.Sprintf("<attached_document name=\"%s\" url=\"%s\" mime_type=\"%s\">\n[File content could not be retrieved: invalid URL format]\n</attached_document>", filename, url, mimeType)
+	}
+
+	// Look up document content by media object ID
+	doc, err := h.documentService.GetDocumentContentByMediaObjectID(ctx, mediaObjectID, userID)
+	if err != nil {
+		return fmt.Sprintf("<attached_document name=\"%s\" url=\"%s\" mime_type=\"%s\">\n[File content could not be retrieved: %s]\n</attached_document>", filename, url, mimeType, err.Error())
+	}
+
+	// Check processing status
+	if doc.ProcessingStatus != document.ProcessingStatusCompleted {
+		return fmt.Sprintf("<attached_document name=\"%s\" url=\"%s\" mime_type=\"%s\" status=\"%s\">\n[Document is still being processed]\n</attached_document>", filename, url, mimeType, doc.ProcessingStatus)
+	}
+
+	// Format extracted text with metadata including url for storage extraction
+	var builder strings.Builder
+	builder.WriteString(fmt.Sprintf("<attached_document name=\"%s\" url=\"%s\" mime_type=\"%s\"", filename, url, mimeType))
+	if doc.PageCount != nil {
+		builder.WriteString(fmt.Sprintf(" pages=\"%d\"", *doc.PageCount))
+	}
+	if doc.WordCount != nil {
+		builder.WriteString(fmt.Sprintf(" words=\"%d\"", *doc.WordCount))
+	}
+	builder.WriteString(">\n")
+	builder.WriteString(doc.ExtractedText)
+	builder.WriteString("\n</attached_document>")
+
+	return builder.String()
+}
+
+// extractMediaObjectID extracts the media object ID from a URL
+// Supports formats: /api/media/jan_xxx, jan_xxx, https://.../.../api/media/jan_xxx
+func extractMediaObjectID(url string) string {
+	// Try to find jan_ prefix in the URL
+	idx := strings.LastIndex(url, "jan_")
+	if idx == -1 {
+		return ""
+	}
+	// Extract from jan_ to end of path segment
+	rest := url[idx:]
+	// Find end of ID (either end of string or next path separator/query)
+	endIdx := strings.IndexAny(rest, "/?#")
+	if endIdx == -1 {
+		return rest
+	}
+	return rest[:endIdx]
 }

@@ -267,8 +267,17 @@ func (h *MediaHandler) GetMetadata(c *gin.Context) {
 	})
 }
 
-// buildDirectURL constructs the public URL for direct media access
+// buildMediaURL constructs the public URL for direct media access
+// When S3URLEnabled is true and S3PublicEndpoint is configured, returns direct S3 URL
+// Otherwise returns the proxy URL through Kong gateway
 func (h *MediaHandler) buildMediaURL(obj *domain.MediaObject) string {
+	// Check if S3 direct URLs are enabled
+	if h.cfg.S3URLEnabled && h.cfg.S3PublicEndpoint != "" && obj.StorageKey != "" {
+		// Return direct S3 URL: {S3PublicEndpoint}/{StorageKey}
+		// StorageKey format: files/{id}.{ext}
+		return fmt.Sprintf("%s/%s", strings.TrimSuffix(h.cfg.S3PublicEndpoint, "/"), obj.StorageKey)
+	}
+	// Fallback to proxy URL
 	return h.buildDirectURL(obj.ID)
 }
 

@@ -28,57 +28,62 @@ async function passUrlsDirectly(
 }
 
 /**
- * Convert file parts to custom image_url format for the API.
- * The server expects: { type: "image_url", image_url: { url: "<image url>", detail: "auto" } }
- * Also filters out non-image file parts (documents) that the model cannot process.
+ * Process file parts for the API:
+ * - Images: Keep as 'file' type - the OpenAI-compatible provider will convert to image_url
+ * - Documents: Convert to 'file_url' format for backend processing
+ *
+ * Note: AI SDK's convertToModelMessages converts FileUIPart.url -> FilePart.data
+ * So we need to check for both 'url' and 'data' fields.
+ *
+ * The backend will:
+ * - Pass image_url parts directly to the LLM provider
+ * - Process file_url parts by looking up extracted text and injecting it
  */
-function convertToImageUrlFormat(messages: CoreMessage[]): CoreMessage[] {
+function processFileParts(messages: CoreMessage[]): CoreMessage[] {
   return messages.map((message) => {
     if (message.role === MESSAGE_ROLE.USER && Array.isArray(message.content)) {
       return {
         ...message,
         content: message.content
           .map((part) => {
-            // Convert file parts (FileUIPart) to image_url or drop if non-image
+            // Process file parts
+            // AI SDK converts FileUIPart { url } to FilePart { data }
             if (part.type === "file") {
               const filePart = part as {
                 type: "file";
                 mediaType?: string;
-                url?: string;
+                data?: string | Uint8Array; // AI SDK uses 'data' not 'url'
+                url?: string; // Original field (may not be present after conversion)
+                filename?: string;
               };
               const mediaType = filePart.mediaType || "";
-              if (!mediaType.startsWith("image/")) {
-                console.warn(
-                  `[CustomChatTransport] Filtering out non-image file part: ${mediaType}`,
-                );
-                return null;
+              // Get URL from either 'data' (after AI SDK conversion) or 'url' (original)
+              const fileUrl =
+                typeof filePart.data === "string"
+                  ? filePart.data
+                  : filePart.url;
+
+              // Images: Keep as file type - OpenAI provider will convert to image_url
+              if (mediaType.startsWith("image/")) {
+                // Return as-is, the provider handles conversion
+                return part;
               }
-              if (filePart.url) {
+
+              // Documents/files: Convert to file_url format for backend processing
+              // The backend will look up extracted text and inject it into the message
+              if (fileUrl) {
                 return {
-                  type: "image_url",
-                  image_url: {
-                    url: filePart.url,
-                    detail: "auto",
+                  type: "file_url",
+                  file_url: {
+                    url: fileUrl,
+                    filename: filePart.filename || "document",
+                    mime_type: mediaType || "application/octet-stream",
                   },
                 };
               }
               return null;
             }
 
-            // Convert image parts to image_url format
-            if (part.type === "image" && "image" in part) {
-              const imageData = part.image;
-              // If it's a URL string
-              if (typeof imageData === "string") {
-                return {
-                  type: "image_url",
-                  image_url: {
-                    url: imageData,
-                    detail: "auto",
-                  },
-                };
-              }
-            }
             return part;
           })
           .filter((part): part is NonNullable<typeof part> => part !== null),
@@ -292,15 +297,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // Filter out base64 data from tool results
     const filteredMessages = filterBase64FromMessages(modelMessages);
 
-    // Convert image parts to image_url format for the API
-    const messagesWithImageUrls = convertToImageUrlFormat(filteredMessages);
+    // Process file parts: images stay as-is, documents become text with URL tags
+    const processedMessages = processFileParts(filteredMessages);
 
     // Always include tools if we have any loaded
     // Search tools (google_search, scrape) are always sent regardless of user toggle
     const hasTools = Object.keys(this.tools).length > 0;
     const result = streamText({
       model: this.model,
-      messages: messagesWithImageUrls,
+      messages: processedMessages,
       abortSignal: options.abortSignal,
       // Pass URLs directly to the model instead of downloading
       // This avoids CORS issues with presigned S3 URLs

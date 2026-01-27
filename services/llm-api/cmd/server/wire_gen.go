@@ -126,7 +126,11 @@ func CreateApplication() (*Application, error) {
 	memoryHandler := handlers.ProvideMemoryHandler(memoryClient, config, usersettingsService)
 	tokenUsageRepository := tokenusagerepo.NewTokenUsageGormRepository(db)
 	tokenusageService := tokenusage.NewService(tokenUsageRepository)
-	chatHandler := chathandler.NewChatHandler(inferenceProvider, providerHandler, conversationHandler, conversationService, projectService, processorImpl, memoryHandler, usersettingsService, tokenusageService)
+	// Document service for file content injection in chat
+	documentContentRepository := documentrepo.NewDocumentContentGormRepository(db)
+	projectFileRepository := documentrepo.NewProjectFileGormRepository(db)
+	documentService := document.NewDocumentService(documentContentRepository, projectFileRepository, config)
+	chatHandler := chathandler.NewChatHandler(inferenceProvider, providerHandler, conversationHandler, conversationService, projectService, processorImpl, memoryHandler, usersettingsService, tokenusageService, documentService)
 	chatCompletionRoute := chat.NewChatCompletionRoute(chatHandler, authHandler)
 	chatRoute := chat.NewChatRoute(chatCompletionRoute)
 	zImageService := inference.NewZImageService(config)
@@ -164,9 +168,6 @@ func CreateApplication() (*Application, error) {
 	usageRoute := usage.NewUsageRoute(usageHandler, authHandler)
 	// Document OCR service and routes
 	documentOCRService := inference.NewDocumentOCRService(config)
-	documentContentRepository := documentrepo.NewDocumentContentGormRepository(db)
-	projectFileRepository := documentrepo.NewProjectFileGormRepository(db)
-	documentService := document.NewDocumentService(documentContentRepository, projectFileRepository, config)
 	projectFileService := document.NewProjectFileService(projectFileRepository, documentContentRepository)
 	documentHandler := documenthandler.NewDocumentHandler(documentService, projectFileService, projectService, providerService, documentOCRService, mediaclientClient, config)
 	documentRoute := documents.NewDocumentRoute(documentHandler, authHandler)

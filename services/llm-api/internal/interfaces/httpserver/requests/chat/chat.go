@@ -9,8 +9,17 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 )
 
+// FileURLContent represents a file URL reference with metadata
+type FileURLContent struct {
+	URL      string `json:"url"`
+	Detail   string `json:"detail,omitempty"`   // "auto", "low", "high"
+	Filename string `json:"filename,omitempty"` // Original filename
+	MimeType string `json:"mime_type,omitempty"`
+}
+
 // FlexibleContentPart represents a content part that can handle multiple formats:
 // - OpenAI format: {"type": "image_url", "image_url": {"url": "..."}}
+// - File URL format: {"type": "file_url", "file_url": {"url": "...", "filename": "..."}}
 // - Client format (browser-mcp): {"type": "image", "data": "<image url>", "mimeType": "image/png"}
 // - Text format: {"type": "text", "text": "..."}
 // - Tool result format: {"type": "tool_result", "tool_result": "..."}
@@ -19,6 +28,8 @@ type FlexibleContentPart struct {
 	Text string `json:"text,omitempty"`
 	// OpenAI format for images
 	ImageURL *openai.ChatMessageImageURL `json:"image_url,omitempty"`
+	// File URL format for document attachments
+	FileURL *FileURLContent `json:"file_url,omitempty"`
 	// Client format for images (browser-mcp, etc.)
 	Data        string `json:"data,omitempty"`
 	MimeType    string `json:"mimeType,omitempty"`
@@ -47,6 +58,29 @@ func (p *FlexibleContentPart) ToOpenAIChatMessagePart() openai.ChatMessagePart {
 		return openai.ChatMessagePart{
 			Type:     openai.ChatMessagePartTypeImageURL,
 			ImageURL: p.ImageURL,
+		}
+	case "file_url":
+		// File URL format - mark with special prefix for later text injection
+		// The actual file content will be injected in chat handler
+		if p.FileURL != nil && p.FileURL.URL != "" {
+			filename := p.FileURL.Filename
+			if filename == "" {
+				filename = "document"
+			}
+			// Return a text placeholder that will be replaced with actual content
+			// Format: [FILE_URL:url:filename:mime_type]
+			mimeType := p.FileURL.MimeType
+			if mimeType == "" {
+				mimeType = "application/octet-stream"
+			}
+			return openai.ChatMessagePart{
+				Type: openai.ChatMessagePartTypeText,
+				Text: "[FILE_URL:" + p.FileURL.URL + ":" + filename + ":" + mimeType + "]",
+			}
+		}
+		// Fallback: return empty part
+		return openai.ChatMessagePart{
+			Type: openai.ChatMessagePartTypeImageURL,
 		}
 	case "image":
 		// Client format - convert to OpenAI format
@@ -79,6 +113,43 @@ func (p *FlexibleContentPart) ToOpenAIChatMessagePart() openai.ChatMessagePart {
 			Type: openai.ChatMessagePartTypeImageURL, // Will be filtered out by caller
 		}
 	}
+}
+
+// IsFileURLPlaceholder checks if a text contains a file URL placeholder
+func IsFileURLPlaceholder(text string) bool {
+	return len(text) > 10 && text[:10] == "[FILE_URL:"
+}
+
+// ParseFileURLPlaceholder extracts URL, filename, and mime type from a file URL placeholder
+// Returns url, filename, mimeType, ok
+func ParseFileURLPlaceholder(text string) (string, string, string, bool) {
+	if !IsFileURLPlaceholder(text) {
+		return "", "", "", false
+	}
+	// Remove [FILE_URL: prefix and ] suffix
+	inner := text[10 : len(text)-1]
+	// Split by : - but URL may contain :, so we need to be careful
+	// Format: url:filename:mime_type
+	// Find last two colons
+	lastColon := -1
+	secondLastColon := -1
+	for i := len(inner) - 1; i >= 0; i-- {
+		if inner[i] == ':' {
+			if lastColon == -1 {
+				lastColon = i
+			} else {
+				secondLastColon = i
+				break
+			}
+		}
+	}
+	if secondLastColon == -1 || lastColon == -1 {
+		return "", "", "", false
+	}
+	url := inner[:secondLastColon]
+	filename := inner[secondLastColon+1 : lastColon]
+	mimeType := inner[lastColon+1:]
+	return url, filename, mimeType, true
 }
 
 // parseFlexibleContentParts parses JSON-stringified content into flexible content parts
