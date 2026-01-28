@@ -20,6 +20,8 @@ config/secrets.env
 config/*.local.env
 
 # Todo
+/.claude/
+**/.claude/
 /todos
 
 /tests/requests
