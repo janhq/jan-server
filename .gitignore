@@ -302,3 +302,4 @@ tools/jan-cli/config/
 
 # jan-cli binary
 tools/jan-cli/jan-cli
+.claude/settings.local.json
