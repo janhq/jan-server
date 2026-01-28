@@ -10,6 +10,7 @@ import (
 	"jan-server/services/llm-api/internal/domain"
 	"jan-server/services/llm-api/internal/domain/apikey"
 	"jan-server/services/llm-api/internal/domain/conversation"
+	"jan-server/services/llm-api/internal/domain/document"
 	"jan-server/services/llm-api/internal/domain/mcptool"
 	"jan-server/services/llm-api/internal/domain/model"
 	"jan-server/services/llm-api/internal/domain/modelprompttemplate"
@@ -23,6 +24,7 @@ import (
 	"jan-server/services/llm-api/internal/infrastructure/crontab"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/apikeyrepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/conversationrepo"
+	"jan-server/services/llm-api/internal/infrastructure/database/repository/documentrepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/mcptoolrepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/modelprompttemplaterepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/modelrepo"
@@ -41,6 +43,7 @@ import (
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/authhandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/chathandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/conversationhandler"
+	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/documenthandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/guesthandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/imagehandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/mcptoolhandler"
@@ -61,6 +64,7 @@ import (
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/chat"
 	conversation2 "jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/conversation"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/image"
+	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/llm/documents"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/llm/projects"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/messages"
 	model2 "jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/model"
@@ -109,20 +113,26 @@ func CreateApplication() (*Application, error) {
 	projectService := project.NewProjectService(projectRepository)
 	shareRepository := sharerepo.NewShareGormRepository(database)
 	conversationHandler := conversationhandler.NewConversationHandler(conversationService, messageActionService, projectService, shareRepository)
+	// Document service dependencies (used by prompt processor + chat handler)
+	documentContentRepository := documentrepo.NewDocumentContentGormRepository(db)
+	projectFileRepository := documentrepo.NewProjectFileGormRepository(db)
+	projectFileService := document.NewProjectFileService(projectFileRepository, documentContentRepository)
 	client := infrastructure.ProvideKeycloakClient(config, zerologLogger)
 	processorConfig := domain.ProvidePromptProcessorConfig(config, zerologLogger)
 	promptTemplateRepository := prompttemplaterepo.NewPromptTemplateGormRepository(database)
 	prompttemplateService := prompttemplate.NewService(promptTemplateRepository)
 	modelPromptTemplateRepository := modelprompttemplaterepo.NewModelPromptTemplateGormRepository(database)
 	modelprompttemplateService := modelprompttemplate.NewService(modelPromptTemplateRepository, promptTemplateRepository)
-	processorImpl := domain.ProvidePromptProcessor(processorConfig, zerologLogger, prompttemplateService, modelprompttemplateService)
+	processorImpl := domain.ProvidePromptProcessor(processorConfig, zerologLogger, prompttemplateService, modelprompttemplateService, projectFileService)
 	memoryClient := infrastructure.ProvideMemoryClient(config, zerologLogger)
 	usersettingsRepository := usersettingsrepo.NewUserSettingsGormRepository(db)
 	usersettingsService := usersettings.NewService(usersettingsRepository, modelHandler)
 	memoryHandler := handlers.ProvideMemoryHandler(memoryClient, config, usersettingsService)
 	tokenUsageRepository := tokenusagerepo.NewTokenUsageGormRepository(db)
 	tokenusageService := tokenusage.NewService(tokenUsageRepository)
-	chatHandler := chathandler.NewChatHandler(inferenceProvider, providerHandler, conversationHandler, conversationService, projectService, processorImpl, memoryHandler, usersettingsService, tokenusageService)
+	// Document service for file content injection in chat
+	documentService := document.NewDocumentService(documentContentRepository, projectFileRepository, config)
+	chatHandler := chathandler.NewChatHandler(inferenceProvider, providerHandler, conversationHandler, conversationService, projectService, processorImpl, memoryHandler, usersettingsService, tokenusageService, documentService)
 	chatCompletionRoute := chat.NewChatCompletionRoute(chatHandler, authHandler)
 	chatRoute := chat.NewChatRoute(chatCompletionRoute)
 	zImageService := inference.NewZImageService(config)
@@ -158,7 +168,11 @@ func CreateApplication() (*Application, error) {
 	messagesHandler := messageshandler.NewMessagesHandler(inferenceProvider, providerHandler, conversationService)
 	messagesRoute := messages.NewMessagesRoute(messagesHandler, authHandler)
 	usageRoute := usage.NewUsageRoute(usageHandler, authHandler)
-	v1Route := v1.NewV1Route(modelRoute, chatRoute, imageRoute, conversationRoute, branchRoute, projectRoute, adminRoute, usersRoute, promptTemplateHandler, mcpToolHandler, shareRoute, publicShareRoute, messagesRoute, usageRoute)
+	// Document OCR service and routes
+	documentOCRService := inference.NewDocumentOCRService(config)
+	documentHandler := documenthandler.NewDocumentHandler(documentService, projectFileService, projectService, providerService, documentOCRService, mediaclientClient, config)
+	documentRoute := documents.NewDocumentRoute(documentHandler, authHandler)
+	v1Route := v1.NewV1Route(modelRoute, chatRoute, imageRoute, conversationRoute, branchRoute, projectRoute, adminRoute, usersRoute, promptTemplateHandler, mcpToolHandler, shareRoute, publicShareRoute, messagesRoute, usageRoute, documentRoute)
 	guestHandler := guestauth.NewGuestHandler(client, zerologLogger)
 	upgradeHandler := guestauth.NewUpgradeHandler(client, zerologLogger)
 	tokenHandler := authhandler.NewTokenHandler(client, zerologLogger)
@@ -167,7 +181,8 @@ func CreateApplication() (*Application, error) {
 	apikeyService := apikey.NewService(apikeyRepository, repository, client, apikeyConfig, zerologLogger)
 	handler := apikeyhandler.NewHandler(apikeyService, zerologLogger)
 	keycloakOAuthHandler := authhandler.ProvideKeycloakOAuthHandler(config)
-	authRoute := auth.NewAuthRoute(guestHandler, upgradeHandler, tokenHandler, handler, authHandler, keycloakOAuthHandler)
+	registerHandler := authhandler.NewRegisterHandler(client, zerologLogger)
+	authRoute := auth.NewAuthRoute(guestHandler, upgradeHandler, tokenHandler, handler, authHandler, keycloakOAuthHandler, registerHandler)
 	keycloakValidator, err := infrastructure.ProvideKeycloakValidator(config, zerologLogger)
 	if err != nil {
 		return nil, err

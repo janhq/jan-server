@@ -212,9 +212,9 @@ func (p *Planner) CreatePlan(ctx context.Context, request *agent.PlanRequest) (*
 			return nil, err
 		}
 
-		// Step 2: Execute the generated code using aio_code_execute
+		// Step 2: Execute the generated code using sandbox_code_execute
 		codeExecParams, _ := json.Marshal(map[string]interface{}{
-			"tool":        "aio_code_execute",
+			"tool":        "sandbox_code_execute",
 			"language":    "python",
 			"description": "Execute the generated Python code in sandbox",
 		})
@@ -324,7 +324,7 @@ func (p *Planner) detectCodeExecutionNeed(request *agent.PlanRequest) bool {
 	input := strings.ToLower(request.UserMessage)
 	codeKeywords := []string{
 		"python", "script", "code", "program", "execute", "run",
-		"aio_code_execute", "aio_shell_exec", "implementation",
+		"sandbox_code_execute", "sandbox_shell_exec", "implementation",
 		"demonstrate", "example code", "working example",
 		"analysis script", "data analysis", "visualization",
 	}

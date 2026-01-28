@@ -59,6 +59,16 @@ func NewService(repo Repository, userRepo user.Repository, keycloakClient *keycl
 
 // CreateKey generates a new API key for the given user and persists metadata.
 func (s *Service) CreateKey(ctx context.Context, usr *user.User, name string, requestedTTL time.Duration) (*APIKey, string, error) {
+	return s.createKeyInternal(ctx, usr, name, requestedTTL, false)
+}
+
+// CreateSystemKey generates a new system API key (not shown in user's key list).
+func (s *Service) CreateSystemKey(ctx context.Context, usr *user.User, name string, requestedTTL time.Duration) (*APIKey, string, error) {
+	return s.createKeyInternal(ctx, usr, name, requestedTTL, true)
+}
+
+// createKeyInternal is the internal implementation for creating API keys.
+func (s *Service) createKeyInternal(ctx context.Context, usr *user.User, name string, requestedTTL time.Duration, isSystem bool) (*APIKey, string, error) {
 	if usr == nil || usr.ID == 0 {
 		return nil, "", fmt.Errorf("user is required")
 	}
@@ -67,12 +77,15 @@ func (s *Service) CreateKey(ctx context.Context, usr *user.User, name string, re
 		return nil, "", fmt.Errorf("name is required")
 	}
 
-	count, err := s.repo.CountActiveByUser(ctx, usr.ID)
-	if err != nil {
-		return nil, "", err
-	}
-	if s.maxPerUser > 0 && count >= int64(s.maxPerUser) {
-		return nil, "", ErrLimitExceeded
+	// Only enforce limit for user keys, not system keys
+	if !isSystem {
+		count, err := s.repo.CountActiveByUser(ctx, usr.ID)
+		if err != nil {
+			return nil, "", err
+		}
+		if s.maxPerUser > 0 && count >= int64(s.maxPerUser) {
+			return nil, "", ErrLimitExceeded
+		}
 	}
 
 	ttl := s.defaultTTL
@@ -102,6 +115,7 @@ func (s *Service) CreateKey(ctx context.Context, usr *user.User, name string, re
 		Prefix:    s.keyPrefix,
 		Suffix:    displaySuffix,
 		Hash:      keyHash,
+		IsSystem:  isSystem,
 		ExpiresAt: expiresAt,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -112,8 +126,8 @@ func (s *Service) CreateKey(ctx context.Context, usr *user.User, name string, re
 		return nil, "", err
 	}
 
-	// Store API key hash in Keycloak user attributes
-	if s.keycloak != nil {
+	// Store API key hash in Keycloak user attributes (skip for system keys)
+	if s.keycloak != nil && !isSystem {
 		if err := s.keycloak.StoreAPIKeyHash(ctx, usr.Subject, record.ID, keyHash); err != nil {
 			s.logger.Warn().Err(err).Str("user_id", usr.Subject).Msg("failed to store api key in keycloak")
 			// Continue - we have it in database
@@ -123,9 +137,38 @@ func (s *Service) CreateKey(ctx context.Context, usr *user.User, name string, re
 	return persisted, rawKey, nil
 }
 
-// ListKeys returns API keys for the provided user.
+// GetOrCreateSystemKey returns an existing active system key or creates a new one.
+// This enables reuse of system keys instead of creating a new one per request.
+func (s *Service) GetOrCreateSystemKey(ctx context.Context, usr *user.User, requestedTTL time.Duration) (*APIKey, string, error) {
+	if usr == nil || usr.ID == 0 {
+		return nil, "", fmt.Errorf("user is required")
+	}
+
+	// Try to find an existing active system key
+	existingKey, err := s.repo.FindActiveSystemKey(ctx, usr.ID)
+	if err != nil {
+		s.logger.Warn().Err(err).Uint("user_id", usr.ID).Msg("failed to find existing system key, will create new one")
+	}
+
+	if existingKey != nil {
+		s.logger.Debug().
+			Str("key_id", existingKey.ID).
+			Uint("user_id", usr.ID).
+			Time("expires_at", existingKey.ExpiresAt).
+			Msg("reusing existing system key")
+		// Return existing key - note: we can't return the raw key since it's hashed
+		// The caller should handle this case differently
+		return existingKey, "", nil
+	}
+
+	// No existing key found, create a new one
+	name := fmt.Sprintf("system-key-%d", time.Now().UnixNano())
+	return s.CreateSystemKey(ctx, usr, name, requestedTTL)
+}
+
+// ListKeys returns user-created API keys (excludes system keys).
 func (s *Service) ListKeys(ctx context.Context, userID uint) ([]APIKey, error) {
-	items, err := s.repo.ListByUser(ctx, userID)
+	items, err := s.repo.ListUserKeys(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +194,8 @@ func (s *Service) RevokeKey(ctx context.Context, usr *user.User, keyID string) e
 		return fmt.Errorf("mark revoked: %w", err)
 	}
 
-	if s.keycloak != nil {
+	// Skip Keycloak removal for system keys (they were never stored there)
+	if s.keycloak != nil && !key.IsSystem {
 		if usr.Subject != "" {
 			if err := s.keycloak.RemoveAPIKeyHash(ctx, usr.Subject, key.ID); err != nil {
 				s.logger.Warn().

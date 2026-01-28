@@ -3,6 +3,7 @@ package repository
 import (
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/apikeyrepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/conversationrepo"
+	"jan-server/services/llm-api/internal/infrastructure/database/repository/documentrepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/mcptoolrepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/modelrepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/modelprompttemplaterepo"
@@ -31,4 +32,6 @@ var RepositoryProvider = wire.NewSet(
 	sharerepo.NewShareGormRepository,
 	mcptoolrepo.NewMCPToolGormRepository,
 	tokenusagerepo.NewTokenUsageGormRepository,
+	documentrepo.NewDocumentContentGormRepository,
+	documentrepo.NewProjectFileGormRepository,
 )

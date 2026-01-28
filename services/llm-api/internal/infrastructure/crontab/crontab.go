@@ -108,6 +108,10 @@ func (c *Crontab) syncAllProviderModels(ctx context.Context) {
 func (c *Crontab) syncProviderModels(ctx context.Context, provider *model.Provider) {
 	log := logger.GetLogger()
 
+	if provider == nil || provider.Category != model.ProviderCategoryLLM {
+		return
+	}
+
 	models, err := c.inferenceProvider.ListModels(ctx, provider)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to fetch models from provider")

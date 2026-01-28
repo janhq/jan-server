@@ -553,24 +553,24 @@ export const mcpToolService = {
     category?: string;
     is_active?: boolean;
     search?: string;
-  }): Promise<ListResponse<MCPTool>> => {
+  }): Promise<ListResponse<AdminMCPTool>> => {
     const query = params ? buildQueryString(params) : "";
-    return fetchJsonWithAuth<ListResponse<MCPTool>>(
+    return fetchJsonWithAuth<ListResponse<AdminMCPTool>>(
       `${JAN_API_BASE_URL}v1/admin/mcp-tools${query}`,
     );
   },
 
-  getMCPTool: async (publicId: string): Promise<MCPTool> => {
-    return fetchJsonWithAuth<MCPTool>(
+  getMCPTool: async (publicId: string): Promise<AdminMCPTool> => {
+    return fetchJsonWithAuth<AdminMCPTool>(
       `${JAN_API_BASE_URL}v1/admin/mcp-tools/${publicId}`,
     );
   },
 
   updateMCPTool: async (
     publicId: string,
-    data: UpdateMCPToolRequest,
-  ): Promise<MCPTool> => {
-    return fetchJsonWithAuth<MCPTool>(
+    data: UpdateAdminMCPToolRequest,
+  ): Promise<AdminMCPTool> => {
+    return fetchJsonWithAuth<AdminMCPTool>(
       `${JAN_API_BASE_URL}v1/admin/mcp-tools/${publicId}`,
       {
         method: "PATCH",
@@ -579,11 +579,11 @@ export const mcpToolService = {
     );
   },
 
-  activateTool: async (publicId: string): Promise<MCPTool> => {
+  activateTool: async (publicId: string): Promise<AdminMCPTool> => {
     return mcpToolService.updateMCPTool(publicId, { is_active: true });
   },
 
-  deactivateTool: async (publicId: string): Promise<MCPTool> => {
+  deactivateTool: async (publicId: string): Promise<AdminMCPTool> => {
     return mcpToolService.updateMCPTool(publicId, { is_active: false });
   },
 };

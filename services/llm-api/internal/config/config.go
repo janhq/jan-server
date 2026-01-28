@@ -82,7 +82,7 @@ type Config struct {
 	EnableSwagger bool `env:"ENABLE_SWAGGER" envDefault:"true"`
 
 	// Media integration
-	MediaResolveURL     string        `env:"MEDIA_RESOLVE_URL" envDefault:"http://kong:8000/media/v1/media/resolve"`
+	MediaResolveURL     string        `env:"MEDIA_RESOLVE_URL" envDefault:"http://media-api:8285/v1/media"`
 	MediaIngestURL      string        `env:"MEDIA_INGEST_URL" envDefault:"http://kong:8000/media/v1/media"`
 	MediaResolveTimeout time.Duration `env:"MEDIA_RESOLVE_TIMEOUT" envDefault:"5s"`
 
@@ -117,6 +117,13 @@ type Config struct {
 	ImageDefaultStyle          string        `env:"IMAGE_DEFAULT_STYLE" envDefault:"natural"`
 	ImageDefaultResponseFormat string        `env:"IMAGE_DEFAULT_RESPONSE_FORMAT" envDefault:"url"`
 	ImageMediaPresignTTL       time.Duration `env:"IMAGE_MEDIA_PRESIGN_TTL" envDefault:"1h"`
+
+	// Document OCR
+	DocumentOCREnabled     bool          `env:"DOCUMENT_OCR_ENABLED" envDefault:"false"`
+	DocumentOCRTimeout     time.Duration `env:"DOCUMENT_OCR_TIMEOUT" envDefault:"300s"`
+	DocumentOCRModel       string        `env:"DOCUMENT_OCR_MODEL" envDefault:"docling-v1"`
+	DocumentMaxBytes       int64         `env:"DOCUMENT_MAX_BYTES" envDefault:"52428800"` // 50MB
+	DocumentSupportedTypes string        `env:"DOCUMENT_SUPPORTED_TYPES" envDefault:"application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown,text/html,application/rtf"`
 
 	// Analytics (PostHog + OTel)
 	AnalyticsEnabled     bool          `env:"ANALYTICS_ENABLED" envDefault:"true"`

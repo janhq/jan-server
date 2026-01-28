@@ -39,39 +39,39 @@ func NewProviderService(
 }
 
 type RegisterProviderInput struct {
-	Name      string
-	Vendor    string
-	Category  ProviderCategory // "llm" or "image"; defaults to "llm"
-	BaseURL   string
-	Endpoints EndpointList
-	APIKey    string
-	Metadata  map[string]string
-	Active    bool
+	Name                 string
+	Vendor               string
+	Category             ProviderCategory // "llm" or "image"; defaults to "llm"
+	BaseURL              string
+	Endpoints            EndpointList
+	APIKey               string
+	Metadata             map[string]string
+	Active               bool
 	DefaultImageGenerate bool
 	DefaultImageEdit     bool
 }
 
 type UpdateProviderInput struct {
-	Name      *string
-	BaseURL   *string
-	Endpoints *EndpointList
-	APIKey    *string
-	Metadata  *map[string]string
-	Active    *bool
-	Category  *ProviderCategory // Optional category update
+	Name                 *string
+	BaseURL              *string
+	Endpoints            *EndpointList
+	APIKey               *string
+	Metadata             *map[string]string
+	Active               *bool
+	Category             *ProviderCategory // Optional category update
 	DefaultImageGenerate *bool
 	DefaultImageEdit     *bool
 }
 
 type UpsertProviderInput struct {
-	Name      string
-	Vendor    string
-	Category  ProviderCategory // "llm" or "image"; defaults to "llm"
-	BaseURL   string
-	Endpoints EndpointList
-	APIKey    string
-	Metadata  map[string]string
-	Active    bool
+	Name                 string
+	Vendor               string
+	Category             ProviderCategory // "llm" or "image"; defaults to "llm"
+	BaseURL              string
+	Endpoints            EndpointList
+	APIKey               string
+	Metadata             map[string]string
+	Active               bool
 	DefaultImageGenerate bool
 	DefaultImageEdit     bool
 }
@@ -128,28 +128,31 @@ func (s *ProviderService) RegisterProvider(ctx context.Context, input RegisterPr
 	metadata = setDefaultCapabilities(kind, metadata)
 
 	// Default category to LLM if not specified.
-	// Auto-detect category for known image providers (e.g., z-image).
+	// Auto-detect category for known image/OCR providers.
 	category := input.Category
 	if category == "" {
-		if kind == ProviderZImage {
+		switch kind {
+		case ProviderZImage:
 			category = ProviderCategoryImage
-		} else {
+		case ProviderOCR:
+			category = ProviderCategoryOCR
+		default:
 			category = ProviderCategoryLLM
 		}
 	}
 
 	provider := &Provider{
-		PublicID:        publicID,
-		DisplayName:     name,
-		Kind:            kind,
-		Category:        category,
-		EncryptedAPIKey: encryptedAPIKey,
-		APIKeyHint:      apiKeyHint,
-		IsModerated:     false,
-		Active:          input.Active,
+		PublicID:             publicID,
+		DisplayName:          name,
+		Kind:                 kind,
+		Category:             category,
+		EncryptedAPIKey:      encryptedAPIKey,
+		APIKeyHint:           apiKeyHint,
+		IsModerated:          false,
+		Active:               input.Active,
 		DefaultImageGenerate: input.DefaultImageGenerate,
 		DefaultImageEdit:     input.DefaultImageEdit,
-		Metadata:        metadata,
+		Metadata:             metadata,
 	}
 	// SetEndpoints updates both Endpoints and BaseURL (for backward compat)
 	provider.SetEndpoints(endpoints)
@@ -212,6 +215,8 @@ func ProviderKindFromVendor(vendor string) ProviderKind {
 		return ProviderDeepInfra
 	case "z-image", "zimage":
 		return ProviderZImage
+	case "ocr", "docling":
+		return ProviderOCR
 	default:
 		return ProviderCustom
 	}
@@ -314,11 +319,11 @@ func (s *ProviderService) UpsertProvider(ctx context.Context, input UpsertProvid
 	if existing != nil {
 		// Update existing provider
 		updateInput := UpdateProviderInput{
-			BaseURL:   &input.BaseURL,
-			Endpoints: &input.Endpoints,
-			APIKey:    &input.APIKey,
-			Metadata:  &input.Metadata,
-			Active:    &input.Active,
+			BaseURL:              &input.BaseURL,
+			Endpoints:            &input.Endpoints,
+			APIKey:               &input.APIKey,
+			Metadata:             &input.Metadata,
+			Active:               &input.Active,
 			DefaultImageGenerate: &input.DefaultImageGenerate,
 			DefaultImageEdit:     &input.DefaultImageEdit,
 		}
@@ -332,14 +337,14 @@ func (s *ProviderService) UpsertProvider(ctx context.Context, input UpsertProvid
 
 	// Register new provider
 	registerInput := RegisterProviderInput{
-		Name:      input.Name,
-		Vendor:    input.Vendor,
-		Category:  input.Category,
-		BaseURL:   input.BaseURL,
-		Endpoints: input.Endpoints,
-		APIKey:    input.APIKey,
-		Metadata:  input.Metadata,
-		Active:    input.Active,
+		Name:                 input.Name,
+		Vendor:               input.Vendor,
+		Category:             input.Category,
+		BaseURL:              input.BaseURL,
+		Endpoints:            input.Endpoints,
+		APIKey:               input.APIKey,
+		Metadata:             input.Metadata,
+		Active:               input.Active,
 		DefaultImageGenerate: input.DefaultImageGenerate,
 		DefaultImageEdit:     input.DefaultImageEdit,
 	}
@@ -731,4 +736,16 @@ func (s *ProviderService) FindAllActiveProvidersByCategory(ctx context.Context, 
 		Category: &category,
 	}
 	return s.providerRepo.FindByFilter(ctx, filter, nil)
+}
+
+// GetProvidersByCategory returns providers by category with count
+func (s *ProviderService) GetProvidersByCategory(ctx context.Context, category ProviderCategory) ([]*Provider, int, error) {
+	filter := ProviderFilter{
+		Category: &category,
+	}
+	providers, err := s.providerRepo.FindByFilter(ctx, filter, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	return providers, len(providers), nil
 }

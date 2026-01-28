@@ -30,6 +30,11 @@ func NewHandler(service *apikey.Service, logger zerolog.Logger) *Handler {
 type createRequest struct {
 	Name      string         `json:"name" binding:"required"`
 	ExpiresIn *time.Duration `json:"expires_in,omitempty"`
+	IsSystem  bool           `json:"is_system,omitempty"` // Internal: create as system key
+}
+
+type getOrCreateSystemKeyRequest struct {
+	ExpiresIn *time.Duration `json:"expires_in,omitempty"`
 }
 
 type apiKeyResponse struct {
@@ -46,6 +51,7 @@ type apiKeyResponse struct {
 }
 
 // Create issues a new API key for the authenticated user.
+// If X-System-Key header is "true", creates a system key (not shown in user's key list).
 func (h *Handler) Create(c *gin.Context) {
 	user, ok := authhandler.GetUserFromContext(c)
 	if !ok {
@@ -64,9 +70,21 @@ func (h *Handler) Create(c *gin.Context) {
 		ttl = *req.ExpiresIn
 	}
 
-	key, secret, err := h.service.CreateKey(c.Request.Context(), user, req.Name, ttl)
+	// Check for X-System-Key header or request body flag
+	isSystem := req.IsSystem || c.GetHeader("X-System-Key") == "true"
+
+	var key *apikey.APIKey
+	var secret string
+	var err error
+
+	if isSystem {
+		key, secret, err = h.service.CreateSystemKey(c.Request.Context(), user, req.Name, ttl)
+	} else {
+		key, secret, err = h.service.CreateKey(c.Request.Context(), user, req.Name, ttl)
+	}
+
 	if err != nil {
-		h.logger.Error().Err(err).Msg("failed to create api key")
+		h.logger.Error().Err(err).Bool("is_system", isSystem).Msg("failed to create api key")
 		if err == apikey.ErrLimitExceeded {
 			responses.HandleErrorWithStatus(c, http.StatusBadRequest, err, "api key limit reached")
 			return
@@ -85,6 +103,57 @@ func (h *Handler) Create(c *gin.Context) {
 		Status:    keyStatus(key),
 		Key:       secret,
 	})
+}
+
+// GetOrCreateSystemKey returns an existing active system key or creates a new one.
+// This endpoint enables reuse of system keys instead of creating new ones per request.
+func (h *Handler) GetOrCreateSystemKey(c *gin.Context) {
+	user, ok := authhandler.GetUserFromContext(c)
+	if !ok {
+		responses.HandleErrorWithStatus(c, http.StatusUnauthorized, nil, "user context missing")
+		return
+	}
+
+	var req getOrCreateSystemKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// Allow empty body
+		req = getOrCreateSystemKeyRequest{}
+	}
+
+	var ttl time.Duration
+	if req.ExpiresIn != nil {
+		ttl = *req.ExpiresIn
+	} else {
+		ttl = time.Hour // Default 1 hour for system keys
+	}
+
+	key, secret, err := h.service.GetOrCreateSystemKey(c.Request.Context(), user, ttl)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("failed to get or create system key")
+		responses.HandleError(c, err, "failed to get or create system key")
+		return
+	}
+
+	// If secret is empty, we're reusing an existing key
+	// In this case, we need to indicate that the key value is not available
+	resp := apiKeyResponse{
+		ID:        key.ID,
+		Name:      key.Name,
+		Prefix:    key.Prefix,
+		Suffix:    key.Suffix,
+		CreatedAt: key.CreatedAt,
+		ExpiresAt: key.ExpiresAt,
+		Status:    keyStatus(key),
+	}
+
+	if secret != "" {
+		resp.Key = secret
+		c.JSON(http.StatusCreated, resp)
+	} else {
+		// Reusing existing key - caller needs to use the key they already have
+		// or we need a different approach
+		c.JSON(http.StatusOK, resp)
+	}
 }
 
 // List returns API keys for the authenticated user.

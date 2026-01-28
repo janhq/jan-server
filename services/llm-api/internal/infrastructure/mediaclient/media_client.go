@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/imroc/req/v3"
@@ -115,4 +117,88 @@ func (c *Client) UploadBase64Image(ctx context.Context, base64Data string, mimeT
 		Msg("[MediaClient] Image uploaded successfully")
 
 	return &result, nil
+}
+
+// MediaInfo contains metadata about a media object
+type MediaInfo struct {
+	ID          string `json:"id"`
+	URL         string `json:"url"`
+	ContentType string `json:"content_type"`
+	Filename    string `json:"filename"`
+	Size        int64  `json:"size"`
+}
+
+// Resolve retrieves metadata about a media object by its ID (jan_* ID)
+func (c *Client) Resolve(ctx context.Context, mediaObjectID string, authHeader string) (*MediaInfo, error) {
+	if c == nil {
+		return nil, fmt.Errorf("media client not configured")
+	}
+
+	// The media API metadata endpoint: MEDIA_RESOLVE_URL/<media_object_id>/metadata
+	metadataURL := buildMetadataURL(c.cfg.MediaResolveURL, mediaObjectID)
+
+	c.log.Debug().
+		Str("media_object_id", mediaObjectID).
+		Str("metadata_url", metadataURL).
+		Msg("[MediaClient] Getting media object metadata")
+
+	req := c.client.R().
+		SetContext(ctx)
+
+	// Add auth header if provided
+	if authHeader != "" {
+		req.SetHeader("Authorization", authHeader)
+	}
+
+	resp, err := req.Get(metadataURL)
+
+	if err != nil {
+		c.log.Error().Err(err).Str("media_object_id", mediaObjectID).Msg("[MediaClient] Failed to resolve media object")
+		return nil, fmt.Errorf("media resolve failed: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		c.log.Error().
+			Int("status", resp.StatusCode).
+			Str("body", resp.String()).
+			Str("media_object_id", mediaObjectID).
+			Msg("[MediaClient] Media API returned error on resolve")
+		return nil, fmt.Errorf("media API returned status %d: %s", resp.StatusCode, resp.String())
+	}
+
+	var result MediaInfo
+	if err := json.Unmarshal(resp.Bytes(), &result); err != nil {
+		c.log.Error().Err(err).Str("body", resp.String()).Msg("[MediaClient] Failed to parse resolve response")
+		return nil, fmt.Errorf("failed to parse media resolve response: %w", err)
+	}
+
+	c.log.Debug().
+		Str("media_url", result.URL).
+		Str("content_type", result.ContentType).
+		Msg("[MediaClient] Media object resolved successfully")
+
+	return &result, nil
+}
+
+func buildMetadataURL(baseURL string, mediaObjectID string) string {
+	trimmed := strings.TrimSpace(baseURL)
+	if trimmed == "" {
+		return fmt.Sprintf("%s/%s/metadata", trimmed, mediaObjectID)
+	}
+
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return fmt.Sprintf("%s/%s/metadata", strings.TrimSuffix(trimmed, "/"), mediaObjectID)
+	}
+
+	path := strings.TrimSuffix(parsed.Path, "/")
+	if strings.HasSuffix(path, "/resolve") {
+		path = strings.TrimSuffix(path, "/resolve")
+	}
+	if path == "" {
+		path = "/v1/media"
+	}
+
+	parsed.Path = fmt.Sprintf("%s/%s/metadata", strings.TrimSuffix(path, "/"), mediaObjectID)
+	return parsed.String()
 }

@@ -1,5 +1,15 @@
-# Copilots
+# AI Assistants
 .github/copilot-instructions.md
+.claude/
+.cursor/
+.aider*
+.codex/
+.codeium/
+.continue/
+.tabnine/
+.windsurf/
+.bolt/
+.v0/
 # Logs
 *.log
 # Temporary files
@@ -23,6 +33,7 @@ config/*.local.env
 /todos
 
 /tests/requests
+/test-results
 
 # Kubernetes secret overrides (never commit these!)
 infra/k8s/**/values-*.local.yaml

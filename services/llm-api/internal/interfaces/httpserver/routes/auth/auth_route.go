@@ -16,6 +16,7 @@ type AuthRoute struct {
 	apiKeyHandler        *apikeyhandler.Handler
 	authHandler          *authhandler.AuthHandler
 	keycloakOAuthHandler *authhandler.KeycloakOAuthHandler
+	registerHandler      *authhandler.RegisterHandler
 }
 
 // NewAuthRoute creates a new auth route
@@ -26,6 +27,7 @@ func NewAuthRoute(
 	apiKeyHandler *apikeyhandler.Handler,
 	authHandler *authhandler.AuthHandler,
 	keycloakOAuthHandler *authhandler.KeycloakOAuthHandler,
+	registerHandler *authhandler.RegisterHandler,
 ) *AuthRoute {
 	return &AuthRoute{
 		guestHandler:         guestHandler,
@@ -34,6 +36,7 @@ func NewAuthRoute(
 		apiKeyHandler:        apiKeyHandler,
 		authHandler:          authHandler,
 		keycloakOAuthHandler: keycloakOAuthHandler,
+		registerHandler:      registerHandler,
 	}
 }
 
@@ -44,6 +47,9 @@ func (a *AuthRoute) RegisterRouter(router gin.IRouter, protectedRouter gin.IRout
 	router.POST("/auth/refresh-token", a.RefreshToken)
 	router.GET("/auth/logout", a.Logout)
 	router.POST("/auth/logout", a.Logout) // Support both GET and POST for logout
+
+	// Public routes - User registration
+	router.POST("/auth/register", a.Register)
 
 	// Public routes - Keycloak OAuth2/OIDC (simplified)
 	router.GET("/auth/login", a.KeycloakLogin)
@@ -60,6 +66,7 @@ func (a *AuthRoute) RegisterRouter(router gin.IRouter, protectedRouter gin.IRout
 	protectedRouter.POST("/auth/api-keys", a.authHandler.WithAppUserAuthChain(a.CreateAPIKey)...)
 	protectedRouter.GET("/auth/api-keys", a.authHandler.WithAppUserAuthChain(a.ListAPIKeys)...)
 	protectedRouter.DELETE("/auth/api-keys/:id", a.authHandler.WithAppUserAuthChain(a.DeleteAPIKey)...)
+	protectedRouter.POST("/auth/system-key", a.authHandler.WithAppUserAuthChain(a.GetOrCreateSystemKey)...)
 }
 
 // CreateGuestLogin godoc
@@ -186,6 +193,23 @@ func (a *AuthRoute) DeleteAPIKey(c *gin.Context) {
 	a.apiKeyHandler.Delete(c)
 }
 
+// GetOrCreateSystemKey godoc
+// @Summary Get or create system API key
+// @Description Returns an existing active system key or creates a new one. System keys are for internal service use and not shown in user's key list.
+// @Tags Authentication API
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param request body object false "Optional TTL configuration"
+// @Success 200 {object} object "Existing system key (key value not returned)"
+// @Success 201 {object} object "New system key created with key value"
+// @Failure 401 {object} responses.ErrorResponse "Unauthorized - invalid or expired token"
+// @Failure 500 {object} responses.ErrorResponse "Internal server error"
+// @Router /auth/system-key [post]
+func (a *AuthRoute) GetOrCreateSystemKey(c *gin.Context) {
+	a.apiKeyHandler.GetOrCreateSystemKey(c)
+}
+
 // ValidateAPIKey godoc
 // @Summary Validate API key (Kong Plugin)
 // @Description Internal endpoint used by Kong API Gateway to validate API keys. Not intended for direct client use.
@@ -275,5 +299,25 @@ func (a *AuthRoute) RevokeKeycloakToken(c *gin.Context) {
 		a.keycloakOAuthHandler.RevokeKeycloakToken(c)
 	} else {
 		c.JSON(500, gin.H{"error": "Keycloak OAuth is not configured"})
+	}
+}
+
+// Register godoc
+// @Summary Register a new user
+// @Description Creates a new user account with email, username, and password
+// @Tags Authentication API
+// @Accept json
+// @Produce json
+// @Param request body authhandler.RegisterRequest true "Registration details"
+// @Success 201 {object} authhandler.RegisterResponse "User created successfully"
+// @Failure 400 {object} responses.ErrorResponse "Invalid request - validation error"
+// @Failure 409 {object} responses.ErrorResponse "Conflict - user already exists"
+// @Failure 500 {object} responses.ErrorResponse "Internal server error"
+// @Router /auth/register [post]
+func (a *AuthRoute) Register(c *gin.Context) {
+	if a.registerHandler != nil {
+		a.registerHandler.Register(c)
+	} else {
+		c.JSON(500, gin.H{"error": "Registration is not configured"})
 	}
 }

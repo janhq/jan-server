@@ -214,6 +214,15 @@ func ensurePlaywrightBrowsers(ctx context.Context, baseURL, cacheDir string) err
 }
 
 func (e *SlideCreatorExecutor) executeExportPPTX(ctx context.Context, params map[string]interface{}, input agent.ExecutionInput) (*agent.ExecutionResult, error) {
+	// Prefer MCP-based sandbox execution if mcpClient is available
+	if e.mcpClient != nil {
+		log.Info().Msg("[slide_creator] Using MCP sandbox tools for PPTX export")
+		return e.executeExportPPTXViaMCP(ctx, params, input)
+	}
+
+	// Fallback to direct AIO HTTP calls (deprecated)
+	log.Warn().Msg("[slide_creator] MCP client not available, falling back to direct AIO HTTP calls (deprecated)")
+
 	if strings.TrimSpace(e.aioBaseURL) == "" {
 		return &agent.ExecutionResult{
 			Status: status.StatusFailed,

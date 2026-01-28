@@ -2,6 +2,7 @@ package chatrequests
 
 import (
 	"encoding/json"
+	"strings"
 
 	"jan-server/services/llm-api/internal/domain/conversation"
 
@@ -9,16 +10,33 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 )
 
+// FileURLContent represents a file URL reference with metadata
+type FileURLContent struct {
+	URL      string `json:"url"`
+	Detail   string `json:"detail,omitempty"`   // "auto", "low", "high"
+	Filename string `json:"filename,omitempty"` // Original filename
+	Name     string `json:"name,omitempty"`     // Display name / filename
+	MimeType string `json:"mime_type,omitempty"`
+}
+
 // FlexibleContentPart represents a content part that can handle multiple formats:
 // - OpenAI format: {"type": "image_url", "image_url": {"url": "..."}}
+// - File URL format: {"type": "file_url", "file_url": {"url": "...", "filename": "..."}}
+// - File format: {"type": "file", "file": {"url": "...", "name": "...", "mime_type": "..."}}
 // - Client format (browser-mcp): {"type": "image", "data": "<image url>", "mimeType": "image/png"}
-// - Text format: {"type": "text", "text": "..."}
+// - Text format: {"type": "text", "text": "..."} or {"type": "input_text", "input_text": "..."}
 // - Tool result format: {"type": "tool_result", "tool_result": "..."}
 type FlexibleContentPart struct {
 	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
+	// Responses-style text format
+	InputText string `json:"input_text,omitempty"`
 	// OpenAI format for images
 	ImageURL *openai.ChatMessageImageURL `json:"image_url,omitempty"`
+	// File URL format for document attachments
+	FileURL *FileURLContent `json:"file_url,omitempty"`
+	// File format for document attachments
+	File *FileURLContent `json:"file,omitempty"`
 	// Client format for images (browser-mcp, etc.)
 	Data        string `json:"data,omitempty"`
 	MimeType    string `json:"mimeType,omitempty"`
@@ -35,6 +53,15 @@ func (p *FlexibleContentPart) ToOpenAIChatMessagePart() openai.ChatMessagePart {
 			Type: openai.ChatMessagePartTypeText,
 			Text: p.Text,
 		}
+	case "input_text":
+		text := p.InputText
+		if text == "" {
+			text = p.Text
+		}
+		return openai.ChatMessagePart{
+			Type: openai.ChatMessagePartTypeText,
+			Text: text,
+		}
 	case "tool_result":
 		// Tool result format (browser-mcp, etc.) - convert to text part
 		// The tool_result field contains the actual content
@@ -47,6 +74,55 @@ func (p *FlexibleContentPart) ToOpenAIChatMessagePart() openai.ChatMessagePart {
 		return openai.ChatMessagePart{
 			Type:     openai.ChatMessagePartTypeImageURL,
 			ImageURL: p.ImageURL,
+		}
+	case "file_url":
+		// File URL format - mark with special prefix for later text injection
+		// The actual file content will be injected in chat handler
+		if p.FileURL != nil && p.FileURL.URL != "" {
+			filename := p.FileURL.Filename
+			if filename == "" {
+				filename = p.FileURL.Name
+			}
+			if filename == "" {
+				filename = "document"
+			}
+			// Return a text placeholder that will be replaced with actual content
+			// Format: [FILE_URL:url:filename:mime_type]
+			mimeType := p.FileURL.MimeType
+			if mimeType == "" {
+				mimeType = "application/octet-stream"
+			}
+			return openai.ChatMessagePart{
+				Type: openai.ChatMessagePartTypeText,
+				Text: "[FILE_URL:" + p.FileURL.URL + ":" + filename + ":" + mimeType + "]",
+			}
+		}
+		// Fallback: return empty part
+		return openai.ChatMessagePart{
+			Type: openai.ChatMessagePartTypeImageURL,
+		}
+	case "file":
+		// File format - mark with special prefix for later text injection
+		if p.File != nil && p.File.URL != "" {
+			filename := p.File.Filename
+			if filename == "" {
+				filename = p.File.Name
+			}
+			if filename == "" {
+				filename = "document"
+			}
+			mimeType := p.File.MimeType
+			if mimeType == "" {
+				mimeType = "application/octet-stream"
+			}
+			return openai.ChatMessagePart{
+				Type: openai.ChatMessagePartTypeText,
+				Text: "[FILE_URL:" + p.File.URL + ":" + filename + ":" + mimeType + "]",
+			}
+		}
+		// Fallback: return empty part
+		return openai.ChatMessagePart{
+			Type: openai.ChatMessagePartTypeImageURL,
 		}
 	case "image":
 		// Client format - convert to OpenAI format
@@ -81,14 +157,54 @@ func (p *FlexibleContentPart) ToOpenAIChatMessagePart() openai.ChatMessagePart {
 	}
 }
 
-// parseFlexibleContentParts parses JSON-stringified content into flexible content parts
-// and converts them to OpenAI format
-func parseFlexibleContentParts(jsonContent string) ([]openai.ChatMessagePart, error) {
-	var flexibleParts []FlexibleContentPart
-	if err := json.Unmarshal([]byte(jsonContent), &flexibleParts); err != nil {
-		return nil, err
+// IsFileURLPlaceholder checks if a text contains a file URL placeholder
+func IsFileURLPlaceholder(text string) bool {
+	if len(text) < 12 {
+		return false
 	}
+	if !strings.HasPrefix(text, "[FILE_URL:") {
+		return false
+	}
+	if !strings.HasSuffix(text, "]") {
+		return false
+	}
+	return true
+}
 
+// ParseFileURLPlaceholder extracts URL, filename, and mime type from a file URL placeholder
+// Returns url, filename, mimeType, ok
+func ParseFileURLPlaceholder(text string) (string, string, string, bool) {
+	if !IsFileURLPlaceholder(text) {
+		return "", "", "", false
+	}
+	// Remove [FILE_URL: prefix and ] suffix
+	inner := text[10 : len(text)-1]
+	// Split by : - but URL may contain :, so we need to be careful
+	// Format: url:filename:mime_type
+	// Find last two colons
+	lastColon := -1
+	secondLastColon := -1
+	for i := len(inner) - 1; i >= 0; i-- {
+		if inner[i] == ':' {
+			if lastColon == -1 {
+				lastColon = i
+			} else {
+				secondLastColon = i
+				break
+			}
+		}
+	}
+	if secondLastColon == -1 || lastColon == -1 {
+		return "", "", "", false
+	}
+	url := inner[:secondLastColon]
+	filename := inner[secondLastColon+1 : lastColon]
+	mimeType := inner[lastColon+1:]
+	return url, filename, mimeType, true
+}
+
+// convertFlexibleContentParts converts flexible content parts into OpenAI format
+func convertFlexibleContentParts(flexibleParts []FlexibleContentPart) []openai.ChatMessagePart {
 	result := make([]openai.ChatMessagePart, 0, len(flexibleParts))
 	for _, fp := range flexibleParts {
 		part := fp.ToOpenAIChatMessagePart()
@@ -105,8 +221,27 @@ func parseFlexibleContentParts(jsonContent string) ([]openai.ChatMessagePart, er
 		}
 		result = append(result, part)
 	}
+	return result
+}
 
-	return result, nil
+// parseFlexibleContentParts parses JSON-stringified content into flexible content parts
+// and converts them to OpenAI format
+func parseFlexibleContentParts(jsonContent string) ([]openai.ChatMessagePart, error) {
+	var flexibleParts []FlexibleContentPart
+	if err := json.Unmarshal([]byte(jsonContent), &flexibleParts); err != nil {
+		return nil, err
+	}
+	return convertFlexibleContentParts(flexibleParts), nil
+}
+
+// parseFlexibleContentPartsFromRaw parses JSON array content into flexible content parts
+// and converts them to OpenAI format
+func parseFlexibleContentPartsFromRaw(rawContent json.RawMessage) ([]openai.ChatMessagePart, error) {
+	var flexibleParts []FlexibleContentPart
+	if err := json.Unmarshal(rawContent, &flexibleParts); err != nil {
+		return nil, err
+	}
+	return convertFlexibleContentParts(flexibleParts), nil
 }
 
 // ChatCompletionRequest extends OpenAI's ChatCompletionRequest with conversation support
@@ -185,7 +320,7 @@ func (c *ConversationReference) IsEmpty() bool {
 }
 
 // UnmarshalJSON implements custom unmarshaling for ChatCompletionRequest
-// to handle JSON-stringified content in messages (e.g., tool messages with images)
+// to handle JSON content arrays (including input_text/file parts) and JSON-stringified content
 func (r *ChatCompletionRequest) UnmarshalJSON(data []byte) error {
 	// Create an alias to avoid infinite recursion
 	type Alias ChatCompletionRequest
@@ -200,41 +335,83 @@ func (r *ChatCompletionRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	// Post-process messages to handle JSON-stringified content
-	for i := range r.Messages {
-		msg := &r.Messages[i]
+	// Parse messages with raw content to support content arrays (input_text/file/etc.)
+	var raw struct {
+		Messages []json.RawMessage `json:"messages"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
 
-		// Check if content is a JSON-stringified array (starts with '[{')
-		if msg.Content != "" && len(msg.Content) > 2 && msg.Content[0] == '[' && msg.Content[1] == '{' {
-			log.Info().Int("message_index", i).Str("role", msg.Role).Str("content_prefix", msg.Content[:min(50, len(msg.Content))]).Msg("Detected JSON-stringified content")
-
-			// Use flexible parser that handles both OpenAI and client formats
-			parts, err := parseFlexibleContentParts(msg.Content)
-			if err == nil {
-				// Successfully parsed - log details for debugging
-				for j, part := range parts {
-					if part.Type == openai.ChatMessagePartTypeImageURL && part.ImageURL != nil {
-						urlPreview := part.ImageURL.URL
-						if len(urlPreview) > 80 {
-							urlPreview = urlPreview[:80] + "..."
-						}
-						log.Info().Int("message_index", i).Int("part_index", j).Str("type", string(part.Type)).Str("image_url", urlPreview).Msg("Parsed image part")
-					} else if part.Type == openai.ChatMessagePartTypeText {
-						textPreview := part.Text
-						if len(textPreview) > 50 {
-							textPreview = textPreview[:50] + "..."
-						}
-						log.Debug().Int("message_index", i).Int("part_index", j).Str("type", string(part.Type)).Str("text_preview", textPreview).Msg("Parsed text part")
-					}
-				}
-				log.Info().Int("message_index", i).Int("parts_count", len(parts)).Msg("Successfully parsed stringified JSON to MultiContent")
-				msg.MultiContent = parts
-				msg.Content = "" // Clear the string content
-			} else {
-				log.Warn().Err(err).Int("message_index", i).Msg("Failed to parse stringified JSON, leaving as-is for backward compatibility")
+	if len(raw.Messages) > 0 {
+		parsedMessages := make([]openai.ChatCompletionMessage, 0, len(raw.Messages))
+		for i, rawMsg := range raw.Messages {
+			var msg struct {
+				Role             string               `json:"role"`
+				Content          json.RawMessage      `json:"content,omitempty"`
+				Refusal          string               `json:"refusal,omitempty"`
+				Name             string               `json:"name,omitempty"`
+				ReasoningContent string               `json:"reasoning_content,omitempty"`
+				FunctionCall     *openai.FunctionCall `json:"function_call,omitempty"`
+				ToolCalls        []openai.ToolCall    `json:"tool_calls,omitempty"`
+				ToolCallID       string               `json:"tool_call_id,omitempty"`
 			}
-			// If parsing fails, leave content as-is (backward compatibility)
+			if err := json.Unmarshal(rawMsg, &msg); err != nil {
+				return err
+			}
+
+			parsed := openai.ChatCompletionMessage{
+				Role:             msg.Role,
+				Refusal:          msg.Refusal,
+				Name:             msg.Name,
+				ReasoningContent: msg.ReasoningContent,
+				FunctionCall:     msg.FunctionCall,
+				ToolCalls:        msg.ToolCalls,
+				ToolCallID:       msg.ToolCallID,
+			}
+
+			contentRaw := strings.TrimSpace(string(msg.Content))
+			if contentRaw != "" && contentRaw != "null" {
+				switch contentRaw[0] {
+				case '"':
+					var contentStr string
+					if err := json.Unmarshal(msg.Content, &contentStr); err != nil {
+						return err
+					}
+					// Check if content is a JSON-stringified array (starts with '[{')
+					if len(contentStr) > 2 && contentStr[0] == '[' && contentStr[1] == '{' {
+						log.Info().Int("message_index", i).Str("role", msg.Role).Str("content_prefix", contentStr[:min(50, len(contentStr))]).Msg("Detected JSON-stringified content")
+						parts, err := parseFlexibleContentParts(contentStr)
+						if err == nil {
+							parsed.MultiContent = parts
+							continue
+						}
+						log.Warn().Err(err).Int("message_index", i).Msg("Failed to parse stringified JSON, leaving as-is for backward compatibility")
+					}
+					parsed.Content = contentStr
+				case '[':
+					parts, err := parseFlexibleContentPartsFromRaw(msg.Content)
+					if err == nil {
+						parsed.MultiContent = parts
+					} else {
+						log.Warn().Err(err).Int("message_index", i).Msg("Failed to parse content array as flexible parts")
+						// Fallback to OpenAI parts if possible
+						var openAIParts []openai.ChatMessagePart
+						if errFallback := json.Unmarshal(msg.Content, &openAIParts); errFallback == nil {
+							parsed.MultiContent = openAIParts
+						} else {
+							parsed.Content = contentRaw
+						}
+					}
+				default:
+					parsed.Content = contentRaw
+				}
+			}
+
+			parsedMessages = append(parsedMessages, parsed)
 		}
+
+		r.Messages = parsedMessages
 	}
 
 	return nil

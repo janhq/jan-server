@@ -19,6 +19,7 @@ type APIKey struct {
 	Prefix     string    `gorm:"type:varchar(32);not null"`
 	Suffix     string    `gorm:"type:varchar(8);not null"`
 	Hash       string    `gorm:"type:varchar(128);not null"`
+	IsSystem   bool      `gorm:"not null;default:false;index"` // True for system-generated keys
 	ExpiresAt  time.Time `gorm:"not null;index"`
 	RevokedAt  *time.Time
 	LastUsedAt *time.Time
@@ -38,6 +39,7 @@ func (k *APIKey) EtoD() *apikey.APIKey {
 		Prefix:     k.Prefix,
 		Suffix:     k.Suffix,
 		Hash:       k.Hash,
+		IsSystem:   k.IsSystem,
 		ExpiresAt:  k.ExpiresAt,
 		RevokedAt:  k.RevokedAt,
 		LastUsedAt: k.LastUsedAt,
@@ -58,6 +60,7 @@ func FromDomain(apiKey *apikey.APIKey) *APIKey {
 		Prefix:     apiKey.Prefix,
 		Suffix:     apiKey.Suffix,
 		Hash:       apiKey.Hash,
+		IsSystem:   apiKey.IsSystem,
 		ExpiresAt:  apiKey.ExpiresAt,
 		RevokedAt:  apiKey.RevokedAt,
 		LastUsedAt: apiKey.LastUsedAt,

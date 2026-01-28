@@ -91,11 +91,32 @@ export function buildMessageContent(
     });
   }
 
+  // Process files - separate images from documents
   message.files?.forEach((file) => {
-    if (file.url) {
+    if (!file.url) return;
+
+    const isImage = file.mediaType?.startsWith("image/");
+
+    if (isImage) {
+      // Store images as image type (backward compatible with main branch)
       content.push({
         type: "image",
         image: { url: file.url },
+      });
+    } else {
+      const filename = file.filename || "document";
+      const mimeType = file.mediaType || "application/octet-stream";
+      // Store file reference for UI and backend attachment handling
+      content.push({
+        type: "file",
+        file: {
+          url: file.url,
+          name: filename,
+          mime_type: mimeType,
+          // Keep legacy keys for backward compatibility
+          filename,
+          mediaType: mimeType,
+        },
       });
     }
   });

@@ -3,7 +3,6 @@ import { Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
   Box,
-  Check,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
@@ -23,7 +22,6 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,

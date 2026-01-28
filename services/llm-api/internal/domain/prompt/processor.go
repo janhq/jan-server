@@ -30,6 +30,8 @@ func modulePriority(module Module) int {
 		return -15
 	case *ProjectInstructionModule:
 		return -10
+	case *ProjectFilesModule:
+		return -5 // After project instructions, before user profile
 	case *UserProfileModule:
 		return 5
 	case *MemoryModule:

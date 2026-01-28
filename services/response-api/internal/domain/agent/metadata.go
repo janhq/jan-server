@@ -1,7 +1,10 @@
 // Package agent defines interfaces and types for agent execution.
 package agent
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // AgentMetadata contains descriptive information about an agent for discovery.
 type AgentMetadata struct {
@@ -75,6 +78,140 @@ type AgentCapability struct {
 	Type     string   `json:"type"`
 	UseWhen  string   `json:"use_when"`
 	Keywords []string `json:"keywords"`
+}
+
+// SandboxCapabilities defines what sandbox features are available.
+// This is static configuration, not dynamic tool detection.
+type SandboxCapabilities struct {
+	// Enabled is true if any sandbox provider is configured (AIO or E2B)
+	Enabled bool `json:"enabled"`
+
+	// Provider is "aio", "e2b", or "" if disabled
+	Provider string `json:"provider"`
+
+	// HasBrowser is true if sandbox has browser automation (E2B desktop)
+	HasBrowser bool `json:"has_browser"`
+
+	// HasCodeExecution is true if sandbox can execute code
+	HasCodeExecution bool `json:"has_code_execution"`
+}
+
+// GetSandboxCapabilities returns sandbox capabilities based on provider config.
+// This is deterministic - based on configuration, not runtime tool availability.
+func GetSandboxCapabilities(sandboxProvider string) SandboxCapabilities {
+	provider := strings.ToLower(strings.TrimSpace(sandboxProvider))
+
+	switch provider {
+	case "e2b":
+		return SandboxCapabilities{
+			Enabled:          true,
+			Provider:         "e2b",
+			HasBrowser:       true, // E2B desktop has browser
+			HasCodeExecution: true,
+		}
+	case "aio":
+		return SandboxCapabilities{
+			Enabled:          true,
+			Provider:         "aio",
+			HasBrowser:       false, // AIO doesn't have MCP browser control yet
+			HasCodeExecution: true,
+		}
+	default:
+		return SandboxCapabilities{
+			Enabled:          false,
+			Provider:         "",
+			HasBrowser:       false,
+			HasCodeExecution: false,
+		}
+	}
+}
+
+// AgentCapabilityRequirements defines what an agent needs to function.
+type AgentCapabilityRequirements struct {
+	// RequiresSandbox - agent needs sandbox for core functionality
+	RequiresSandbox bool `json:"requires_sandbox"`
+
+	// RequiresBrowser - agent needs browser automation
+	RequiresBrowser bool `json:"requires_browser"`
+
+	// RequiresCodeExecution - agent needs code execution
+	RequiresCodeExecution bool `json:"requires_code_execution"`
+}
+
+// GetAgentCapabilityRequirements returns capability requirements for an agent.
+func GetAgentCapabilityRequirements(agentType string) AgentCapabilityRequirements {
+	switch agentType {
+	case "deep_research":
+		return AgentCapabilityRequirements{
+			RequiresSandbox:       false, // Can work with just search + scrape
+			RequiresBrowser:       false,
+			RequiresCodeExecution: false, // Code execution is optional enhancement
+		}
+	case "slide_creator":
+		return AgentCapabilityRequirements{
+			RequiresSandbox:       true, // Needs sandbox for PPTX export (runs Node.js + pptxgenjs)
+			RequiresBrowser:       false,
+			RequiresCodeExecution: true, // Runs code to generate PPTX
+		}
+	case "doc_generator":
+		return AgentCapabilityRequirements{
+			RequiresSandbox:       true,  // Needs sandbox for DOCX generation
+			RequiresBrowser:       false,
+			RequiresCodeExecution: true,
+		}
+	case "pdf_generator":
+		return AgentCapabilityRequirements{
+			RequiresSandbox:       true,  // Needs sandbox for PDF rendering
+			RequiresBrowser:       false,
+			RequiresCodeExecution: true,
+		}
+	case "spreadsheet_generator":
+		return AgentCapabilityRequirements{
+			RequiresSandbox:       true,  // Needs sandbox for XLSX generation
+			RequiresBrowser:       false,
+			RequiresCodeExecution: true,
+		}
+	default:
+		return AgentCapabilityRequirements{}
+	}
+}
+
+// CheckAgentEnabled checks if an agent can be enabled based on sandbox capabilities.
+// This is deterministic - based on static config, not dynamic tool list.
+func CheckAgentEnabled(agentType string, sandbox SandboxCapabilities) bool {
+	reqs := GetAgentCapabilityRequirements(agentType)
+
+	if reqs.RequiresSandbox && !sandbox.Enabled {
+		return false
+	}
+	if reqs.RequiresBrowser && !sandbox.HasBrowser {
+		return false
+	}
+	if reqs.RequiresCodeExecution && !sandbox.HasCodeExecution {
+		return false
+	}
+
+	return true
+}
+
+// GetEnabledAgentTypes returns agent types that are enabled given sandbox config.
+func GetEnabledAgentTypes(sandboxProvider string) []string {
+	sandbox := GetSandboxCapabilities(sandboxProvider)
+	allAgents := []string{
+		"deep_research",
+		"slide_creator",
+		"doc_generator",
+		"pdf_generator",
+		"spreadsheet_generator",
+	}
+
+	enabled := make([]string, 0, len(allAgents))
+	for _, agentType := range allAgents {
+		if CheckAgentEnabled(agentType, sandbox) {
+			enabled = append(enabled, agentType)
+		}
+	}
+	return enabled
 }
 
 // DeepResearchMetadata returns metadata for the deep research agent.

@@ -131,7 +131,7 @@ jobs:
       JAN_BASE_URL: "https://api.jan.ai/v1"
       JAN_API_BASE_URL: "https://api.jan.ai/"
       VITE_GA_ID: "G-BWGTGCT2MC"
-      VITE_AUTH_URL: "https://auth.jan.ai"
+      VITE_AUTH_URL: "https://auth.menlo.ai"
       VITE_AUTH_REALM: "jan"
       VITE_AUTH_CLIENT_ID: "jan-client"
       VITE_OAUTH_REDIRECT_URI: "https://chat.jan.ai/auth/callback"

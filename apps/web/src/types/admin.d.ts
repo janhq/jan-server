@@ -227,8 +227,8 @@ interface EffectiveTemplatesResponse {
   templates: Record<string, EffectiveTemplate>;
 }
 
-// MCP Tool Types
-interface MCPTool {
+// MCP Tool Types (Admin management - different from MCP SDK tool in mcp.d.ts)
+interface AdminMCPTool {
   id: string;
   public_id: string;
   tool_key: string;
@@ -244,7 +244,7 @@ interface MCPTool {
   updated_by?: string;
 }
 
-interface UpdateMCPToolRequest {
+interface UpdateAdminMCPToolRequest {
   description?: string;
   category?: string;
   is_active?: boolean;

@@ -73,14 +73,14 @@ export function ProjectConversations({ projectId }: ProjectConversationsProps) {
       const conversationsWithLatest = await Promise.all(
         projectConversations.map(async (conversation) => {
           try {
-            const uiMessages = await getUIMessages(conversation.id);
-            const latestUserMessage = uiMessages.pop();
+            const uiMessagesResult = await getUIMessages(conversation.id);
+            const latestUserMessage = uiMessagesResult.messages.pop();
 
             let latestMessage = "No messages yet";
             if (latestUserMessage) {
               // Get text from the message parts
               const textPart = latestUserMessage.parts.find(
-                (part) => part.type === CONTENT_TYPE.TEXT,
+                (part: { type: string }) => part.type === CONTENT_TYPE.TEXT,
               );
               if (textPart && textPart.type === CONTENT_TYPE.TEXT) {
                 latestMessage = textPart.text;

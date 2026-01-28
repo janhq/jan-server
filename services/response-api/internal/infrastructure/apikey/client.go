@@ -77,6 +77,7 @@ func (c *Client) CreateTemporaryKey(ctx context.Context, bearerToken string, ttl
 	resp, err := c.httpClient.R().
 		SetContext(ctx).
 		SetHeader("Authorization", authHeader).
+		SetHeader("X-System-Key", "true"). // Mark as system key (not shown in user's key list)
 		SetBody(req).
 		SetResult(&result).
 		SetError(&errResp).

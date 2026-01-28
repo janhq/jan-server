@@ -4,16 +4,20 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/rs/zerolog/log"
 
+	sandboxdomain "jan-server/services/mcp-tools/internal/domain/sandbox"
 	"jan-server/services/mcp-tools/internal/infrastructure/llmapi"
+	"jan-server/services/mcp-tools/internal/infrastructure/metrics"
 	"jan-server/services/mcp-tools/internal/infrastructure/toolconfig"
 	"jan-server/services/mcp-tools/internal/interfaces/httpserver/responses"
 	"jan-server/services/mcp-tools/utils/platformerrors"
@@ -38,34 +42,49 @@ var allowedMCPMethods = map[string]bool{
 	"resources/templates/list": true,
 	"resources/read":           true,
 	"resources/subscribe":      true,
+
+	// Logging
+	"logging/setLevel": true,
 }
 
 type MCPRoute struct {
-	searchMCP       *SearchMCP
-	providerMCP     *ProviderMCP
-	sandboxMCP      *SandboxFusionMCP
-	memoryMCP       *MemoryMCP
-	imageMCP        *ImageGenerateMCP
-	imageEditMCP    *ImageEditMCP
-	aioMCP          *AIOMCP
-	agentProxyMCP   *AgentProxyMCP
-	llmClient       *llmapi.Client    // LLM-API client for tool call tracking
-	toolConfigCache *toolconfig.Cache // Cache for dynamic tool descriptions
-	mcpServer       *mcp.Server
-	httpHandler     http.Handler
+	searchMCP         *SearchMCP
+	providerMCP       *ProviderMCP
+	sandboxFusionMCP  *SandboxFusionMCP
+	memoryMCP         *MemoryMCP
+	imageMCP          *ImageGenerateMCP
+	imageEditMCP      *ImageEditMCP
+	sandboxMCP        *SandboxMCP        // Unified sandbox provider (AIO or E2B)
+	sandboxManagement *SandboxManagement // Sandbox lifecycle management (E2B only)
+	agentProxyMCP     *AgentProxyMCP
+	llmClient         *llmapi.Client        // LLM-API client for tool call tracking
+	toolConfigCache   *toolconfig.Cache     // Cache for dynamic tool descriptions
+	sandboxManager    sandboxdomain.Manager // For E2B sandbox state checks
+	sandboxProvider   string                // "aio", "e2b", or ""
+	mcpServer         *mcp.Server
+	httpHandler       http.Handler
+}
+
+type toolInfo struct {
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	InputSchema map[string]interface{} `json:"inputSchema,omitempty"`
 }
 
 func NewMCPRoute(
 	searchMCP *SearchMCP,
 	providerMCP *ProviderMCP,
-	sandboxMCP *SandboxFusionMCP,
+	sandboxFusionMCP *SandboxFusionMCP,
 	memoryMCP *MemoryMCP,
 	imageMCP *ImageGenerateMCP,
 	imageEditMCP *ImageEditMCP,
-	aioMCP *AIOMCP,
+	sandboxMCP *SandboxMCP,
+	sandboxManagement *SandboxManagement,
 	agentProxyMCP *AgentProxyMCP,
 	llmClient *llmapi.Client,
 	toolConfigCache *toolconfig.Cache,
+	sandboxManager sandboxdomain.Manager,
+	sandboxProvider string,
 ) *MCPRoute {
 	impl := &mcp.Implementation{
 		Name:    "menlo-platform",
@@ -76,8 +95,8 @@ func NewMCPRoute(
 	// Pass LLM client to tool handlers for tracking
 	searchMCP.SetLLMClient(llmClient)
 
-	if sandboxMCP != nil {
-		sandboxMCP.SetLLMClient(llmClient)
+	if sandboxFusionMCP != nil {
+		sandboxFusionMCP.SetLLMClient(llmClient)
 	}
 
 	// Register memory tools
@@ -93,8 +112,8 @@ func NewMCPRoute(
 		imageEditMCP.RegisterTools(server)
 	}
 
-	if sandboxMCP != nil {
-		sandboxMCP.RegisterTools(server)
+	if sandboxFusionMCP != nil {
+		sandboxFusionMCP.RegisterTools(server)
 	}
 
 	// Register memory tools
@@ -102,9 +121,15 @@ func NewMCPRoute(
 		memoryMCP.RegisterTools(server)
 	}
 
-	// Register AIO Sandbox tools
-	if aioMCP != nil {
-		aioMCP.RegisterTools(server)
+	// Register unified sandbox tools (AIO or E2B provider)
+	if sandboxMCP != nil {
+		sandboxMCP.SetLLMClient(llmClient)
+		sandboxMCP.RegisterTools(server)
+	}
+
+	// Register sandbox management tools (E2B only)
+	if sandboxManagement != nil && sandboxManagement.IsEnabled() {
+		sandboxManagement.RegisterTools(server)
 	}
 
 	// Register unified run_agent tool for agent execution
@@ -122,17 +147,20 @@ func NewMCPRoute(
 	}
 
 	return &MCPRoute{
-		searchMCP:       searchMCP,
-		providerMCP:     providerMCP,
-		sandboxMCP:      sandboxMCP,
-		memoryMCP:       memoryMCP,
-		imageMCP:        imageMCP,
-		imageEditMCP:    imageEditMCP,
-		aioMCP:          aioMCP,
-		agentProxyMCP:   agentProxyMCP,
-		llmClient:       llmClient,
-		toolConfigCache: toolConfigCache,
-		mcpServer:       server,
+		searchMCP:         searchMCP,
+		providerMCP:       providerMCP,
+		sandboxFusionMCP:  sandboxFusionMCP,
+		memoryMCP:         memoryMCP,
+		imageMCP:          imageMCP,
+		imageEditMCP:      imageEditMCP,
+		sandboxMCP:        sandboxMCP,
+		sandboxManagement: sandboxManagement,
+		agentProxyMCP:     agentProxyMCP,
+		llmClient:         llmClient,
+		toolConfigCache:   toolConfigCache,
+		sandboxManager:    sandboxManager,
+		sandboxProvider:   sandboxProvider,
+		mcpServer:         server,
 		httpHandler: mcp.NewStreamableHTTPHandler(func(_ *http.Request) *mcp.Server {
 			return server
 		}, &mcp.StreamableHTTPOptions{
@@ -177,20 +205,33 @@ func (route *MCPRoute) RegisterRouter(router *gin.RouterGroup) {
 // @Failure 500 {object} responses.ErrorResponse "Internal server error"
 // @Router /v1/mcp [post]
 func (route *MCPRoute) serveMCP(reqCtx *gin.Context) {
-	// Check if this is a tools/list request and intercept it to provide dynamic descriptions
-	// and filter out internal-only tools.
+	// Read and parse the request body to check the method
 	bodyBytes, err := io.ReadAll(reqCtx.Request.Body)
 	if err == nil && len(bodyBytes) > 0 {
 		// Restore body for potential re-use
 		reqCtx.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
 		var payload struct {
-			Method string      `json:"method"`
-			ID     interface{} `json:"id"`
+			Method string                 `json:"method"`
+			ID     interface{}            `json:"id"`
+			Params map[string]interface{} `json:"params,omitempty"`
 		}
-		if json.Unmarshal(bodyBytes, &payload) == nil && payload.Method == "tools/list" {
-			route.handleToolsListWithDynamicDescriptions(reqCtx, payload.ID)
-			return
+		if json.Unmarshal(bodyBytes, &payload) == nil {
+			// Handle tools/list with dynamic filtering
+			if payload.Method == "tools/list" {
+				route.handleToolsListWithDynamicDescriptions(reqCtx, payload.ID)
+				return
+			}
+
+			// Handle tools/call for sandbox_browser_* tools (dynamic tools from E2B sandbox)
+			if payload.Method == "tools/call" && payload.Params != nil {
+				if toolName, ok := payload.Params["name"].(string); ok {
+					if toolName == "sandbox_browser" || strings.HasPrefix(toolName, "sandbox_browser_") {
+						route.handleDynamicBrowserToolCall(reqCtx, payload.ID, toolName, payload.Params)
+						return
+					}
+				}
+			}
 		}
 	}
 
@@ -200,6 +241,7 @@ func (route *MCPRoute) serveMCP(reqCtx *gin.Context) {
 }
 
 // handleToolsListWithDynamicDescriptions handles tools/list with descriptions from the cache
+// and filters tools based on context (x-conversation-id, sandbox state)
 func (route *MCPRoute) handleToolsListWithDynamicDescriptions(reqCtx *gin.Context, requestID interface{}) {
 	ctx := reqCtx.Request.Context()
 
@@ -214,15 +256,9 @@ func (route *MCPRoute) handleToolsListWithDynamicDescriptions(reqCtx *gin.Contex
 			for _, tool := range tools {
 				if tool.Config.Description != "" {
 					descriptionMap[tool.Config.ToolKey] = tool.Config.Description
-					log.Debug().
-						Str("tool_key", tool.Config.ToolKey).
-						Str("description", tool.Config.Description).
-						Msg("Loaded description from cache")
 				}
 			}
 		}
-	} else {
-		log.Debug().Msg("Tool config cache is nil, skipping description override")
 	}
 
 	// Get the base response from the MCP server by calling it directly
@@ -253,12 +289,8 @@ func (route *MCPRoute) handleToolsListWithDynamicDescriptions(reqCtx *gin.Contex
 		Jsonrpc string      `json:"jsonrpc"`
 		ID      interface{} `json:"id"`
 		Result  struct {
-			Tools []struct {
-				Name        string                 `json:"name"`
-				Description string                 `json:"description"`
-				InputSchema map[string]interface{} `json:"inputSchema,omitempty"`
-			} `json:"tools"`
-			NextCursor string `json:"nextCursor,omitempty"`
+			Tools      []toolInfo `json:"tools"`
+			NextCursor string     `json:"nextCursor,omitempty"`
 		} `json:"result"`
 		Error interface{} `json:"error,omitempty"`
 	}
@@ -274,36 +306,20 @@ func (route *MCPRoute) handleToolsListWithDynamicDescriptions(reqCtx *gin.Contex
 		return
 	}
 
-	filteredTools := make([]struct {
-		Name        string                 `json:"name"`
-		Description string                 `json:"description"`
-		InputSchema map[string]interface{} `json:"inputSchema,omitempty"`
-	}, 0, len(rpcResponse.Result.Tools))
-	for _, tool := range rpcResponse.Result.Tools {
-		if strings.HasPrefix(tool.Name, "aio_") {
-			continue
-		}
-		filteredTools = append(filteredTools, tool)
-	}
-	rpcResponse.Result.Tools = filteredTools
+	// --- DYNAMIC TOOL FILTERING ---
+	// Filter and modify tools based on context
+	filteredTools := route.filterToolsForContext(ctx, rpcResponse.Result.Tools)
 
-	// Override descriptions from cache
-	for i := range rpcResponse.Result.Tools {
-		toolName := rpcResponse.Result.Tools[i].Name
+	// Override descriptions from cache for remaining tools
+	for i := range filteredTools {
+		toolName := filteredTools[i].Name
 		if desc, ok := descriptionMap[toolName]; ok && desc != "" {
-			log.Debug().
-				Str("tool_name", toolName).
-				Str("old_desc", rpcResponse.Result.Tools[i].Description[:min(50, len(rpcResponse.Result.Tools[i].Description))]).
-				Str("new_desc", desc[:min(50, len(desc))]).
-				Msg("Overriding tool description from cache")
-			rpcResponse.Result.Tools[i].Description = desc
-		} else {
-			log.Debug().
-				Str("tool_name", toolName).
-				Bool("found_in_map", ok).
-				Msg("No description override for tool")
+			filteredTools[i].Description = desc
 		}
 	}
+
+	// Update response with filtered tools
+	rpcResponse.Result.Tools = filteredTools
 
 	// Send modified response
 	modifiedBody, err := json.Marshal(rpcResponse)
@@ -320,6 +336,317 @@ func (route *MCPRoute) handleToolsListWithDynamicDescriptions(reqCtx *gin.Contex
 	reqCtx.Writer.Header().Set("Content-Type", "application/json")
 	reqCtx.Writer.WriteHeader(http.StatusOK)
 	reqCtx.Writer.Write(modifiedBody)
+}
+
+// sandboxToolPrefixes are prefixes that identify sandbox-related tools
+var sandboxToolPrefixes = []string{
+	"sandbox_", // sandbox_shell_exec, sandbox_file_read, sandbox_start, sandbox_browser_*, etc.
+	"shell_",   // shell_exec (legacy)
+	"file_",    // file_read, file_write, file_list (legacy)
+	"code_",    // code_execute (legacy)
+	"install_", // install_packages (legacy)
+}
+
+// isSandboxTool returns true if the tool name is a sandbox-related tool
+func isSandboxTool(name string) bool {
+	for _, prefix := range sandboxToolPrefixes {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// filterToolsForContext filters tools based on context:
+// - No x-conversation-id: Remove ALL sandbox tools
+// - AIO + x-conversation-id: Include all sandbox execution tools (no management)
+// - E2B + sandbox NOT running: Include only management tools
+// - E2B + sandbox running: Include all tools + dynamic browser tools
+func (route *MCPRoute) filterToolsForContext(ctx context.Context, tools []toolInfo) []toolInfo {
+	// Get conversation_id from X-Conversation-ID header
+	// Sandbox tool visibility only requires X-Conversation-ID, not X-Tool-Call-ID
+	conversationID := GetConversationID(ctx)
+
+	userID := ""
+	if val := ctx.Value("user_id"); val != nil {
+		if str, ok := val.(string); ok {
+			userID = str
+		}
+	}
+
+	log.Debug().
+		Str("conversation_id", conversationID).
+		Str("user_id", userID).
+		Str("sandbox_provider", route.sandboxProvider).
+		Int("total_tools", len(tools)).
+		Msg("Filtering tools for context")
+
+	// If no conversation_id, filter out ALL sandbox tools
+	if conversationID == "" {
+		var filtered []toolInfo
+		for _, tool := range tools {
+			if !isSandboxTool(tool.Name) {
+				filtered = append(filtered, tool)
+			}
+		}
+		log.Debug().Int("filtered_count", len(filtered)).Msg("No conversation_id - removed sandbox tools")
+		return dedupeTools(filtered)
+	}
+
+	// Handle based on sandbox provider
+	switch route.sandboxProvider {
+	case "aio":
+		// AIO: Include all sandbox execution tools (no management, no dynamic browser tools)
+		var filtered []toolInfo
+		for _, tool := range tools {
+			// Skip management tools (AIO doesn't support them)
+			if IsSandboxManagementTool(tool.Name) {
+				continue
+			}
+			// Skip sandbox_browser tools (AIO doesn't have dynamic browser tools from search-mcp-server)
+			if tool.Name == "sandbox_browser" || strings.HasPrefix(tool.Name, "sandbox_browser_") {
+				continue
+			}
+			filtered = append(filtered, tool)
+		}
+		log.Debug().Int("filtered_count", len(filtered)).Msg("AIO - included execution tools")
+		return dedupeTools(filtered)
+
+	case "e2b":
+		// E2B: Check if sandbox is running
+		sandboxRunning := false
+		if route.sandboxManager != nil && userID != "" {
+			running, err := route.sandboxManager.IsRunning(ctx, userID)
+			if err != nil {
+				log.Debug().Err(err).Msg("Failed to check sandbox state, assuming not running")
+			} else {
+				sandboxRunning = running
+			}
+		}
+
+		if !sandboxRunning {
+			// Sandbox NOT running: Include management tools + non-sandbox tools
+			var filtered []toolInfo
+
+			// Add non-sandbox tools from the server response
+			for _, tool := range tools {
+				if !isSandboxTool(tool.Name) {
+					filtered = append(filtered, tool)
+				}
+			}
+
+			// Explicitly add management tools (they may not be in the MCP server response)
+			if route.sandboxManagement != nil && route.sandboxManagement.IsEnabled() {
+				for _, mgmtTool := range route.sandboxManagement.GetManagementToolDefinitions() {
+					filtered = append(filtered, toolInfo{
+						Name:        mgmtTool.Name,
+						Description: mgmtTool.Description,
+						InputSchema: mgmtTool.InputSchema,
+					})
+				}
+			}
+
+			log.Debug().Int("filtered_count", len(filtered)).Msg("E2B - sandbox not running, management tools + non-sandbox tools")
+			return dedupeTools(filtered)
+		}
+
+		// Sandbox IS running: Include all tools + sandbox tools + management tools + dynamic browser tools
+		var allTools []toolInfo
+
+		// Add all tools from the MCP server response
+		allTools = append(allTools, tools...)
+
+		// Explicitly add management tools (they may not be in the MCP server response)
+		if route.sandboxManagement != nil && route.sandboxManagement.IsEnabled() {
+			for _, mgmtTool := range route.sandboxManagement.GetManagementToolDefinitions() {
+				allTools = append(allTools, toolInfo{
+					Name:        mgmtTool.Name,
+					Description: mgmtTool.Description,
+					InputSchema: mgmtTool.InputSchema,
+				})
+			}
+		}
+
+		// Explicitly add sandbox execution tools (they may not be in the MCP server response)
+		if route.sandboxMCP != nil {
+			for _, sandboxTool := range route.sandboxMCP.GetToolDefinitions() {
+				allTools = append(allTools, toolInfo{
+					Name:        sandboxTool.Name,
+					Description: sandboxTool.Description,
+					InputSchema: sandboxTool.InputSchema,
+				})
+			}
+		}
+
+		// Fetch dynamic browser tools from sandbox (from search-mcp-server inside E2B)
+		if route.sandboxManager != nil && userID != "" {
+			dynamicTools, err := route.sandboxManager.GetDynamicTools(ctx, userID)
+			if err != nil {
+				log.Debug().Err(err).Msg("Failed to fetch dynamic tools from sandbox")
+			} else if len(dynamicTools) > 0 {
+				log.Debug().Int("dynamic_count", len(dynamicTools)).Msg("Fetched dynamic tools from sandbox")
+				for _, dt := range dynamicTools {
+					// Normalize browser tool names to sandbox_browser_*
+					normalizedName := toSandboxBrowserToolName(dt.Name)
+					allTools = append(allTools, toolInfo{
+						Name:        normalizedName,
+						Description: dt.Description,
+						InputSchema: dt.InputSchema,
+					})
+				}
+			}
+		}
+
+		log.Debug().Int("total_count", len(allTools)).Msg("E2B - sandbox running, all tools included")
+		return dedupeTools(allTools)
+
+	default:
+		// No sandbox provider: Remove all sandbox tools
+		var filtered []toolInfo
+		for _, tool := range tools {
+			if !isSandboxTool(tool.Name) {
+				filtered = append(filtered, tool)
+			}
+		}
+		log.Debug().Int("filtered_count", len(filtered)).Msg("No sandbox provider - removed sandbox tools")
+		return dedupeTools(filtered)
+	}
+}
+
+// handleDynamicBrowserToolCall handles sandbox_browser_* tool calls by proxying to e2b-service
+func (route *MCPRoute) handleDynamicBrowserToolCall(reqCtx *gin.Context, requestID interface{}, toolName string, params map[string]interface{}) {
+	ctx := reqCtx.Request.Context()
+
+	// Extract user_id from context
+	userID := ""
+	if val := ctx.Value("user_id"); val != nil {
+		if str, ok := val.(string); ok {
+			userID = str
+		}
+	}
+
+	if userID == "" {
+		route.sendMCPError(reqCtx, requestID, -32600, "user_id is required (from JWT)")
+		return
+	}
+
+	// Only E2B supports dynamic browser tools
+	if route.sandboxProvider != "e2b" || route.sandboxManager == nil {
+		route.sendMCPError(reqCtx, requestID, -32601, "sandbox_browser_* tools are only available with E2B sandbox provider")
+		return
+	}
+
+	// Map sandbox_browser_* to actual browser_* tool name inside sandbox
+	actualToolName := fromSandboxBrowserToolName(toolName)
+
+	// Get tool arguments
+	args, _ := params["arguments"].(map[string]interface{})
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+
+	log.Info().
+		Str("tool", toolName).
+		Str("actual_tool", actualToolName).
+		Str("user_id", userID).
+		Msg("Proxying browser tool call to E2B sandbox")
+
+	// Call e2b-service MCP endpoint directly
+	startTime := time.Now()
+	result, err := route.callE2BMCPTool(ctx, userID, actualToolName, args)
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+	metrics.RecordToolCall(toolName, "e2b", status, time.Since(startTime).Seconds())
+	if err != nil {
+		log.Error().Err(err).Str("tool", toolName).Msg("Browser tool execution failed")
+		route.sendMCPError(reqCtx, requestID, -32603, "tool execution failed: "+err.Error())
+		return
+	}
+
+	// Return successful result
+	response := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      requestID,
+		"result":  result,
+	}
+
+	reqCtx.Header("Content-Type", "application/json")
+	reqCtx.JSON(http.StatusOK, response)
+}
+
+// callE2BMCPTool calls a tool via e2b-service MCP endpoint
+func (route *MCPRoute) callE2BMCPTool(ctx context.Context, userID, toolName string, args map[string]interface{}) (map[string]interface{}, error) {
+	if route.sandboxManager == nil {
+		return nil, fmt.Errorf("sandbox manager not available")
+	}
+
+	// Use the Manager's CallTool method to execute the tool
+	return route.sandboxManager.CallTool(ctx, userID, toolName, args)
+}
+
+// sendMCPError sends an MCP JSON-RPC error response
+func (route *MCPRoute) sendMCPError(reqCtx *gin.Context, requestID interface{}, code int, message string) {
+	response := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      requestID,
+		"error": map[string]interface{}{
+			"code":    code,
+			"message": message,
+		},
+	}
+	reqCtx.Header("Content-Type", "application/json")
+	reqCtx.JSON(http.StatusOK, response)
+}
+
+func dedupeTools(tools []toolInfo) []toolInfo {
+	if len(tools) == 0 {
+		return tools
+	}
+	seen := make(map[string]struct{}, len(tools))
+	result := make([]toolInfo, 0, len(tools))
+	for _, tool := range tools {
+		if tool.Name == "" {
+			continue
+		}
+		if _, exists := seen[tool.Name]; exists {
+			continue
+		}
+		seen[tool.Name] = struct{}{}
+		result = append(result, tool)
+	}
+	return result
+}
+
+func toSandboxBrowserToolName(actual string) string {
+	if strings.HasPrefix(actual, "sandbox_browser_") {
+		return actual
+	}
+	if strings.HasPrefix(actual, "browser_") {
+		actual = strings.TrimPrefix(actual, "browser_")
+	} else if actual == "browser" {
+		actual = ""
+	}
+	if actual == "" {
+		return "sandbox_browser"
+	}
+	return "sandbox_browser_" + actual
+}
+
+func fromSandboxBrowserToolName(display string) string {
+	if !strings.HasPrefix(display, "sandbox_browser") {
+		return display
+	}
+	suffix := strings.TrimPrefix(display, "sandbox_browser")
+	suffix = strings.TrimPrefix(suffix, "_")
+	if suffix == "" {
+		return "browser"
+	}
+	if suffix == "browser" || strings.HasPrefix(suffix, "browser_") {
+		return suffix
+	}
+	return "browser_" + suffix
 }
 
 // responseCapture captures HTTP response for modification
@@ -368,31 +695,42 @@ func extractJSONFromSSE(data []byte) []byte {
 	return nil
 }
 
-// InjectUserContext extracts user_id from JWT token and injects it into request context
+// InjectUserContext extracts user_id from JWT token or API key and injects it into request context
 func InjectUserContext() gin.HandlerFunc {
 	return func(reqCtx *gin.Context) {
-		// Try to get auth token from gin context (set by auth middleware)
-		if tokenVal, exists := reqCtx.Get("auth_token"); exists {
-			if token, ok := tokenVal.(*jwt.Token); ok && token.Valid {
-				if claims, ok := token.Claims.(jwt.MapClaims); ok {
-					// Try to extract user_id from various claim fields
-					var userID string
-					if sub, ok := claims["sub"].(string); ok && sub != "" {
-						userID = sub
-					} else if uid, ok := claims["user_id"].(string); ok && uid != "" {
-						userID = uid
-					} else if uid, ok := claims["uid"].(string); ok && uid != "" {
-						userID = uid
-					}
+		var userID string
 
-					if userID != "" {
-						// Inject user_id into request context
-						ctx := context.WithValue(reqCtx.Request.Context(), "user_id", userID)
-						reqCtx.Request = reqCtx.Request.WithContext(ctx)
+		// First, check if user_id was already set by API key validation (in gin context)
+		if uid, exists := reqCtx.Get("user_id"); exists {
+			if str, ok := uid.(string); ok && str != "" {
+				userID = str
+			}
+		}
+
+		// If not set by API key, try to extract from JWT token
+		if userID == "" {
+			if tokenVal, exists := reqCtx.Get("auth_token"); exists {
+				if token, ok := tokenVal.(*jwt.Token); ok && token.Valid {
+					if claims, ok := token.Claims.(jwt.MapClaims); ok {
+						// Try to extract user_id from various claim fields
+						if sub, ok := claims["sub"].(string); ok && sub != "" {
+							userID = sub
+						} else if uid, ok := claims["user_id"].(string); ok && uid != "" {
+							userID = uid
+						} else if uid, ok := claims["uid"].(string); ok && uid != "" {
+							userID = uid
+						}
 					}
 				}
 			}
 		}
+
+		// Inject user_id into request context (required by sandbox tools)
+		if userID != "" {
+			ctx := context.WithValue(reqCtx.Request.Context(), "user_id", userID)
+			reqCtx.Request = reqCtx.Request.WithContext(ctx)
+		}
+
 		reqCtx.Next()
 	}
 }

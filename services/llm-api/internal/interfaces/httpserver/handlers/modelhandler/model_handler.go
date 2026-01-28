@@ -93,7 +93,7 @@ func (modelHandler *ModelHandler) MergeModels(
 	}
 
 	sort.Slice(candidates, func(i, j int) bool {
-		// Jan models first, then by ID
+		// Jan models first
 		iIsJan := candidates[i].providerKind == domainmodel.ProviderJan
 		jIsJan := candidates[j].providerKind == domainmodel.ProviderJan
 		if iIsJan && !jIsJan {
@@ -101,6 +101,22 @@ func (modelHandler *ModelHandler) MergeModels(
 		} else if !iIsJan && jIsJan {
 			return false
 		}
+
+		// Then by category order number (lower = higher priority)
+		iCatOrder := candidates[i].response.CategoryOrderNumber
+		jCatOrder := candidates[j].response.CategoryOrderNumber
+		if iCatOrder != jCatOrder {
+			return iCatOrder < jCatOrder
+		}
+
+		// Then by model order number within category (lower = higher priority)
+		iModelOrder := candidates[i].response.ModelOrderNumber
+		jModelOrder := candidates[j].response.ModelOrderNumber
+		if iModelOrder != jModelOrder {
+			return iModelOrder < jModelOrder
+		}
+
+		// Finally by ID as tiebreaker
 		return candidates[i].response.ID < candidates[j].response.ID
 	})
 

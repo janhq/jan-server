@@ -1,0 +1,13 @@
+[Unit]
+Description=MCP Proxy for search-mcp-server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/mcp-proxy --port 17390 -- /usr/bin/search-mcp-server --bridge-port 17389
+Restart=always
+User=user
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

@@ -13,7 +13,6 @@ import {
   AlertTriangle,
   Copy,
   Check,
-  Filter,
   Info,
   Shield,
 } from "lucide-react";
@@ -40,7 +39,7 @@ import { cn } from "@/lib/utils";
 type EditTabType = "general" | "restrictions";
 
 export function MCPToolsManagement() {
-  const [tools, setTools] = useState<MCPTool[]>([]);
+  const [tools, setTools] = useState<AdminMCPTool[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -51,11 +50,11 @@ export function MCPToolsManagement() {
 
   // Dialog states
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [toolToEdit, setToolToEdit] = useState<MCPTool | null>(null);
+  const [toolToEdit, setToolToEdit] = useState<AdminMCPTool | null>(null);
   const [activeEditTab, setActiveEditTab] = useState<EditTabType>("general");
 
   // Form state
-  const [formData, setFormData] = useState<UpdateMCPToolRequest>({
+  const [formData, setFormData] = useState<UpdateAdminMCPToolRequest>({
     description: "",
     category: "",
     is_active: true,
@@ -100,7 +99,7 @@ export function MCPToolsManagement() {
     }
   }
 
-  async function handleToggleActive(tool: MCPTool) {
+  async function handleToggleActive(tool: AdminMCPTool) {
     try {
       await mcpToolService.updateMCPTool(tool.public_id, {
         is_active: !tool.is_active,
@@ -146,7 +145,7 @@ export function MCPToolsManagement() {
     setActiveEditTab("general");
   }
 
-  function openEditDialog(tool: MCPTool) {
+  function openEditDialog(tool: AdminMCPTool) {
     setToolToEdit(tool);
     setFormData({
       description: tool.description || "",

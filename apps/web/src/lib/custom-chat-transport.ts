@@ -28,34 +28,117 @@ async function passUrlsDirectly(
 }
 
 /**
- * Convert file parts to custom image_url format for the API.
- * The server expects: { type: "image_url", image_url: { url: "<image url>", detail: "auto" } }
+ * Process file parts for the API:
+ * - Images: Keep as 'file' type - the OpenAI-compatible provider will convert to image_url
+ * - Documents: Convert to text parts with providerOptions override to emit { type: "file", file: {...} }
+ *
+ * Note: AI SDK's convertToModelMessages converts FileUIPart.url -> FilePart.data
+ * So we need to check for both 'url' and 'data' fields.
+ *
+ * The backend will:
+ * - Pass image_url parts directly to the LLM provider
+ * - Convert file parts into [FILE_URL:...] placeholders and inject extracted text
  */
-function convertToImageUrlFormat(messages: CoreMessage[]): CoreMessage[] {
+function processFileParts(messages: CoreMessage[]): CoreMessage[] {
   return messages.map((message) => {
     if (message.role === MESSAGE_ROLE.USER && Array.isArray(message.content)) {
       return {
         ...message,
-        content: message.content.map((part) => {
-          // Convert image parts to image_url format
-          if (part.type === "image" && "image" in part) {
-            const imageData = part.image;
-            // If it's a URL string
-            if (typeof imageData === "string") {
-              return {
-                type: "image_url",
-                image_url: {
-                  url: imageData,
-                  detail: "auto",
-                },
+        content: message.content
+          .map((part) => {
+            // Process file parts
+            // AI SDK converts FileUIPart { url } to FilePart { data }
+            if (part.type === "file") {
+              const filePart = part as {
+                type: "file";
+                mediaType?: string;
+                data?: string | Uint8Array; // AI SDK uses 'data' not 'url'
+                url?: string; // Original field (may not be present after conversion)
+                filename?: string;
               };
+              const mediaType = filePart.mediaType || "";
+              // Get URL from either 'data' (after AI SDK conversion) or 'url' (original)
+              const fileUrl =
+                typeof filePart.data === "string"
+                  ? filePart.data
+                  : filePart.url;
+
+              // Images: Keep as file type - OpenAI provider will convert to image_url
+              if (mediaType.startsWith("image/")) {
+                // Return as-is, the provider handles conversion
+                return part;
+              }
+
+              // Documents/files: Convert to text part with providerOptions override
+              // so the request emits { type: "file", file: {...} }
+              if (fileUrl) {
+                return {
+                  type: CONTENT_TYPE.TEXT,
+                  // Non-empty to avoid AI SDK filtering out empty user text parts
+                  text: "[file]",
+                  providerOptions: {
+                    openaiCompatible: {
+                      type: "file",
+                      file: {
+                        url: fileUrl,
+                        name: filePart.filename || "document",
+                        mime_type: mediaType || "application/octet-stream",
+                      },
+                    },
+                  },
+                };
+              }
+              return null;
             }
-          }
-          return part;
-        }),
+
+            return part;
+          })
+          .filter((part): part is NonNullable<typeof part> => part !== null),
       };
     }
     return message;
+  }) as CoreMessage[];
+}
+
+/**
+ * Convert user text parts to input_text parts in the outgoing request.
+ */
+function applyInputTextOverrides(messages: CoreMessage[]): CoreMessage[] {
+  return messages.map((message) => {
+    if (message.role !== MESSAGE_ROLE.USER || !Array.isArray(message.content)) {
+      return message;
+    }
+
+    return {
+      ...message,
+      content: message.content.map((part) => {
+        if (part.type !== CONTENT_TYPE.TEXT) {
+          return part;
+        }
+
+        const existingOptions =
+          (part as { providerOptions?: Record<string, unknown> })
+            .providerOptions ?? {};
+        const existingOpenAI =
+          (existingOptions.openaiCompatible as Record<string, unknown>) ?? {};
+
+        if (existingOpenAI.type === "file") {
+          return part;
+        }
+
+        return {
+          ...part,
+          providerOptions: {
+            ...existingOptions,
+            openaiCompatible: {
+              ...existingOpenAI,
+              type: "input_text",
+              input_text: "text" in part ? part.text : "",
+            },
+          },
+        };
+      }),
+    };
   }) as CoreMessage[];
 }
 
@@ -145,20 +228,18 @@ function filterBase64FromMessages(messages: CoreMessage[]): CoreMessage[] {
 export class CustomChatTransport implements ChatTransport<UIMessage> {
   private model: LanguageModel;
   private tools: Record<string, Tool> = {};
-  private enabledSearch = false;
   private enableBrowse = false;
   private enableImageTools = false;
   private enableAgentMode = false;
 
   constructor(
     model: LanguageModel,
-    enabledSearch?: boolean,
+    _enabledSearch?: boolean, // Reserved for future use
     enableBrowse?: boolean,
     enableImageTools?: boolean,
     enableAgentMode?: boolean,
   ) {
     this.model = model;
-    this.enabledSearch = enabledSearch ?? false;
     this.enableBrowse = enableBrowse ?? false;
     this.enableImageTools = enableImageTools ?? false;
     this.enableAgentMode = enableAgentMode ?? false;
@@ -169,8 +250,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     this.model = model;
   }
 
-  updateSearchEnabled(enabledSearch: boolean) {
-    this.enabledSearch = enabledSearch;
+  updateSearchEnabled(_enabledSearch: boolean) {
+    // Reserved for future use
   }
   updateBrowseEnabled(enableBrowse: boolean) {
     this.enableBrowse = enableBrowse;
@@ -200,13 +281,17 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
               this.enableBrowse ? "browse" : null,
             ].filter(Boolean) as string[]);
       const toolsResponse = await mcpService.getTools(servers);
-      const allowedImageTools = new Set(["generate_image", "edit_image"]);
+        const allowedImageTools = new Set(["generate_image", "edit_image"]);
+        const blockedTools = new Set(["image_search"]);
 
       // Filter tools based on mode
-      const filteredTools = toolsResponse.data.filter((tool) => {
-        // Always filter out AIO tools (prefix: aio_) - these are for internal agent use
-        if (tool.name.startsWith("aio_")) {
-          return false;
+        const filteredTools = toolsResponse.data.filter((tool) => {
+          if (blockedTools.has(tool.name)) {
+            return false;
+          }
+          // Always filter out AIO tools (prefix: aio_) - these are for internal agent use
+          if (tool.name.startsWith("aio_")) {
+            return false;
         }
 
         // Agent mode: only allow run_agent tool
@@ -265,15 +350,16 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // Filter out base64 data from tool results
     const filteredMessages = filterBase64FromMessages(modelMessages);
 
-    // Convert image parts to image_url format for the API
-    const messagesWithImageUrls = convertToImageUrlFormat(filteredMessages);
+    // Process file parts: images stay as-is, documents become file parts
+    const processedMessages = processFileParts(filteredMessages);
+    const normalizedMessages = applyInputTextOverrides(processedMessages);
 
     // Always include tools if we have any loaded
     // Search tools (google_search, scrape) are always sent regardless of user toggle
     const hasTools = Object.keys(this.tools).length > 0;
     const result = streamText({
       model: this.model,
-      messages: messagesWithImageUrls,
+      messages: normalizedMessages,
       abortSignal: options.abortSignal,
       // Pass URLs directly to the model instead of downloading
       // This avoids CORS issues with presigned S3 URLs

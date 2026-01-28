@@ -48,9 +48,9 @@ plugins:
 services:
   - name: llm-api-svc
     url: http://llm-api:8080
-    connect_timeout: 60000
-    write_timeout: 60000
-    read_timeout: 60000
+    connect_timeout: 300000
+    write_timeout: 300000
+    read_timeout: 300000
     retries: 3
     tags: [llm, api]
     routes:
@@ -312,9 +312,9 @@ services:
 
   - name: llm-auth-svc
     url: http://llm-api:8080
-    connect_timeout: 60000
-    write_timeout: 60000
-    read_timeout: 60000
+    connect_timeout: 300000
+    write_timeout: 300000
+    read_timeout: 300000
     retries: 3
     tags: [llm, auth]
     routes:

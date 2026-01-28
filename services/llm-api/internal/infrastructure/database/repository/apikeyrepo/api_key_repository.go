@@ -44,6 +44,42 @@ func (r *Repository) ListByUser(ctx context.Context, userID uint) ([]apikey.APIK
 	return result, nil
 }
 
+// ListUserKeys returns only user-created API keys (excludes system keys).
+func (r *Repository) ListUserKeys(ctx context.Context, userID uint) ([]apikey.APIKey, error) {
+	var models []dbschema.APIKey
+	if err := r.db.WithContext(ctx).
+		Where("user_id = ? AND is_system = ?", userID, false).
+		Order("created_at DESC").
+		Find(&models).Error; err != nil {
+		return nil, platformerrors.AsError(ctx, platformerrors.LayerRepository, err, "failed to list user api keys")
+	}
+	result := make([]apikey.APIKey, 0, len(models))
+	for _, m := range models {
+		if domain := m.EtoD(); domain != nil {
+			result = append(result, *domain)
+		}
+	}
+	return result, nil
+}
+
+// FindActiveSystemKey finds a reusable active system key for the user.
+func (r *Repository) FindActiveSystemKey(ctx context.Context, userID uint) (*apikey.APIKey, error) {
+	var model dbschema.APIKey
+	now := time.Now()
+	// Find an active system key that won't expire in the next 5 minutes
+	minExpiry := now.Add(5 * time.Minute)
+	if err := r.db.WithContext(ctx).
+		Where("user_id = ? AND is_system = ? AND revoked_at IS NULL AND expires_at > ?", userID, true, minExpiry).
+		Order("expires_at DESC"). // Get the one with longest remaining validity
+		First(&model).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, platformerrors.AsError(ctx, platformerrors.LayerRepository, err, "failed to find active system key")
+	}
+	return model.EtoD(), nil
+}
+
 func (r *Repository) FindByID(ctx context.Context, id string) (*apikey.APIKey, error) {
 	var model dbschema.APIKey
 	if err := r.db.WithContext(ctx).First(&model, "id = ?", id).Error; err != nil {

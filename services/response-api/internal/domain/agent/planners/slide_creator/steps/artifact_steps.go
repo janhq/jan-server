@@ -678,7 +678,7 @@ else:
 `, path)
 
 	callReq := tool.CallRequest{
-		Name: "aio_code_execute",
+		Name: "sandbox_code_execute",
 		Arguments: map[string]interface{}{
 			"language": "python",
 			"code":     code,

@@ -81,6 +81,14 @@ This document maps centralized configuration (`pkg/config/types.go`) environment
 | `MODEL_SYNC_INTERVAL_MINUTES` | int | `60` | `MODEL_SYNC_INTERVAL_MINUTES` | OK Aligned |
 | `MEDIA_RESOLVE_URL` | string | `http://kong:8000/media/v1/media/resolve` | `MEDIA_RESOLVE_URL` | OK Aligned |
 | `MEDIA_RESOLVE_TIMEOUT` | duration | `5s` | `MEDIA_RESOLVE_TIMEOUT` | OK Aligned |
+| `DOCUMENT_OCR_ENABLED` | bool | `false` | `DOCUMENT_OCR_ENABLED` | New |
+| `DOCUMENT_OCR_TIMEOUT` | duration | `120s` | `DOCUMENT_OCR_TIMEOUT` | New |
+| `DOCUMENT_OCR_MODEL` | string | `docling-v1` | `DOCUMENT_OCR_MODEL` | New |
+| `DOCUMENT_MAX_BYTES` | int | `52428800` | `DOCUMENT_MAX_BYTES` | New |
+| `DOCUMENT_SUPPORTED_TYPES` | string | (list) | `DOCUMENT_SUPPORTED_TYPES` | New |
+| `DOCLING_ENABLED` | bool | `false` | `DOCLING_ENABLED` | New |
+| `DOCLING_PROVIDER_URL` | string | (empty) | `DOCLING_PROVIDER_URL` | New |
+| `DOCLING_API_KEY` | string | (secret) | `DOCLING_API_KEY` | New |
 
 **Provider Config:**
 | Centralized Env Var | Type | Default | Current Var | Status |

@@ -70,6 +70,9 @@ func (d *DataInitializer) bootstrapProvider(ctx context.Context, entry config.Pr
 	if !entry.SyncModels {
 		return nil
 	}
+	if provider == nil || provider.Category != model.ProviderCategoryLLM {
+		return nil
+	}
 
 	models, err := d.inferenceProvider.ListModels(ctx, provider)
 	if err != nil {
@@ -86,7 +89,14 @@ func (d *DataInitializer) ensureProvider(ctx context.Context, entry config.Provi
 	endpoints := toDomainEndpoints(entry.Endpoints)
 	category := model.ProviderCategory(entry.Category)
 	if category == "" {
-		category = model.ProviderCategoryLLM
+		switch kind {
+		case model.ProviderOCR:
+			category = model.ProviderCategoryOCR
+		case model.ProviderZImage:
+			category = model.ProviderCategoryImage
+		default:
+			category = model.ProviderCategoryLLM
+		}
 	}
 
 	if kind == model.ProviderCustom {

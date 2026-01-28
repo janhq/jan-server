@@ -454,6 +454,12 @@ func (c *Client) passwordGrantTokens(ctx context.Context, email, password string
 	return &token, nil
 }
 
+// GetUserTokens obtains tokens for a user using their email and password via password grant.
+// This is used after registration to enable auto-login.
+func (c *Client) GetUserTokens(ctx context.Context, email, password string) (*TokenSet, error) {
+	return c.passwordGrantTokens(ctx, email, password)
+}
+
 func (c *Client) getRealmRole(ctx context.Context, adminToken, roleName string) (map[string]any, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.adminEndpoint(fmt.Sprintf("/roles/%s", url.PathEscape(roleName))), nil)
 	if err != nil {
@@ -1536,6 +1542,45 @@ func (c *Client) DeleteUser(ctx context.Context, id string) error {
 	if resp.StatusCode >= 300 {
 		payload, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return fmt.Errorf("delete user failed: %s", strings.TrimSpace(string(payload)))
+	}
+	return nil
+}
+
+// SetUserPassword sets the password for a user.
+func (c *Client) SetUserPassword(ctx context.Context, userID, password string, temporary bool) error {
+	token, err := c.adminAuthToken(ctx)
+	if err != nil {
+		return err
+	}
+
+	credential := map[string]interface{}{
+		"type":      "password",
+		"value":     password,
+		"temporary": temporary,
+	}
+	body, err := json.Marshal(credential)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
+		c.adminEndpoint("/users/"+url.PathEscape(userID)+"/reset-password"),
+		bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		payload, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("set user password failed: %s", strings.TrimSpace(string(payload)))
 	}
 	return nil
 }

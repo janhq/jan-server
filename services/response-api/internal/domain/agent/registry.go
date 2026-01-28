@@ -26,6 +26,10 @@ type Registry interface {
 	GetAgent(agentType string) *AgentDetail
 	GetAgentSchema(agentType string) *AgentInputSchema
 	GetAgentCapabilitiesForLLM() []AgentCapability
+
+	// Agent enablement based on sandbox config
+	GetEnabledAgents(sandboxProvider string) []AgentMetadata
+	IsAgentEnabled(agentType string, sandboxProvider string) bool
 }
 
 // DefaultRegistry is the default implementation of Registry.
@@ -189,4 +193,31 @@ func (r *DefaultRegistry) GetAgentCapabilitiesForLLM() []AgentCapability {
 	}
 
 	return capabilities
+}
+
+// GetEnabledAgents returns agents that are enabled based on sandbox configuration.
+// This is deterministic - based on static config, not dynamic tool availability.
+func (r *DefaultRegistry) GetEnabledAgents(sandboxProvider string) []AgentMetadata {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	sandbox := GetSandboxCapabilities(sandboxProvider)
+	allAgents := r.GetAllAgents()
+	enabledAgents := make([]AgentMetadata, 0, len(allAgents))
+
+	for _, agent := range allAgents {
+		if CheckAgentEnabled(agent.Type, sandbox) {
+			agentCopy := agent
+			agentCopy.Enabled = true
+			enabledAgents = append(enabledAgents, agentCopy)
+		}
+	}
+
+	return enabledAgents
+}
+
+// IsAgentEnabled checks if a specific agent is enabled based on sandbox config.
+func (r *DefaultRegistry) IsAgentEnabled(agentType string, sandboxProvider string) bool {
+	sandbox := GetSandboxCapabilities(sandboxProvider)
+	return CheckAgentEnabled(agentType, sandbox)
 }

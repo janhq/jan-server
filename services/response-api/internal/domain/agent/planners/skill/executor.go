@@ -253,7 +253,7 @@ func (e *Executor) executeWithRetry(
 	codeFixRetryCount int,
 ) (*agent.ExecutionResult, error) {
 	callReq := tool.CallRequest{
-		Name: "aio_code_execute",
+		Name: "sandbox_code_execute",
 		Arguments: map[string]interface{}{
 			"language": "python",
 			"code":     code,
@@ -327,7 +327,7 @@ func (e *Executor) executeWithRetry(
 
 func (e *Executor) installPackage(ctx context.Context, packageName string, input agent.ExecutionInput) (*tool.Result, error) {
 	callReq := tool.CallRequest{
-		Name: "aio_install_packages",
+		Name: "sandbox_install_packages",
 		Arguments: map[string]interface{}{
 			"packages": []string{packageName},
 		},
@@ -357,7 +357,7 @@ func (e *Executor) readFileFromSandbox(ctx context.Context, path string, input a
 
 	// For text files, use the standard file read
 	callReq := tool.CallRequest{
-		Name: "aio_file_read",
+		Name: "sandbox_file_read",
 		Arguments: map[string]interface{}{
 			"path": path,
 		},
@@ -412,7 +412,7 @@ else:
 `, path)
 
 	callReq := tool.CallRequest{
-		Name: "aio_code_execute",
+		Name: "sandbox_code_execute",
 		Arguments: map[string]interface{}{
 			"language": "python",
 			"code":     code,

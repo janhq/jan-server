@@ -1,0 +1,290 @@
+{
+  "info": {
+    "name": "jan-server conversation-ocr",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Request Guest Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{kong_url}}/auth/guest-login",
+            "description": "Provision a new guest and capture issued tokens."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('guest token issued', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(data).to.have.property('access_token');",
+                  "    pm.expect(data.access_token).to.be.a('string').and.not.empty;",
+                  "    pm.collectionVariables.set('access_token', data.access_token);",
+                  "});",
+                  "pm.test('response includes expiry', function () {",
+                  "    pm.expect(data).to.have.property('expires_in');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Model Catalogue",
+      "description": "Capture a usable model id for the chat steps.",
+      "item": [
+        {
+          "name": "List Available Models",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/v1/models",
+            "description": "Use the guest token to fetch available models and keep the first id handy."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json();",
+                  "pm.test('models request succeeded', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(payload.data).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "if (payload.data && payload.data.length > 0) {",
+                  "    pm.collectionVariables.set('model_id', payload.data[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Conversation",
+      "item": [
+        {
+          "name": "Create Conversation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"OCR Test Conversation\"\n}"
+            },
+            "url": "{{gateway_url}}/v1/conversations"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set('conversation_id', data.id);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Media Upload",
+      "item": [
+        {
+          "name": "Ingest OCR Test Document (Data URL)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Media-Service-Key",
+                "value": "{{media_service_key}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": {\n    \"type\": \"data_url\",\n    \"data_url\": \"data:text/plain;base64,SGVsbG8gT0NSClRoaXMgaXMgYSB0ZXN0IGRvY3VtZW50IGZvciBKYW4gU2VydmVyLgpQbGVhc2Ugc3VtbWFyaXplIHRoaXMgZG9jdW1lbnQu\"\n  },\n  \"filename\": \"ocr-test.txt\",\n  \"user_id\": \"ocr-test\"\n}"
+            },
+            "url": "{{kong_url}}/media/v1/media"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('upload successful', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var data = pm.response.json();",
+                  "pm.collectionVariables.set('ocr_media_id', data.id);",
+                  "pm.environment.set('ocr_media_id', data.id);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "OCR Scan",
+      "item": [
+        {
+          "name": "Scan Document",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"media_object_id\": \"{{ocr_media_id}}\",\n  \"filename\": \"ocr-test.txt\"\n}"
+            },
+            "url": "{{gateway_url}}/v1/documents/scan"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set('document_id', data.id);",
+                  "pm.collectionVariables.set('document_status', data.processing_status);",
+                  "pm.environment.set('document_id', data.id);",
+                  "pm.environment.set('document_status', data.processing_status);",
+                  "pm.collectionVariables.set('document_text', data.extracted_text);",
+                  "pm.collectionVariables.set('document_page_count', data.page_count);",
+                  "pm.collectionVariables.set('document_word_count', data.word_count);",
+                  "pm.environment.set('document_text', data.extracted_text);",
+                  "pm.environment.set('document_page_count', data.page_count);",
+                  "pm.environment.set('document_word_count', data.word_count);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Document (Polling)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/v1/documents/{{document_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set('document_text', data.extracted_text);",
+                  "pm.collectionVariables.set('document_page_count', data.page_count);",
+                  "pm.collectionVariables.set('document_word_count', data.word_count);",
+                  "pm.environment.set('document_text', data.extracted_text);",
+                  "pm.environment.set('document_page_count', data.page_count);",
+                  "pm.environment.set('document_word_count', data.word_count);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Chat",
+      "item": [
+        {
+          "name": "Send Chat Message (OCR)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.test('assistant response returned', function () {",
+                  "  pm.expect(data.choices).to.be.an('array').that.is.not.empty;",
+                  "  const choice = data.choices[0] || {};",
+                  "  const content = (choice.message || {}).content || choice.text || '';",
+                  "  pm.expect(content).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Document OCR completed for {{document_id}} (words={{document_word_count}}). Please acknowledge and summarize briefly.\"\n    }\n  ],\n  \"conversation\": {\n    \"id\": \"{{conversation_id}}\"\n  },\n  \"stream\": false,\n  \"max_tokens\": 200\n}"
+            },
+            "url": "{{gateway_url}}/v1/chat/completions"
+          }
+        }
+      ]
+    }
+  ]
+}

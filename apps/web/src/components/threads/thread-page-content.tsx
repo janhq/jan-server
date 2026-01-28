@@ -237,7 +237,7 @@ export function ThreadPageContent({
 
       const textParts =
         message.parts?.filter(
-          (part) =>
+          (part): part is typeof part & { text: string } =>
             part.type === CONTENT_TYPE.TEXT &&
             "text" in part &&
             typeof part.text === "string",
@@ -683,7 +683,8 @@ export function ThreadPageContent({
   const appendImageUrlsToPrompt = useCallback(
     (message: PromptInputMessage, enabled: boolean): PromptInputMessage => {
       if (!enabled) return message;
-      const urls = message.files
+      const urls = (message.files || [])
+        .filter((file) => (file.mediaType || "").startsWith("image/"))
         .map((file) => file.url)
         .filter(
           (url): url is string => typeof url === "string" && url.trim() !== "",
@@ -728,17 +729,19 @@ export function ThreadPageContent({
           conversation_id: conversationId || null,
           model: selectedModel?.id || null,
           mode: getCurrentMode(),
-          has_attachments: (withImageUrls.files?.length || 0) > 0,
-          attachment_count: withImageUrls.files?.length || 0,
-          message_length: withImageUrls.text?.length || 0,
+          has_attachments: (message.files?.length || 0) > 0,
+          attachment_count: message.files?.length || 0,
+          message_length: message.text?.length || 0,
           user_status: analytics.getUserStatus(isAuthenticated),
         });
 
         // Normal message flow
 
-        // Persist to server (fire-and-forget, ID mapping handled in onFinish)
-        createUserMessageItem(withImageUrls);
+        // Persist to server with original message (includes all files for storage)
+        // buildMessageContent handles storing images and document file references
+        createUserMessageItem(message);
 
+        // Send to AI model (attachments handled in transport)
         sendMessage({
           text: withImageUrls.text || "Sent with attachments",
           files: withImageUrls.files,
@@ -870,11 +873,13 @@ export function ThreadPageContent({
           imageGenerationEnabled,
         );
 
-        // Persist to server (fire-and-forget, ID mapping handled in onFinish)
-        createUserMessageItem(withImageUrls);
+        // Persist to server with original message (includes all files for storage)
+        // buildMessageContent handles storing images and document file references
+        createUserMessageItem(message);
 
+        // Send to AI model (attachments handled in transport)
         sendMessage({
-          text: withImageUrls.text,
+          text: withImageUrls.text || "Sent with attachments",
           files: withImageUrls.files,
         });
         // Move conversation to top when initial message is sent

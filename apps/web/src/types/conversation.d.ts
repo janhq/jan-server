@@ -84,6 +84,8 @@ interface ConversationItemContent {
   input_text?: string;
   reasoning_text?: string;
   image?: { url: string };
+  file?: { url: string; filename?: string; mediaType?: string; name?: string; mime_type?: string };
+  file_url?: { url: string; filename?: string; name?: string; mediaType?: string; mime_type?: string; detail?: string };
   tool_calls?: Array<ToolCall>;
 
   // Tool result fields

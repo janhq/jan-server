@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
-  ChevronLeft,
   ChevronRight,
   Flag,
   Loader2,
@@ -11,7 +10,6 @@ import {
   Plus,
   Search,
   Trash2,
-  X,
 } from "lucide-react";
 import { Button } from "@janhq/interfaces/button";
 import { Input } from "@janhq/interfaces/input";

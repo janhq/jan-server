@@ -15,7 +15,6 @@ import {
   ChevronRight,
   Eye,
   Play,
-  X,
   Code,
   Variable,
   Settings,

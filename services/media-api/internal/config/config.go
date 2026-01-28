@@ -30,9 +30,9 @@ type Config struct {
 	DBConnLifetime time.Duration `env:"DB_CONN_MAX_LIFETIME" envDefault:"30m"`
 
 	// API Configuration
-	APIURL       string `env:"MEDIA_API_URL"`                                          // Internal service URL
-	PublicURL    string `env:"MEDIA_PUBLIC_URL" envDefault:"http://localhost:8000"`    // Public URL via Kong gateway
-	LLMAPIBaseURL string `env:"LLM_API_BASE_URL" envDefault:"http://llm-api:8080"`     // LLM API base URL (API key validation)
+	APIURL        string `env:"MEDIA_API_URL"`                                       // Internal service URL
+	PublicURL     string `env:"MEDIA_PUBLIC_URL" envDefault:"http://localhost:8000"` // Public URL via Kong gateway
+	LLMAPIBaseURL string `env:"LLM_API_BASE_URL" envDefault:"http://llm-api:8080"`   // LLM API base URL (API key validation)
 
 	// Storage Backend Selection
 	StorageBackend string `env:"MEDIA_STORAGE_BACKEND" envDefault:"s3"` // Options: "s3" or "local"
@@ -53,7 +53,7 @@ type Config struct {
 	S3PresignTTL     time.Duration `env:"MEDIA_S3_PRESIGN_TTL" envDefault:"168h"`
 
 	// Media Configuration
-	MaxMediaBytes      int64         `env:"MEDIA_MAX_BYTES" envDefault:"20971520"`
+	MaxMediaBytes      int64         `env:"MEDIA_MAX_BYTES" envDefault:"52428800"`
 	ProxyDownload      bool          `env:"MEDIA_PROXY_DOWNLOAD" envDefault:"true"`
 	RetentionDays      int           `env:"MEDIA_RETENTION_DAYS" envDefault:"30"`
 	RemoteFetchTimeout time.Duration `env:"MEDIA_REMOTE_FETCH_TIMEOUT" envDefault:"15s"`

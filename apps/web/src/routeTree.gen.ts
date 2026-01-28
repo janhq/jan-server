@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProfileIndexRouteImport } from './routes/profile/index'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
+import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as ThreadsTemporaryRouteImport } from './routes/threads/temporary'
 import { Route as ThreadsConversationIdRouteImport } from './routes/threads/$conversationId'
@@ -19,14 +20,16 @@ import { Route as ShareSlugRouteImport } from './routes/share/$slug'
 import { Route as ProjectsProjectIdRouteImport } from './routes/projects/$projectId'
 import { Route as DocsRoadmapRouteImport } from './routes/docs/roadmap'
 import { Route as DocsQuickstartRouteImport } from './routes/docs/quickstart'
+import { Route as DashboardUsageRouteImport } from './routes/dashboard/usage'
+import { Route as DashboardApiKeysRouteImport } from './routes/dashboard/api-keys'
 import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
-import { Route as AdminUsersRouteImport } from './routes/admin/users'
 import { Route as AdminPromptTemplatesRouteImport } from './routes/admin/prompt-templates'
 import { Route as AdminMcpToolsRouteImport } from './routes/admin/mcp-tools'
 import { Route as DocsGuidesIndexRouteImport } from './routes/docs/guides/index'
 import { Route as DocsConfigurationIndexRouteImport } from './routes/docs/configuration/index'
 import { Route as DocsArchitectureIndexRouteImport } from './routes/docs/architecture/index'
 import { Route as DocsApiIndexRouteImport } from './routes/docs/api/index'
+import { Route as AdminUsersIndexRouteImport } from './routes/admin/users/index'
 import { Route as AdminModelsIndexRouteImport } from './routes/admin/models/index'
 import { Route as DocsGuidesTestingRouteImport } from './routes/docs/guides/testing'
 import { Route as DocsGuidesMcpToolsRouteImport } from './routes/docs/guides/mcp-tools'
@@ -44,6 +47,7 @@ import { Route as DocsApiMediaRouteImport } from './routes/docs/api/media'
 import { Route as DocsApiConversationsRouteImport } from './routes/docs/api/conversations'
 import { Route as DocsApiChatCompletionsRouteImport } from './routes/docs/api/chat-completions'
 import { Route as DocsApiAuthenticationRouteImport } from './routes/docs/api/authentication'
+import { Route as AdminUsersFeatureFlagsRouteImport } from './routes/admin/users/feature-flags'
 import { Route as AdminModelsProvidersRouteImport } from './routes/admin/models/providers'
 import { Route as AdminModelsProviderModelsRouteImport } from './routes/admin/models/provider-models'
 import { Route as AdminModelsCatalogsRouteImport } from './routes/admin/models/catalogs'
@@ -61,6 +65,11 @@ const ProfileIndexRoute = ProfileIndexRouteImport.update({
 const DocsIndexRoute = DocsIndexRouteImport.update({
   id: '/docs/',
   path: '/docs/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardIndexRoute = DashboardIndexRouteImport.update({
+  id: '/dashboard/',
+  path: '/dashboard/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
@@ -98,14 +107,19 @@ const DocsQuickstartRoute = DocsQuickstartRouteImport.update({
   path: '/docs/quickstart',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DashboardUsageRoute = DashboardUsageRouteImport.update({
+  id: '/dashboard/usage',
+  path: '/dashboard/usage',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardApiKeysRoute = DashboardApiKeysRouteImport.update({
+  id: '/dashboard/api-keys',
+  path: '/dashboard/api-keys',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthCallbackRoute = AuthCallbackRouteImport.update({
   id: '/auth/callback',
   path: '/auth/callback',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminUsersRoute = AdminUsersRouteImport.update({
-  id: '/admin/users',
-  path: '/admin/users',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminPromptTemplatesRoute = AdminPromptTemplatesRouteImport.update({
@@ -136,6 +150,11 @@ const DocsArchitectureIndexRoute = DocsArchitectureIndexRouteImport.update({
 const DocsApiIndexRoute = DocsApiIndexRouteImport.update({
   id: '/docs/api/',
   path: '/docs/api/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminUsersIndexRoute = AdminUsersIndexRouteImport.update({
+  id: '/admin/users/',
+  path: '/admin/users/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminModelsIndexRoute = AdminModelsIndexRouteImport.update({
@@ -228,6 +247,11 @@ const DocsApiAuthenticationRoute = DocsApiAuthenticationRouteImport.update({
   path: '/docs/api/authentication',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminUsersFeatureFlagsRoute = AdminUsersFeatureFlagsRouteImport.update({
+  id: '/admin/users/feature-flags',
+  path: '/admin/users/feature-flags',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminModelsProvidersRoute = AdminModelsProvidersRouteImport.update({
   id: '/admin/models/providers',
   path: '/admin/models/providers',
@@ -249,8 +273,9 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin/mcp-tools': typeof AdminMcpToolsRoute
   '/admin/prompt-templates': typeof AdminPromptTemplatesRoute
-  '/admin/users': typeof AdminUsersRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/dashboard/api-keys': typeof DashboardApiKeysRoute
+  '/dashboard/usage': typeof DashboardUsageRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
   '/docs/roadmap': typeof DocsRoadmapRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
@@ -258,11 +283,13 @@ export interface FileRoutesByFullPath {
   '/threads/$conversationId': typeof ThreadsConversationIdRoute
   '/threads/temporary': typeof ThreadsTemporaryRoute
   '/admin/': typeof AdminIndexRoute
+  '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/profile/': typeof ProfileIndexRoute
   '/admin/models/catalogs': typeof AdminModelsCatalogsRoute
   '/admin/models/provider-models': typeof AdminModelsProviderModelsRoute
   '/admin/models/providers': typeof AdminModelsProvidersRoute
+  '/admin/users/feature-flags': typeof AdminUsersFeatureFlagsRoute
   '/docs/api/authentication': typeof DocsApiAuthenticationRoute
   '/docs/api/chat-completions': typeof DocsApiChatCompletionsRoute
   '/docs/api/conversations': typeof DocsApiConversationsRoute
@@ -280,6 +307,7 @@ export interface FileRoutesByFullPath {
   '/docs/guides/mcp-tools': typeof DocsGuidesMcpToolsRoute
   '/docs/guides/testing': typeof DocsGuidesTestingRoute
   '/admin/models/': typeof AdminModelsIndexRoute
+  '/admin/users/': typeof AdminUsersIndexRoute
   '/docs/api/': typeof DocsApiIndexRoute
   '/docs/architecture/': typeof DocsArchitectureIndexRoute
   '/docs/configuration/': typeof DocsConfigurationIndexRoute
@@ -289,8 +317,9 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin/mcp-tools': typeof AdminMcpToolsRoute
   '/admin/prompt-templates': typeof AdminPromptTemplatesRoute
-  '/admin/users': typeof AdminUsersRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/dashboard/api-keys': typeof DashboardApiKeysRoute
+  '/dashboard/usage': typeof DashboardUsageRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
   '/docs/roadmap': typeof DocsRoadmapRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
@@ -298,11 +327,13 @@ export interface FileRoutesByTo {
   '/threads/$conversationId': typeof ThreadsConversationIdRoute
   '/threads/temporary': typeof ThreadsTemporaryRoute
   '/admin': typeof AdminIndexRoute
+  '/dashboard': typeof DashboardIndexRoute
   '/docs': typeof DocsIndexRoute
   '/profile': typeof ProfileIndexRoute
   '/admin/models/catalogs': typeof AdminModelsCatalogsRoute
   '/admin/models/provider-models': typeof AdminModelsProviderModelsRoute
   '/admin/models/providers': typeof AdminModelsProvidersRoute
+  '/admin/users/feature-flags': typeof AdminUsersFeatureFlagsRoute
   '/docs/api/authentication': typeof DocsApiAuthenticationRoute
   '/docs/api/chat-completions': typeof DocsApiChatCompletionsRoute
   '/docs/api/conversations': typeof DocsApiConversationsRoute
@@ -320,6 +351,7 @@ export interface FileRoutesByTo {
   '/docs/guides/mcp-tools': typeof DocsGuidesMcpToolsRoute
   '/docs/guides/testing': typeof DocsGuidesTestingRoute
   '/admin/models': typeof AdminModelsIndexRoute
+  '/admin/users': typeof AdminUsersIndexRoute
   '/docs/api': typeof DocsApiIndexRoute
   '/docs/architecture': typeof DocsArchitectureIndexRoute
   '/docs/configuration': typeof DocsConfigurationIndexRoute
@@ -330,8 +362,9 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin/mcp-tools': typeof AdminMcpToolsRoute
   '/admin/prompt-templates': typeof AdminPromptTemplatesRoute
-  '/admin/users': typeof AdminUsersRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/dashboard/api-keys': typeof DashboardApiKeysRoute
+  '/dashboard/usage': typeof DashboardUsageRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
   '/docs/roadmap': typeof DocsRoadmapRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
@@ -339,11 +372,13 @@ export interface FileRoutesById {
   '/threads/$conversationId': typeof ThreadsConversationIdRoute
   '/threads/temporary': typeof ThreadsTemporaryRoute
   '/admin/': typeof AdminIndexRoute
+  '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/profile/': typeof ProfileIndexRoute
   '/admin/models/catalogs': typeof AdminModelsCatalogsRoute
   '/admin/models/provider-models': typeof AdminModelsProviderModelsRoute
   '/admin/models/providers': typeof AdminModelsProvidersRoute
+  '/admin/users/feature-flags': typeof AdminUsersFeatureFlagsRoute
   '/docs/api/authentication': typeof DocsApiAuthenticationRoute
   '/docs/api/chat-completions': typeof DocsApiChatCompletionsRoute
   '/docs/api/conversations': typeof DocsApiConversationsRoute
@@ -361,6 +396,7 @@ export interface FileRoutesById {
   '/docs/guides/mcp-tools': typeof DocsGuidesMcpToolsRoute
   '/docs/guides/testing': typeof DocsGuidesTestingRoute
   '/admin/models/': typeof AdminModelsIndexRoute
+  '/admin/users/': typeof AdminUsersIndexRoute
   '/docs/api/': typeof DocsApiIndexRoute
   '/docs/architecture/': typeof DocsArchitectureIndexRoute
   '/docs/configuration/': typeof DocsConfigurationIndexRoute
@@ -372,8 +408,9 @@ export interface FileRouteTypes {
     | '/'
     | '/admin/mcp-tools'
     | '/admin/prompt-templates'
-    | '/admin/users'
     | '/auth/callback'
+    | '/dashboard/api-keys'
+    | '/dashboard/usage'
     | '/docs/quickstart'
     | '/docs/roadmap'
     | '/projects/$projectId'
@@ -381,11 +418,13 @@ export interface FileRouteTypes {
     | '/threads/$conversationId'
     | '/threads/temporary'
     | '/admin/'
+    | '/dashboard/'
     | '/docs/'
     | '/profile/'
     | '/admin/models/catalogs'
     | '/admin/models/provider-models'
     | '/admin/models/providers'
+    | '/admin/users/feature-flags'
     | '/docs/api/authentication'
     | '/docs/api/chat-completions'
     | '/docs/api/conversations'
@@ -403,6 +442,7 @@ export interface FileRouteTypes {
     | '/docs/guides/mcp-tools'
     | '/docs/guides/testing'
     | '/admin/models/'
+    | '/admin/users/'
     | '/docs/api/'
     | '/docs/architecture/'
     | '/docs/configuration/'
@@ -412,8 +452,9 @@ export interface FileRouteTypes {
     | '/'
     | '/admin/mcp-tools'
     | '/admin/prompt-templates'
-    | '/admin/users'
     | '/auth/callback'
+    | '/dashboard/api-keys'
+    | '/dashboard/usage'
     | '/docs/quickstart'
     | '/docs/roadmap'
     | '/projects/$projectId'
@@ -421,11 +462,13 @@ export interface FileRouteTypes {
     | '/threads/$conversationId'
     | '/threads/temporary'
     | '/admin'
+    | '/dashboard'
     | '/docs'
     | '/profile'
     | '/admin/models/catalogs'
     | '/admin/models/provider-models'
     | '/admin/models/providers'
+    | '/admin/users/feature-flags'
     | '/docs/api/authentication'
     | '/docs/api/chat-completions'
     | '/docs/api/conversations'
@@ -443,6 +486,7 @@ export interface FileRouteTypes {
     | '/docs/guides/mcp-tools'
     | '/docs/guides/testing'
     | '/admin/models'
+    | '/admin/users'
     | '/docs/api'
     | '/docs/architecture'
     | '/docs/configuration'
@@ -452,8 +496,9 @@ export interface FileRouteTypes {
     | '/'
     | '/admin/mcp-tools'
     | '/admin/prompt-templates'
-    | '/admin/users'
     | '/auth/callback'
+    | '/dashboard/api-keys'
+    | '/dashboard/usage'
     | '/docs/quickstart'
     | '/docs/roadmap'
     | '/projects/$projectId'
@@ -461,11 +506,13 @@ export interface FileRouteTypes {
     | '/threads/$conversationId'
     | '/threads/temporary'
     | '/admin/'
+    | '/dashboard/'
     | '/docs/'
     | '/profile/'
     | '/admin/models/catalogs'
     | '/admin/models/provider-models'
     | '/admin/models/providers'
+    | '/admin/users/feature-flags'
     | '/docs/api/authentication'
     | '/docs/api/chat-completions'
     | '/docs/api/conversations'
@@ -483,6 +530,7 @@ export interface FileRouteTypes {
     | '/docs/guides/mcp-tools'
     | '/docs/guides/testing'
     | '/admin/models/'
+    | '/admin/users/'
     | '/docs/api/'
     | '/docs/architecture/'
     | '/docs/configuration/'
@@ -493,8 +541,9 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminMcpToolsRoute: typeof AdminMcpToolsRoute
   AdminPromptTemplatesRoute: typeof AdminPromptTemplatesRoute
-  AdminUsersRoute: typeof AdminUsersRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
+  DashboardApiKeysRoute: typeof DashboardApiKeysRoute
+  DashboardUsageRoute: typeof DashboardUsageRoute
   DocsQuickstartRoute: typeof DocsQuickstartRoute
   DocsRoadmapRoute: typeof DocsRoadmapRoute
   ProjectsProjectIdRoute: typeof ProjectsProjectIdRoute
@@ -502,11 +551,13 @@ export interface RootRouteChildren {
   ThreadsConversationIdRoute: typeof ThreadsConversationIdRoute
   ThreadsTemporaryRoute: typeof ThreadsTemporaryRoute
   AdminIndexRoute: typeof AdminIndexRoute
+  DashboardIndexRoute: typeof DashboardIndexRoute
   DocsIndexRoute: typeof DocsIndexRoute
   ProfileIndexRoute: typeof ProfileIndexRoute
   AdminModelsCatalogsRoute: typeof AdminModelsCatalogsRoute
   AdminModelsProviderModelsRoute: typeof AdminModelsProviderModelsRoute
   AdminModelsProvidersRoute: typeof AdminModelsProvidersRoute
+  AdminUsersFeatureFlagsRoute: typeof AdminUsersFeatureFlagsRoute
   DocsApiAuthenticationRoute: typeof DocsApiAuthenticationRoute
   DocsApiChatCompletionsRoute: typeof DocsApiChatCompletionsRoute
   DocsApiConversationsRoute: typeof DocsApiConversationsRoute
@@ -524,6 +575,7 @@ export interface RootRouteChildren {
   DocsGuidesMcpToolsRoute: typeof DocsGuidesMcpToolsRoute
   DocsGuidesTestingRoute: typeof DocsGuidesTestingRoute
   AdminModelsIndexRoute: typeof AdminModelsIndexRoute
+  AdminUsersIndexRoute: typeof AdminUsersIndexRoute
   DocsApiIndexRoute: typeof DocsApiIndexRoute
   DocsArchitectureIndexRoute: typeof DocsArchitectureIndexRoute
   DocsConfigurationIndexRoute: typeof DocsConfigurationIndexRoute
@@ -551,6 +603,13 @@ declare module '@tanstack/react-router' {
       path: '/docs'
       fullPath: '/docs/'
       preLoaderRoute: typeof DocsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard/': {
+      id: '/dashboard/'
+      path: '/dashboard'
+      fullPath: '/dashboard/'
+      preLoaderRoute: typeof DashboardIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/': {
@@ -602,18 +661,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsQuickstartRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/dashboard/usage': {
+      id: '/dashboard/usage'
+      path: '/dashboard/usage'
+      fullPath: '/dashboard/usage'
+      preLoaderRoute: typeof DashboardUsageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard/api-keys': {
+      id: '/dashboard/api-keys'
+      path: '/dashboard/api-keys'
+      fullPath: '/dashboard/api-keys'
+      preLoaderRoute: typeof DashboardApiKeysRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth/callback': {
       id: '/auth/callback'
       path: '/auth/callback'
       fullPath: '/auth/callback'
       preLoaderRoute: typeof AuthCallbackRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/users': {
-      id: '/admin/users'
-      path: '/admin/users'
-      fullPath: '/admin/users'
-      preLoaderRoute: typeof AdminUsersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/prompt-templates': {
@@ -656,6 +722,13 @@ declare module '@tanstack/react-router' {
       path: '/docs/api'
       fullPath: '/docs/api/'
       preLoaderRoute: typeof DocsApiIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/users/': {
+      id: '/admin/users/'
+      path: '/admin/users'
+      fullPath: '/admin/users/'
+      preLoaderRoute: typeof AdminUsersIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/models/': {
@@ -777,6 +850,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsApiAuthenticationRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/users/feature-flags': {
+      id: '/admin/users/feature-flags'
+      path: '/admin/users/feature-flags'
+      fullPath: '/admin/users/feature-flags'
+      preLoaderRoute: typeof AdminUsersFeatureFlagsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/models/providers': {
       id: '/admin/models/providers'
       path: '/admin/models/providers'
@@ -805,8 +885,9 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminMcpToolsRoute: AdminMcpToolsRoute,
   AdminPromptTemplatesRoute: AdminPromptTemplatesRoute,
-  AdminUsersRoute: AdminUsersRoute,
   AuthCallbackRoute: AuthCallbackRoute,
+  DashboardApiKeysRoute: DashboardApiKeysRoute,
+  DashboardUsageRoute: DashboardUsageRoute,
   DocsQuickstartRoute: DocsQuickstartRoute,
   DocsRoadmapRoute: DocsRoadmapRoute,
   ProjectsProjectIdRoute: ProjectsProjectIdRoute,
@@ -814,11 +895,13 @@ const rootRouteChildren: RootRouteChildren = {
   ThreadsConversationIdRoute: ThreadsConversationIdRoute,
   ThreadsTemporaryRoute: ThreadsTemporaryRoute,
   AdminIndexRoute: AdminIndexRoute,
+  DashboardIndexRoute: DashboardIndexRoute,
   DocsIndexRoute: DocsIndexRoute,
   ProfileIndexRoute: ProfileIndexRoute,
   AdminModelsCatalogsRoute: AdminModelsCatalogsRoute,
   AdminModelsProviderModelsRoute: AdminModelsProviderModelsRoute,
   AdminModelsProvidersRoute: AdminModelsProvidersRoute,
+  AdminUsersFeatureFlagsRoute: AdminUsersFeatureFlagsRoute,
   DocsApiAuthenticationRoute: DocsApiAuthenticationRoute,
   DocsApiChatCompletionsRoute: DocsApiChatCompletionsRoute,
   DocsApiConversationsRoute: DocsApiConversationsRoute,
@@ -836,6 +919,7 @@ const rootRouteChildren: RootRouteChildren = {
   DocsGuidesMcpToolsRoute: DocsGuidesMcpToolsRoute,
   DocsGuidesTestingRoute: DocsGuidesTestingRoute,
   AdminModelsIndexRoute: AdminModelsIndexRoute,
+  AdminUsersIndexRoute: AdminUsersIndexRoute,
   DocsApiIndexRoute: DocsApiIndexRoute,
   DocsArchitectureIndexRoute: DocsArchitectureIndexRoute,
   DocsConfigurationIndexRoute: DocsConfigurationIndexRoute,

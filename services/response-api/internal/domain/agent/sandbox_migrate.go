@@ -1,160 +1,243 @@
 package agent
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/rs/zerolog"
+
+	"jan-server/services/response-api/internal/domain/tool"
 )
 
-// AIOSandboxClient handles direct API calls to AIO Sandbox, bypassing MCP tools
-type AIOSandboxClient struct {
-	baseURL    string
-	httpClient *http.Client
-	logger     zerolog.Logger
+// SandboxClient handles sandbox operations via MCP tools
+// This replaces direct AIO API calls with MCP tool calls for unified sandbox access
+type SandboxClient struct {
+	mcpClient tool.MCPClient
+	logger    zerolog.Logger
 }
 
-// NewAIOSandboxClient creates a new AIO Sandbox client
-func NewAIOSandboxClient(baseURL string, logger zerolog.Logger) *AIOSandboxClient {
-	if baseURL == "" {
-		logger.Warn().Msg("AIO_URL not configured, AIO Sandbox features will be disabled")
+// NewSandboxClient creates a new Sandbox client that uses MCP tools
+func NewSandboxClient(mcpClient tool.MCPClient, logger zerolog.Logger) *SandboxClient {
+	if mcpClient == nil {
+		logger.Warn().Msg("MCP client not provided, Sandbox features will be disabled")
 		return nil
 	}
 
-	return &AIOSandboxClient{
-		baseURL: strings.TrimSuffix(baseURL, "/"),
-		httpClient: &http.Client{
-			Timeout: 5 * time.Minute,
-		},
-		logger: logger,
+	return &SandboxClient{
+		mcpClient: mcpClient,
+		logger:    logger,
 	}
 }
 
-// AIOCodeRequest represents the request body for /v1/code/execute
-type AIOCodeRequest struct {
-	Code     string `json:"code"`
-	Language string `json:"language"`
-}
-
-// AIOCodeResponse represents the response from /v1/code/execute
-type AIOCodeResponse struct {
-	Data *struct {
-		Status   *string `json:"status"`
-		Stdout   *string `json:"stdout"`
-		Stderr   *string `json:"stderr"`
-		ExitCode *int    `json:"exit_code"`
-	} `json:"data"`
-}
-
-// ExecuteCode executes Python code in the AIO sandbox
-func (c *AIOSandboxClient) ExecuteCode(ctx context.Context, code string, language string) (string, error) {
+// ExecuteCode executes code in the sandbox via MCP sandbox_code_execute tool
+func (c *SandboxClient) ExecuteCode(ctx context.Context, code string, language string) (string, error) {
 	if c == nil {
-		return "", fmt.Errorf("AIO Sandbox client not initialized (AIO_URL not configured)")
+		return "", fmt.Errorf("Sandbox client not initialized")
 	}
 
-	reqBody := AIOCodeRequest{
-		Code:     code,
-		Language: language,
-	}
-
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", fmt.Errorf("marshal request: %w", err)
-	}
-
-	url := fmt.Sprintf("%s/v1/code/execute", c.baseURL)
 	c.logger.Debug().
-		Str("url", url).
 		Str("language", language).
 		Int("code_size", len(code)).
-		Msg("Executing code in AIO Sandbox")
+		Msg("Executing code via MCP sandbox_code_execute tool")
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	// Call the sandbox_code_execute MCP tool
+	result, err := c.mcpClient.CallTool(ctx, tool.CallRequest{
+		Name: "sandbox_code_execute",
+		Arguments: map[string]interface{}{
+			"code":     code,
+			"language": language,
+		},
+	})
 	if err != nil {
-		return "", fmt.Errorf("create request: %w", err)
+		return "", fmt.Errorf("sandbox_code_execute failed: %w", err)
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("execute request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("read response: %w", err)
+	if result.IsError {
+		return "", fmt.Errorf("sandbox execution error: %s", result.Error)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		c.logger.Error().
-			Int("status_code", resp.StatusCode).
-			Str("body", string(body)).
-			Msg("AIO Sandbox returned error status")
-		return "", fmt.Errorf("AIO Sandbox error (status %d): %s", resp.StatusCode, string(body))
+	// Extract text content from result
+	var output string
+	for _, content := range result.Content {
+		if content.Type == "text" && content.Text != "" {
+			output = content.Text
+			break
+		}
 	}
 
-	var apiResp AIOCodeResponse
-	if err := json.Unmarshal(body, &apiResp); err != nil {
-		return "", fmt.Errorf("unmarshal response: %w", err)
+	// Parse the JSON response to extract execution details
+	var execResult struct {
+		Status   string `json:"status"`
+		Success  bool   `json:"success"`
+		Stdout   string `json:"stdout"`
+		Stderr   string `json:"stderr"`
+		ExitCode int    `json:"exit_code"`
 	}
 
-	if apiResp.Data == nil {
-		return "", fmt.Errorf("no data in response")
-	}
-
-	stdout := ""
-	if apiResp.Data.Stdout != nil {
-		stdout = *apiResp.Data.Stdout
-	}
-
-	stderr := ""
-	if apiResp.Data.Stderr != nil {
-		stderr = *apiResp.Data.Stderr
-	}
-
-	exitCode := 0
-	if apiResp.Data.ExitCode != nil {
-		exitCode = *apiResp.Data.ExitCode
+	if err := json.Unmarshal([]byte(output), &execResult); err != nil {
+		// If it's not JSON, return the raw output
+		c.logger.Debug().
+			Int("output_size", len(output)).
+			Msg("Sandbox execution returned non-JSON output")
+		return output, nil
 	}
 
 	c.logger.Debug().
-		Int("exit_code", exitCode).
-		Int("stdout_len", len(stdout)).
-		Int("stderr_len", len(stderr)).
-		Msg("AIO Sandbox execution complete")
+		Str("status", execResult.Status).
+		Bool("success", execResult.Success).
+		Int("exit_code", execResult.ExitCode).
+		Int("stdout_len", len(execResult.Stdout)).
+		Int("stderr_len", len(execResult.Stderr)).
+		Msg("Sandbox execution complete")
 
-	if exitCode != 0 {
+	if !execResult.Success || execResult.ExitCode != 0 {
 		c.logger.Error().
-			Int("exit_code", exitCode).
-			Str("stderr", stderr).
-			Msg("AIO Sandbox execution failed")
-		return "", fmt.Errorf("execution failed (exit %d): %s", exitCode, stderr)
+			Int("exit_code", execResult.ExitCode).
+			Str("stderr", execResult.Stderr).
+			Msg("Sandbox execution failed")
+		return "", fmt.Errorf("execution failed (exit %d): %s", execResult.ExitCode, execResult.Stderr)
 	}
 
 	// Combine stdout and stderr for full output
-	output := stdout
-	if stderr != "" {
-		output += "\n" + stderr
+	result_output := execResult.Stdout
+	if execResult.Stderr != "" {
+		result_output += "\n" + execResult.Stderr
+	}
+
+	return result_output, nil
+}
+
+// ShellExec executes a shell command in the sandbox via MCP sandbox_shell_exec tool
+func (c *SandboxClient) ShellExec(ctx context.Context, command string) (string, error) {
+	if c == nil {
+		return "", fmt.Errorf("Sandbox client not initialized")
+	}
+
+	c.logger.Debug().
+		Str("command", truncateForLog(command, 100)).
+		Msg("Executing shell command via MCP sandbox_shell_exec tool")
+
+	result, err := c.mcpClient.CallTool(ctx, tool.CallRequest{
+		Name: "sandbox_shell_exec",
+		Arguments: map[string]interface{}{
+			"command": command,
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("sandbox_shell_exec failed: %w", err)
+	}
+
+	if result.IsError {
+		return "", fmt.Errorf("shell execution error: %s", result.Error)
+	}
+
+	// Extract text content from result
+	var output string
+	for _, content := range result.Content {
+		if content.Type == "text" && content.Text != "" {
+			output = content.Text
+			break
+		}
 	}
 
 	return output, nil
 }
 
-// RenderSlidesPPTX renders a DeckSpec JSON to PPTX using the AIO Sandbox
-// This bypasses MCP tools for better stability and control
-func (c *AIOSandboxClient) RenderSlidesPPTX(ctx context.Context, deckSpecJSON string, renderScript string, outputPath string) ([]byte, error) {
+// FileRead reads a file from the sandbox via MCP sandbox_file_read tool
+func (c *SandboxClient) FileRead(ctx context.Context, path string) (string, error) {
 	if c == nil {
-		return nil, fmt.Errorf("AIO Sandbox client not initialized (AIO_URL not configured)")
+		return "", fmt.Errorf("Sandbox client not initialized")
+	}
+
+	result, err := c.mcpClient.CallTool(ctx, tool.CallRequest{
+		Name: "sandbox_file_read",
+		Arguments: map[string]interface{}{
+			"path": path,
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("sandbox_file_read failed: %w", err)
+	}
+
+	if result.IsError {
+		return "", fmt.Errorf("file read error: %s", result.Error)
+	}
+
+	// Extract text content from result
+	for _, content := range result.Content {
+		if content.Type == "text" && content.Text != "" {
+			return content.Text, nil
+		}
+	}
+
+	return "", fmt.Errorf("no content in file read result")
+}
+
+// FileWrite writes content to a file in the sandbox via MCP sandbox_file_write tool
+func (c *SandboxClient) FileWrite(ctx context.Context, path, content string) error {
+	if c == nil {
+		return fmt.Errorf("Sandbox client not initialized")
+	}
+
+	result, err := c.mcpClient.CallTool(ctx, tool.CallRequest{
+		Name: "sandbox_file_write",
+		Arguments: map[string]interface{}{
+			"path":    path,
+			"content": content,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("sandbox_file_write failed: %w", err)
+	}
+
+	if result.IsError {
+		return fmt.Errorf("file write error: %s", result.Error)
+	}
+
+	return nil
+}
+
+// InstallPackages installs packages in the sandbox via MCP sandbox_install_packages tool
+func (c *SandboxClient) InstallPackages(ctx context.Context, packages []string, manager string) error {
+	if c == nil {
+		return fmt.Errorf("Sandbox client not initialized")
+	}
+
+	if manager == "" {
+		manager = "pip"
+	}
+
+	c.logger.Debug().
+		Strs("packages", packages).
+		Str("manager", manager).
+		Msg("Installing packages via MCP sandbox_install_packages tool")
+
+	result, err := c.mcpClient.CallTool(ctx, tool.CallRequest{
+		Name: "sandbox_install_packages",
+		Arguments: map[string]interface{}{
+			"packages": packages,
+			"manager":  manager,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("sandbox_install_packages failed: %w", err)
+	}
+
+	if result.IsError {
+		return fmt.Errorf("package installation error: %s", result.Error)
+	}
+
+	return nil
+}
+
+// RenderSlidesPPTX renders a DeckSpec JSON to PPTX using the sandbox via MCP tools
+func (c *SandboxClient) RenderSlidesPPTX(ctx context.Context, deckSpecJSON string, renderScript string, outputPath string) ([]byte, error) {
+	if c == nil {
+		return nil, fmt.Errorf("Sandbox client not initialized")
 	}
 
 	// Default output path if not specified
@@ -166,14 +249,14 @@ func (c *AIOSandboxClient) RenderSlidesPPTX(ctx context.Context, deckSpecJSON st
 		Int("deck_spec_size", len(deckSpecJSON)).
 		Int("render_script_size", len(renderScript)).
 		Str("output_path", outputPath).
-		Msg("Starting slide rendering in AIO Sandbox")
+		Msg("Starting slide rendering via MCP sandbox tools")
 
 	// Base64 encode the deck JSON and render script to avoid escaping issues
 	deckJSONB64 := base64.StdEncoding.EncodeToString([]byte(deckSpecJSON))
 	renderScriptB64 := base64.StdEncoding.EncodeToString([]byte(renderScript))
 
 	// Create combined Python code that does everything in one execution
-	// This is critical - AIO Sandbox doesn't persist files between calls
+	// This is critical - sandbox doesn't persist files between calls
 	combinedCode := fmt.Sprintf(`
 import sys
 import os
@@ -261,7 +344,7 @@ try:
     else:
         print("  (empty)")
     sys.stdout.flush()
-    
+
     if result.returncode != 0:
         print(f"ERROR: Render script failed with code {result.returncode}", file=sys.stderr)
         sys.exit(result.returncode)
@@ -299,7 +382,7 @@ print("=== BASE64_END ===")
 		Int("combined_code_size", len(combinedCode)).
 		Msg("Generated combined Python code")
 
-	// Execute the combined code
+	// Execute the combined code via MCP tool
 	output, err := c.ExecuteCode(ctx, combinedCode, "python")
 	if err != nil {
 		return nil, fmt.Errorf("execute render script: %w", err)
@@ -307,7 +390,7 @@ print("=== BASE64_END ===")
 
 	c.logger.Debug().
 		Int("output_size", len(output)).
-		Msg("Received output from AIO Sandbox")
+		Msg("Received output from sandbox")
 
 	// Check for errors in output
 	if strings.Contains(output, "ERROR:") {
@@ -351,7 +434,7 @@ print("=== BASE64_END ===")
 	if len(pptxData) < 4 || pptxData[0] != 'P' || pptxData[1] != 'K' {
 		c.logger.Error().
 			Int("size", len(pptxData)).
-			Str("magic", fmt.Sprintf("%v", pptxData[:min(4, len(pptxData))])).
+			Str("magic", fmt.Sprintf("%v", pptxData[:minInt(4, len(pptxData))])).
 			Msg("Invalid PPTX magic bytes")
 		return nil, fmt.Errorf("invalid PPTX: does not have ZIP magic bytes")
 	}
@@ -363,19 +446,34 @@ print("=== BASE64_END ===")
 	return pptxData, nil
 }
 
-// escapeForPython escapes a string for safe embedding in Python code
-func escapeForPython(s string) string {
-	s = strings.ReplaceAll(s, "\\", "\\\\")
-	s = strings.ReplaceAll(s, "\"", "\\\"")
-	s = strings.ReplaceAll(s, "\n", "\\n")
-	s = strings.ReplaceAll(s, "\r", "\\r")
-	s = strings.ReplaceAll(s, "\t", "\\t")
-	return s
+// Helper functions
+
+func truncateForLog(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 
-func min(a, b int) int {
+func minInt(a, b int) int {
 	if a < b {
 		return a
 	}
 	return b
+}
+
+// Legacy compatibility - these are deprecated and will be removed
+// Use SandboxClient instead
+
+// AIOSandboxClient is deprecated - use SandboxClient instead
+// Kept for backwards compatibility during migration
+type AIOSandboxClient = SandboxClient
+
+// NewAIOSandboxClient is deprecated - use NewSandboxClient instead
+// This function now creates a nil client since we require MCP
+func NewAIOSandboxClient(baseURL string, logger zerolog.Logger) *AIOSandboxClient {
+	logger.Warn().
+		Str("base_url", baseURL).
+		Msg("NewAIOSandboxClient is deprecated - direct AIO calls are no longer supported. Use NewSandboxClient with MCP client instead.")
+	return nil
 }

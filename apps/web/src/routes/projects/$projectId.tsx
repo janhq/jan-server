@@ -12,6 +12,7 @@ import { useChat } from "@/hooks/use-chat";
 import { janProvider } from "@/lib/api-client";
 import { EditProject } from "@/components/projects/edit-project";
 import { ManageInstructions } from "@/components/projects/manage-instructions";
+import { ProjectFilesList } from "@/components/projects/project-files-list";
 
 import type { PromptInputMessage } from "@janhq/interfaces/ai-elements/prompt-input";
 
@@ -128,11 +129,12 @@ function ProjectPageContent() {
   });
 
   const handleSubmit = (message?: PromptInputMessage) => {
-    if (message)
+    if (message) {
       sendMessage({
         text: message.text || "Sent with attachments",
         files: message.files,
       });
+    }
   };
 
   useEffect(() => {
@@ -281,29 +283,15 @@ function ProjectPageContent() {
               )}
             </div>
 
-            {/* Temporary disabled till we have files */}
-            {/* <Separator className="my-6" /> */}
-            {/* <div className="h-full flex flex-col">
-              <div className="flex items-center justify-between">
-                <span className="text-base font-semibold inline-block">
-                  Files
-                </span>
-                <Button variant="outline" size="sm" className="rounded-full">
-                  <Upload className="text-muted-foreground" />
-                  <span>Upload</span>
-                </Button>
-              </div>
-              <div className="mt-3 h-full bg-muted/50 rounded-2xl flex items-center justify-center text-center px-4 py-6 text-sm ">
-                <div className="px-8 w-full ">
-                  <FilesIcon className="text-muted-foreground size-6 mx-auto mb-2" />
-                  <p className="text-base mb-2">Add files to this project</p>
-                  <p className="text-sm text-muted-foreground">
-                    Upload documents that provide Jan with context for more
-                    accurate answers
-                  </p>
-                </div>
-              </div>
-            </div> */}
+            <Separator className="my-6" />
+            <div className="flex-1 min-h-0">
+              {projectId && (
+                <ProjectFilesList
+                  projectId={projectId}
+                  userId={projectId}
+                />
+              )}
+            </div>
           </div>
         </div>
       </SidebarInset>

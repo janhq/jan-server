@@ -1,7 +1,8 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import {
   PromptInput,
-  PromptInputActionAddAttachments,
+  PromptInputActionAddImages,
+  PromptInputActionAddFiles,
   PromptInputActionMenu,
   PromptInputActionMenuContent,
   PromptInputActionMenuTrigger,
@@ -65,8 +66,34 @@ import {
   uploadMedia,
   createJanMediaUrl,
 } from "@/services/media-upload-service";
+import {
+  isDocumentType,
+  scanDocument,
+} from "@/services/document-upload-service";
 import { mcpService } from "@/services/mcp-service";
 import type { UploadServiceConfig } from "@janhq/interfaces/ai-elements/prompt-input";
+
+// File type constants
+const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png"];
+const ACCEPTED_DOCUMENT_TYPES = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+  "text/markdown",
+  "text/html",
+  "application/rtf",
+];
+const ACCEPTED_FILE_TYPES = [
+  ...ACCEPTED_IMAGE_TYPES,
+  ...ACCEPTED_DOCUMENT_TYPES,
+].join(",");
+
+// File limits
+const MAX_IMAGES = 10;
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB for documents (images have smaller practical limits)
 
 /**
  * Generates a meaningful title from message text.
@@ -124,6 +151,89 @@ const InputResetHandler = ({
 
   return null;
 };
+
+// Component to handle document scanning after upload completes
+// Scans uploaded documents to extract text via OCR
+const DocumentScanHandler = () => {
+  const controller = usePromptInputController();
+  const scanningRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const files = controller.attachments.files;
+
+    // Find files that are documents, uploaded successfully, but not yet scanned
+    const documentsToScan = files.filter((file) => {
+      const mimeType = file.mediaType || "";
+      return (
+        isDocumentType(mimeType) &&
+        file.uploadStatus === "completed" &&
+        file.mediaId &&
+        !file.isDocument && // Not yet marked as document (scanning not started)
+        !scanningRef.current.has(file.id)
+      );
+    });
+
+    if (documentsToScan.length === 0) return;
+
+    // Scan each document
+    documentsToScan.forEach((file) => {
+      scanningRef.current.add(file.id);
+
+      // Mark as document and set scanning status
+      controller.attachments.updateFile(file.id, {
+        isDocument: true,
+        documentStatus: "processing",
+      });
+
+      // Trigger document scan
+      (async () => {
+        try {
+          // Extract media object ID from the URL
+          const mediaId = file.mediaId || "";
+          const mediaObjectId = extractMediaObjectId(mediaId);
+
+          const scanResult = await scanDocument(
+            mediaObjectId,
+            file.filename || "document",
+          );
+
+          // Update file with scan results
+          controller.attachments.updateFile(file.id, {
+            documentId: scanResult.id,
+            extractedText: scanResult.extracted_text,
+            pageCount: scanResult.page_count,
+            wordCount: scanResult.word_count,
+            documentStatus: scanResult.processing_status === "completed" ? "completed" : "failed",
+            documentError: scanResult.error_message,
+          });
+        } catch (error) {
+          console.error("Document scan failed:", error);
+          controller.attachments.updateFile(file.id, {
+            documentStatus: "failed",
+            documentError: error instanceof Error ? error.message : "Scan failed",
+          });
+        } finally {
+          scanningRef.current.delete(file.id);
+        }
+      })();
+    });
+  }, [controller.attachments]);
+
+  return null;
+};
+
+/**
+ * Extract the media object ID (jan_*) from a media URL
+ */
+function extractMediaObjectId(url: string): string {
+  // Try to find jan_* pattern in the URL
+  const match = url.match(/jan_[a-zA-Z0-9]+/);
+  if (match) {
+    return match[0];
+  }
+  // If no jan_* found, the URL itself might be the ID
+  return url;
+}
 
 const ChatInput = ({
   initialConversation = false,
@@ -285,6 +395,7 @@ const ChatInput = ({
   const shouldShowBrowserUI = isBrowserSupported && !isMobileDevice;
   const isSupportImageGeneration =
     settings?.server_capabilities?.image_generation_enabled ?? false;
+  const isSupportImages = modelDetail.supports_images;
 
   // Auto-disable capabilities when model doesn't support them
   useEffect(() => {
@@ -487,9 +598,9 @@ const ChatInput = ({
         )}
       >
         <PromptInputProvider
-          maxImages={10}
-          maxFileSize={10 * 1024 * 1024} //10MB
-          accept="image/jpeg,image/jpg,image/png"
+          maxImages={MAX_IMAGES}
+          maxFileSize={MAX_FILE_SIZE}
+          accept={ACCEPTED_FILE_TYPES}
           onError={handleError}
           uploadService={uploadService}
           userId={conversationId || projectId || "anonymous"}
@@ -499,8 +610,9 @@ const ChatInput = ({
             isMobile={isMobile}
             conversationId={conversationId}
           />
+          <DocumentScanHandler />
           <PromptInput
-            accept="image/jpeg,image/jpg,image/png"
+            accept={ACCEPTED_FILE_TYPES}
             globalDrop
             multiple
             userId={conversationId || projectId || "anonymous"}
@@ -523,23 +635,30 @@ const ChatInput = ({
             </PromptInputBody>
             <PromptInputFooter>
               <PromptInputTools>
-                <PromptInputActionMenu>
-                  <PromptInputActionMenuTrigger
-                    className="rounded-full"
-                    variant="secondary"
-                  />
-                  <PromptInputActionMenuContent className="lg:w-56">
-                    <PromptInputActionAddAttachments label="Add photos" />
-                    {initialConversation && !projectId && !isPrivateChat && (
-                      <ProjectsChatInput
-                        currentProjectId={selectedProjectId || undefined}
-                        onProjectSelect={(projectId) => {
-                          setSelectedProjectId(projectId);
-                        }}
-                      />
-                    )}
-                  </PromptInputActionMenuContent>
-                </PromptInputActionMenu>
+                {(isSupportImages ||
+                  (initialConversation && !projectId && !isPrivateChat)) && (
+                  <PromptInputActionMenu>
+                    <PromptInputActionMenuTrigger
+                      className="rounded-full"
+                      variant="secondary"
+                    />
+                    <PromptInputActionMenuContent className="lg:w-56">
+                        {isSupportImages && (
+                      <PromptInputActionAddImages label="Add images" />
+                      )}
+                      <PromptInputActionAddFiles label="Add files" />
+                      {initialConversation && !projectId && !isPrivateChat && (
+                        <ProjectsChatInput
+                          currentProjectId={selectedProjectId || undefined}
+                          onProjectSelect={(projectId) => {
+                            setSelectedProjectId(projectId);
+                          }}
+                        />
+                      )}
+                    </PromptInputActionMenuContent>
+                  </PromptInputActionMenu>
+                )}
+
                 <SettingChatInput
                   searchEnabled={searchEnabled}
                   deepResearchEnabled={deepResearchEnabled}

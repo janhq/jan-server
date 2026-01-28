@@ -8,7 +8,7 @@ import (
 const sandboxWritableDir = "/home/user"
 
 func normalizeCodeArguments(toolName string, args map[string]interface{}) map[string]interface{} {
-	if toolName != "aio_code_execute" || args == nil {
+	if toolName != "sandbox_code_execute" || args == nil {
 		return args
 	}
 

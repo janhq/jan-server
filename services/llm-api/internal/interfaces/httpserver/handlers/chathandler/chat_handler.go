@@ -3,6 +3,7 @@ package chathandler
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 
 	"jan-server/services/llm-api/internal/config"
 	"jan-server/services/llm-api/internal/domain/conversation"
+	"jan-server/services/llm-api/internal/domain/document"
 	domainmodel "jan-server/services/llm-api/internal/domain/model"
 	"jan-server/services/llm-api/internal/domain/project"
 	"jan-server/services/llm-api/internal/domain/prompt"
@@ -56,6 +58,7 @@ type ChatHandler struct {
 	memoryHandler       *MemoryHandler
 	userSettingsService *usersettings.Service
 	tokenUsageService   *tokenusage.Service
+	documentService     *document.DocumentService
 }
 
 // NewChatHandler creates a new chat handler
@@ -69,6 +72,7 @@ func NewChatHandler(
 	memoryHandler *MemoryHandler,
 	userSettingsService *usersettings.Service,
 	tokenUsageService *tokenusage.Service,
+	documentService *document.DocumentService,
 ) *ChatHandler {
 	return &ChatHandler{
 		inferenceProvider:   inferenceProvider,
@@ -80,6 +84,7 @@ func NewChatHandler(
 		memoryHandler:       memoryHandler,
 		userSettingsService: userSettingsService,
 		tokenUsageService:   tokenUsageService,
+		documentService:     documentService,
 	}
 }
 
@@ -111,6 +116,7 @@ func (h *ChatHandler) CreateChatCompletion(
 	var conv *conversation.Conversation
 	var conversationID string
 	var projectInstruction string
+	var projectID *uint
 	var err error
 	newMessages := append([]openai.ChatCompletionMessage(nil), request.Messages...)
 	skipPromptCustomization := shouldBypassPromptCustomization(reqCtx)
@@ -148,7 +154,7 @@ func (h *ChatHandler) CreateChatCompletion(
 
 		// Load project instruction for this conversation (if any)
 		if !skipPromptCustomization {
-			projectInstruction = h.getProjectInstruction(ctx, userID, conv)
+			projectInstruction, projectID = h.getProjectContext(ctx, userID, conv)
 		}
 	}
 	// If no conversation.id exists, bypass as non-conversation completion
@@ -213,7 +219,9 @@ func (h *ChatHandler) CreateChatCompletion(
 
 	// Check if we should use the instruct model instead
 	// This happens when enable_thinking is explicitly false and the model has an instruct model configured
-	if request.EnableThinking != nil && !*request.EnableThinking && selectedProviderModel.InstructModelID != nil && !imageRequested {
+	// Skip instruct fallback for API key authentication (API users should get the model they requested)
+	isAPIKeyAuth := strings.EqualFold(reqCtx.GetHeader("X-Auth-Method"), "apikey")
+	if !isAPIKeyAuth && request.EnableThinking != nil && !*request.EnableThinking && selectedProviderModel.InstructModelID != nil && !imageRequested {
 		instructModel, instructProvider, err := h.providerHandler.GetProviderModelByID(ctx, *selectedProviderModel.InstructModelID)
 		if err == nil && instructModel != nil && instructProvider != nil {
 			observability.AddSpanEvent(ctx, "switching_to_instruct_model",
@@ -223,6 +231,8 @@ func (h *ChatHandler) CreateChatCompletion(
 			selectedProviderModel = instructModel
 			selectedProvider = instructProvider
 		}
+	} else if isAPIKeyAuth && request.EnableThinking != nil && !*request.EnableThinking && selectedProviderModel.InstructModelID != nil {
+		observability.AddSpanEvent(ctx, "skipping_instruct_fallback_for_api_key_auth")
 	}
 
 	// Add provider information to span
@@ -301,6 +311,7 @@ func (h *ChatHandler) CreateChatCompletion(
 			Preferences:        preferences,
 			Memory:             loadedMemory,
 			ProjectInstruction: projectInstruction,
+			ProjectID:          projectID,
 			Profile:            profileSettings,
 			ModelCatalogID:     modelCatalogID,
 			Tools:              request.Tools,
@@ -401,6 +412,10 @@ func (h *ChatHandler) CreateChatCompletion(
 	}
 
 	var response *openai.ChatCompletionResponse
+
+	// Inject file content for file_url placeholders
+	// This replaces [FILE_URL:...] markers with actual document text
+	request.Messages = h.injectFileContent(ctx, userID, request.Messages)
 
 	// Handle streaming vs non-streaming
 	llmRequest := chat.CompletionRequest{
@@ -663,40 +678,51 @@ func decimalToInt(val *decimal.Decimal) (int, bool) {
 	return int(val.IntPart()), true
 }
 
-// getProjectInstruction loads the project instruction for the conversation, falling back to the stored snapshot.
-func (h *ChatHandler) getProjectInstruction(ctx context.Context, userID uint, conv *conversation.Conversation) string {
+// getProjectContext loads the project instruction for the conversation, falling back to the stored snapshot.
+// It also resolves the internal project ID for downstream prompt modules (e.g., project file injection).
+func (h *ChatHandler) getProjectContext(ctx context.Context, userID uint, conv *conversation.Conversation) (string, *uint) {
 	if conv == nil || h.projectService == nil {
-		return ""
+		return "", nil
 	}
 	if ctx != nil && ctx.Err() != nil {
-		return ""
+		return "", nil
+	}
+
+	var instruction string
+	var projectID *uint
+
+	if conv.ProjectID != nil && *conv.ProjectID > 0 {
+		projectID = conv.ProjectID
 	}
 
 	if conv.EffectiveInstructionSnapshot != nil {
 		if snapshot := strings.TrimSpace(*conv.EffectiveInstructionSnapshot); snapshot != "" {
-			return snapshot
+			instruction = snapshot
 		}
 	}
 
 	if conv.ProjectPublicID == nil {
-		return ""
+		return instruction, projectID
 	}
 
-	projectID := strings.TrimSpace(*conv.ProjectPublicID)
-	if projectID == "" {
-		return ""
+	projectPublicID := strings.TrimSpace(*conv.ProjectPublicID)
+	if projectPublicID == "" {
+		return instruction, projectID
 	}
 
-	proj, err := h.projectService.GetProjectByPublicIDAndUserID(ctx, projectID, userID)
-	if err != nil {
-		return ""
+	if projectID == nil || instruction == "" {
+		proj, err := h.projectService.GetProjectByPublicIDAndUserID(ctx, projectPublicID, userID)
+		if err == nil && proj != nil {
+			if projectID == nil {
+				projectID = &proj.ID
+			}
+			if instruction == "" && proj.Instruction != nil {
+				instruction = strings.TrimSpace(*proj.Instruction)
+			}
+		}
 	}
 
-	if proj.Instruction == nil {
-		return ""
-	}
-
-	return strings.TrimSpace(*proj.Instruction)
+	return instruction, projectID
 }
 
 // collectPromptMemory gathers memory hints from request headers, conversation metadata, or recent turns.
@@ -1284,6 +1310,24 @@ func (h *ChatHandler) itemToMessage(item conversation.Item) *openai.ChatCompleti
 					ImageURL: imageURL,
 				})
 			}
+
+			// Handle file content - convert to file_url placeholder for re-injection
+			if content.File != nil && content.File.URL != "" {
+				filename := content.File.Name
+				if filename == "" {
+					filename = "document"
+				}
+				mimeType := content.File.MimeType
+				if mimeType == "" {
+					mimeType = "application/octet-stream"
+				}
+				// Create file_url placeholder that will be processed by injectFileContent
+				placeholder := "[FILE_URL:" + content.File.URL + ":" + filename + ":" + mimeType + "]"
+				multiContent = append(multiContent, openai.ChatMessagePart{
+					Type: openai.ChatMessagePartTypeText,
+					Text: placeholder,
+				})
+			}
 		}
 
 		// Use multimodal format if there are images or if it's a tool message with multiple parts
@@ -1569,12 +1613,32 @@ func (h *ChatHandler) messageToItem(msg openai.ChatCompletionMessage) conversati
 		}
 	}
 
-	// Handle multimodal content (text + images)
+	// Handle multimodal content (text + images + files)
 	if len(msg.MultiContent) > 0 {
 		for _, part := range msg.MultiContent {
 			switch part.Type {
 			case openai.ChatMessagePartTypeText:
 				if part.Text != "" {
+					// Check if this is a file_url placeholder (before injection)
+					if chatrequests.IsFileURLPlaceholder(part.Text) {
+						url, filename, mimeType, ok := chatrequests.ParseFileURLPlaceholder(part.Text)
+						if ok {
+							contents = append(contents, conversation.NewFileContent(url, filename, mimeType, "auto"))
+							continue
+						}
+					}
+					// Check if this is injected attached_document content (after injection)
+					// Extract file info and store ONLY as file type (like images)
+					// The extracted text is NOT stored - it will be re-injected at runtime
+					if isAttachedDocumentContent(part.Text) {
+						filename, url, mimeType, ok := extractAttachedDocumentInfo(part.Text)
+						if ok {
+							// Store only file reference for UI display (like images)
+							// Extracted text will be re-injected when loading conversation for LLM
+							contents = append(contents, conversation.NewFileContent(url, filename, mimeType, "auto"))
+						}
+						continue
+					}
 					switch role {
 					case conversation.ItemRoleUser:
 						contents = append(contents, conversation.NewInputTextContent(part.Text))
@@ -1776,4 +1840,110 @@ func (h *ChatHandler) trackMessageSent(reqCtx *gin.Context, request chatrequests
 	if err := analyticsMiddleware.TrackEvent(reqCtx, analytics.EventMessageSent, props); err != nil {
 		observability.AddSpanEvent(ctx, "analytics_error", attribute.String("error", err.Error()))
 	}
+}
+
+// attachedDocumentRegex matches <attached_document name="..." url="..." mime_type="..."> tags
+// Used to extract file metadata from injected content for storage
+var attachedDocumentRegex = regexp.MustCompile(`<attached_document\s+name="([^"]+)"\s+url="([^"]+)"\s+mime_type="([^"]+)"`)
+var mediaObjectIDRegex = regexp.MustCompile(`jan_[a-zA-Z0-9]+`)
+
+// extractAttachedDocumentInfo extracts file info from <attached_document> tag in text
+// Returns filename, url, mimeType, found
+func extractAttachedDocumentInfo(text string) (string, string, string, bool) {
+	matches := attachedDocumentRegex.FindStringSubmatch(text)
+	if len(matches) < 4 {
+		return "", "", "", false
+	}
+	return matches[1], matches[2], matches[3], true
+}
+
+// isAttachedDocumentContent checks if text contains an attached_document tag
+func isAttachedDocumentContent(text string) bool {
+	return strings.Contains(text, "<attached_document") && strings.Contains(text, "</attached_document>")
+}
+
+// injectFileContent replaces file URL placeholders with actual document content
+// This is called before sending messages to the LLM
+func (h *ChatHandler) injectFileContent(ctx context.Context, userID uint, messages []openai.ChatCompletionMessage) []openai.ChatCompletionMessage {
+	if h.documentService == nil {
+		return messages
+	}
+
+	result := make([]openai.ChatCompletionMessage, len(messages))
+	for i, msg := range messages {
+		result[i] = msg
+
+		// Process single content string
+		if msg.Content != "" && chatrequests.IsFileURLPlaceholder(msg.Content) {
+			url, filename, mimeType, ok := chatrequests.ParseFileURLPlaceholder(msg.Content)
+			if ok {
+				injectedContent := h.getFileContentForInjection(ctx, userID, url, filename, mimeType)
+				result[i].Content = injectedContent
+			}
+		}
+
+		// Process multi-content parts
+		if len(msg.MultiContent) > 0 {
+			newParts := make([]openai.ChatMessagePart, 0, len(msg.MultiContent))
+			for _, part := range msg.MultiContent {
+				if part.Type == openai.ChatMessagePartTypeText && chatrequests.IsFileURLPlaceholder(part.Text) {
+					url, filename, mimeType, ok := chatrequests.ParseFileURLPlaceholder(part.Text)
+					if ok {
+						injectedContent := h.getFileContentForInjection(ctx, userID, url, filename, mimeType)
+						newParts = append(newParts, openai.ChatMessagePart{
+							Type: openai.ChatMessagePartTypeText,
+							Text: injectedContent,
+						})
+						continue
+					}
+				}
+				newParts = append(newParts, part)
+			}
+			result[i].MultiContent = newParts
+		}
+	}
+
+	return result
+}
+
+// getFileContentForInjection retrieves and formats file content for LLM context injection
+// The returned content includes url and mime_type attributes so messageToItem can extract file metadata
+func (h *ChatHandler) getFileContentForInjection(ctx context.Context, userID uint, url, filename, mimeType string) string {
+	// Extract media object ID from URL (format: .../api/media/jan_xxx or jan_xxx)
+	mediaObjectID := extractMediaObjectID(url)
+	if mediaObjectID == "" {
+		return fmt.Sprintf("<attached_document name=\"%s\" url=\"%s\" mime_type=\"%s\">\n[File content could not be retrieved: invalid URL format]\n</attached_document>", filename, url, mimeType)
+	}
+
+	// Look up document content by media object ID
+	doc, err := h.documentService.GetDocumentContentByMediaObjectID(ctx, mediaObjectID, userID)
+	if err != nil {
+		return fmt.Sprintf("<attached_document name=\"%s\" url=\"%s\" mime_type=\"%s\">\n[File content could not be retrieved: %s]\n</attached_document>", filename, url, mimeType, err.Error())
+	}
+
+	// Check processing status
+	if doc.ProcessingStatus != document.ProcessingStatusCompleted {
+		return fmt.Sprintf("<attached_document name=\"%s\" url=\"%s\" mime_type=\"%s\" status=\"%s\">\n[Document is still being processed]\n</attached_document>", filename, url, mimeType, doc.ProcessingStatus)
+	}
+
+	// Format extracted text with metadata including url for storage extraction
+	var builder strings.Builder
+	builder.WriteString(fmt.Sprintf("<attached_document name=\"%s\" url=\"%s\" mime_type=\"%s\"", filename, url, mimeType))
+	if doc.PageCount != nil {
+		builder.WriteString(fmt.Sprintf(" pages=\"%d\"", *doc.PageCount))
+	}
+	if doc.WordCount != nil {
+		builder.WriteString(fmt.Sprintf(" words=\"%d\"", *doc.WordCount))
+	}
+	builder.WriteString(">\n")
+	builder.WriteString(doc.ExtractedText)
+	builder.WriteString("\n</attached_document>")
+
+	return builder.String()
+}
+
+// extractMediaObjectID extracts the media object ID from a URL
+// Supports formats: /api/media/jan_xxx, jan_xxx, https://.../.../api/media/jan_xxx
+func extractMediaObjectID(url string) string {
+	return mediaObjectIDRegex.FindString(url)
 }

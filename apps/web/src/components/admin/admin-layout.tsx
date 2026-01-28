@@ -103,16 +103,18 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       }
 
       setIsChecking(true);
-      const adminStatus = await checkAdminStatus();
+      // Force check on each admin route navigation for security
+      const adminStatus = await checkAdminStatus(true);
       setIsChecking(false);
 
       if (!adminStatus) {
+        console.warn("Non-admin user attempted to access admin panel");
         router.navigate({ to: "/" });
       }
     }
 
     verifyAccess();
-  }, [isAuthenticated, isGuest, checkAdminStatus, router]);
+  }, [isAuthenticated, isGuest, checkAdminStatus, router, pathname]);
 
   const toggleSection = (title: string) => {
     setExpandedSections((prev) =>

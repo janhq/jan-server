@@ -31,34 +31,37 @@ const (
 	ProviderDeepInfra   ProviderKind = "deepinfra"
 	ProviderCustom      ProviderKind = "custom"  // for any customer-provided API
 	ProviderZImage      ProviderKind = "z-image" // Image generation provider
+	ProviderOCR         ProviderKind = "ocr"     // Document OCR providers (Docling-compatible)
 )
 
 // ProviderCategory distinguishes between LLM and other provider types (e.g., image generation)
 type ProviderCategory string
 
 const (
-	ProviderCategoryLLM   ProviderCategory = "llm"   // Default: Language model providers
-	ProviderCategoryImage ProviderCategory = "image" // Image generation providers
+	ProviderCategoryLLM     ProviderCategory = "llm"     // Default: Language model providers
+	ProviderCategoryImage   ProviderCategory = "image"   // Image generation providers
+	ProviderCategoryOCR     ProviderCategory = "ocr"     // Document OCR providers
+	ProviderCategoryDocling ProviderCategory = "docling" // Legacy OCR category (Docling)
 )
 
 type Provider struct {
-	ID              uint              `json:"id"`
-	PublicID        string            `json:"public_id"`
-	DisplayName     string            `json:"display_name"`
-	Kind            ProviderKind      `json:"kind"`
-	Category        ProviderCategory  `json:"category"`               // "llm" or "image", defaults to "llm"
-	BaseURL         string            `json:"base_url"`               // e.g., https://api.openai.com/v1
-	Endpoints       EndpointList      `json:"endpoints,omitempty"`    // Optional: multiple endpoints for round robin
-	EncryptedAPIKey string            `json:"-"`                      // encrypted at rest, decrypted in memory when needed
-	APIKeyHint      *string           `json:"api_key_hint,omitempty"` // last4 or source name, not the secret
-	IsModerated     bool              `json:"is_moderated"`           // whether provider enforces moderation upstream
-	Active          bool              `json:"active"`
-	DefaultImageGenerate bool         `json:"default_provider_image_generate"`
-	DefaultImageEdit     bool         `json:"default_provider_image_edit"`
-	Metadata        map[string]string `json:"metadata,omitempty"` // supports: image_input, file_attachment, description, etc.
-	LastSyncedAt    *time.Time        `json:"last_synced_at,omitempty"`
-	CreatedAt       time.Time         `json:"created_at"`
-	UpdatedAt       time.Time         `json:"updated_at"`
+	ID                   uint              `json:"id"`
+	PublicID             string            `json:"public_id"`
+	DisplayName          string            `json:"display_name"`
+	Kind                 ProviderKind      `json:"kind"`
+	Category             ProviderCategory  `json:"category"`               // "llm", "image", or "ocr" (defaults to "llm")
+	BaseURL              string            `json:"base_url"`               // e.g., https://api.openai.com/v1
+	Endpoints            EndpointList      `json:"endpoints,omitempty"`    // Optional: multiple endpoints for round robin
+	EncryptedAPIKey      string            `json:"-"`                      // encrypted at rest, decrypted in memory when needed
+	APIKeyHint           *string           `json:"api_key_hint,omitempty"` // last4 or source name, not the secret
+	IsModerated          bool              `json:"is_moderated"`           // whether provider enforces moderation upstream
+	Active               bool              `json:"active"`
+	DefaultImageGenerate bool              `json:"default_provider_image_generate"`
+	DefaultImageEdit     bool              `json:"default_provider_image_edit"`
+	Metadata             map[string]string `json:"metadata,omitempty"` // supports: image_input, file_attachment, description, etc.
+	LastSyncedAt         *time.Time        `json:"last_synced_at,omitempty"`
+	CreatedAt            time.Time         `json:"created_at"`
+	UpdatedAt            time.Time         `json:"updated_at"`
 }
 
 // Metadata keys for provider capabilities

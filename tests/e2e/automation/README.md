@@ -11,6 +11,7 @@ Domain-scoped Postman collections for `jan-cli api-test`. Collections rely on `-
 - `collections/media.postman.json` – media health and legacy media flows.
 - `collections/mcp-runtime.postman.json` – MCP runtime tooling flows.
 - `collections/mcp-admin.postman.json` – public/admin MCP tooling.
+- `collections/mcp-agent.postman.json` - MCP agent + sandbox tool validation.
 - `collections/user-management.postman.json` – user management scenarios.
 - `collections/model-prompt-templates.postman.json` – prompt template scenarios.
 - `collections/messages.postman.json` – Anthropic Messages API compatibility (Claude Code API).
@@ -19,6 +20,7 @@ Domain-scoped Postman collections for `jan-cli api-test`. Collections rely on `-
 
 - `make test-all` – runs the core collections (memory/response excluded for now).
 - `make test-<domain>` – run a single collection (`auth`, `conversation`, `response`, `model`, `memory`, `media`, `mcp`, `dev` fail-fast).
+- `make test-mcp-agents` - run MCP agent sandbox validation (E2B).
 
 ## Variables
 

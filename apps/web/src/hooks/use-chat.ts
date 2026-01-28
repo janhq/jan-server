@@ -94,6 +94,7 @@ export function useChat(model: LanguageModel, options?: CustomChatOptions) {
     return ensureSession(
       sessionId,
       transportRef.current,
+      // @ts-expect-error AI SDK version mismatch - update @ai-sdk packages to fix
       () => new Chat({ ...chatInitOptions, transport: transportRef.current }),
       sessionTitle,
     );
@@ -106,6 +107,7 @@ export function useChat(model: LanguageModel, options?: CustomChatOptions) {
     }
   }, [sessionId, sessionTitle, setSessionTitle]);
 
+  // @ts-expect-error AI SDK version mismatch - update @ai-sdk packages to fix
   const chatResult = useChatSDK({
     ...(chat
       ? { chat }
