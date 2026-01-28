@@ -170,7 +170,7 @@ func (s *Service) InitiateOAuth(ctx context.Context, userID uint, connectorType 
 	}
 
 	// Build redirect URI
-	redirectURI := fmt.Sprintf("%s/api/v1/connectors/%s/callback", s.config.OAuthRedirectBaseURL, connectorType)
+	redirectURI := fmt.Sprintf("%s/v1/connectors/%s/callback", s.config.OAuthRedirectBaseURL, connectorType)
 
 	// Store OAuth state
 	oauthState := &OAuthState{
@@ -313,7 +313,11 @@ func (s *Service) CompleteOAuth(ctx context.Context, code, state string) (*Conne
 		Msg("OAuth flow completed")
 
 	// Build frontend redirect URL
-	frontendRedirect := fmt.Sprintf("%s/settings/connectors?connected=%s", s.config.OAuthFrontendURL, oauthState.ConnectorType)
+	frontendRedirect := fmt.Sprintf(
+		"%s/connectors/callback?status=success&connector=%s",
+		s.config.OAuthFrontendURL,
+		oauthState.ConnectorType,
+	)
 
 	return conn, frontendRedirect, nil
 }

@@ -14,6 +14,7 @@ import { Route as ProfileIndexRouteImport } from './routes/profile/index'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
+import { Route as ConnectorsIndexRouteImport } from './routes/connectors/index'
 import { Route as ThreadsTemporaryRouteImport } from './routes/threads/temporary'
 import { Route as ThreadsConversationIdRouteImport } from './routes/threads/$conversationId'
 import { Route as ShareSlugRouteImport } from './routes/share/$slug'
@@ -76,6 +77,11 @@ const DashboardIndexRoute = DashboardIndexRouteImport.update({
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/admin/',
   path: '/admin/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConnectorsIndexRoute = ConnectorsIndexRouteImport.update({
+  id: '/connectors/',
+  path: '/connectors/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ThreadsTemporaryRoute = ThreadsTemporaryRouteImport.update({
@@ -281,6 +287,7 @@ export interface FileRoutesByFullPath {
   '/admin/prompt-templates': typeof AdminPromptTemplatesRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/connectors/callback': typeof ConnectorsCallbackRoute
+  '/connectors/': typeof ConnectorsIndexRoute
   '/dashboard/api-keys': typeof DashboardApiKeysRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
@@ -326,6 +333,7 @@ export interface FileRoutesByTo {
   '/admin/prompt-templates': typeof AdminPromptTemplatesRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/connectors/callback': typeof ConnectorsCallbackRoute
+  '/connectors': typeof ConnectorsIndexRoute
   '/dashboard/api-keys': typeof DashboardApiKeysRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
@@ -372,6 +380,7 @@ export interface FileRoutesById {
   '/admin/prompt-templates': typeof AdminPromptTemplatesRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/connectors/callback': typeof ConnectorsCallbackRoute
+  '/connectors/': typeof ConnectorsIndexRoute
   '/dashboard/api-keys': typeof DashboardApiKeysRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
@@ -419,6 +428,7 @@ export interface FileRouteTypes {
     | '/admin/prompt-templates'
     | '/auth/callback'
     | '/connectors/callback'
+    | '/connectors/'
     | '/dashboard/api-keys'
     | '/dashboard/usage'
     | '/docs/quickstart'
@@ -464,6 +474,7 @@ export interface FileRouteTypes {
     | '/admin/prompt-templates'
     | '/auth/callback'
     | '/connectors/callback'
+    | '/connectors'
     | '/dashboard/api-keys'
     | '/dashboard/usage'
     | '/docs/quickstart'
@@ -509,6 +520,7 @@ export interface FileRouteTypes {
     | '/admin/prompt-templates'
     | '/auth/callback'
     | '/connectors/callback'
+    | '/connectors/'
     | '/dashboard/api-keys'
     | '/dashboard/usage'
     | '/docs/quickstart'
@@ -564,6 +576,7 @@ export interface RootRouteChildren {
   ThreadsConversationIdRoute: typeof ThreadsConversationIdRoute
   ThreadsTemporaryRoute: typeof ThreadsTemporaryRoute
   AdminIndexRoute: typeof AdminIndexRoute
+  ConnectorsIndexRoute: typeof ConnectorsIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
   DocsIndexRoute: typeof DocsIndexRoute
   ProfileIndexRoute: typeof ProfileIndexRoute
@@ -693,6 +706,13 @@ declare module '@tanstack/react-router' {
       path: '/auth/callback'
       fullPath: '/auth/callback'
       preLoaderRoute: typeof AuthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/connectors/': {
+      id: '/connectors/'
+      path: '/connectors'
+      fullPath: '/connectors/'
+      preLoaderRoute: typeof ConnectorsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/connectors/callback': {
@@ -916,6 +936,7 @@ const rootRouteChildren: RootRouteChildren = {
   ThreadsConversationIdRoute: ThreadsConversationIdRoute,
   ThreadsTemporaryRoute: ThreadsTemporaryRoute,
   AdminIndexRoute: AdminIndexRoute,
+  ConnectorsIndexRoute: ConnectorsIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,
   DocsIndexRoute: DocsIndexRoute,
   ProfileIndexRoute: ProfileIndexRoute,

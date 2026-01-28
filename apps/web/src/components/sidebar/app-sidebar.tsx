@@ -33,10 +33,10 @@ export const AppSidebar = memo(function AppSidebar({
   );
 
   // Calculate animation indices:
-  // NavMain: 0, 1, 2 (3 items)
-  // NavProjects: starts at 3
-  // NavChats: starts after projects (3 + 1 label + N projects, or 3 if no projects)
-  const chatsStartIndex = projects.length > 0 ? 3 + 1 + projects.length : 3;
+  // NavMain: 0, 1, 2, 3 (4 items: New Chat, New Project, Connectors, Search)
+  // NavProjects: starts at 4
+  // NavChats: starts after projects (4 + 1 label + N projects, or 4 if no projects)
+  const chatsStartIndex = projects.length > 0 ? 4 + 1 + projects.length : 4;
 
   useEffect(() => {
     if (state === "collapsed") {
@@ -98,7 +98,7 @@ export const AppSidebar = memo(function AppSidebar({
           <NavMain />
         </SidebarHeader>
         <SidebarContent className="mask-b-from-95% mask-t-from-98%">
-          <NavProjects startIndex={3} />
+          <NavProjects startIndex={4} />
           <NavChats startIndex={chatsStartIndex} />
         </SidebarContent>
         <SidebarFooter className={cn(!isOpen && "pb-4")}>

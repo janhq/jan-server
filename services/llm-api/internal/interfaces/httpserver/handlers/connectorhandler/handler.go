@@ -48,8 +48,26 @@ func (h *ConnectorHandler) ListConnectors(c *gin.Context) {
 		return
 	}
 
+	responseConnectors := make([]ConnectorInfoResponse, 0, len(connectors))
+	for _, conn := range connectors {
+		responseConnectors = append(responseConnectors, ConnectorInfoResponse{
+			Type:        conn.Type,
+			DisplayName: conn.DisplayName,
+			Description: conn.Description,
+			IconURL:     conn.IconURL,
+			IsConnected: conn.IsConnected,
+			Username:    conn.Username,
+			Email:       conn.Email,
+			AvatarURL:   conn.AvatarURL,
+			ConnectedAt: conn.ConnectedAt,
+			Scopes:      conn.Scopes,
+			HasWrite:    conn.HasWrite,
+			Enabled:     h.service.IsEnabled(conn.Type),
+		})
+	}
+
 	c.JSON(http.StatusOK, ListConnectorsResponse{
-		Connectors: connectors,
+		Connectors: responseConnectors,
 	})
 }
 
@@ -506,7 +524,23 @@ func formatTimePtr(t *time.Time) string {
 
 // ListConnectorsResponse is the response for listing connectors.
 type ListConnectorsResponse struct {
-	Connectors []connector.ConnectorInfo `json:"connectors"`
+	Connectors []ConnectorInfoResponse `json:"connectors"`
+}
+
+// ConnectorInfoResponse includes connector metadata plus enabled status.
+type ConnectorInfoResponse struct {
+	Type        connector.ConnectorType `json:"type"`
+	DisplayName string                  `json:"display_name"`
+	Description string                  `json:"description"`
+	IconURL     string                  `json:"icon_url"`
+	IsConnected bool                    `json:"is_connected"`
+	Username    string                  `json:"username,omitempty"`
+	Email       string                  `json:"email,omitempty"`
+	AvatarURL   string                  `json:"avatar_url,omitempty"`
+	ConnectedAt *time.Time              `json:"connected_at,omitempty"`
+	Scopes      []string                `json:"scopes,omitempty"`
+	HasWrite    bool                    `json:"has_write"`
+	Enabled     bool                    `json:"enabled"`
 }
 
 // AuthURLResponse is the response for getting an auth URL.
