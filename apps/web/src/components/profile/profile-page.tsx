@@ -5,12 +5,13 @@ import { NavHeader } from "@/components/sidebar/nav-header";
 import { ApiKeysTab } from "./api-keys-tab";
 import { UserTab } from "./user-tab";
 import { UsageTab } from "./usage-tab";
+import { ConnectorsTab } from "./connectors-tab";
 import { cn } from "@/lib/utils";
 
 export function ProfilePage() {
-  const [activeTab, setActiveTab] = useState<"user" | "api-keys" | "usage">(
-    "user",
-  );
+  const [activeTab, setActiveTab] = useState<
+    "user" | "api-keys" | "usage" | "connectors"
+  >("user");
 
   return (
     <>
@@ -56,12 +57,24 @@ export function ProfilePage() {
                 >
                   Usage
                 </button>
+                <button
+                  onClick={() => setActiveTab("connectors")}
+                  className={cn(
+                    "whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium transition-colors",
+                    activeTab === "connectors"
+                      ? "border-primary text-foreground"
+                      : "border-transparent text-muted-foreground hover:border-border hover:text-foreground",
+                  )}
+                >
+                  Connectors
+                </button>
               </nav>
             </div>
 
             {activeTab === "user" && <UserTab />}
             {activeTab === "api-keys" && <ApiKeysTab />}
             {activeTab === "usage" && <UsageTab />}
+            {activeTab === "connectors" && <ConnectorsTab />}
           </div>
         </div>
       </SidebarInset>

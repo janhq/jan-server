@@ -23,6 +23,10 @@ var RoutesProvider = wire.NewSet(
 	ProvideAIOMCP,
 	ProvideAgentProxyMCP,
 	ProvideToolConfigCache,
+	ProvideGitHubMCP,
+	ProvideGmailMCP,
+	ProvideDriveMCP,
+	ProvideCalendarMCP,
 	ProvideMCPRoute,
 	ProvideSearchMCPConfig,
 )
@@ -140,6 +144,62 @@ func ProvideAgentProxyMCP(cfg *config.Config) *mcp.AgentProxyMCP {
 	return agentProxy
 }
 
+// ProvideGitHubMCP creates a GitHubMCP if configured
+func ProvideGitHubMCP(cfg *config.Config) *mcp.GitHubMCP {
+	if !cfg.EnableGitHubConnector {
+		log.Info().Msg("GitHub connector MCP tools disabled (MCP_ENABLE_GITHUB_CONNECTOR=false)")
+		return nil
+	}
+	if cfg.LLMAPIBaseURL == "" {
+		log.Warn().Msg("LLM_API_BASE_URL not configured; skipping GitHub connector tools")
+		return nil
+	}
+	log.Info().Msg("GitHub connector MCP tools enabled")
+	return mcp.NewGitHubMCP(cfg.LLMAPIBaseURL, cfg.EnableGitHubConnector)
+}
+
+// ProvideGmailMCP creates a GmailMCP if configured
+func ProvideGmailMCP(cfg *config.Config) *mcp.GmailMCP {
+	if !cfg.EnableGmailConnector {
+		log.Info().Msg("Gmail connector MCP tools disabled (MCP_ENABLE_GMAIL_CONNECTOR=false)")
+		return nil
+	}
+	if cfg.LLMAPIBaseURL == "" {
+		log.Warn().Msg("LLM_API_BASE_URL not configured; skipping Gmail connector tools")
+		return nil
+	}
+	log.Info().Msg("Gmail connector MCP tools enabled")
+	return mcp.NewGmailMCP(cfg.LLMAPIBaseURL, cfg.EnableGmailConnector)
+}
+
+// ProvideDriveMCP creates a DriveMCP if configured
+func ProvideDriveMCP(cfg *config.Config) *mcp.DriveMCP {
+	if !cfg.EnableDriveConnector {
+		log.Info().Msg("Google Drive connector MCP tools disabled (MCP_ENABLE_DRIVE_CONNECTOR=false)")
+		return nil
+	}
+	if cfg.LLMAPIBaseURL == "" {
+		log.Warn().Msg("LLM_API_BASE_URL not configured; skipping Drive connector tools")
+		return nil
+	}
+	log.Info().Msg("Google Drive connector MCP tools enabled")
+	return mcp.NewDriveMCP(cfg.LLMAPIBaseURL, cfg.EnableDriveConnector)
+}
+
+// ProvideCalendarMCP creates a CalendarMCP if configured
+func ProvideCalendarMCP(cfg *config.Config) *mcp.CalendarMCP {
+	if !cfg.EnableCalendarConnector {
+		log.Info().Msg("Google Calendar connector MCP tools disabled (MCP_ENABLE_CALENDAR_CONNECTOR=false)")
+		return nil
+	}
+	if cfg.LLMAPIBaseURL == "" {
+		log.Warn().Msg("LLM_API_BASE_URL not configured; skipping Calendar connector tools")
+		return nil
+	}
+	log.Info().Msg("Google Calendar connector MCP tools enabled")
+	return mcp.NewCalendarMCP(cfg.LLMAPIBaseURL, cfg.EnableCalendarConnector)
+}
+
 // ProvideMCPRoute creates a MCPRoute with all dependencies
 func ProvideMCPRoute(
 	searchMCP *mcp.SearchMCP,
@@ -150,6 +210,10 @@ func ProvideMCPRoute(
 	imageEditMCP *mcp.ImageEditMCP,
 	aioMCP *mcp.AIOMCP,
 	agentProxyMCP *mcp.AgentProxyMCP,
+	githubMCP *mcp.GitHubMCP,
+	gmailMCP *mcp.GmailMCP,
+	driveMCP *mcp.DriveMCP,
+	calendarMCP *mcp.CalendarMCP,
 	llmClient *llmapi.Client,
 	toolConfigCache *toolconfig.Cache,
 ) *mcp.MCPRoute {
@@ -157,5 +221,5 @@ func ProvideMCPRoute(
 	if toolConfigCache != nil {
 		searchMCP.SetToolConfigCache(toolConfigCache)
 	}
-	return mcp.NewMCPRoute(searchMCP, providerMCP, sandboxMCP, memoryMCP, imageMCP, imageEditMCP, aioMCP, agentProxyMCP, llmClient, toolConfigCache)
+	return mcp.NewMCPRoute(searchMCP, providerMCP, sandboxMCP, memoryMCP, imageMCP, imageEditMCP, aioMCP, agentProxyMCP, githubMCP, gmailMCP, driveMCP, calendarMCP, llmClient, toolConfigCache)
 }

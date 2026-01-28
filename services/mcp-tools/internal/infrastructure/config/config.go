@@ -93,6 +93,12 @@ type Config struct {
 	AIOURL     string        `env:"AIO_URL" envDefault:"http://aio-sandbox:8080"`
 	AIOTimeout time.Duration `env:"AIO_TIMEOUT" envDefault:"120s"`
 
+	// Connector MCP tools - external service integrations
+	EnableGitHubConnector   bool `env:"MCP_ENABLE_GITHUB_CONNECTOR" envDefault:"false"`
+	EnableGmailConnector    bool `env:"MCP_ENABLE_GMAIL_CONNECTOR" envDefault:"false"`
+	EnableDriveConnector    bool `env:"MCP_ENABLE_DRIVE_CONNECTOR" envDefault:"false"`
+	EnableCalendarConnector bool `env:"MCP_ENABLE_CALENDAR_CONNECTOR" envDefault:"false"`
+
 	// Analytics (PostHog + OTel)
 	AnalyticsEnabled     bool          `env:"ANALYTICS_ENABLED" envDefault:"true"`
 	PostHogEnabled       bool          `env:"POSTHOG_ENABLED" envDefault:"false"`

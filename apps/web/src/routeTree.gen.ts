@@ -23,6 +23,7 @@ import { Route as DocsQuickstartRouteImport } from './routes/docs/quickstart'
 import { Route as DashboardUsageRouteImport } from './routes/dashboard/usage'
 import { Route as DashboardApiKeysRouteImport } from './routes/dashboard/api-keys'
 import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
+import { Route as ConnectorsCallbackRouteImport } from './routes/connectors/callback'
 import { Route as AdminPromptTemplatesRouteImport } from './routes/admin/prompt-templates'
 import { Route as AdminMcpToolsRouteImport } from './routes/admin/mcp-tools'
 import { Route as DocsGuidesIndexRouteImport } from './routes/docs/guides/index'
@@ -120,6 +121,11 @@ const DashboardApiKeysRoute = DashboardApiKeysRouteImport.update({
 const AuthCallbackRoute = AuthCallbackRouteImport.update({
   id: '/auth/callback',
   path: '/auth/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConnectorsCallbackRoute = ConnectorsCallbackRouteImport.update({
+  id: '/connectors/callback',
+  path: '/connectors/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminPromptTemplatesRoute = AdminPromptTemplatesRouteImport.update({
@@ -274,6 +280,7 @@ export interface FileRoutesByFullPath {
   '/admin/mcp-tools': typeof AdminMcpToolsRoute
   '/admin/prompt-templates': typeof AdminPromptTemplatesRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/connectors/callback': typeof ConnectorsCallbackRoute
   '/dashboard/api-keys': typeof DashboardApiKeysRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
@@ -318,6 +325,7 @@ export interface FileRoutesByTo {
   '/admin/mcp-tools': typeof AdminMcpToolsRoute
   '/admin/prompt-templates': typeof AdminPromptTemplatesRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/connectors/callback': typeof ConnectorsCallbackRoute
   '/dashboard/api-keys': typeof DashboardApiKeysRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
@@ -363,6 +371,7 @@ export interface FileRoutesById {
   '/admin/mcp-tools': typeof AdminMcpToolsRoute
   '/admin/prompt-templates': typeof AdminPromptTemplatesRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/connectors/callback': typeof ConnectorsCallbackRoute
   '/dashboard/api-keys': typeof DashboardApiKeysRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
@@ -409,6 +418,7 @@ export interface FileRouteTypes {
     | '/admin/mcp-tools'
     | '/admin/prompt-templates'
     | '/auth/callback'
+    | '/connectors/callback'
     | '/dashboard/api-keys'
     | '/dashboard/usage'
     | '/docs/quickstart'
@@ -453,6 +463,7 @@ export interface FileRouteTypes {
     | '/admin/mcp-tools'
     | '/admin/prompt-templates'
     | '/auth/callback'
+    | '/connectors/callback'
     | '/dashboard/api-keys'
     | '/dashboard/usage'
     | '/docs/quickstart'
@@ -497,6 +508,7 @@ export interface FileRouteTypes {
     | '/admin/mcp-tools'
     | '/admin/prompt-templates'
     | '/auth/callback'
+    | '/connectors/callback'
     | '/dashboard/api-keys'
     | '/dashboard/usage'
     | '/docs/quickstart'
@@ -542,6 +554,7 @@ export interface RootRouteChildren {
   AdminMcpToolsRoute: typeof AdminMcpToolsRoute
   AdminPromptTemplatesRoute: typeof AdminPromptTemplatesRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
+  ConnectorsCallbackRoute: typeof ConnectorsCallbackRoute
   DashboardApiKeysRoute: typeof DashboardApiKeysRoute
   DashboardUsageRoute: typeof DashboardUsageRoute
   DocsQuickstartRoute: typeof DocsQuickstartRoute
@@ -680,6 +693,13 @@ declare module '@tanstack/react-router' {
       path: '/auth/callback'
       fullPath: '/auth/callback'
       preLoaderRoute: typeof AuthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/connectors/callback': {
+      id: '/connectors/callback'
+      path: '/connectors/callback'
+      fullPath: '/connectors/callback'
+      preLoaderRoute: typeof ConnectorsCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/prompt-templates': {
@@ -886,6 +906,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminMcpToolsRoute: AdminMcpToolsRoute,
   AdminPromptTemplatesRoute: AdminPromptTemplatesRoute,
   AuthCallbackRoute: AuthCallbackRoute,
+  ConnectorsCallbackRoute: ConnectorsCallbackRoute,
   DashboardApiKeysRoute: DashboardApiKeysRoute,
   DashboardUsageRoute: DashboardUsageRoute,
   DocsQuickstartRoute: DocsQuickstartRoute,

@@ -40,9 +40,13 @@ func CreateApplication(ctx context.Context) (*Application, error) {
 	imageEditMCP := routes.ProvideImageEditMCP(config)
 	aiomcp := routes.ProvideAIOMCP(config)
 	agentProxyMCP := routes.ProvideAgentProxyMCP(config)
+	githubMCP := routes.ProvideGitHubMCP(config)
+	gmailMCP := routes.ProvideGmailMCP(config)
+	driveMCP := routes.ProvideDriveMCP(config)
+	calendarMCP := routes.ProvideCalendarMCP(config)
 	llmapiClient := infrastructure.ProvideLLMAPIClient(config)
 	cache := routes.ProvideToolConfigCache(config, llmapiClient)
-	mcpRoute := routes.ProvideMCPRoute(searchMCP, providerMCP, sandboxFusionMCP, memoryMCP, imageGenerateMCP, imageEditMCP, aiomcp, agentProxyMCP, llmapiClient, cache)
+	mcpRoute := routes.ProvideMCPRoute(searchMCP, providerMCP, sandboxFusionMCP, memoryMCP, imageGenerateMCP, imageEditMCP, aiomcp, agentProxyMCP, githubMCP, gmailMCP, driveMCP, calendarMCP, llmapiClient, cache)
 	validator, err := infrastructure.ProvideAuthValidator(ctx, config)
 	if err != nil {
 		return nil, err

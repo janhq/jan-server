@@ -1,0 +1,385 @@
+{
+  "info": {
+    "name": "jan-server connectors",
+    "description": "OAuth connector integration tests for GitHub, Gmail, Google Drive, and Google Calendar",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01-list-connectors",
+      "item": [
+        {
+          "name": "List Available Connectors",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/v1/connectors"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.expect(data).to.have.property('connectors');",
+                  "pm.expect(data.connectors).to.be.an('array');",
+                  "",
+                  "// Store connector types for later tests",
+                  "const connectorTypes = data.connectors.map(c => c.type);",
+                  "pm.collectionVariables.set('connector_types', JSON.stringify(connectorTypes));",
+                  "",
+                  "// Check for expected connector types",
+                  "const expectedTypes = ['github', 'gmail', 'google_drive', 'google_calendar'];",
+                  "expectedTypes.forEach(type => {",
+                  "  const connector = data.connectors.find(c => c.type === type);",
+                  "  if (connector) {",
+                  "    pm.expect(connector).to.have.property('display_name');",
+                  "    pm.expect(connector).to.have.property('enabled');",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02-connector-status",
+      "item": [
+        {
+          "name": "Get GitHub Connector Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/v1/connectors/github/status"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.expect(data).to.have.property('connected');",
+                  "pm.expect(data.connected).to.be.a('boolean');",
+                  "pm.expect(data).to.have.property('enabled');",
+                  "pm.expect(data.enabled).to.be.a('boolean');",
+                  "if (data.connected) {",
+                  "  pm.expect(data).to.have.property('username');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Gmail Connector Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/v1/connectors/gmail/status"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.expect(data).to.have.property('connected');",
+                  "pm.expect(data.connected).to.be.a('boolean');",
+                  "pm.expect(data).to.have.property('enabled');",
+                  "pm.expect(data.enabled).to.be.a('boolean');",
+                  "if (data.connected) {",
+                  "  pm.expect(data).to.have.property('email');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Google Drive Connector Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/v1/connectors/google_drive/status"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.expect(data).to.have.property('connected');",
+                  "pm.expect(data.connected).to.be.a('boolean');",
+                  "pm.expect(data).to.have.property('enabled');",
+                  "pm.expect(data.enabled).to.be.a('boolean');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Google Calendar Connector Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/v1/connectors/google_calendar/status"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.expect(data).to.have.property('connected');",
+                  "pm.expect(data.connected).to.be.a('boolean');",
+                  "pm.expect(data).to.have.property('enabled');",
+                  "pm.expect(data.enabled).to.be.a('boolean');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03-oauth-initiate",
+      "item": [
+        {
+          "name": "Initiate GitHub OAuth",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{gateway_url}}/v1/connectors/github/connect"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Accept 200 (auth URL returned) or 400/404 (not configured/invalid)",
+                  "pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 500]);",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data).to.have.property('auth_url');",
+                  "  pm.expect(data.auth_url).to.be.a('string');",
+                  "  pm.expect(data.auth_url).to.include('github.com');",
+                  "  pm.collectionVariables.set('github_auth_url', data.auth_url);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Initiate Gmail OAuth",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{gateway_url}}/v1/connectors/gmail/connect"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 500]);",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data).to.have.property('auth_url');",
+                  "  pm.expect(data.auth_url).to.be.a('string');",
+                  "  pm.expect(data.auth_url).to.include('accounts.google.com');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04-invalid-connector",
+      "item": [
+        {
+          "name": "Get Status for Invalid Connector Type",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/v1/connectors/invalid_type/status"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(400);",
+                  "const data = pm.response.json();",
+                  "pm.expect(data).to.have.property('error');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Connect Invalid Connector Type",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{gateway_url}}/v1/connectors/invalid_type/connect"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(400);",
+                  "const data = pm.response.json();",
+                  "pm.expect(data).to.have.property('error');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05-unauthenticated",
+      "item": [
+        {
+          "name": "List Connectors Without Auth",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/v1/connectors"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(401);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Status Without Auth",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/v1/connectors/github/status"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(401);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "connector_types",
+      "value": "[]"
+    },
+    {
+      "key": "github_auth_url",
+      "value": ""
+    }
+  ]
+}

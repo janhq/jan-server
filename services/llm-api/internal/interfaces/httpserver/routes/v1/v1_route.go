@@ -9,6 +9,7 @@ import (
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/public"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/admin"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/chat"
+	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/connectors"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/conversation"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/image"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/llm/documents"
@@ -38,6 +39,7 @@ type V1Route struct {
 	messages              *messages.MessagesRoute
 	usage                 *usage.UsageRoute
 	documents             *documents.DocumentRoute
+	connectors            *connectors.ConnectorRoute
 }
 
 func NewV1Route(
@@ -56,23 +58,25 @@ func NewV1Route(
 	messagesRoute *messages.MessagesRoute,
 	usageRoute *usage.UsageRoute,
 	documentsRoute *documents.DocumentRoute,
+	connectorsRoute *connectors.ConnectorRoute,
 ) *V1Route {
 	return &V1Route{
-		model,
-		chat,
-		image,
-		conversation,
-		branch,
-		project,
-		adminRoute,
-		users,
-		promptTemplateHandler,
-		mcpToolHandler,
-		share,
-		publicShare,
-		messagesRoute,
-		usageRoute,
-		documentsRoute,
+		model:                 model,
+		chat:                  chat,
+		image:                 image,
+		conversation:          conversation,
+		branch:                branch,
+		project:               project,
+		adminRoute:            adminRoute,
+		users:                 users,
+		promptTemplateHandler: promptTemplateHandler,
+		mcpToolHandler:        mcpToolHandler,
+		share:                 share,
+		publicShare:           publicShare,
+		messages:              messagesRoute,
+		usage:                 usageRoute,
+		documents:             documentsRoute,
+		connectors:            connectorsRoute,
 	}
 }
 
@@ -93,6 +97,7 @@ func (v1Route *V1Route) RegisterRouter(router gin.IRouter) {
 	v1Route.messages.RegisterRouter(v1Router)
 	v1Route.usage.RegisterRouter(v1Router)
 	v1Route.documents.RegisterRoutes(v1Router)
+	v1Route.connectors.RegisterRouter(v1Router)
 
 	// Share routes (authenticated, under /conversations)
 	conversations := v1Router.Group("/conversations")
@@ -116,6 +121,9 @@ func (v1Route *V1Route) RegisterPublicRouter(router gin.IRouter) {
 
 	// Public share routes (no auth required)
 	v1Route.publicShare.RegisterRouter(v1Router)
+
+	// Public connector routes (OAuth callbacks)
+	v1Route.connectors.RegisterPublicRouter(v1Router)
 }
 
 // GetVersion godoc

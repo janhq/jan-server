@@ -49,6 +49,10 @@ type MCPRoute struct {
 	imageEditMCP    *ImageEditMCP
 	aioMCP          *AIOMCP
 	agentProxyMCP   *AgentProxyMCP
+	githubMCP       *GitHubMCP
+	gmailMCP        *GmailMCP
+	driveMCP        *DriveMCP
+	calendarMCP     *CalendarMCP
 	llmClient       *llmapi.Client    // LLM-API client for tool call tracking
 	toolConfigCache *toolconfig.Cache // Cache for dynamic tool descriptions
 	mcpServer       *mcp.Server
@@ -64,6 +68,10 @@ func NewMCPRoute(
 	imageEditMCP *ImageEditMCP,
 	aioMCP *AIOMCP,
 	agentProxyMCP *AgentProxyMCP,
+	githubMCP *GitHubMCP,
+	gmailMCP *GmailMCP,
+	driveMCP *DriveMCP,
+	calendarMCP *CalendarMCP,
 	llmClient *llmapi.Client,
 	toolConfigCache *toolconfig.Cache,
 ) *MCPRoute {
@@ -121,6 +129,20 @@ func NewMCPRoute(
 		}
 	}
 
+	// Register connector MCP tools (GitHub, Gmail, Drive, Calendar)
+	if githubMCP != nil {
+		githubMCP.RegisterTools(server)
+	}
+	if gmailMCP != nil {
+		gmailMCP.RegisterTools(server)
+	}
+	if driveMCP != nil {
+		driveMCP.RegisterTools(server)
+	}
+	if calendarMCP != nil {
+		calendarMCP.RegisterTools(server)
+	}
+
 	return &MCPRoute{
 		searchMCP:       searchMCP,
 		providerMCP:     providerMCP,
@@ -130,6 +152,10 @@ func NewMCPRoute(
 		imageEditMCP:    imageEditMCP,
 		aioMCP:          aioMCP,
 		agentProxyMCP:   agentProxyMCP,
+		githubMCP:       githubMCP,
+		gmailMCP:        gmailMCP,
+		driveMCP:        driveMCP,
+		calendarMCP:     calendarMCP,
 		llmClient:       llmClient,
 		toolConfigCache: toolConfigCache,
 		mcpServer:       server,
@@ -369,8 +395,19 @@ func extractJSONFromSSE(data []byte) []byte {
 }
 
 // InjectUserContext extracts user_id from JWT token and injects it into request context
+// Also injects auth_token for connector MCPs to use when calling llm-api
 func InjectUserContext() gin.HandlerFunc {
 	return func(reqCtx *gin.Context) {
+		ctx := reqCtx.Request.Context()
+
+		// Extract raw JWT token from Authorization header for connector MCPs
+		if authHeader := reqCtx.GetHeader("Authorization"); authHeader != "" {
+			if strings.HasPrefix(authHeader, "Bearer ") {
+				rawToken := strings.TrimPrefix(authHeader, "Bearer ")
+				ctx = context.WithValue(ctx, "auth_token", rawToken)
+			}
+		}
+
 		// Try to get auth token from gin context (set by auth middleware)
 		if tokenVal, exists := reqCtx.Get("auth_token"); exists {
 			if token, ok := tokenVal.(*jwt.Token); ok && token.Valid {
@@ -387,12 +424,13 @@ func InjectUserContext() gin.HandlerFunc {
 
 					if userID != "" {
 						// Inject user_id into request context
-						ctx := context.WithValue(reqCtx.Request.Context(), "user_id", userID)
-						reqCtx.Request = reqCtx.Request.WithContext(ctx)
+						ctx = context.WithValue(ctx, "user_id", userID)
 					}
 				}
 			}
 		}
+
+		reqCtx.Request = reqCtx.Request.WithContext(ctx)
 		reqCtx.Next()
 	}
 }

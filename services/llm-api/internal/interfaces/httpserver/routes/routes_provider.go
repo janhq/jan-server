@@ -9,6 +9,7 @@ import (
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/apikeyhandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/authhandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/chathandler"
+	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/connectorhandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/conversationhandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/documenthandler"
 	guestauth "jan-server/services/llm-api/internal/interfaces/httpserver/handlers/guesthandler"
@@ -29,6 +30,7 @@ import (
 	adminModel "jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/admin/model"
 	adminProvider "jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/admin/provider"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/chat"
+	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/connectors"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/conversation"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/image"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/llm/documents"
@@ -71,6 +73,7 @@ var RouteProvider = wire.NewSet(
 	messageshandler.NewMessagesHandler,
 	usagehandler.NewUsageHandler,
 	documenthandler.NewDocumentHandler,
+	connectorhandler.NewConnectorHandler,
 
 	// Bind ModelHandler to ModelProvider interface for usersettings
 	wire.Bind(new(usersettings.ModelProvider), new(*modelhandler.ModelHandler)),
@@ -95,4 +98,5 @@ var RouteProvider = wire.NewSet(
 	messages.NewMessagesRoute,
 	usage.NewUsageRoute,
 	documents.NewDocumentRoute,
+	connectors.NewConnectorRoute,
 )

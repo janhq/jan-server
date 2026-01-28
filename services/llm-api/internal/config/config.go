@@ -125,6 +125,22 @@ type Config struct {
 	DocumentMaxBytes       int64         `env:"DOCUMENT_MAX_BYTES" envDefault:"52428800"` // 50MB
 	DocumentSupportedTypes string        `env:"DOCUMENT_SUPPORTED_TYPES" envDefault:"application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown,text/html,application/rtf"`
 
+	// Connectors (OAuth integrations)
+	GitHubClientID               string        `env:"GITHUB_CLIENT_ID"`
+	GitHubClientSecret           string        `env:"GITHUB_CLIENT_SECRET"`
+	GitHubConnectorEnabled       bool          `env:"GITHUB_CONNECTOR_ENABLED" envDefault:"false"`
+	GoogleClientID               string        `env:"GOOGLE_CLIENT_ID"`
+	GoogleClientSecret           string        `env:"GOOGLE_CLIENT_SECRET"`
+	GoogleConnectorEnabled       bool          `env:"GOOGLE_CONNECTOR_ENABLED" envDefault:"false"`
+	ConnectorTokenEncryptionKey  string        `env:"CONNECTOR_TOKEN_ENCRYPTION_KEY"`
+	ConnectorTokenEncryptionKeyID string       `env:"CONNECTOR_TOKEN_ENCRYPTION_KEY_ID" envDefault:"v1"`
+	ConnectorTokenEncryptionKeyPrevious string `env:"CONNECTOR_TOKEN_ENCRYPTION_KEY_PREVIOUS"`
+	ConnectorTokenEncryptionKeyIDPrevious string `env:"CONNECTOR_TOKEN_ENCRYPTION_KEY_ID_PREVIOUS"`
+	OAuthStateSecret             string        `env:"OAUTH_STATE_SECRET"`
+	OAuthStateExpiration         time.Duration `env:"OAUTH_STATE_EXPIRATION" envDefault:"5m"`
+	OAuthRedirectBaseURL         string        `env:"OAUTH_REDIRECT_BASE_URL" envDefault:"http://localhost:8000"`
+	OAuthFrontendURL             string        `env:"OAUTH_FRONTEND_URL" envDefault:"http://localhost:3001"`
+
 	// Analytics (PostHog + OTel)
 	AnalyticsEnabled     bool          `env:"ANALYTICS_ENABLED" envDefault:"true"`
 	PostHogEnabled       bool          `env:"POSTHOG_ENABLED" envDefault:"false"`
