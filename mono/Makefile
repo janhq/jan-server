@@ -28,8 +28,17 @@ API_TEST_FLAGS := --env-file tests/e2e/.env \
 # Quick Start
 # ============================================
 
-# Setup environment and start all services
-quickstart: setup docker-up
+# Interactive setup and run (like original jan-server)
+quickstart: cli-build
+	@echo "Starting interactive setup and run..."
+ifeq ($(OS),Windows_NT)
+	@tools/jan-cli/jan-cli.exe setup-and-run
+else
+	@tools/jan-cli/jan-cli setup-and-run
+endif
+
+# Non-interactive setup and run
+quickstart-auto: setup docker-up
 	@echo "Jan Server is starting..."
 	@echo "Backend API: http://localhost:8080"
 	@echo "Web UI: http://localhost:3001"
@@ -269,7 +278,8 @@ help:
 	@echo "Jan Server Mono - Available Commands"
 	@echo ""
 	@echo "Quick Start:"
-	@echo "  make quickstart      - Setup and start all services"
+	@echo "  make quickstart      - Interactive setup and run (recommended)"
+	@echo "  make quickstart-auto - Non-interactive setup and start"
 	@echo "  make setup           - Create .env from template"
 	@echo ""
 	@echo "Development:"

@@ -20,14 +20,22 @@ Jan Server Mono provides:
 ## Quick Start
 
 ```bash
-# Setup and start all services
+# Interactive setup and start (recommended)
 make quickstart
+
+# Or non-interactive:
+make quickstart-auto  # Create .env and start without prompts
 
 # Or step by step:
 make setup           # Create .env from template
 make docker-up       # Start all services
 make health-check    # Verify services are running
 ```
+
+The interactive `make quickstart` will guide you through:
+- JWT secret configuration
+- LLM provider setup (optional)
+- Memory service configuration (optional)
 
 See [docs/quickstart.md](docs/quickstart.md) for detailed setup instructions.
 

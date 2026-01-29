@@ -16,14 +16,28 @@ The fastest way to get started:
 git clone https://github.com/janhq/server.git
 cd server/mono
 
-# Setup and start all services
+# Interactive setup and start all services
 make quickstart
 ```
 
 This will:
-1. Create a `.env` file from the template
-2. Start all Docker services (backend, postgres, minio, web)
-3. Display service URLs
+1. Build the `jan-cli` tool
+2. Run an interactive setup wizard to configure:
+   - JWT secret (auto-generated if not provided)
+   - LLM provider URL and API key (optional)
+   - Memory service (optional)
+3. Start all Docker services (backend, postgres, minio, web)
+4. Display service URLs and getting started commands
+
+### Non-Interactive Mode
+
+For CI/CD or automated deployments:
+
+```bash
+make quickstart-auto
+```
+
+This creates `.env` from template and starts services without prompts.
 
 ### Service URLs
 

@@ -24,9 +24,13 @@ var rootCmd = &cobra.Command{
 It provides tools for development, testing, and service operations.
 
 Quick Start:
+  jan-cli setup-and-run          # Interactive setup and run
   jan-cli dev setup              # Setup development environment
 
 Examples:
+  # Interactive setup and start
+  jan-cli setup-and-run
+
   # Run API tests
   jan-cli api-test run tests/e2e/automation/collections/auth.postman.json
 
@@ -36,6 +40,7 @@ Examples:
 }
 
 func init() {
+	rootCmd.AddCommand(setupAndRunCmd)
 	rootCmd.AddCommand(devCmd)
 	rootCmd.AddCommand(apiTestCmd)
 
