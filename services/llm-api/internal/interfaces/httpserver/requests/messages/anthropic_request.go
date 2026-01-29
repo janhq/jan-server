@@ -17,8 +17,8 @@ type AnthropicMessagesRequest struct {
 	// MaxTokens is the maximum number of tokens to generate (required)
 	MaxTokens int `json:"max_tokens" binding:"required,min=1"`
 
-	// System is an optional system prompt
-	System string `json:"system,omitempty"`
+	// System is an optional system prompt (can be string or array of content blocks)
+	System AnthropicSystemPrompt `json:"system,omitempty"`
 
 	// Metadata is optional request metadata
 	Metadata *AnthropicMetadata `json:"metadata,omitempty"`
@@ -113,6 +113,80 @@ func (c *AnthropicContent) GetText() string {
 	var result string
 	for _, block := range c.Blocks {
 		if block.Type == "text" && block.Text != "" {
+			result += block.Text
+		}
+	}
+	return result
+}
+
+// AnthropicSystemPrompt can be either a string or an array of system content blocks
+// This supports both formats:
+// - Simple: "system": "You are a helpful assistant"
+// - Array: "system": [{"type": "text", "text": "You are...", "cache_control": {...}}]
+type AnthropicSystemPrompt struct {
+	Text   string                       `json:"-"` // For simple string system prompt
+	Blocks []AnthropicSystemContentBlock `json:"-"` // For array of content blocks
+}
+
+// AnthropicSystemContentBlock represents a system content block (supports cache_control)
+type AnthropicSystemContentBlock struct {
+	Type         string                      `json:"type"`
+	Text         string                      `json:"text,omitempty"`
+	CacheControl *AnthropicCacheControl      `json:"cache_control,omitempty"`
+}
+
+// AnthropicCacheControl for prompt caching
+type AnthropicCacheControl struct {
+	Type string `json:"type"` // "ephemeral"
+}
+
+// UnmarshalJSON handles both string and array system prompt formats
+func (s *AnthropicSystemPrompt) UnmarshalJSON(data []byte) error {
+	// Try string first
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		s.Text = str
+		s.Blocks = nil
+		return nil
+	}
+
+	// Try array of system content blocks
+	var blocks []AnthropicSystemContentBlock
+	if err := json.Unmarshal(data, &blocks); err != nil {
+		return fmt.Errorf("system must be a string or array of content blocks: %w", err)
+	}
+	s.Text = ""
+	s.Blocks = blocks
+	return nil
+}
+
+// MarshalJSON serializes system prompt back to JSON
+func (s AnthropicSystemPrompt) MarshalJSON() ([]byte, error) {
+	if s.Text != "" {
+		return json.Marshal(s.Text)
+	}
+	if len(s.Blocks) > 0 {
+		return json.Marshal(s.Blocks)
+	}
+	return []byte("null"), nil
+}
+
+// IsEmpty returns true if no system prompt is set
+func (s *AnthropicSystemPrompt) IsEmpty() bool {
+	return s.Text == "" && len(s.Blocks) == 0
+}
+
+// GetText returns the system prompt text (concatenated if multiple blocks)
+func (s *AnthropicSystemPrompt) GetText() string {
+	if s.Text != "" {
+		return s.Text
+	}
+	var result string
+	for _, block := range s.Blocks {
+		if block.Type == "text" && block.Text != "" {
+			if result != "" {
+				result += "\n"
+			}
 			result += block.Text
 		}
 	}
@@ -292,8 +366,8 @@ type AnthropicCountTokensRequest struct {
 	// Messages is the list of input messages (required)
 	Messages []AnthropicMessage `json:"messages" binding:"required,min=1"`
 
-	// System is an optional system prompt
-	System string `json:"system,omitempty"`
+	// System is an optional system prompt (can be string or array of content blocks)
+	System AnthropicSystemPrompt `json:"system,omitempty"`
 
 	// Tools is the list of tools to count tokens for
 	Tools []AnthropicTool `json:"tools,omitempty"`
