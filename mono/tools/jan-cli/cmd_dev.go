@@ -54,9 +54,9 @@ func runDevSetup(cmd *cobra.Command, args []string) error {
 		fmt.Println("not found")
 		fmt.Println("Creating .env from template...")
 
-		data, err := os.ReadFile(".env.template")
+		data, err := os.ReadFile(".env.example")
 		if err != nil {
-			return fmt.Errorf("failed to read .env.template: %w", err)
+			return fmt.Errorf("failed to read .env.example: %w", err)
 		}
 
 		if err := os.WriteFile(".env", data, 0644); err != nil {

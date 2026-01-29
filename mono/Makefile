@@ -48,7 +48,7 @@ quickstart-auto: setup docker-up
 setup:
 	@if [ ! -f .env ]; then \
 		echo "Creating .env from template..."; \
-		cp .env.template .env; \
+		cp .env.example .env; \
 		echo "Please review and update .env with your settings"; \
 	else \
 		echo ".env already exists"; \

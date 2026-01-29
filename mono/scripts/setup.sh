@@ -37,12 +37,12 @@ fi
 # Create .env file if it doesn't exist
 if [ ! -f .env ]; then
     echo -e "\n${YELLOW}Creating .env file from template...${NC}"
-    if [ -f .env.template ]; then
-        cp .env.template .env
+    if [ -f .env.example ]; then
+        cp .env.example .env
         echo -e "${GREEN}✓ Created .env file${NC}"
         echo -e "${YELLOW}⚠ Please edit .env file with your configuration${NC}"
     else
-        echo -e "${RED}✗ .env.template not found${NC}"
+        echo -e "${RED}✗ .env.example not found${NC}"
         exit 1
     fi
 else

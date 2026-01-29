@@ -60,7 +60,7 @@ If you prefer more control, follow these steps:
 make setup
 ```
 
-This creates `.env` from `.env.template`. Review and customize as needed:
+This creates `.env` from `.env.example`. Review and customize as needed:
 
 ```bash
 # Required settings (defaults work for local development)

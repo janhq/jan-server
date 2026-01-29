@@ -143,7 +143,7 @@ mono/
 ├── docker-compose.yml                    # Container orchestration
 ├── Makefile                              # Root build commands
 ├── .env                                  # Environment variables
-├── .env.template                         # Environment template
+├── .env.example                         # Environment template
 ├── .gitignore
 ├── README.md
 ├── CLAUDE.md                             # AI assistant quick reference

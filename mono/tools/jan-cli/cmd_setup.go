@@ -116,7 +116,7 @@ func runSetupAndRun(cmd *cobra.Command, args []string) error {
 }
 
 func copyEnvTemplate(destPath string) error {
-	templatePath := ".env.template"
+	templatePath := ".env.example"
 
 	data, err := os.ReadFile(templatePath)
 	if err != nil {
