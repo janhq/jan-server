@@ -16,15 +16,23 @@ import (
 
 // Executor executes steps for deep research plans.
 type Executor struct {
-	mcpClient   MCPClient
-	llmProvider LLMProvider
+	mcpClient     MCPClient
+	llmProvider   LLMProvider
+	sandboxHelper *agent.SandboxHelper
 }
 
 // NewExecutor creates a new deep research executor.
 func NewExecutor(mcpClient MCPClient, llmProvider LLMProvider) *Executor {
+	// Create sandbox helper if MCP client supports it
+	var sandboxHelper *agent.SandboxHelper
+	if toolCaller, ok := mcpClient.(agent.MCPToolCaller); ok {
+		sandboxHelper = agent.NewSandboxHelper(toolCaller)
+	}
+
 	return &Executor{
-		mcpClient:   mcpClient,
-		llmProvider: llmProvider,
+		mcpClient:     mcpClient,
+		llmProvider:   llmProvider,
+		sandboxHelper: sandboxHelper,
 	}
 }
 
@@ -114,8 +122,25 @@ func (e *Executor) executeToolCallWithRetry(ctx context.Context, step *plan.Step
 		Msg("[deep_research] executing tool call")
 
 	// Check if this is a code execution tool
-	isCodeExecTool := toolName == "aio_code_execute" || toolName == "aio_shell_exec"
+	isCodeExecTool := toolName == "sandbox_code_execute" || toolName == "sandbox_shell_exec"
 	log.Debug().Bool("is_code_exec_tool", isCodeExecTool).Msg("[deep_research] tool type determined")
+
+	// Start sandbox automatically before code execution tools (E2B only)
+	if isCodeExecTool && e.sandboxHelper != nil {
+		opts := agent.StartSandboxOptions{
+			Timeout: 1800, // 30 minutes
+		}
+		if input.PlanContext != nil {
+			opts.ConversationID = input.PlanContext.ConversationID
+			opts.RequestID = input.PlanContext.ResponseID
+		}
+		if opts.ConversationID != "" {
+			if err := e.sandboxHelper.EnsureSandboxStarted(ctx, opts); err != nil {
+				log.Warn().Err(err).Msg("[deep_research] failed to start sandbox, continuing anyway")
+				// Don't fail - tool call might still work if sandbox is already running
+			}
+		}
+	}
 
 	// Execute the tool via MCP client
 	result, err := e.mcpClient.CallTool(ctx, callReq)
@@ -506,7 +531,7 @@ func (e *Executor) buildToolArguments(toolName string, params map[string]interfa
 			"url": urls[0],
 		}, nil
 
-	case "aio_code_execute":
+	case "sandbox_code_execute":
 		// Priority: currentCode (from retry) > params["code"] > PreviousOutput
 		var code string
 		if currentCode != nil {
@@ -523,7 +548,7 @@ func (e *Executor) buildToolArguments(toolName string, params map[string]interfa
 			for _, accOutput := range input.AccumulatedOutputs {
 				if extracted := e.extractCodeFromPreviousOutput(accOutput); extracted != "" {
 					log.Info().
-						Str("tool", "aio_code_execute").
+						Str("tool", "sandbox_code_execute").
 						Int("code_len", len(extracted)).
 						Msg("Found code in accumulated outputs")
 					code = extracted
@@ -534,7 +559,7 @@ func (e *Executor) buildToolArguments(toolName string, params map[string]interfa
 
 		if code == "" {
 			log.Error().
-				Str("tool", "aio_code_execute").
+				Str("tool", "sandbox_code_execute").
 				Str("previous_output_preview", truncateForLog(input.PreviousOutput, 500)).
 				Int("accumulated_outputs_count", len(input.AccumulatedOutputs)).
 				Msg("No code provided for execution - LLM may have returned empty or invalid response")
@@ -552,7 +577,7 @@ func (e *Executor) buildToolArguments(toolName string, params map[string]interfa
 			"code":     code,
 		}, nil
 
-	case "aio_shell_exec":
+	case "sandbox_shell_exec":
 		var command string
 		if currentCode != nil {
 			command = *currentCode
@@ -642,10 +667,10 @@ func (e *Executor) extractURLsFromPreviousOutput(previousOutput json.RawMessage)
 	return urls
 }
 
-// installPackage calls aio_install_packages to install a missing package.
+// installPackage calls sandbox_install_packages to install a missing package.
 func (e *Executor) installPackage(ctx context.Context, packageName string, input agent.ExecutionInput) (*tool.Result, error) {
 	callReq := tool.CallRequest{
-		Name: "aio_install_packages",
+		Name: "sandbox_install_packages",
 		Arguments: map[string]interface{}{
 			"packages": []string{packageName},
 		},

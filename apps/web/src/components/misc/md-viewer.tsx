@@ -1,21 +1,34 @@
 // Markdown viewer - full screen, rendered via portal
 import { createPortal } from "react-dom";
 import { useEffect } from "react";
-import { XIcon, DownloadIcon } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { XIcon, DownloadIcon, ExternalLinkIcon, Loader2 } from "lucide-react";
 import { Button } from "@janhq/interfaces/button";
 import { MessageResponse } from "@janhq/interfaces/ai-elements/message";
 
 export const MdViewer = ({
   content,
   title,
-  downloadUrl,
+  onDownload,
+  conversationId,
+  isLoading,
   onClose,
 }: {
   content: string;
   title?: string;
-  downloadUrl?: string;
+  onDownload?: () => void;
+  conversationId?: string;
+  isLoading?: boolean;
   onClose: () => void;
 }) => {
+  const navigate = useNavigate();
+
+  const handleViewThread = () => {
+    if (conversationId) {
+      onClose();
+      navigate({ to: "/threads/$conversationId", params: { conversationId } });
+    }
+  };
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -28,8 +41,8 @@ export const MdViewer = ({
   }, [onClose]);
 
   const handleDownload = () => {
-    if (downloadUrl) {
-      window.open(downloadUrl, "_blank");
+    if (onDownload) {
+      onDownload();
     }
   };
 
@@ -47,7 +60,13 @@ export const MdViewer = ({
             <h2 className="font-medium">{title || "Research Report"}</h2>
           </div>
           <div className="flex items-center gap-2">
-            {downloadUrl && (
+            {conversationId && (
+              <Button variant="outline" size="sm" onClick={handleViewThread}>
+                <ExternalLinkIcon className="size-4 mr-2" />
+                View Chat
+              </Button>
+            )}
+            {onDownload && (
               <Button variant="outline" size="icon-sm" onClick={handleDownload}>
                 <DownloadIcon className="size-4" />
               </Button>
@@ -61,11 +80,17 @@ export const MdViewer = ({
 
         {/* Main content */}
         <div className="flex-1 overflow-auto">
-          <div className="max-w-3xl mx-auto p-6">
-            <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-              <MessageResponse>{content}</MessageResponse>
+          {isLoading ? (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 className="size-8 animate-spin text-muted-foreground" />
             </div>
-          </div>
+          ) : (
+            <div className="max-w-3xl mx-auto p-6">
+              <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                <MessageResponse>{content}</MessageResponse>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>,

@@ -18,6 +18,9 @@ type Service interface {
 	// GetByID retrieves an artifact by ID.
 	GetByID(ctx context.Context, id string) (*Artifact, error)
 
+	// ResolveInternalID resolves a public ID to internal ID (for cursor pagination).
+	ResolveInternalID(ctx context.Context, publicID string) (*uint, error)
+
 	// GetLatestByResponseID gets the latest artifact for a response.
 	GetLatestByResponseID(ctx context.Context, responseID string) (*Artifact, error)
 
@@ -158,6 +161,11 @@ func (s *DefaultService) CreateVersion(ctx context.Context, artifactID string, p
 // GetByID retrieves an artifact by ID.
 func (s *DefaultService) GetByID(ctx context.Context, id string) (*Artifact, error) {
 	return s.repo.FindByID(ctx, id)
+}
+
+// ResolveInternalID resolves a public ID to internal ID (for cursor pagination).
+func (s *DefaultService) ResolveInternalID(ctx context.Context, publicID string) (*uint, error) {
+	return s.repo.FindInternalIDByPublicID(ctx, publicID)
 }
 
 // GetLatestByResponseID gets the latest artifact for a response.

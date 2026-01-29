@@ -1,4 +1,4 @@
-import { MessageCirclePlusIcon, FolderPenIcon, Search, Plug } from "lucide-react";
+import { MessageCirclePlusIcon, FolderPenIcon, Search, Plug, LayoutGrid } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
 import * as React from "react";
 
@@ -34,6 +34,11 @@ export function NavMain() {
       url: "#",
       icon: FolderPenIcon,
       onClick: handleNewProject,
+    },
+    {
+      title: "Artifacts",
+      url: "/artifacts",
+      icon: LayoutGrid,
     },
     {
       title: "Connectors",

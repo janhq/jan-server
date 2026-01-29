@@ -9,6 +9,8 @@ import (
 
 	"jan-server/services/response-api/internal/domain/plan"
 	"jan-server/services/response-api/internal/domain/status"
+
+	"github.com/rs/zerolog/log"
 )
 
 // Orchestrator coordinates plan execution across tasks and steps.
@@ -92,15 +94,22 @@ type WaitingOption struct {
 
 // DefaultOrchestrator implements the Orchestrator interface.
 type DefaultOrchestrator struct {
-	registry    Registry
-	planService plan.Service
+	registry      Registry
+	planService   plan.Service
+	sandboxHelper *SandboxHelper
 }
 
 // NewOrchestrator creates a new orchestrator.
-func NewOrchestrator(registry Registry, planService plan.Service) Orchestrator {
+func NewOrchestrator(registry Registry, planService plan.Service, mcpClient MCPToolCaller) Orchestrator {
+	var sandboxHelper *SandboxHelper
+	if mcpClient != nil {
+		sandboxHelper = NewSandboxHelper(mcpClient)
+	}
+
 	return &DefaultOrchestrator{
-		registry:    registry,
-		planService: planService,
+		registry:      registry,
+		planService:   planService,
+		sandboxHelper: sandboxHelper,
 	}
 }
 
@@ -260,7 +269,7 @@ func (o *DefaultOrchestrator) executeStep(ctx context.Context, p *plan.Plan, tas
 		PlanContext: &PlanContext{
 			PlanID:         p.ID,
 			TaskID:         task.ID,
-			ConversationID: "",
+			ConversationID: ConversationIDFromContext(ctx),
 			ResponseID:     p.ResponseID,
 			AgentType:      p.AgentType,
 			Model:          p.Model,
@@ -466,6 +475,21 @@ func findCurrentTaskAndStep(p *plan.Plan) (*plan.Task, *plan.Step) {
 
 // completePlan marks the plan as completed.
 func (o *DefaultOrchestrator) completePlan(ctx context.Context, p *plan.Plan) (*ExecutionResult, error) {
+	// Pause sandbox if plan used code execution tools
+	if o.sandboxHelper != nil && o.planUsedSandbox(p) {
+		conversationID := ConversationIDFromContext(ctx)
+		if conversationID != "" {
+			if err := o.sandboxHelper.PauseSandbox(ctx, p.ResponseID, conversationID); err != nil {
+				// Log warning but don't fail the plan - sandbox pause is non-critical
+				log.Warn().
+					Err(err).
+					Str("plan_id", p.ID).
+					Str("conversation_id", conversationID).
+					Msg("[orchestrator] failed to pause sandbox at plan completion")
+			}
+		}
+	}
+
 	if err := o.planService.UpdateStatus(ctx, p.ID, status.StatusCompleted, nil); err != nil {
 		return nil, err
 	}
@@ -474,6 +498,47 @@ func (o *DefaultOrchestrator) completePlan(ctx context.Context, p *plan.Plan) (*
 		Status:     status.StatusCompleted,
 		ArtifactID: p.FinalArtifactID,
 	}, nil
+}
+
+// planUsedSandbox checks if any step in the plan used sandbox execution tools.
+func (o *DefaultOrchestrator) planUsedSandbox(p *plan.Plan) bool {
+	sandboxTools := map[string]bool{
+		"sandbox_code_execute": true,
+		"sandbox_shell_exec":   true,
+		"code_execute":         true, // Legacy name
+	}
+
+	for _, task := range p.Tasks {
+		for _, step := range task.Steps {
+			if step.Action != plan.ActionTypeToolCall {
+				continue
+			}
+
+			// Parse step params to get tool name
+			var params struct {
+				ToolName string `json:"tool_name"`
+				Name     string `json:"name"`
+				Tool     string `json:"tool"`
+			}
+			if err := json.Unmarshal(step.GetEffectiveParams(), &params); err != nil {
+				continue
+			}
+
+			toolName := params.ToolName
+			if toolName == "" {
+				toolName = params.Name
+			}
+			if toolName == "" {
+				toolName = params.Tool
+			}
+
+			if sandboxTools[toolName] {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // ResumePlan resumes a paused or waiting plan.

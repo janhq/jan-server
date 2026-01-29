@@ -50,7 +50,24 @@
                   "  const names = payload.result.tools.map(t => t.name);",
                   "  pm.expect(names).to.include('google_search');",
                   "  pm.expect(names).to.include('scrape');",
-                  "});"
+                  "});",
+                  "const requiredSandboxTools = [",
+                  "  'sandbox_shell_exec',",
+                  "  'sandbox_file_read',",
+                  "  'sandbox_file_write',",
+                  "  'sandbox_file_list',",
+                  "  'sandbox_code_execute',",
+                  "  'sandbox_install_packages',",
+                  "  'sandbox_markitdown_convert',",
+                  "  'sandbox_screenshot',",
+                  "  'sandbox_click',",
+                  "  'sandbox_type'",
+                  "];",
+                  "const names = payload.result.tools.map(t => t.name);",
+                  "pm.test('Sandbox tools registered', function () {",
+                  "  requiredSandboxTools.forEach(tool => pm.expect(names).to.include(tool));",
+                  "});",
+                  "pm.collectionVariables.set('sandbox_tools', JSON.stringify(names));"
                 ]
               }
             }
@@ -163,6 +180,743 @@
           ]
         }
       ]
+    },
+    {
+      "name": "2. Sandbox Tools (E2B)",
+      "item": [
+        {
+          "name": "Call sandbox_shell_exec",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Conversation-ID",
+                "value": "{{sandbox_conversation_id}}"
+              },
+              {
+                "key": "X-Tool-Call-ID",
+                "value": "{{sandbox_tool_call_id}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"sandbox_shell_exec\",\n    \"arguments\": {\n      \"command\": \"mkdir -p /home/user/workspace/{{sandbox_conversation_id}} && echo sandbox-ok\"\n    }\n  },\n  \"id\": 10\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rawBody = pm.response.text();",
+                  "let payload = null;",
+                  "try {",
+                  "  payload = JSON.parse(rawBody);",
+                  "} catch (err) {",
+                  "  const lines = rawBody.split('\\n');",
+                  "  for (const line of lines) {",
+                  "    if (line.startsWith('data: ')) {",
+                  "      payload = JSON.parse(line.substring(6));",
+                  "      break;",
+                  "    }",
+                  "  }",
+                  "}",
+                  "pm.test('Sandbox tool call succeeded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(payload).to.be.an('object');",
+                  "});",
+                  "if (payload && payload.error) {",
+                  "  pm.test('MCP error is absent', function () {",
+                  "    pm.expect(payload.error).to.be.undefined;",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "if (payload && payload.result && payload.result.isError) {",
+                  "  pm.test('Result isError is false', function () {",
+                  "    pm.expect(payload.result.isError).to.eql(false);",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "const textBlock = payload.result.content.find(c => c.type === 'text');",
+                  "pm.test('Shell exec returns stdout', function () {",
+                  "  pm.expect(textBlock).to.exist;",
+                  "  const structured = JSON.parse(textBlock.text);",
+                  "  pm.expect(structured.stdout).to.include('sandbox-ok');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Call sandbox_file_write",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Conversation-ID",
+                "value": "{{sandbox_conversation_id}}"
+              },
+              {
+                "key": "X-Tool-Call-ID",
+                "value": "{{sandbox_tool_call_id}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"sandbox_file_write\",\n    \"arguments\": {\n      \"path\": \"{{sandbox_file_path}}\",\n      \"content\": \"hello sandbox\"\n    }\n  },\n  \"id\": 11\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rawBody = pm.response.text();",
+                  "let payload = null;",
+                  "try {",
+                  "  payload = JSON.parse(rawBody);",
+                  "} catch (err) {",
+                  "  const lines = rawBody.split('\\n');",
+                  "  for (const line of lines) {",
+                  "    if (line.startsWith('data: ')) {",
+                  "      payload = JSON.parse(line.substring(6));",
+                  "      break;",
+                  "    }",
+                  "  }",
+                  "}",
+                  "pm.test('Sandbox tool call succeeded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(payload).to.be.an('object');",
+                  "});",
+                  "if (payload && payload.error) {",
+                  "  pm.test('MCP error is absent', function () {",
+                  "    pm.expect(payload.error).to.be.undefined;",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "if (payload && payload.result && payload.result.isError) {",
+                  "  pm.test('Result isError is false', function () {",
+                  "    pm.expect(payload.result.isError).to.eql(false);",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "const textBlock = payload.result.content.find(c => c.type === 'text');",
+                  "pm.test('File write returns success', function () {",
+                  "  pm.expect(textBlock).to.exist;",
+                  "  const structured = JSON.parse(textBlock.text);",
+                  "  pm.expect(structured.success).to.eql(true);",
+                  "  pm.expect(structured.path).to.include('agent.txt');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Call sandbox_file_read",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Conversation-ID",
+                "value": "{{sandbox_conversation_id}}"
+              },
+              {
+                "key": "X-Tool-Call-ID",
+                "value": "{{sandbox_tool_call_id}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"sandbox_file_read\",\n    \"arguments\": {\n      \"path\": \"{{sandbox_file_path}}\"\n    }\n  },\n  \"id\": 12\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rawBody = pm.response.text();",
+                  "let payload = null;",
+                  "try {",
+                  "  payload = JSON.parse(rawBody);",
+                  "} catch (err) {",
+                  "  const lines = rawBody.split('\\n');",
+                  "  for (const line of lines) {",
+                  "    if (line.startsWith('data: ')) {",
+                  "      payload = JSON.parse(line.substring(6));",
+                  "      break;",
+                  "    }",
+                  "  }",
+                  "}",
+                  "pm.test('Sandbox tool call succeeded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(payload).to.be.an('object');",
+                  "});",
+                  "if (payload && payload.error) {",
+                  "  pm.test('MCP error is absent', function () {",
+                  "    pm.expect(payload.error).to.be.undefined;",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "if (payload && payload.result && payload.result.isError) {",
+                  "  pm.test('Result isError is false', function () {",
+                  "    pm.expect(payload.result.isError).to.eql(false);",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "const textBlock = payload.result.content.find(c => c.type === 'text');",
+                  "pm.test('File read returns content', function () {",
+                  "  pm.expect(textBlock).to.exist;",
+                  "  pm.expect(textBlock.text).to.include('hello sandbox');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Call sandbox_file_list",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Conversation-ID",
+                "value": "{{sandbox_conversation_id}}"
+              },
+              {
+                "key": "X-Tool-Call-ID",
+                "value": "{{sandbox_tool_call_id}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"sandbox_file_list\",\n    \"arguments\": {\n      \"path\": \".\"\n    }\n  },\n  \"id\": 13\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rawBody = pm.response.text();",
+                  "let payload = null;",
+                  "try {",
+                  "  payload = JSON.parse(rawBody);",
+                  "} catch (err) {",
+                  "  const lines = rawBody.split('\\n');",
+                  "  for (const line of lines) {",
+                  "    if (line.startsWith('data: ')) {",
+                  "      payload = JSON.parse(line.substring(6));",
+                  "      break;",
+                  "    }",
+                  "  }",
+                  "}",
+                  "pm.test('Sandbox tool call succeeded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(payload).to.be.an('object');",
+                  "});",
+                  "if (payload && payload.error) {",
+                  "  pm.test('MCP error is absent', function () {",
+                  "    pm.expect(payload.error).to.be.undefined;",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "if (payload && payload.result && payload.result.isError) {",
+                  "  pm.test('Result isError is false', function () {",
+                  "    pm.expect(payload.result.isError).to.eql(false);",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "const textBlock = payload.result.content.find(c => c.type === 'text');",
+                  "pm.test('File list includes agent.txt', function () {",
+                  "  pm.expect(textBlock).to.exist;",
+                  "  const structured = JSON.parse(textBlock.text);",
+                  "  pm.expect(structured).to.be.an('array');",
+                  "  const names = structured.map(entry => entry.name);",
+                  "  pm.expect(names).to.include('agent.txt');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Call sandbox_code_execute",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Conversation-ID",
+                "value": "{{sandbox_conversation_id}}"
+              },
+              {
+                "key": "X-Tool-Call-ID",
+                "value": "{{sandbox_tool_call_id}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"sandbox_code_execute\",\n    \"arguments\": {\n      \"language\": \"python\",\n      \"code\": \"print('sandbox-code-ok')\"\n    }\n  },\n  \"id\": 14\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rawBody = pm.response.text();",
+                  "let payload = null;",
+                  "try {",
+                  "  payload = JSON.parse(rawBody);",
+                  "} catch (err) {",
+                  "  const lines = rawBody.split('\\n');",
+                  "  for (const line of lines) {",
+                  "    if (line.startsWith('data: ')) {",
+                  "      payload = JSON.parse(line.substring(6));",
+                  "      break;",
+                  "    }",
+                  "  }",
+                  "}",
+                  "pm.test('Sandbox tool call succeeded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(payload).to.be.an('object');",
+                  "});",
+                  "if (payload && payload.error) {",
+                  "  pm.test('MCP error is absent', function () {",
+                  "    pm.expect(payload.error).to.be.undefined;",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "if (payload && payload.result && payload.result.isError) {",
+                  "  pm.test('Result isError is false', function () {",
+                  "    pm.expect(payload.result.isError).to.eql(false);",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "const textBlock = payload.result.content.find(c => c.type === 'text');",
+                  "pm.test('Code execution returns stdout', function () {",
+                  "  pm.expect(textBlock).to.exist;",
+                  "  const structured = JSON.parse(textBlock.text);",
+                  "  pm.expect(structured.stdout).to.include('sandbox-code-ok');",
+                  "  pm.expect(structured.success).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Call sandbox_install_packages",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Conversation-ID",
+                "value": "{{sandbox_conversation_id}}"
+              },
+              {
+                "key": "X-Tool-Call-ID",
+                "value": "{{sandbox_tool_call_id}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"sandbox_install_packages\",\n    \"arguments\": {\n      \"manager\": \"pip\",\n      \"packages\": [\n        \"requests\"\n      ]\n    }\n  },\n  \"id\": 15\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rawBody = pm.response.text();",
+                  "let payload = null;",
+                  "try {",
+                  "  payload = JSON.parse(rawBody);",
+                  "} catch (err) {",
+                  "  const lines = rawBody.split('\\n');",
+                  "  for (const line of lines) {",
+                  "    if (line.startsWith('data: ')) {",
+                  "      payload = JSON.parse(line.substring(6));",
+                  "      break;",
+                  "    }",
+                  "  }",
+                  "}",
+                  "pm.test('Sandbox tool call succeeded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(payload).to.be.an('object');",
+                  "});",
+                  "if (payload && payload.error) {",
+                  "  pm.test('MCP error is absent', function () {",
+                  "    pm.expect(payload.error).to.be.undefined;",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "if (payload && payload.result && payload.result.isError) {",
+                  "  pm.test('Result isError is false', function () {",
+                  "    pm.expect(payload.result.isError).to.eql(false);",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "const textBlock = payload.result.content.find(c => c.type === 'text');",
+                  "pm.test('Package install returns success', function () {",
+                  "  pm.expect(textBlock).to.exist;",
+                  "  const structured = JSON.parse(textBlock.text);",
+                  "  pm.expect(structured.success).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Call sandbox_markitdown_convert",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Conversation-ID",
+                "value": "{{sandbox_conversation_id}}"
+              },
+              {
+                "key": "X-Tool-Call-ID",
+                "value": "{{sandbox_tool_call_id}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"sandbox_markitdown_convert\",\n    \"arguments\": {\n      \"url\": \"https://example.com\"\n    }\n  },\n  \"id\": 16\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rawBody = pm.response.text();",
+                  "let payload = null;",
+                  "try {",
+                  "  payload = JSON.parse(rawBody);",
+                  "} catch (err) {",
+                  "  const lines = rawBody.split('\\n');",
+                  "  for (const line of lines) {",
+                  "    if (line.startsWith('data: ')) {",
+                  "      payload = JSON.parse(line.substring(6));",
+                  "      break;",
+                  "    }",
+                  "  }",
+                  "}",
+                  "pm.test('Sandbox tool call succeeded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(payload).to.be.an('object');",
+                  "});",
+                  "if (payload && payload.error) {",
+                  "  pm.test('MCP error is absent', function () {",
+                  "    pm.expect(payload.error).to.be.undefined;",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "if (payload && payload.result && payload.result.isError) {",
+                  "  pm.test('Result isError is false', function () {",
+                  "    pm.expect(payload.result.isError).to.eql(false);",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "const textBlock = payload.result.content.find(c => c.type === 'text');",
+                  "pm.test('Markitdown returns text', function () {",
+                  "  pm.expect(textBlock).to.exist;",
+                  "  pm.expect(textBlock.text.length).to.be.greaterThan(0);",
+                  "});",
+                  "pm.test('Markitdown mentions Example Domain or availability note', function () {",
+                  "  pm.expect(textBlock.text).to.match(/Example Domain|markitdown not available/i);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Call sandbox_screenshot",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Conversation-ID",
+                "value": "{{sandbox_conversation_id}}"
+              },
+              {
+                "key": "X-Tool-Call-ID",
+                "value": "{{sandbox_tool_call_id}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"sandbox_screenshot\",\n    \"arguments\": {}\n  },\n  \"id\": 17\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rawBody = pm.response.text();",
+                  "let payload = null;",
+                  "try {",
+                  "  payload = JSON.parse(rawBody);",
+                  "} catch (err) {",
+                  "  const lines = rawBody.split('\\n');",
+                  "  for (const line of lines) {",
+                  "    if (line.startsWith('data: ')) {",
+                  "      payload = JSON.parse(line.substring(6));",
+                  "      break;",
+                  "    }",
+                  "  }",
+                  "}",
+                  "pm.test('Sandbox tool call succeeded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(payload).to.be.an('object');",
+                  "});",
+                  "if (payload && payload.error) {",
+                  "  pm.test('MCP error is absent', function () {",
+                  "    pm.expect(payload.error).to.be.undefined;",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "if (payload && payload.result && payload.result.isError) {",
+                  "  pm.test('Result isError is false', function () {",
+                  "    pm.expect(payload.result.isError).to.eql(false);",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "const imageBlock = payload.result.content.find(c => c.type === 'image');",
+                  "pm.test('Screenshot returns image content', function () {",
+                  "  pm.expect(imageBlock).to.exist;",
+                  "  pm.expect(imageBlock.data).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Call sandbox_click",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Conversation-ID",
+                "value": "{{sandbox_conversation_id}}"
+              },
+              {
+                "key": "X-Tool-Call-ID",
+                "value": "{{sandbox_tool_call_id}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"sandbox_click\",\n    \"arguments\": {\n      \"x\": 10,\n      \"y\": 10,\n      \"button\": \"left\"\n    }\n  },\n  \"id\": 18\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rawBody = pm.response.text();",
+                  "let payload = null;",
+                  "try {",
+                  "  payload = JSON.parse(rawBody);",
+                  "} catch (err) {",
+                  "  const lines = rawBody.split('\\n');",
+                  "  for (const line of lines) {",
+                  "    if (line.startsWith('data: ')) {",
+                  "      payload = JSON.parse(line.substring(6));",
+                  "      break;",
+                  "    }",
+                  "  }",
+                  "}",
+                  "pm.test('Sandbox tool call succeeded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(payload).to.be.an('object');",
+                  "});",
+                  "if (payload && payload.error) {",
+                  "  pm.test('MCP error is absent', function () {",
+                  "    pm.expect(payload.error).to.be.undefined;",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "if (payload && payload.result && payload.result.isError) {",
+                  "  pm.test('Result isError is false', function () {",
+                  "    pm.expect(payload.result.isError).to.eql(false);",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "const textBlock = payload.result.content.find(c => c.type === 'text');",
+                  "pm.test('Click returns coordinates', function () {",
+                  "  pm.expect(textBlock).to.exist;",
+                  "  const structured = JSON.parse(textBlock.text);",
+                  "  pm.expect(structured.x).to.eql(10);",
+                  "  pm.expect(structured.y).to.eql(10);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Call sandbox_type",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Conversation-ID",
+                "value": "{{sandbox_conversation_id}}"
+              },
+              {
+                "key": "X-Tool-Call-ID",
+                "value": "{{sandbox_tool_call_id}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"sandbox_type\",\n    \"arguments\": {\n      \"text\": \"hello sandbox\"\n    }\n  },\n  \"id\": 19\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rawBody = pm.response.text();",
+                  "let payload = null;",
+                  "try {",
+                  "  payload = JSON.parse(rawBody);",
+                  "} catch (err) {",
+                  "  const lines = rawBody.split('\\n');",
+                  "  for (const line of lines) {",
+                  "    if (line.startsWith('data: ')) {",
+                  "      payload = JSON.parse(line.substring(6));",
+                  "      break;",
+                  "    }",
+                  "  }",
+                  "}",
+                  "pm.test('Sandbox tool call succeeded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(payload).to.be.an('object');",
+                  "});",
+                  "if (payload && payload.error) {",
+                  "  pm.test('MCP error is absent', function () {",
+                  "    pm.expect(payload.error).to.be.undefined;",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "if (payload && payload.result && payload.result.isError) {",
+                  "  pm.test('Result isError is false', function () {",
+                  "    pm.expect(payload.result.isError).to.eql(false);",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "const textBlock = payload.result.content.find(c => c.type === 'text');",
+                  "pm.test('Type returns length', function () {",
+                  "  pm.expect(textBlock).to.exist;",
+                  "  const structured = JSON.parse(textBlock.text);",
+                  "  pm.expect(structured.text_length).to.eql(13);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "sandbox_user_id",
+      "value": "user_mcp_agent_e2b",
+      "type": "string"
+    },
+    {
+      "key": "sandbox_conversation_id",
+      "value": "conv_mcp_agent_e2b",
+      "type": "string"
+    },
+    {
+      "key": "sandbox_tool_call_id",
+      "value": "call_mcp_agent_sandbox",
+      "type": "string"
+    },
+    {
+      "key": "sandbox_request_id",
+      "value": "req_mcp_agent_sandbox",
+      "type": "string"
+    },
+    {
+      "key": "sandbox_file_path",
+      "value": "/workspace/conv_mcp_agent_e2b/agent.txt",
+      "type": "string"
     }
   ]
 }

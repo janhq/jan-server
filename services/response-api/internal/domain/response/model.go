@@ -41,6 +41,7 @@ type Response struct {
 	Error                *ErrorDetails          `json:"error,omitempty"`
 	ConversationID       *uint                  `json:"-"`
 	ConversationPublicID *string                `json:"conversation_id,omitempty"`
+	ParentConversationID *string                `json:"parent_conversation_id,omitempty"` // llm-api conversation ID that spawned this agent
 	PreviousResponseID   *string                `json:"previous_response_id,omitempty"`
 	CreatedAt            time.Time              `json:"created_at"`
 	UpdatedAt            time.Time              `json:"updated_at"`
@@ -65,23 +66,24 @@ type ErrorDetails struct {
 
 // CreateParams contains inputs collected from the HTTP layer.
 type CreateParams struct {
-	UserID             string
-	Model              string
-	Input              interface{}
-	RequestID          string
-	SystemPrompt       *string
-	Temperature        *float64
-	MaxTokens          *int
-	Stream             bool
-	Background         bool
-	Store              bool
-	APIKey             *string // API key (X-API-Key or Bearer token) for background LLM calls
-	ToolChoice         *llm.ToolChoice
-	Tools              []llm.ToolDefinition
-	PreviousResponseID *string
-	ConversationID     *string
-	Metadata           map[string]interface{}
-	StreamObserver     StreamObserver
+	UserID               string
+	Model                string
+	Input                interface{}
+	RequestID            string
+	SystemPrompt         *string
+	Temperature          *float64
+	MaxTokens            *int
+	Stream               bool
+	Background           bool
+	Store                bool
+	APIKey               *string // API key (X-API-Key or Bearer token) for background LLM calls
+	ToolChoice           *llm.ToolChoice
+	Tools                []llm.ToolDefinition
+	PreviousResponseID   *string
+	ConversationID       *string
+	ParentConversationID *string // llm-api conversation ID (for artifact linking, no lookup)
+	Metadata             map[string]interface{}
+	StreamObserver       StreamObserver
 }
 
 // Service exposes the Response domain operations.

@@ -13,6 +13,6 @@ function DashboardUsageRoute() {
   );
 }
 
-export const Route = createFileRoute("/dashboard/usage")({
+export const Route = createFileRoute("/dashboard/usage" as "/")({
   component: DashboardUsageRoute,
 });

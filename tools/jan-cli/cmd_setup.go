@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"bufio"
@@ -20,10 +20,11 @@ func init() {
 	setupAndRunCmd.Flags().Bool("skip-prompts", false, "Skip interactive prompts and use existing .env")
 	setupAndRunCmd.Flags().Bool("with-memory-tools", false, "Enable memory tools profile and defaults during setup")
 	setupAndRunCmd.Flags().Bool("with-realtime-api", false, "Enable realtime API profile during setup")
-	setupAndRunCmd.Flags().Bool("with-aio", false, "Enable AIO Sandbox profile during setup")
+	setupAndRunCmd.Flags().Bool("with-aio", false, "Enable AIO Sandbox provider during setup")
+	setupAndRunCmd.Flags().Bool("with-e2b", false, "Enable E2B Sandbox provider during setup")
 	setupAndRunCmd.Flags().Bool("skip-realtime", false, "Skip realtime API setup (disable realtime profile)")
 	setupAndRunCmd.Flags().Bool("skip-memory", false, "Skip memory tools setup (disable memory profile)")
-	setupAndRunCmd.Flags().Bool("skip-aio", false, "Skip AIO Sandbox setup (disable aio profile)")
+	setupAndRunCmd.Flags().Bool("skip-aio", false, "Skip sandbox provider setup (disable aio/e2b profile)")
 }
 
 func runSetupAndRun(cmd *cobra.Command, args []string) error {
@@ -31,6 +32,7 @@ func runSetupAndRun(cmd *cobra.Command, args []string) error {
 	enableMemory, _ := cmd.Flags().GetBool("with-memory-tools")
 	enableRealtime, _ := cmd.Flags().GetBool("with-realtime-api")
 	enableAIO, _ := cmd.Flags().GetBool("with-aio")
+	enableE2B, _ := cmd.Flags().GetBool("with-e2b")
 	skipRealtime, _ := cmd.Flags().GetBool("skip-realtime")
 	skipMemory, _ := cmd.Flags().GetBool("skip-memory")
 	skipAIO, _ := cmd.Flags().GetBool("skip-aio")
@@ -38,6 +40,10 @@ func runSetupAndRun(cmd *cobra.Command, args []string) error {
 	fmt.Println("🚀 Jan Server Setup and Run")
 	fmt.Println("=" + strings.Repeat("=", 50))
 	fmt.Println()
+
+	if enableAIO && enableE2B {
+		return fmt.Errorf("cannot enable both AIO and E2B sandbox providers")
+	}
 
 	// Check if .env exists
 	envPath := ".env"
@@ -59,7 +65,7 @@ func runSetupAndRun(cmd *cobra.Command, args []string) error {
 			if response != "y" && response != "yes" {
 				fmt.Println("Using existing .env file...")
 			} else {
-				if err := promptForEnvVars(envPath, enableMemory, enableAIO, skipRealtime, skipMemory, skipAIO); err != nil {
+				if err := promptForEnvVars(envPath, enableMemory, enableAIO, enableE2B, skipRealtime, skipMemory, skipAIO); err != nil {
 					return fmt.Errorf("failed to update .env: %w", err)
 				}
 			}
@@ -70,7 +76,7 @@ func runSetupAndRun(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("failed to copy .env template: %w", err)
 			}
 
-			if err := promptForEnvVars(envPath, enableMemory, enableAIO, skipRealtime, skipMemory, skipAIO); err != nil {
+			if err := promptForEnvVars(envPath, enableMemory, enableAIO, enableE2B, skipRealtime, skipMemory, skipAIO); err != nil {
 				return fmt.Errorf("failed to configure .env: %w", err)
 			}
 		}
@@ -94,9 +100,20 @@ func runSetupAndRun(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if skipPrompts && enableAIO {
-		if err := applyAIODefaults(envPath); err != nil {
-			return fmt.Errorf("failed to enable AIO Sandbox defaults: %w", err)
+	if skipPrompts && skipAIO {
+		if err := disableSandbox(envPath); err != nil {
+			return fmt.Errorf("failed to disable sandbox provider: %w", err)
+		}
+	} else {
+		if skipPrompts && enableAIO {
+			if err := applyAIODefaults(envPath); err != nil {
+				return fmt.Errorf("failed to enable AIO Sandbox defaults: %w", err)
+			}
+		}
+		if skipPrompts && enableE2B {
+			if err := applyE2BDefaults(envPath); err != nil {
+				return fmt.Errorf("failed to enable E2B Sandbox defaults: %w", err)
+			}
 		}
 	}
 
@@ -285,7 +302,7 @@ func copyEnvTemplate(destPath string) error {
 	return nil
 }
 
-func promptForEnvVars(envPath string, defaultEnableMemory bool, enableAIO bool, skipRealtime bool, skipMemory bool, skipAIO bool) error {
+func promptForEnvVars(envPath string, defaultEnableMemory bool, enableAIO bool, enableE2B bool, skipRealtime bool, skipMemory bool, skipAIO bool) error {
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Println()
@@ -655,41 +672,66 @@ func promptForEnvVars(envPath string, defaultEnableMemory bool, enableAIO bool, 
 		fmt.Println("✓ Realtime API disabled (skipped via --skip-realtime flag)")
 	}
 
-	// 6. AIO Sandbox Configuration
+	// 6. Sandbox Provider Configuration (AIO or E2B)
 	if skipAIO {
-		updates["AIO_ENABLED"] = "false"
 		fmt.Println()
-		fmt.Println("⏭️  Skipping AIO Sandbox setup (disabled via --skip-aio flag)")
+		fmt.Println("⏭️  Skipping sandbox provider setup (disabled via --skip-aio flag)")
+		disableSandboxSettings(updates, &profiles)
 	} else if enableAIO {
-		// Enable AIO via flag without prompting
-		updates["AIO_ENABLED"] = "true"
-		updates["AIO_URL"] = "http://aio-sandbox:8080"
-		updates["AIO_TIMEOUT"] = "120s"
-		profiles = append(profiles, "aio")
 		fmt.Println()
 		fmt.Println("✓ AIO Sandbox enabled (via --with-aio flag)")
+		enableAIOSettings(updates, &profiles)
+		fmt.Println("  Tools: sandbox_shell_exec, sandbox_file_read, sandbox_file_write, sandbox_file_list,")
+		fmt.Println("         sandbox_code_execute, sandbox_install_packages, sandbox_markitdown_convert,")
+		fmt.Println("         sandbox_browser_info")
+	} else if enableE2B {
+		fmt.Println()
+		fmt.Println("✓ E2B Sandbox enabled (via --with-e2b flag)")
+		if !promptForE2BConfig(reader, updates) {
+			fmt.Println("⚠️  E2B API key missing - sandbox disabled")
+			disableSandboxSettings(updates, &profiles)
+		} else {
+			enableE2BSettings(updates, &profiles)
+			fmt.Println("  Tools: sandbox_shell_exec, sandbox_file_read, sandbox_file_write, sandbox_file_list,")
+			fmt.Println("         sandbox_code_execute, sandbox_install_packages, sandbox_markitdown_convert,")
+			fmt.Println("         sandbox_screenshot, sandbox_click, sandbox_type")
+		}
 	} else {
 		fmt.Println()
-		fmt.Println("🤖 AIO Sandbox Setup")
-		fmt.Println("AIO Sandbox provides browser automation, shell/terminal, file operations, and code execution.")
-		fmt.Println("Note: AIO requires ~4GB RAM and takes ~60s to start.")
-		fmt.Print("Enable AIO Sandbox? (y/N): ")
+		fmt.Println("🤖 Sandbox Provider Setup")
+		fmt.Println("Choose a sandbox provider for tool execution:")
+		fmt.Println("  1. None (disable sandbox tools)")
+		fmt.Println("  2. AIO (local container)")
+		fmt.Println("  3. E2B (cloud, requires API key)")
+		fmt.Print("Enter choice [1/2/3] (default: 1): ")
 
-		aioChoice, _ := reader.ReadString('\n')
-		aioChoice = strings.TrimSpace(strings.ToLower(aioChoice))
+		sandboxChoice, _ := reader.ReadString('\n')
+		sandboxChoice = strings.TrimSpace(sandboxChoice)
+		if sandboxChoice == "" {
+			sandboxChoice = "1"
+		}
 
-		// Default is No for AIO (resource-intensive)
-		if aioChoice == "y" || aioChoice == "yes" {
-			updates["AIO_ENABLED"] = "true"
-			updates["AIO_URL"] = "http://aio-sandbox:8080"
-			updates["AIO_TIMEOUT"] = "120s"
-			profiles = append(profiles, "aio")
+		switch sandboxChoice {
+		case "2":
+			enableAIOSettings(updates, &profiles)
 			fmt.Println("✓ AIO Sandbox enabled (profile: aio)")
-			fmt.Println("  Tools: aio_shell_exec, aio_file_read, aio_file_write, aio_file_list,")
-			fmt.Println("         aio_browser_info, aio_code_execute, aio_markitdown_convert")
-		} else {
-			updates["AIO_ENABLED"] = "false"
-			fmt.Println("✓ AIO Sandbox disabled (enable later with: make up-aio)")
+			fmt.Println("  Tools: sandbox_shell_exec, sandbox_file_read, sandbox_file_write, sandbox_file_list,")
+			fmt.Println("         sandbox_code_execute, sandbox_install_packages, sandbox_markitdown_convert,")
+			fmt.Println("         sandbox_browser_info")
+		case "3":
+			if !promptForE2BConfig(reader, updates) {
+				fmt.Println("⚠️  E2B API key missing - sandbox disabled")
+				disableSandboxSettings(updates, &profiles)
+			} else {
+				enableE2BSettings(updates, &profiles)
+				fmt.Println("✓ E2B Sandbox enabled (profile: e2b)")
+				fmt.Println("  Tools: sandbox_shell_exec, sandbox_file_read, sandbox_file_write, sandbox_file_list,")
+				fmt.Println("         sandbox_code_execute, sandbox_install_packages, sandbox_markitdown_convert,")
+				fmt.Println("         sandbox_screenshot, sandbox_click, sandbox_type")
+			}
+		default:
+			disableSandboxSettings(updates, &profiles)
+			fmt.Println("✓ Sandbox provider disabled")
 		}
 	}
 
@@ -862,26 +904,47 @@ func applyAIODefaults(envPath string) error {
 	profiles := parseProfiles(strings.Split(string(data), "\n"))
 	updates := make(map[string]string)
 
-	// Add aio profile if not present
-	hasAIO := false
-	for _, profile := range profiles {
-		if profile == "aio" {
-			hasAIO = true
-			break
-		}
-	}
-	if !hasAIO {
-		profiles = append(profiles, "aio")
-	}
-
-	updates["AIO_ENABLED"] = "true"
-	updates["AIO_URL"] = "http://aio-sandbox:8080"
-	updates["AIO_TIMEOUT"] = "120s"
+	enableAIOSettings(updates, &profiles)
 	if len(profiles) > 0 {
 		updates["COMPOSE_PROFILES"] = strings.Join(profiles, ",")
 	}
 
 	fmt.Println("✓ AIO Sandbox enabled (profile: aio)")
+	return applyEnvUpdates(envPath, updates)
+}
+
+func applyE2BDefaults(envPath string) error {
+	data, err := os.ReadFile(envPath)
+	if err != nil {
+		return fmt.Errorf("read .env: %w", err)
+	}
+
+	profiles := parseProfiles(strings.Split(string(data), "\n"))
+	updates := make(map[string]string)
+
+	enableE2BSettings(updates, &profiles)
+	if len(profiles) > 0 {
+		updates["COMPOSE_PROFILES"] = strings.Join(profiles, ",")
+	}
+
+	fmt.Println("✓ E2B Sandbox enabled (profile: e2b)")
+	return applyEnvUpdates(envPath, updates)
+}
+
+func disableSandbox(envPath string) error {
+	data, err := os.ReadFile(envPath)
+	if err != nil {
+		return fmt.Errorf("read .env: %w", err)
+	}
+
+	profiles := parseProfiles(strings.Split(string(data), "\n"))
+	updates := make(map[string]string)
+	disableSandboxSettings(updates, &profiles)
+	if len(profiles) > 0 {
+		updates["COMPOSE_PROFILES"] = strings.Join(profiles, ",")
+	}
+
+	fmt.Println("✓ Sandbox provider disabled")
 	return applyEnvUpdates(envPath, updates)
 }
 
@@ -1009,6 +1072,58 @@ func promptForPublicS3URL(reader *bufio.Reader, updates map[string]string, s3End
 	}
 }
 
+func promptForE2BConfig(reader *bufio.Reader, updates map[string]string) bool {
+	fmt.Println()
+	fmt.Println("E2B Sandbox Configuration")
+	fmt.Println("Get your API key from https://e2b.dev")
+	fmt.Print("E2B_API_KEY: ")
+	apiKey, _ := reader.ReadString('\n')
+	apiKey = strings.TrimSpace(apiKey)
+	if apiKey == "" {
+		return false
+	}
+	updates["E2B_API_KEY"] = apiKey
+
+	fmt.Print("E2B_ACCESS_TOKEN (optional, press Enter to skip): ")
+	accessToken, _ := reader.ReadString('\n')
+	accessToken = strings.TrimSpace(accessToken)
+	if accessToken != "" {
+		updates["E2B_ACCESS_TOKEN"] = accessToken
+	}
+
+	fmt.Print("E2B_TEMPLATE_ID (default: jan-browser-sandbox): ")
+	templateID, _ := reader.ReadString('\n')
+	templateID = strings.TrimSpace(templateID)
+	if templateID == "" {
+		templateID = "jan-browser-sandbox"
+	}
+	updates["E2B_TEMPLATE_ID"] = templateID
+
+	return true
+}
+
+func enableAIOSettings(updates map[string]string, profiles *[]string) {
+	removeProfiles(profiles, "e2b")
+	ensureProfile(profiles, "aio")
+	updates["SANDBOX_PROVIDER"] = "aio"
+	updates["AIO_ENABLED"] = "true"
+	updates["AIO_URL"] = "http://aio-sandbox:8080"
+	updates["AIO_TIMEOUT"] = "120s"
+}
+
+func enableE2BSettings(updates map[string]string, profiles *[]string) {
+	removeProfiles(profiles, "aio")
+	ensureProfile(profiles, "e2b")
+	updates["SANDBOX_PROVIDER"] = "e2b"
+	updates["AIO_ENABLED"] = "false"
+}
+
+func disableSandboxSettings(updates map[string]string, profiles *[]string) {
+	removeProfiles(profiles, "aio", "e2b")
+	updates["SANDBOX_PROVIDER"] = ""
+	updates["AIO_ENABLED"] = "false"
+}
+
 func updateEnvVariable(envPath, key, value string) error {
 	// Read current .env
 	data, err := os.ReadFile(envPath)
@@ -1059,6 +1174,36 @@ func parseProfiles(lines []string) []string {
 		}
 	}
 	return []string{"infra", "api", "mcp", "web"}
+}
+
+func ensureProfile(profiles *[]string, profile string) {
+	if profiles == nil {
+		return
+	}
+	for _, existing := range *profiles {
+		if strings.TrimSpace(existing) == profile {
+			return
+		}
+	}
+	*profiles = append(*profiles, profile)
+}
+
+func removeProfiles(profiles *[]string, remove ...string) {
+	if profiles == nil || len(remove) == 0 {
+		return
+	}
+	removeSet := make(map[string]struct{}, len(remove))
+	for _, item := range remove {
+		removeSet[item] = struct{}{}
+	}
+	filtered := make([]string, 0, len(*profiles))
+	for _, profile := range *profiles {
+		if _, shouldRemove := removeSet[strings.TrimSpace(profile)]; shouldRemove {
+			continue
+		}
+		filtered = append(filtered, profile)
+	}
+	*profiles = filtered
 }
 
 func addPlatformProfile(envPath string) error {

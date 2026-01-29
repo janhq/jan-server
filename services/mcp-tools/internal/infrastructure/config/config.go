@@ -88,8 +88,11 @@ type Config struct {
 	Account     string `env:"ACCOUNT"`
 	AuthJWKSURL string `env:"AUTH_JWKS_URL"`
 
-	// AIO Sandbox Configuration
-	AIOEnabled bool          `env:"AIO_ENABLED" envDefault:"false"`
+	// Sandbox Provider Configuration (mutually exclusive: "aio", "e2b", or empty)
+	SandboxProvider string `env:"SANDBOX_PROVIDER" envDefault:""`
+
+	// AIO Sandbox Configuration (when SANDBOX_PROVIDER=aio)
+	AIOEnabled bool          `env:"AIO_ENABLED" envDefault:"false"` // Deprecated: use SANDBOX_PROVIDER=aio
 	AIOURL     string        `env:"AIO_URL" envDefault:"http://aio-sandbox:8080"`
 	AIOTimeout time.Duration `env:"AIO_TIMEOUT" envDefault:"120s"`
 
@@ -98,6 +101,10 @@ type Config struct {
 	EnableGmailConnector    bool `env:"MCP_ENABLE_GMAIL_CONNECTOR" envDefault:"false"`
 	EnableDriveConnector    bool `env:"MCP_ENABLE_DRIVE_CONNECTOR" envDefault:"false"`
 	EnableCalendarConnector bool `env:"MCP_ENABLE_CALENDAR_CONNECTOR" envDefault:"false"`
+
+	// E2B Sandbox Configuration (when SANDBOX_PROVIDER=e2b)
+	E2BServiceURL string        `env:"E2B_SERVICE_URL" envDefault:"http://e2b-service:8095"`
+	E2BTimeout    time.Duration `env:"E2B_TIMEOUT" envDefault:"120s"`
 
 	// Analytics (PostHog + OTel)
 	AnalyticsEnabled     bool          `env:"ANALYTICS_ENABLED" envDefault:"true"`
@@ -174,6 +181,19 @@ func LoadConfig() (*Config, error) {
 	if cfg.SearxngEnabled && strings.TrimSpace(cfg.SearxngURL) == "" {
 		return nil, fmt.Errorf("SEARXNG_URL is required when SEARXNG_ENABLED is true")
 	}
+
+	// Validate sandbox provider configuration
+	sandboxProvider := strings.ToLower(strings.TrimSpace(cfg.SandboxProvider))
+	if sandboxProvider != "" && sandboxProvider != "aio" && sandboxProvider != "e2b" {
+		return nil, fmt.Errorf("SANDBOX_PROVIDER must be 'aio', 'e2b', or empty (disabled)")
+	}
+	cfg.SandboxProvider = sandboxProvider
+
+	// For backwards compatibility: if AIO_ENABLED is set but SANDBOX_PROVIDER is not, use AIO
+	if cfg.SandboxProvider == "" && cfg.AIOEnabled {
+		cfg.SandboxProvider = "aio"
+	}
+
 	return cfg, nil
 }
 

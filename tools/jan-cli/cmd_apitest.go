@@ -203,6 +203,16 @@ func runCollection(collectionFile string, envMap map[string]string) error {
 			if envMap["access_token"] == "" {
 				envMap["access_token"] = token
 			}
+		} else {
+			fallbackURL := firstNonEmpty(envMap["llm_api_url"], envMap["llm_api_base_url"])
+			if fallbackURL != "" && fallbackURL != gatewayURL {
+				if token, err := testhelpers.GuestLogin(fallbackURL); err == nil && token != "" {
+					envMap["guest_access_token"] = token
+					if envMap["access_token"] == "" {
+						envMap["access_token"] = token
+					}
+				}
+			}
 		}
 	}
 
@@ -432,8 +442,13 @@ func runItem(item PostmanItem, envMap map[string]string, prefix string, parentAu
 		result.Passed = false
 		result.Error = fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(respBody))
 	} else {
-		// Extract variables from test scripts if the response matched expectations
-		extractVariablesFromScripts(item, respBody, resp, envMap)
+		if jsonRPCFailed, jsonRPCErr := checkJSONRPCFailure(respBody); jsonRPCFailed {
+			result.Passed = false
+			result.Error = fmt.Sprintf("JSON-RPC error: %s", jsonRPCErr)
+		} else {
+			// Extract variables from test scripts if the response matched expectations
+			extractVariablesFromScripts(item, respBody, resp, envMap)
+		}
 	}
 
 	if bail && !result.Passed {
@@ -486,6 +501,43 @@ func replaceVariables(text string, envMap map[string]string) string {
 		result = strings.ReplaceAll(result, "${"+key+"}", value)
 	}
 	return result
+}
+
+func checkJSONRPCFailure(respBody []byte) (bool, string) {
+	var payload map[string]interface{}
+	if err := json.Unmarshal(respBody, &payload); err != nil {
+		return false, ""
+	}
+
+	if _, ok := payload["jsonrpc"]; !ok {
+		return false, ""
+	}
+
+	if errObj, ok := payload["error"].(map[string]interface{}); ok {
+		message := ""
+		if msg, ok := errObj["message"].(string); ok && msg != "" {
+			message = msg
+		}
+		if code, ok := errObj["code"].(float64); ok {
+			if message != "" {
+				message = fmt.Sprintf("code %.0f: %s", code, message)
+			} else {
+				message = fmt.Sprintf("code %.0f", code)
+			}
+		}
+		if message == "" {
+			message = "error response"
+		}
+		return true, message
+	}
+
+	if resultObj, ok := payload["result"].(map[string]interface{}); ok {
+		if isError, ok := resultObj["isError"].(bool); ok && isError {
+			return true, "result.isError=true"
+		}
+	}
+
+	return false, ""
 }
 
 // processCollectionEvents processes collection-level prerequest scripts to initialize variables

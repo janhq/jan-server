@@ -164,7 +164,7 @@ const ArtifactPreview = ({ artifact }: { artifact: ArtifactItem }) => {
           <MdViewer
             content={mdContent}
             title={artifact.filename}
-            downloadUrl={artifact.downloadUrl}
+            onDownload={artifact.downloadUrl ? () => window.open(artifact.downloadUrl, "_blank") : undefined}
             onClose={() => setIsViewerOpen(false)}
           />
         )}
@@ -208,7 +208,7 @@ const ArtifactPreview = ({ artifact }: { artifact: ArtifactItem }) => {
             slides={slides}
             initialIndex={0}
             title={artifact.filename}
-            downloadUrl={artifact.downloadUrl}
+            onDownload={artifact.downloadUrl ? () => window.open(artifact.downloadUrl, "_blank") : undefined}
             onClose={() => setIsViewerOpen(false)}
           />
         )}

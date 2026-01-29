@@ -74,7 +74,7 @@ func BuildApplication(ctx context.Context) (*Application, error) {
 		return nil, err
 	}
 	registry := newAgentRegistry(service, mcpClient, client, artifactService, configConfig, mediaClient, skillService)
-	agentOrchestrator := newAgentOrchestrator(registry, service)
+	agentOrchestrator := newAgentOrchestrator(registry, service, mcpClient)
 	httpService := newWebhookService(zerologLogger)
 	responseService := newResponseService(postgresRepository, repository, itemRepository, postgresRepository, orchestrator, agentOrchestrator, mcpClient, mediaClient, client, httpService, registry, service, zerologLogger)
 	apikeyClient := newAPIKeyProvider(configConfig)
@@ -145,8 +145,8 @@ func newOrchestrator(cfg *config.Config, provider llm.Provider, mcpClient tool.M
 	return tool.NewOrchestrator(provider, mcpClient, cfg.MaxToolDepth, cfg.ToolTimeout, cfg.LLMStreamMode)
 }
 
-func newAgentOrchestrator(registry agent.Registry, planService plan2.Service) agent.Orchestrator {
-	return agent.NewOrchestrator(registry, planService)
+func newAgentOrchestrator(registry agent.Registry, planService plan2.Service, mcpClient *mcp.Client) agent.Orchestrator {
+	return agent.NewOrchestrator(registry, planService, mcpClient)
 }
 
 func newWebhookService(log zerolog.Logger) *webhook.HTTPService {

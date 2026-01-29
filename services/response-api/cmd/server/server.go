@@ -211,7 +211,7 @@ func main() {
 		log.Warn().Err(err).Msg("failed to register skill execute executor")
 	}
 
-	agentOrchestrator := agent.NewOrchestrator(agentRegistry, planService)
+	agentOrchestrator := agent.NewOrchestrator(agentRegistry, planService, mcpClient)
 
 	// Initialize response service with webhook support
 	responseService := response.NewService(

@@ -121,7 +121,7 @@ export const useAuth = create<AuthState>()(
       },
       guestLogin: async () => {
         try {
-          const response = await fetch(`${JAN_API_BASE_URL}/auth/guest-login`, {
+          const response = await fetch(`${JAN_API_BASE_URL}auth/guest-login`, {
             method: "POST",
             credentials: "include",
             headers: {

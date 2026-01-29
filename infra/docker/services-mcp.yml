@@ -114,11 +114,18 @@ services:
       MCP_CONFIG_FILE: ${MCP_CONFIG_FILE:-configs/mcp-providers.yml}
       MCP_SANDBOX_REQUIRE_APPROVAL: ${MCP_SANDBOX_REQUIRE_APPROVAL:-true}
       
-      # AIO Sandbox Configuration
+      # Sandbox Provider Configuration (mutually exclusive: "aio", "e2b", or empty)
+      SANDBOX_PROVIDER: ${SANDBOX_PROVIDER:-}
+
+      # AIO Sandbox Configuration (when SANDBOX_PROVIDER=aio)
       AIO_ENABLED: ${AIO_ENABLED:-false}
       AIO_URL: ${AIO_URL:-http://aio-sandbox:8080}
       AIO_TIMEOUT: ${AIO_TIMEOUT:-120s}
-      
+
+      # E2B Sandbox Configuration (when SANDBOX_PROVIDER=e2b)
+      E2B_SERVICE_URL: ${E2B_SERVICE_URL:-http://e2b-service:8095}
+      E2B_TIMEOUT: ${E2B_TIMEOUT:-120s}
+
       # Authentication
       AUTH_ENABLED: ${AUTH_ENABLED:-false}
     ports:
@@ -186,6 +193,45 @@ services:
           memory: 4G
           cpus: '2'
     profiles: ["aio", "full"]
+
+  # E2B Service - Python service for E2B Cloud sandbox management
+  # Provides browser automation, desktop interaction, and code execution via E2B Cloud
+  e2b-service:
+    build: ../../services/mcp-tools/tools/e2b-service
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-../../.env}
+    environment:
+      # E2B Cloud Configuration
+      E2B_API_KEY: ${E2B_API_KEY:-}
+      E2B_ACCESS_TOKEN: ${E2B_ACCESS_TOKEN:-}
+      E2B_TEMPLATE_ID: ${E2B_TEMPLATE_ID:-jan-browser-sandbox}
+      E2B_SERVICE_PORT: 8095
+      E2B_SANDBOX_TIMEOUT: ${E2B_SANDBOX_TIMEOUT:-1800}
+      # Database Configuration (dedicated E2B database)
+      # Clear global DSN to use E2B-specific DB settings
+      DB_POSTGRESQL_WRITE_DSN: ""
+      DB_HOST: ${E2B_DB_HOST:-api-db}
+      DB_PORT: ${E2B_DB_PORT:-5432}
+      DB_USER: ${E2B_DB_USER:-sandbox}
+      DB_PASSWORD: ${E2B_DB_PASSWORD:-sandbox}
+      DB_NAME: ${E2B_DB_NAME:-e2b_sandbox}
+      AUTO_MIGRATE: "true"
+      LOG_LEVEL: ${E2B_LOG_LEVEL:-INFO}
+    depends_on:
+      api-db:
+        condition: service_healthy
+    networks:
+      - mcp-network
+      - default
+    ports:
+      - "${E2B_SERVICE_PORT:-8095}:8095"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8095/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    profiles: ["e2b"]
 
 volumes:
   aio-workspace:

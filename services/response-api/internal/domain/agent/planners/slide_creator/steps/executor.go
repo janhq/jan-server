@@ -23,6 +23,7 @@ type SlideCreatorExecutor struct {
 	mediaClient     *media.Client
 	aioBaseURL      string
 	temperature     float64
+	sandboxHelper   *agent.SandboxHelper
 }
 
 type llmProviderWithTemperature interface {
@@ -50,8 +51,15 @@ func NewSlideCreatorExecutor(mcpClient planners.MCPClient, llmProvider planners.
 		aioBaseURL = strings.TrimSpace(cfg.AIOURL)
 	}
 
+	// Create sandbox helper if MCP client supports it
+	var sandboxHelper *agent.SandboxHelper
+	if toolCaller, ok := mcpClient.(agent.MCPToolCaller); ok {
+		sandboxHelper = agent.NewSandboxHelper(toolCaller)
+	}
+
 	log.Debug().
 		Str("aio_url", aioBaseURL).
+		Bool("sandbox_helper_enabled", sandboxHelper != nil).
 		Msg("[slide_creator] executor initialized")
 
 	return &SlideCreatorExecutor{
@@ -61,6 +69,7 @@ func NewSlideCreatorExecutor(mcpClient planners.MCPClient, llmProvider planners.
 		mediaClient:     mediaClient,
 		aioBaseURL:      aioBaseURL,
 		temperature:     0.2,
+		sandboxHelper:   sandboxHelper,
 	}
 }
 

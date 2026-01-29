@@ -32,7 +32,7 @@ export const profileService = {
    */
   getPreferences: async (): Promise<ProfileSettingsResponse> => {
     return fetchJsonWithAuth<ProfileSettingsResponse>(
-      `${JAN_API_BASE_URL}v1//users/me/settings/preferences`,
+      `${JAN_API_BASE_URL}v1/users/me/settings/preferences`,
     );
   },
 

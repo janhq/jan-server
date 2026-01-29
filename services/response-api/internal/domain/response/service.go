@@ -111,7 +111,7 @@ func (s *ServiceImpl) createAsync(ctx context.Context, params CreateParams) (*Re
 		if params.ConversationID != nil && strings.TrimSpace(*params.ConversationID) != "" {
 			conv, err = s.conversations.FindByPublicID(ctx, *params.ConversationID)
 			if err != nil {
-				return nil, fmt.Errorf("fetch conversation: %w", err)
+				return nil, fmt.Errorf("conversation not found %s: %w", *params.ConversationID, err)
 			}
 		} else {
 			conv = &conversation.Conversation{
@@ -140,6 +140,7 @@ func (s *ServiceImpl) createAsync(ctx context.Context, params CreateParams) (*Re
 		Metadata:             params.Metadata,
 		ConversationID:       &conv.ID,
 		ConversationPublicID: &conv.PublicID,
+		ParentConversationID: params.ParentConversationID, // Store llm-api conversation ID (no lookup)
 		PreviousResponseID:   params.PreviousResponseID,
 		CreatedAt:            now,
 		UpdatedAt:            now,
@@ -188,7 +189,7 @@ func (s *ServiceImpl) createSync(ctx context.Context, params CreateParams) (*Res
 		if params.ConversationID != nil && strings.TrimSpace(*params.ConversationID) != "" {
 			conv, err = s.conversations.FindByPublicID(ctx, *params.ConversationID)
 			if err != nil {
-				return nil, fmt.Errorf("fetch conversation: %w", err)
+				return nil, fmt.Errorf("conversation not found %s: %w", *params.ConversationID, err)
 			}
 		} else {
 			conv = &conversation.Conversation{
@@ -220,6 +221,7 @@ func (s *ServiceImpl) createSync(ctx context.Context, params CreateParams) (*Res
 		Metadata:             params.Metadata,
 		ConversationID:       &conv.ID,
 		ConversationPublicID: &conv.PublicID,
+		ParentConversationID: params.ParentConversationID, // Store llm-api conversation ID (no lookup)
 		PreviousResponseID:   params.PreviousResponseID,
 		CreatedAt:            time.Now(),
 		UpdatedAt:            time.Now(),
@@ -259,6 +261,9 @@ func (s *ServiceImpl) createSync(ctx context.Context, params CreateParams) (*Res
 
 	toolDefs := params.Tools
 	if len(toolDefs) == 0 {
+		if conv != nil && conv.PublicID != "" {
+			ctx = agent.ContextWithConversationID(ctx, conv.PublicID)
+		}
 		if toolDefs, err = s.fetchAvailableTools(ctx); err != nil {
 			return s.failResponse(ctx, responseModel, err)
 		}
@@ -538,6 +543,11 @@ func (s *ServiceImpl) failResponse(ctx context.Context, resp *Response, failure 
 }
 
 func (s *ServiceImpl) executePlanRetry(ctx context.Context, resp *Response, planDetails *plan.Plan) error {
+	// Add conversation ID to context for sandbox operations (E2B requires this)
+	if resp.ConversationPublicID != nil && *resp.ConversationPublicID != "" {
+		ctx = agent.ContextWithConversationID(ctx, *resp.ConversationPublicID)
+	}
+
 	maxIterations := planDetails.EstimatedSteps * 2
 	if maxIterations <= 0 {
 		maxIterations = 50
@@ -1036,6 +1046,9 @@ func (s *ServiceImpl) ExecuteBackground(ctx context.Context, publicID string) er
 	initialLength := len(messages)
 
 	// Load tool definitions
+	if conversationID != "" {
+		ctx = agent.ContextWithConversationID(ctx, conversationID)
+	}
 	toolDefs, err := s.fetchAvailableTools(ctx)
 	if err != nil {
 		s.log.Warn().Err(err).Msg("Failed to load MCP tools, continuing without tools")
@@ -1171,6 +1184,9 @@ func (s *ServiceImpl) executeWithPlan(ctx context.Context, resp *Response, agent
 	userMessage := s.extractUserMessage(resp.Input)
 
 	// Load tool definitions for the plan request
+	if conv != nil && conv.PublicID != "" {
+		ctx = agent.ContextWithConversationID(ctx, conv.PublicID)
+	}
 	toolDefs, err := s.fetchAvailableTools(ctx)
 	if err != nil {
 		s.log.Warn().Err(err).Msg("Failed to load MCP tools for plan, continuing without tools")
@@ -1294,6 +1310,9 @@ func (s *ServiceImpl) executeWithoutPlan(ctx context.Context, resp *Response) er
 	initialLength := len(messages)
 
 	// Load tool definitions
+	if conversationID != "" {
+		ctx = agent.ContextWithConversationID(ctx, conversationID)
+	}
 	toolDefs, err := s.fetchAvailableTools(ctx)
 	if err != nil {
 		s.log.Warn().Err(err).Msg("Failed to load MCP tools, continuing without tools")
@@ -1454,7 +1473,7 @@ func (s *ServiceImpl) readSandboxFile(ctx context.Context, resp *Response, path 
 
 	readFile := func(target string) (*tool.Result, error) {
 		return s.mcpClient.CallTool(ctx, tool.CallRequest{
-			Name: "aio_file_read",
+			Name: "sandbox_file_read",
 			Arguments: map[string]interface{}{
 				"path": target,
 			},
@@ -1598,6 +1617,11 @@ func safeString(value *string) string {
 func (s *ServiceImpl) executePlanWithOrchestrator(ctx context.Context, resp *Response, planResult *agent.PlanResult) error {
 	if s.agentOrchestrator == nil {
 		return errors.New("agent orchestrator not configured")
+	}
+
+	// Add conversation ID to context for sandbox operations (E2B requires this)
+	if resp.ConversationPublicID != nil && *resp.ConversationPublicID != "" {
+		ctx = agent.ContextWithConversationID(ctx, *resp.ConversationPublicID)
 	}
 
 	s.log.Info().

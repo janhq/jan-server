@@ -188,30 +188,31 @@ func mapToEntity(resp *domain.Response) (*entities.Response, error) {
 	}
 
 	return &entities.Response{
-		PublicID:           resp.PublicID,
-		UserID:             resp.UserID,
-		Model:              resp.Model,
-		SystemPrompt:       resp.SystemPrompt,
-		Input:              input,
-		Output:             output,
-		Status:             string(resp.Status),
-		Stream:             resp.Stream,
-		Background:         resp.Background,
-		Store:              resp.Store,
-		APIKey:             resp.APIKey,
-		Metadata:           metadata,
-		Usage:              usage,
-		Error:              errJSON,
-		Artifacts:          artifacts,
-		Citations:          citations,
-		ConversationID:     resp.ConversationID,
-		PreviousResponseID: resp.PreviousResponseID,
-		Object:             resp.Object,
-		QueuedAt:           resp.QueuedAt,
-		StartedAt:          resp.StartedAt,
-		CompletedAt:        resp.CompletedAt,
-		CancelledAt:        resp.CancelledAt,
-		FailedAt:           resp.FailedAt,
+		PublicID:             resp.PublicID,
+		UserID:               resp.UserID,
+		Model:                resp.Model,
+		SystemPrompt:         resp.SystemPrompt,
+		Input:                input,
+		Output:               output,
+		Status:               string(resp.Status),
+		Stream:               resp.Stream,
+		Background:           resp.Background,
+		Store:                resp.Store,
+		APIKey:               resp.APIKey,
+		Metadata:             metadata,
+		Usage:                usage,
+		Error:                errJSON,
+		Artifacts:            artifacts,
+		Citations:            citations,
+		ConversationID:       resp.ConversationID,
+		ParentConversationID: resp.ParentConversationID,
+		PreviousResponseID:   resp.PreviousResponseID,
+		Object:               resp.Object,
+		QueuedAt:             resp.QueuedAt,
+		StartedAt:            resp.StartedAt,
+		CompletedAt:          resp.CompletedAt,
+		CancelledAt:          resp.CancelledAt,
+		FailedAt:             resp.FailedAt,
 	}, nil
 }
 
@@ -227,6 +228,7 @@ func mapFromEntity(entity *entities.Response, resp *domain.Response) error {
 	resp.Store = entity.Store
 	resp.APIKey = entity.APIKey
 	resp.ConversationID = entity.ConversationID
+	resp.ParentConversationID = entity.ParentConversationID
 	resp.PreviousResponseID = entity.PreviousResponseID
 	resp.CreatedAt = entity.CreatedAt
 	resp.UpdatedAt = entity.UpdatedAt

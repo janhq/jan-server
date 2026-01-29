@@ -54,6 +54,11 @@ COMPOSE = docker compose
 COMPOSE_DEV_FULL = docker compose -f docker-compose.yml -f docker-compose.dev-full.yml
 MONITOR_COMPOSE = docker compose -f infra/docker/observability.yml
 
+# BuildKit is required for additional_contexts in compose builds.
+DOCKER_BUILDKIT ?= 1
+COMPOSE_DOCKER_CLI_BUILD ?= 1
+export DOCKER_BUILDKIT COMPOSE_DOCKER_CLI_BUILD
+
 MEDIA_SERVICE_KEY ?= changeme-media-key
 MEDIA_API_KEY ?= changeme-media-key
 
@@ -746,7 +751,7 @@ API_TEST_BASE_FLAGS := --env-file tests/e2e/.env \
 # Full flags with default auth mode
 API_TEST_FLAGS := $(API_TEST_BASE_FLAGS) --auto-auth $(AUTH_MODE) --debug
 
-.PHONY: test-all test-auth test-conversation test-conversation-ocr test-response test-response-aio test-response-mcp test-request test-model test-media test-mcp test-user-management test-model-prompts test-image test-agent-slide test-messages test-dev
+.PHONY: test-all test-auth test-conversation test-conversation-ocr test-response test-response-aio test-response-mcp test-request test-model test-media test-mcp test-mcp-agents test-user-management test-model-prompts test-image test-agent-slide test-messages test-dev
 
 test-all:
 	$(API_TEST) $(COLLECTION_FILES) $(API_TEST_FLAGS) --timeout-request 120000
@@ -783,6 +788,9 @@ test-media:
 
 test-mcp:
 	$(API_TEST) $(COLLECTIONS_DIR)/mcp-runtime.postman.json $(COLLECTIONS_DIR)/mcp-admin.postman.json $(API_TEST_FLAGS)
+
+test-mcp-agents:
+	$(API_TEST) $(COLLECTIONS_DIR)/mcp-agent.postman.json $(API_TEST_FLAGS) --timeout-request 120000
 
 test-user-management:
 	$(API_TEST) $(COLLECTIONS_DIR)/user-management.postman.json $(API_TEST_BASE_FLAGS) --auto-auth admin

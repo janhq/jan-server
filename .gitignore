@@ -1,5 +1,15 @@
-# Copilots
+# AI Assistants
 .github/copilot-instructions.md
+.claude/
+.cursor/
+.aider*
+.codex/
+.codeium/
+.continue/
+.tabnine/
+.windsurf/
+.bolt/
+.v0/
 # Logs
 *.log
 # Temporary files

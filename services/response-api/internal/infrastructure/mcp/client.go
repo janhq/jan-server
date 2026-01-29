@@ -10,6 +10,7 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/rs/zerolog/log"
 
+	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/llm"
 	"jan-server/services/response-api/internal/domain/tool"
 )
@@ -134,6 +135,12 @@ func (c *Client) ListTools(ctx context.Context) ([]tool.MCPTool, error) {
 	// Forward auth token from context to MCP service
 	setAuthHeader(ctx, req)
 
+	// Add conversation ID header for sandbox tool filtering
+	// This ensures the tools list reflects correct sandbox state
+	if conversationID := agent.ConversationIDFromContext(ctx); conversationID != "" {
+		req.SetHeader("X-Conversation-ID", conversationID)
+	}
+
 	resp, err := req.Post("/v1/mcp")
 	if err != nil {
 		return nil, err
@@ -207,6 +214,15 @@ func (c *Client) CallTool(ctx context.Context, req tool.CallRequest) (*tool.Resu
 	// Forward auth token from context to MCP service
 	setAuthHeader(ctx, httpReq)
 
+	// Add conversation and tool call tracking headers for mcp-tools
+	// These headers enable sandbox tool visibility and lifecycle management
+	if req.ConversationID != "" {
+		httpReq.SetHeader("X-Conversation-ID", req.ConversationID)
+	}
+	if req.ToolCallID != "" {
+		httpReq.SetHeader("X-Tool-Call-ID", req.ToolCallID)
+	}
+
 	resp, err := httpReq.Post("/v1/mcp")
 	if err != nil {
 		return nil, err
@@ -264,15 +280,13 @@ func (r *rpcError) Error() string {
 }
 
 // buildMetaContext creates metadata for MCP tool calls.
-// Note: conversation_id is intentionally NOT included as it's internal to response-api.
-// Downstream services should not track or store conversation context from response-api calls.
+// Note: conversation_id is passed via X-Conversation-ID header, not in _meta.
 func buildMetaContext(requestID, userID, toolCallID string) map[string]interface{} {
 	meta := make(map[string]interface{})
 
 	if strings.TrimSpace(requestID) != "" {
 		meta["request_id"] = requestID
 	}
-	// conversation_id is NOT sent - it's internal to response-api
 	if strings.TrimSpace(userID) != "" {
 		meta["user_id"] = userID
 	}
