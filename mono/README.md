@@ -17,13 +17,27 @@ Jan Server Mono provides:
 - **MCP Protocol** - Model Context Protocol for tool integration
 - **Response API** - Multi-step tool orchestration (OpenAI Responses API compatible)
 
+## Quick Start
+
+```bash
+# Setup and start all services
+make quickstart
+
+# Or step by step:
+make setup           # Create .env from template
+make docker-up       # Start all services
+make health-check    # Verify services are running
+```
+
+See [docs/quickstart.md](docs/quickstart.md) for detailed setup instructions.
+
 ## Architecture
 
 ```
 mono/
 ├── apps/
 │   ├── backend/                    # Go API Server
-│   │   ├── cmd/server/             # Application entrypoint
+│   │   ├── cmd/server/             # Application entrypoint (wire DI)
 │   │   ├── internal/
 │   │   │   ├── domain/             # Business logic layer
 │   │   │   │   ├── user/           # User & authentication
@@ -41,6 +55,12 @@ mono/
 │   │   ├── migrations/             # SQL migrations
 │   │   └── tests/                  # Integration tests
 │   └── web/                        # React frontend (Vite)
+├── tools/
+│   └── jan-cli/                    # CLI tool for development & testing
+├── tests/
+│   └── e2e/                        # End-to-end API tests
+│       └── automation/collections/ # Postman test collections
+├── docs/                           # Documentation
 ├── scripts/                        # Development scripts
 ├── docker-compose.yml              # Container orchestration
 └── Makefile                        # Build automation
@@ -48,7 +68,7 @@ mono/
 
 ### Clean Architecture
 
-The backend follows Clean Architecture principles:
+The backend follows Clean Architecture principles with Wire-based dependency injection:
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -67,46 +87,90 @@ The backend follows Clean Architecture principles:
 - Domain layer has NO external dependencies
 - Infrastructure implements domain interfaces
 - HTTP handlers are thin - just DTO conversion and service calls
+- Wire generates dependency injection code at compile time
 
-## Quick Start
+## Development
 
 ### Prerequisites
 
 - Docker and Docker Compose
-- Go 1.24+ (for local development)
+- Go 1.24+ (optional, for local development without Docker)
 
-### Setup
+### Common Commands
 
 ```bash
-# Clone repository
-cd mono
+# Quick Start
+make quickstart        # Interactive setup and run
+make setup             # Create .env from template
+make docker-up         # Start all services
+make docker-down       # Stop all services
 
-# Create environment file
-cp .env.template .env
-# Edit .env with your configuration
+# Development
+make dev-backend       # Run backend with hot reload
+make dev-web           # Run web frontend with hot reload
 
-# Start all services
-docker compose up -d
+# Testing
+make test              # Run unit tests
+make test-all          # Run all API integration tests
+make test-auth         # Run authentication tests only
+make test-quick        # Quick smoke test
 
-# Check health
-curl http://localhost:8080/healthz
+# CLI Tool
+make cli-build         # Build jan-cli tool
+make cli-deps          # Install CLI dependencies
+
+# Code Quality
+make fmt               # Format code
+make lint              # Lint code
+make swagger           # Generate API docs
+
+# Database
+make db-console        # Open PostgreSQL shell
+make db-migrate        # Run migrations
+make db-reset          # Reset database
+
+# Status
+make health-check      # Check service health
+make status            # Show running containers
+
+# Cleanup
+make clean             # Clean build artifacts
+make clean-all         # Clean everything including Docker
 ```
 
-### Development
+### jan-cli Tool
+
+The `jan-cli` tool provides utilities for development and testing:
 
 ```bash
-# Start infrastructure only
-docker compose up -d postgres minio
+# Build the CLI
+make cli-build
 
-# Run backend locally with hot reload
-cd apps/backend
-make dev
+# Run API tests
+./tools/jan-cli/jan-cli api-test run tests/e2e/automation/collections/auth.postman.json \
+  --env-var "gateway_url=http://localhost:8080" \
+  --auto-auth guest \
+  --verbose
 
-# Run tests
+# Development setup
+./tools/jan-cli/jan-cli dev setup
+```
+
+### Running Tests
+
+```bash
+# Unit tests
 make test
+make test-coverage
 
-# Format code
-make fmt
+# API integration tests (requires running server)
+make test-all          # All collections
+make test-auth         # Authentication tests
+make test-conversation # Conversation tests
+make test-model        # Model tests
+make test-media        # Media upload tests
+make test-messages     # Messages tests
+make test-image        # Image generation tests
 ```
 
 ## API Reference
@@ -175,18 +239,6 @@ make fmt
 | GET | `/v1/providers` | List providers |
 | GET | `/v1/providers/:id` | Get provider details |
 
-### Artifacts
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/v1/artifacts` | List artifacts |
-| POST | `/v1/artifacts` | Create artifact |
-| GET | `/v1/artifacts/:id` | Get artifact |
-| PUT | `/v1/artifacts/:id` | Update artifact |
-| DELETE | `/v1/artifacts/:id` | Delete artifact |
-| GET | `/v1/artifacts/:id/versions` | List versions |
-| GET | `/v1/artifacts/:id/download` | Download artifact |
-
 ### Media/Files
 
 | Method | Path | Description |
@@ -225,10 +277,6 @@ make fmt
 | POST | `/v1/admin/models` | Create model |
 | PUT | `/v1/admin/models/:id` | Update model |
 | DELETE | `/v1/admin/models/:id` | Delete model |
-| GET | `/v1/admin/users` | List users |
-| GET | `/v1/admin/users/:id` | Get user |
-| PUT | `/v1/admin/users/:id` | Update user |
-| DELETE | `/v1/admin/users/:id` | Delete user |
 
 ### MCP (Model Context Protocol)
 
@@ -259,7 +307,8 @@ make fmt
 |----------|-------------|---------|
 | `LOCAL_AUTH_ENABLED` | Enable local auth | `true` |
 | `LOCAL_JWT_SECRET` | JWT signing secret | Required |
-| `LOCAL_JWT_EXPIRATION` | Token expiration | `24h` |
+| `LOCAL_JWT_EXPIRATION` | Token expiration | `15m` |
+| `LOCAL_REFRESH_TOKEN_TTL` | Refresh token TTL | `168h` |
 | `KEYCLOAK_ENABLED` | Enable Keycloak OIDC | `false` |
 
 #### Storage
@@ -278,23 +327,6 @@ make fmt
 | `GITHUB_CONNECTOR_ENABLED` | Enable GitHub OAuth | `false` |
 | `GOOGLE_CONNECTOR_ENABLED` | Enable Google OAuth | `false` |
 
-## Database Schema
-
-The application uses PostgreSQL with GORM. Tables include:
-
-- `users` - User accounts
-- `api_keys` - API key credentials
-- `refresh_tokens` - Session tokens
-- `providers` - LLM provider configurations
-- `models` - Model definitions
-- `conversations` - Chat conversations
-- `messages` - Chat messages
-- `artifacts` - Code/content artifacts
-- `artifact_versions` - Artifact history
-- `media` - File metadata
-- `connectors` - OAuth connections
-- `connector_oauth_states` - OAuth state tokens
-
 ## Docker Services
 
 | Service | Port | Description |
@@ -306,54 +338,48 @@ The application uses PostgreSQL with GORM. Tables include:
 | `keycloak` | 8085 | OIDC provider (optional) |
 | `web` | 3001 | React frontend |
 
-## Development
-
-### Project Structure
+## Project Structure
 
 ```
 apps/backend/
-├── cmd/server/main.go           # Entrypoint
+├── cmd/server/
+│   ├── main.go              # Application entrypoint
+│   ├── wire.go              # Wire dependency injection
+│   └── wire_gen.go          # Generated wire code
 ├── internal/
-│   ├── domain/                  # Business logic
+│   ├── domain/              # Business logic (NO external deps)
+│   │   ├── provider.go      # Domain service providers (wire)
 │   │   └── {entity}/
-│   │       ├── entity.go        # Domain types
-│   │       └── service.go       # Business logic
+│   │       ├── entity.go    # Domain types
+│   │       └── service.go   # Business logic
 │   ├── infrastructure/
-│   │   ├── config/              # Configuration
+│   │   ├── config/          # Configuration
+│   │   ├── provider.go      # Infrastructure providers (wire)
 │   │   └── database/
-│   │       ├── dbschema/        # GORM models
-│   │       └── repository/      # Data access
+│   │       ├── dbschema/    # GORM models
+│   │       └── repository/  # Data access
 │   └── interfaces/httpserver/
-│       ├── routes/              # HTTP handlers
-│       ├── middlewares/         # Auth, logging, etc.
-│       └── server.go            # Server setup
-├── pkg/common/                  # Shared utilities
-├── migrations/                  # SQL migrations
-└── tests/                       # Integration tests
+│       ├── routes/          # HTTP handlers
+│       │   └── provider.go  # Route providers (wire)
+│       ├── middlewares/     # Auth, logging, etc.
+│       └── http_server.go   # Server setup
+├── pkg/common/              # Shared utilities
+├── migrations/              # SQL migrations
+└── tests/                   # Integration tests
 ```
 
 ### Adding a New Domain
 
 1. Create `internal/domain/{name}/entity.go` with types
 2. Create `internal/domain/{name}/service.go` with business logic
-3. Add GORM schema in `internal/infrastructure/database/dbschema/`
-4. Add repository in `internal/infrastructure/database/repository/`
-5. Add HTTP handlers in `internal/interfaces/httpserver/routes/`
-6. Register routes in `routes.go`
-7. Add migration in `migrations/`
-
-### Testing
-
-```bash
-# Run all tests
-make test
-
-# Run with coverage
-make test-coverage
-
-# Run specific package
-go test ./internal/domain/user/...
-```
+3. Add service constructor to `internal/domain/provider.go`
+4. Add GORM schema in `internal/infrastructure/database/dbschema/`
+5. Add repository in `internal/infrastructure/database/repository/`
+6. Add to `internal/infrastructure/database/repository/repository_provider.go`
+7. Add HTTP handlers in `internal/interfaces/httpserver/routes/`
+8. Register routes in `internal/interfaces/httpserver/routes/provider.go`
+9. Regenerate wire: `go generate ./cmd/server`
+10. Add migration in `migrations/`
 
 ## License
 
