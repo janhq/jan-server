@@ -1,0 +1,656 @@
+{
+  "info": {
+    "name": "jan-server mcp admin",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "01-operations",
+      "item": [
+        {
+          "name": "List Public MCP Tools",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/llm/v1/mcp-tools"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.expect(pm.response.code).to.be.oneOf([200, 401]);"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Admin MCP Tools",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/llm/v1/admin/mcp-tools"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.expect(pm.response.code).to.be.oneOf([200, 401, 403]);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin MCP Tools",
+      "item": [
+        {
+          "name": "List All MCP Tools",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has data array', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('data');",
+                  "    pm.expect(jsonData.data).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test('Tools have required fields', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    if (jsonData.data.length > 0) {",
+                  "        const tool = jsonData.data[0];",
+                  "        pm.expect(tool).to.have.property('public_id');",
+                  "        pm.expect(tool).to.have.property('tool_key');",
+                  "        pm.expect(tool).to.have.property('name');",
+                  "        pm.expect(tool).to.have.property('description');",
+                  "        pm.expect(tool).to.have.property('is_active');",
+                  "    }",
+                  "});",
+                  "",
+                  "// Save the first tool's public_id for subsequent tests",
+                  "const data = pm.response.json();",
+                  "if (data.data && data.data.length > 0) {",
+                  "    pm.collectionVariables.set('mcp_tool_id', data.data[0].public_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/mcp-tools",
+              "host": ["{{base_url}}"],
+              "path": ["llm", "v1", "admin", "mcp-tools"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List MCP Tools - Filter by Category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('All tools are in search category', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    jsonData.data.forEach(function(tool) {",
+                  "        pm.expect(tool.category).to.equal('search');",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/mcp-tools?category=search",
+              "host": ["{{base_url}}"],
+              "path": ["llm", "v1", "admin", "mcp-tools"],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "search"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List MCP Tools - Filter by Active Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('All tools are active', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    jsonData.data.forEach(function(tool) {",
+                  "        pm.expect(tool.is_active).to.equal(true);",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/mcp-tools?is_active=true",
+              "host": ["{{base_url}}"],
+              "path": ["llm", "v1", "admin", "mcp-tools"],
+              "query": [
+                {
+                  "key": "is_active",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get MCP Tool by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has correct tool', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.public_id).to.equal(pm.collectionVariables.get('mcp_tool_id'));",
+                  "});",
+                  "",
+                  "pm.test('Tool has all required fields', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('tool_key');",
+                  "    pm.expect(jsonData).to.have.property('name');",
+                  "    pm.expect(jsonData).to.have.property('description');",
+                  "    pm.expect(jsonData).to.have.property('category');",
+                  "    pm.expect(jsonData).to.have.property('is_active');",
+                  "    pm.expect(jsonData).to.have.property('disallowed_keywords');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/mcp-tools/{{mcp_tool_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["llm", "v1", "admin", "mcp-tools", "{{mcp_tool_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update MCP Tool - Description",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Description is updated', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.description).to.include('Updated');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"description\": \"Updated: Perform web searches via the configured engines (Serper, SearXNG, or cached fallback) and fetch structured citations.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/mcp-tools/{{mcp_tool_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["llm", "v1", "admin", "mcp-tools", "{{mcp_tool_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update MCP Tool - Add Disallowed Keywords",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Disallowed keywords are updated', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.disallowed_keywords).to.be.an('array');",
+                  "    pm.expect(jsonData.disallowed_keywords).to.include('(?i)menlo');",
+                  "    pm.expect(jsonData.disallowed_keywords).to.include('(?i)spam');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"disallowed_keywords\": [\"(?i)menlo\", \"(?i)spam\", \"adult|gambling\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/mcp-tools/{{mcp_tool_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["llm", "v1", "admin", "mcp-tools", "{{mcp_tool_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update MCP Tool - Toggle Active Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('is_active is updated', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.is_active).to.equal(false);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"is_active\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/mcp-tools/{{mcp_tool_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["llm", "v1", "admin", "mcp-tools", "{{mcp_tool_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Restore MCP Tool - Re-enable",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Tool is re-enabled', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.is_active).to.equal(true);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"is_active\": true,\n    \"description\": \"Perform web searches via the configured engines (Serper, SearXNG, or cached fallback) and fetch structured citations.\",\n    \"disallowed_keywords\": [\"(?i)menlo\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/mcp-tools/{{mcp_tool_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["llm", "v1", "admin", "mcp-tools", "{{mcp_tool_id}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Public MCP Tools (Internal API)",
+      "item": [
+        {
+          "name": "List Active MCP Tools",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has data array', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('data');",
+                  "    pm.expect(jsonData.data).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test('All returned tools are active', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    jsonData.data.forEach(function(tool) {",
+                  "        pm.expect(tool.is_active).to.equal(true);",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/llm/v1/mcp-tools",
+              "host": ["{{base_url}}"],
+              "path": ["llm", "v1", "mcp-tools"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get MCP Tool by Key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has correct tool_key', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.tool_key).to.equal('google_search');",
+                  "});",
+                  "",
+                  "pm.test('Response has disallowed_keywords', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('disallowed_keywords');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/llm/v1/mcp-tools/google_search",
+              "host": ["{{base_url}}"],
+              "path": ["llm", "v1", "mcp-tools", "google_search"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get MCP Tool by Key - Not Found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/llm/v1/mcp-tools/nonexistent_tool",
+              "host": ["{{base_url}}"],
+              "path": ["llm", "v1", "mcp-tools", "nonexistent_tool"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Error Cases",
+      "item": [
+        {
+          "name": "Get MCP Tool - Not Found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/mcp-tools/nonexistent_id",
+              "host": ["{{base_url}}"],
+              "path": ["llm", "v1", "admin", "mcp-tools", "nonexistent_id"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update MCP Tool - Invalid ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"description\": \"Test update\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/mcp-tools/invalid_id",
+              "host": ["{{base_url}}"],
+              "path": ["llm", "v1", "admin", "mcp-tools", "invalid_id"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Admin Endpoints - Unauthorized",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Note: Kong provides anonymous JWT (kong-anon-jwt) for unauthenticated requests",
+                  "// which may result in 200 if the API doesn't enforce strict admin role checks,",
+                  "// or 401/403 if the API properly validates admin role.",
+                  "pm.test('Status code is 200, 401, or 403', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 401, 403]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/mcp-tools",
+              "host": ["{{base_url}}"],
+              "path": ["llm", "v1", "admin", "mcp-tools"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

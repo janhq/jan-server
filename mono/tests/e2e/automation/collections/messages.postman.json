@@ -1,0 +1,1207 @@
+{
+  "info": {
+    "name": "jan-server messages (Anthropic API)",
+    "description": "Test collection for Anthropic Messages API compatibility. Tests the /v1/messages endpoint for Claude Code API compatibility.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "access_token",
+      "value": ""
+    },
+    {
+      "key": "model_id",
+      "value": ""
+    },
+    {
+      "key": "message_id",
+      "value": ""
+    },
+    {
+      "key": "conversation_id",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Setup",
+      "item": [
+        {
+          "name": "Guest Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has access_token\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('access_token');",
+                  "    pm.collectionVariables.set('access_token', jsonData.access_token);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway_url}}/auth/guest-login",
+              "host": ["{{gateway_url}}"],
+              "path": ["auth", "guest-login"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Models",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Models array returned and model_id set\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data).to.be.an('array');",
+                  "    if (jsonData.data && jsonData.data.length > 0) {",
+                  "        pm.collectionVariables.set('model_id', jsonData.data[0].id);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway_url}}/v1/models",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "models"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "1. Basic Message Creation",
+      "item": [
+        {
+          "name": "Create Message - Simple Text",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has correct structure\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('type', 'message');",
+                  "    pm.expect(jsonData).to.have.property('role', 'assistant');",
+                  "    pm.expect(jsonData).to.have.property('content');",
+                  "    pm.expect(jsonData.content).to.be.an('array');",
+                  "    pm.expect(jsonData).to.have.property('model');",
+                  "    pm.expect(jsonData).to.have.property('usage');",
+                  "    pm.collectionVariables.set('message_id', jsonData.id);",
+                  "});",
+                  "",
+                  "pm.test(\"Content has text block\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var textBlocks = jsonData.content.filter(c => c.type === 'text');",
+                  "    pm.expect(textBlocks.length).to.be.greaterThan(0);",
+                  "    pm.expect(textBlocks[0].text).to.be.a('string');",
+                  "});",
+                  "",
+                  "pm.test(\"Usage contains token counts\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.usage).to.have.property('input_tokens');",
+                  "    pm.expect(jsonData.usage).to.have.property('output_tokens');",
+                  "    pm.expect(jsonData.usage.input_tokens).to.be.a('number');",
+                  "    pm.expect(jsonData.usage.output_tokens).to.be.a('number');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"max_tokens\": 1024,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Say hello in exactly 5 words.\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Message - With System Prompt",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response follows system prompt\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.type).to.equal('message');",
+                  "    var textContent = jsonData.content.find(c => c.type === 'text');",
+                  "    pm.expect(textContent).to.not.be.undefined;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"max_tokens\": 1024,\n  \"system\": \"You are a helpful assistant. Always respond in uppercase letters only.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"What is 2+2?\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Message - Multi-turn Conversation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response maintains conversation context\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.type).to.equal('message');",
+                  "    pm.expect(jsonData.role).to.equal('assistant');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"max_tokens\": 1024,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"My name is Alice.\"\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": \"Hello Alice! It's nice to meet you. How can I help you today?\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"What is my name?\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Message - Content Blocks Array",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response handles content blocks\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.type).to.equal('message');",
+                  "    pm.expect(jsonData.content).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"max_tokens\": 1024,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [\n        {\n          \"type\": \"text\",\n          \"text\": \"What is the capital of France?\"\n        }\n      ]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Message - With Temperature",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response generated with temperature\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.type).to.equal('message');",
+                  "    pm.expect(jsonData.content.length).to.be.greaterThan(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"max_tokens\": 100,\n  \"temperature\": 0.0,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"What is 1+1? Reply with just the number.\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Message - With Stop Sequences",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response respects stop sequences\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.type).to.equal('message');",
+                  "    // stop_reason should be 'end_turn' or 'stop_sequence'",
+                  "    pm.expect(['end_turn', 'stop_sequence', 'max_tokens']).to.include(jsonData.stop_reason);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"max_tokens\": 1024,\n  \"stop_sequences\": [\"STOP\", \"END\"],\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Count from 1 to 5, then write STOP.\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Streaming",
+      "item": [
+        {
+          "name": "Create Message - Streaming",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is event stream\", function () {",
+                  "    var contentType = pm.response.headers.get('Content-Type');",
+                  "    pm.expect(contentType).to.include('text/event-stream');",
+                  "});",
+                  "",
+                  "pm.test(\"Stream contains expected events\", function () {",
+                  "    var body = pm.response.text();",
+                  "    pm.expect(body).to.include('event: message_start');",
+                  "    pm.expect(body).to.include('event: content_block_start');",
+                  "    pm.expect(body).to.include('event: content_block_delta');",
+                  "    pm.expect(body).to.include('event: content_block_stop');",
+                  "    pm.expect(body).to.include('event: message_delta');",
+                  "    pm.expect(body).to.include('event: message_stop');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"max_tokens\": 256,\n  \"stream\": true,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Count from 1 to 5.\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Message - Streaming with System Prompt",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Stream format is correct\", function () {",
+                  "    var body = pm.response.text();",
+                  "    // Each event line should start with 'event:' or 'data:'",
+                  "    var lines = body.split('\\n').filter(l => l.trim());",
+                  "    pm.expect(lines.length).to.be.greaterThan(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"max_tokens\": 256,\n  \"stream\": true,\n  \"system\": \"You are a helpful coding assistant.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Write a hello world function in Python.\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Tool Use",
+      "item": [
+        {
+          "name": "Create Message - With Tools Definition",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response may contain tool_use\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.type).to.equal('message');",
+                  "    // Tool use is optional - model may or may not use tools",
+                  "    var toolUseBlocks = jsonData.content.filter(c => c.type === 'tool_use');",
+                  "    if (toolUseBlocks.length > 0) {",
+                  "        pm.expect(toolUseBlocks[0]).to.have.property('id');",
+                  "        pm.expect(toolUseBlocks[0]).to.have.property('name');",
+                  "        pm.expect(toolUseBlocks[0]).to.have.property('input');",
+                  "        pm.collectionVariables.set('tool_use_id', toolUseBlocks[0].id);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"max_tokens\": 1024,\n  \"tools\": [\n    {\n      \"name\": \"get_weather\",\n      \"description\": \"Get the current weather in a given location\",\n      \"input_schema\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"location\": {\n            \"type\": \"string\",\n            \"description\": \"The city and state, e.g. San Francisco, CA\"\n          }\n        },\n        \"required\": [\"location\"]\n      }\n    }\n  ],\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"What's the weather like in San Francisco?\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Message - Tool Result",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response processes tool result\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.type).to.equal('message');",
+                  "    pm.expect(jsonData.role).to.equal('assistant');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"max_tokens\": 1024,\n  \"tools\": [\n    {\n      \"name\": \"get_weather\",\n      \"description\": \"Get the current weather in a given location\",\n      \"input_schema\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"location\": {\n            \"type\": \"string\",\n            \"description\": \"The city and state\"\n          }\n        },\n        \"required\": [\"location\"]\n      }\n    }\n  ],\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"What's the weather like in San Francisco?\"\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": [\n        {\n          \"type\": \"tool_use\",\n          \"id\": \"toolu_01ABC123\",\n          \"name\": \"get_weather\",\n          \"input\": {\"location\": \"San Francisco, CA\"}\n        }\n      ]\n    },\n    {\n      \"role\": \"user\",\n      \"content\": [\n        {\n          \"type\": \"tool_result\",\n          \"tool_use_id\": \"toolu_01ABC123\",\n          \"content\": \"Sunny, 72°F\"\n        }\n      ]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Message - Tool Choice Auto",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Tool choice auto works\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.type).to.equal('message');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"max_tokens\": 1024,\n  \"tools\": [\n    {\n      \"name\": \"calculator\",\n      \"description\": \"Perform basic math calculations\",\n      \"input_schema\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"expression\": {\n            \"type\": \"string\",\n            \"description\": \"The math expression to evaluate\"\n          }\n        },\n        \"required\": [\"expression\"]\n      }\n    }\n  ],\n  \"tool_choice\": {\"type\": \"auto\"},\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"What is 25 * 4?\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Message - Multiple Tools",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Multiple tools handled\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.type).to.equal('message');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"max_tokens\": 1024,\n  \"tools\": [\n    {\n      \"name\": \"read_file\",\n      \"description\": \"Read contents of a file\",\n      \"input_schema\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"path\": {\"type\": \"string\", \"description\": \"File path\"}\n        },\n        \"required\": [\"path\"]\n      }\n    },\n    {\n      \"name\": \"write_file\",\n      \"description\": \"Write contents to a file\",\n      \"input_schema\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"path\": {\"type\": \"string\", \"description\": \"File path\"},\n          \"content\": {\"type\": \"string\", \"description\": \"Content to write\"}\n        },\n        \"required\": [\"path\", \"content\"]\n      }\n    },\n    {\n      \"name\": \"list_directory\",\n      \"description\": \"List files in a directory\",\n      \"input_schema\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"path\": {\"type\": \"string\", \"description\": \"Directory path\"}\n        },\n        \"required\": [\"path\"]\n      }\n    }\n  ],\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"List the files in the current directory.\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Token Counting",
+      "item": [
+        {
+          "name": "Count Tokens - Simple Message",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has input_tokens\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('input_tokens');",
+                  "    pm.expect(jsonData.input_tokens).to.be.a('number');",
+                  "    pm.expect(jsonData.input_tokens).to.be.greaterThan(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Hello, how are you today?\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages/count_tokens",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages", "count_tokens"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Count Tokens - With System Prompt",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Token count includes system prompt\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.input_tokens).to.be.a('number');",
+                  "    // System prompt should add tokens",
+                  "    pm.expect(jsonData.input_tokens).to.be.greaterThan(10);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"system\": \"You are a helpful assistant specialized in Python programming.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Hello!\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages/count_tokens",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages", "count_tokens"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Count Tokens - Multi-turn Conversation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Token count includes all messages\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.input_tokens).to.be.a('number');",
+                  "    // Multiple messages should result in more tokens",
+                  "    pm.expect(jsonData.input_tokens).to.be.greaterThan(20);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"What is the capital of France?\"\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": \"The capital of France is Paris.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"What about Germany?\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages/count_tokens",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages", "count_tokens"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Count Tokens - With Tools",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Token count includes tools\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.input_tokens).to.be.a('number');",
+                  "    // Tools definition should add tokens",
+                  "    pm.expect(jsonData.input_tokens).to.be.greaterThan(30);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"tools\": [\n    {\n      \"name\": \"get_weather\",\n      \"description\": \"Get the current weather in a given location\",\n      \"input_schema\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"location\": {\n            \"type\": \"string\",\n            \"description\": \"The city and state\"\n          }\n        },\n        \"required\": [\"location\"]\n      }\n    }\n  ],\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"What is the weather in Paris?\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages/count_tokens",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages", "count_tokens"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5. Error Handling",
+      "item": [
+        {
+          "name": "Error - Missing Model",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error response has correct structure\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('type', 'error');",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "    pm.expect(jsonData.error).to.have.property('type', 'invalid_request_error');",
+                  "    pm.expect(jsonData.error).to.have.property('message');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"max_tokens\": 1024,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Hello\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Error - Missing Messages",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error mentions messages\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.type).to.equal('error');",
+                  "    pm.expect(jsonData.error.type).to.equal('invalid_request_error');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"max_tokens\": 1024\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Error - Empty Messages Array",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error indicates empty messages\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.type).to.equal('error');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"max_tokens\": 1024,\n  \"messages\": []\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Error - Missing Max Tokens",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error mentions max_tokens\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.type).to.equal('error');",
+                  "    pm.expect(jsonData.error.type).to.equal('invalid_request_error');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Hello\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Error - Invalid Max Tokens (zero)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error for invalid max_tokens\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.type).to.equal('error');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"max_tokens\": 0,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Hello\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Error - Unauthorized (No Token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"max_tokens\": 1024,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Hello\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Error - Invalid JSON",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ invalid json }"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6. Jan Server Extensions",
+      "item": [
+        {
+          "name": "Create Message - With Conversation Reference",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response may include conversation context\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.type).to.equal('message');",
+                  "    // Conversation context is optional extension",
+                  "    if (jsonData.conversation) {",
+                  "        pm.expect(jsonData.conversation).to.have.property('id');",
+                  "        pm.collectionVariables.set('conversation_id', jsonData.conversation.id);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"max_tokens\": 1024,\n  \"store\": true,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Remember that my favorite color is blue.\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Message - Continue Conversation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Conversation continued\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.type).to.equal('message');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"max_tokens\": 1024,\n  \"conversation\": \"{{conversation_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"What is my favorite color?\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{gateway_url}}/v1/messages",
+              "host": ["{{gateway_url}}"],
+              "path": ["v1", "messages"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,762 @@
+{
+  "info": {
+    "name": "jan-server media",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01-operations",
+      "item": [
+        {
+          "name": "Media Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{media_url}}/healthz"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.expect(pm.response.code).to.be.oneOf([200, 401]);"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Request Guest Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{kong_url}}/auth/guest-login",
+              "host": ["{{kong_url}}"],
+              "path": ["auth", "guest-login"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('guest token issued', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(data.access_token).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.collectionVariables.set('media_access_token', data.access_token);",
+                  "pm.collectionVariables.set('media_user_id', data.user_id || '');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{media_access_token}}"
+          },
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{kong_url}}/media/healthz",
+          "host": ["{{kong_url}}/media"],
+          "path": ["healthz"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('health status is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test('body reports healthy/ok', function () {",
+              "    var data = pm.response.json();",
+              "    pm.expect(['ok', 'healthy']).to.include(data.status);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Prepare Upload (Get Presigned URL)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{media_access_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"mime_type\": \"image/png\",\n  \"user_id\": \"automation\"\n}"
+        },
+        "url": {
+          "raw": "{{kong_url}}/media/v1/media/prepare-upload",
+          "host": ["{{kong_url}}/media"],
+          "path": ["v1", "media", "prepare-upload"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Endpoint not yet implemented - accept both 200 (when implemented) and 404 (not implemented)",
+              "pm.test('prepare upload returns 200 or 404 (not implemented)', function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    var data = pm.response.json();",
+              "",
+              "    pm.test('response contains jan_id', function () {",
+              "        pm.expect(data).to.have.property('id');",
+              "        pm.expect(data.id).to.match(/^jan_[a-z0-9]+$/);",
+              "    });",
+              "",
+              "    pm.test('response contains presigned upload URL', function () {",
+              "        pm.expect(data).to.have.property('upload_url');",
+              "        pm.expect(data.upload_url).to.be.a('string');",
+              "        pm.expect(data.upload_url).to.match(/https?:\\/\\//);",
+              "    });",
+              "",
+              "    pm.test('response contains mime type', function () {",
+              "        pm.expect(data).to.have.property('mime_type');",
+              "        pm.expect(data.mime_type).to.eql('image/png');",
+              "    });",
+              "",
+              "    pm.test('response contains expires_in', function () {",
+              "        pm.expect(data).to.have.property('expires_in');",
+              "        pm.expect(data.expires_in).to.be.a('number').above(0);",
+              "    });",
+              "",
+              "    // Store for client-side upload simulation",
+              "    if (data.id && data.upload_url) {",
+              "        pm.collectionVariables.set('presigned_upload_id', data.id);",
+              "        pm.collectionVariables.set('presigned_upload_url', data.upload_url);",
+              "    }",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Ingest Media (Remote URL)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{media_access_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"source\": {\n    \"type\": \"remote_url\",\n    \"url\": \"https://www.jan.ai/_next/static/media/cute-robot-flying.1479447f.png\"\n  },\n  \"filename\": \"httpbin.png\",\n  \"user_id\": \"automation\"\n}"
+        },
+        "url": {
+          "raw": "{{kong_url}}/media/v1/media",
+          "host": ["{{kong_url}}/media"],
+          "path": ["v1", "media"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('upload successful', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var data = pm.response.json();",
+              "",
+              "pm.test('response contains media id', function () {",
+              "    pm.expect(data).to.have.property('id');",
+              "    pm.expect(data.id).to.be.a('string');",
+              "    pm.expect(data.id).to.match(/^jan_[a-z0-9]+$/);",
+              "});",
+              "",
+              "pm.test('response contains mime type', function () {",
+              "    pm.expect(data).to.have.property('mime');",
+              "    pm.expect(data.mime).to.match(/^image\\//);",
+              "});",
+              "",
+              "pm.test('response contains bytes size', function () {",
+              "    pm.expect(data).to.have.property('bytes');",
+              "    pm.expect(data.bytes).to.be.above(0);",
+              "});",
+              "",
+              "pm.test('response indicates deduplication status', function () {",
+              "    pm.expect(data).to.have.property('deduped');",
+              "    pm.expect(data.deduped).to.be.a('boolean');",
+              "});",
+              "",
+              "const mediaUrl = data.url || data.presigned_url;",
+              "pm.test('response contains media URL', function () {",
+              "    pm.expect(mediaUrl).to.be.a('string');",
+              "    pm.expect(mediaUrl).to.match(/https?:\\/\\//);",
+              "});",
+              "",
+              "// Store the media ID for subsequent tests",
+              "if (data.id) {",
+              "    pm.collectionVariables.set('latest_media_id', data.id);",
+              "    pm.collectionVariables.set('latest_media_mime', data.mime);",
+              "    pm.collectionVariables.set('latest_media_bytes', data.bytes);",
+              "    if (mediaUrl) {",
+              "        pm.collectionVariables.set('latest_presigned_url', mediaUrl);",
+              "    }",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Ingest Media (Data URL)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{media_access_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"source\": {\n    \"type\": \"data_url\",\n    \"data_url\": \"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==\"\n  },\n  \"filename\": \"test-pixel.png\",\n  \"user_id\": \"automation\"\n}"
+        },
+        "url": {
+          "raw": "{{kong_url}}/media/v1/media",
+          "host": ["{{kong_url}}/media"],
+          "path": ["v1", "media"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('upload successful', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var data = pm.response.json();",
+              "",
+              "pm.test('response contains media id', function () {",
+              "    pm.expect(data).to.have.property('id');",
+              "    pm.expect(data.id).to.match(/^jan_[a-z0-9]+$/);",
+              "});",
+              "",
+              "pm.test('mime type is image', function () {",
+              "    pm.expect(data.mime).to.match(/^image\\//);",
+              "});",
+              "",
+              "const mediaUrl = data.url || data.presigned_url;",
+              "pm.test('media URL provided', function () {",
+              "    pm.expect(mediaUrl).to.match(/https?:\\/\\//);",
+              "});",
+              "",
+              "// Store for deduplication test and downstream flows",
+              "pm.collectionVariables.set('dataurl_media_id', data.id);",
+              "pm.collectionVariables.set('dataurl_deduped_first', data.deduped);",
+              "pm.collectionVariables.set('latest_media_id', data.id);",
+              "pm.collectionVariables.set('latest_media_mime', data.mime);",
+              "pm.collectionVariables.set('latest_media_bytes', data.bytes);",
+              "if (mediaUrl) {",
+              "    pm.collectionVariables.set('latest_presigned_url', mediaUrl);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Test Deduplication (Upload Same Data URL)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{media_access_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"source\": {\n    \"type\": \"data_url\",\n    \"data_url\": \"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==\"\n  },\n  \"filename\": \"test-pixel-duplicate.png\",\n  \"user_id\": \"automation\"\n}"
+        },
+        "url": {
+          "raw": "{{kong_url}}/media/v1/media",
+          "host": ["{{kong_url}}/media"],
+          "path": ["v1", "media"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('upload successful', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var data = pm.response.json();",
+              "var firstId = pm.collectionVariables.get('dataurl_media_id');",
+              "",
+              "pm.test('deduplication returns same id', function () {",
+              "    pm.expect(data.id).to.eql(firstId);",
+              "});",
+              "",
+              "pm.test('deduped flag is true', function () {",
+              "    pm.expect(data.deduped).to.be.true;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Resolve Payload with jan_* Placeholder",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{media_access_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"payload\": {\n    \"messages\": [\n      {\n        \"role\": \"user\",\n        \"content\": [\n          {\n            \"type\": \"text\",\n            \"text\": \"What's in this image?\"\n          },\n          {\n            \"type\": \"image_url\",\n            \"image_url\": {\n              \"url\": \"data:image/png;{{latest_media_id}}\"\n            }\n          }\n        ]\n      }\n    ]\n  }\n}"
+        },
+        "url": {
+          "raw": "{{kong_url}}/media/v1/media/resolve",
+          "host": ["{{kong_url}}/media"],
+          "path": ["v1", "media", "resolve"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Endpoint not yet implemented - accept both 200 (when implemented) and 404 (not implemented)",
+              "pm.test('resolve returns 200 or 404 (not implemented)', function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    var data = pm.response.json();",
+              "",
+              "    pm.test('payload is returned', function () {",
+              "        pm.expect(data).to.have.property('payload');",
+              "        pm.expect(data.payload).to.be.an('object');",
+              "    });",
+              "",
+              "    pm.test('jan_* placeholder replaced with signed URL', function () {",
+              "        var message = (data.payload.messages || [])[0];",
+              "        pm.expect(message).to.be.an('object');",
+              "        var imagePart = (message.content || []).find(function (part) {",
+              "            return part.type === 'image_url';",
+              "        });",
+              "        pm.expect(imagePart).to.be.an('object');",
+              "        pm.expect(imagePart.image_url).to.have.property('url');",
+              "        pm.expect(imagePart.image_url.url).to.match(/^https?:\\/\\//);",
+              "        pm.expect(imagePart.image_url.url).to.not.match(/^data:image/);",
+              "    });",
+              "",
+              "    pm.test('messages structure preserved', function () {",
+              "        pm.expect(data.payload.messages).to.be.an('array');",
+              "        pm.expect(data.payload.messages[0]).to.have.property('content');",
+              "    });",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Proxy Download (Direct Stream)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{media_access_token}}"
+          },
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}"
+          }
+        ],
+        "url": {
+          "raw": "{{kong_url}}/media/v1/media/{{latest_media_id}}",
+          "host": ["{{kong_url}}/media"],
+          "path": ["v1", "media", "{{latest_media_id}}"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('download successful', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('content-type header is set', function () {",
+              "    var contentType = pm.response.headers.get('Content-Type');",
+              "    pm.expect(contentType).to.exist;",
+              "    // Could be direct binary stream or presigned URL response",
+              "    pm.expect(contentType).to.match(/(image\\/|application\\/json)/);",
+              "});",
+              "",
+              "// If PROXY_DOWNLOAD=false, we get JSON with presigned URL",
+              "if (pm.response.headers.get('Content-Type').includes('application/json')) {",
+              "    pm.test('presigned URL returned', function () {",
+              "        var data = pm.response.json();",
+              "        pm.expect(data).to.have.property('url');",
+              "        pm.expect(data.url).to.match(/https?:\\/\\//);",
+              "        pm.collectionVariables.set('latest_presigned_url', data.url);",
+              "    });",
+              "} else {",
+              "    pm.test('binary data received', function () {",
+              "        pm.expect(pm.response).to.have.property('stream');",
+              "    });",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Get Presigned URL (Dedicated Endpoint)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{media_access_token}}"
+          },
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}"
+          }
+        ],
+        "url": {
+          "raw": "{{kong_url}}/media/v1/media/{{latest_media_id}}/presign",
+          "host": ["{{kong_url}}/media"],
+          "path": ["v1", "media", "{{latest_media_id}}", "presign"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Endpoint not yet implemented - accept both 200 (when implemented) and 404 (not implemented)",
+              "pm.test('presign returns 200 or 404 (not implemented)', function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    var data = pm.response.json();",
+              "",
+              "    pm.test('response contains media id', function () {",
+              "        pm.expect(data).to.have.property('id');",
+              "        pm.expect(data.id).to.equal(pm.collectionVariables.get('latest_media_id'));",
+              "    });",
+              "",
+              "    pm.test('response contains presigned URL', function () {",
+              "        pm.expect(data).to.have.property('url');",
+              "        pm.expect(data.url).to.be.a('string');",
+              "        pm.expect(data.url).to.match(/https?:\\/\\//);",
+              "    });",
+              "",
+              "    pm.test('response contains expires_in', function () {",
+              "        pm.expect(data).to.have.property('expires_in');",
+              "        pm.expect(data.expires_in).to.be.a('number');",
+              "        pm.expect(data.expires_in).to.be.above(0);",
+              "    });",
+              "",
+              "    // Store the presigned URL for potential downstream use",
+              "    if (data.url) {",
+              "        pm.collectionVariables.set('latest_presigned_url', data.url);",
+              "    }",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Get Nonexistent Media (404 Test)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{media_access_token}}"
+          },
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}"
+          }
+        ],
+        "url": {
+          "raw": "{{kong_url}}/media/v1/media/jan_nonexistent123",
+          "host": ["{{kong_url}}/media"],
+          "path": ["v1", "media", "jan_nonexistent123"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns 404 for nonexistent media', function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "",
+              "pm.test('error message provided', function () {",
+              "    var data = pm.response.json();",
+              "    pm.expect(data).to.have.property('error');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Ingest Invalid Source Type (Error Test)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{media_access_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"source\": {\n    \"type\": \"invalid_type\",\n    \"url\": \"https://example.com/image.png\"\n  },\n  \"user_id\": \"automation\"\n}"
+        },
+        "url": {
+          "raw": "{{kong_url}}/media/v1/media",
+          "host": ["{{kong_url}}/media"],
+          "path": ["v1", "media"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns 400 for invalid source type', function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test('error message provided', function () {",
+              "    var data = pm.response.json();",
+              "    pm.expect(data).to.have.property('error');",
+              "    pm.expect(data.error).to.include('unknown source type');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Ingest Without Auth Key (401 Test)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"source\": {\n    \"type\": \"remote_url\",\n    \"url\": \"https://www.jan.ai/_next/static/media/cute-robot-flying.1479447f.png\"\n  },\n  \"user_id\": \"automation\"\n}"
+        },
+        "url": {
+          "raw": "{{kong_url}}/media/v1/media",
+          "host": ["{{kong_url}}/media"],
+          "path": ["v1", "media"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns 401 without auth key', function () {",
+              "    pm.response.to.have.status(401);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Resolve Payload Without Placeholders",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{media_access_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Media-Service-Key",
+            "value": "{{media_service_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"payload\": {\n    \"messages\": [\n      {\n        \"role\": \"user\",\n        \"content\": \"Hello, this message has no media placeholders.\"\n      }\n    ]\n  }\n}"
+        },
+        "url": {
+          "raw": "{{kong_url}}/media/v1/media/resolve",
+          "host": ["{{kong_url}}/media"],
+          "path": ["v1", "media", "resolve"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Endpoint not yet implemented - accept both 200 (when implemented) and 404 (not implemented)",
+              "pm.test('resolve returns 200 or 404 (not implemented)', function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    var data = pm.response.json();",
+              "",
+              "    pm.test('payload returned unchanged', function () {",
+              "        pm.expect(data.payload).to.deep.equal({",
+              "            messages: [{",
+              "                role: 'user',",
+              "                content: 'Hello, this message has no media placeholders.'",
+              "            }]",
+              "        });",
+              "    });",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": []
+    }
+  ]
+}

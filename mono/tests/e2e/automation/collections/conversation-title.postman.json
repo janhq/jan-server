@@ -1,0 +1,1164 @@
+{
+  "info": {
+    "name": "jan-server conversation title",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Request Guest Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{kong_url}}/auth/guest-login",
+            "description": "Provision a new guest and capture issued tokens."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('guest token issued', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(data).to.have.property('access_token');",
+                  "    pm.expect(data.access_token).to.be.a('string').and.not.empty;",
+                  "    pm.collectionVariables.set('access_token', data.access_token);",
+                  "});",
+                  "pm.test('response includes expiry', function () {",
+                  "    pm.expect(data).to.have.property('expires_in');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Model Catalogue",
+      "description": "Capture a usable model id for the chat steps.",
+      "item": [
+        {
+          "name": "List Available Models",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/v1/models",
+            "description": "Use the guest token to fetch available models and keep the first id handy."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json();",
+                  "pm.test('models request succeeded', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(payload.data).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "const defaultModel = payload.data[0];",
+                  "pm.collectionVariables.set('model_id', defaultModel.id);",
+                  "const originalId = defaultModel.provider_original_model_id || defaultModel.id;",
+                  "pm.collectionVariables.set('title_generation_model_id', originalId);",
+                  "console.log('Saved model_id:', defaultModel.id);",
+                  "console.log('Saved title_generation_model_id:', originalId);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Title Generation - Enabled",
+      "description": "Requires CONVERSATION_TITLE_GENERATION_ENABLED=true and CONVERSATION_TITLE_GENERATION_MODEL_ID set to a ModelPublicID or ProviderOriginalModelID.",
+      "item": [
+        {
+          "name": "Enabled-01: Create Conversation (No Title)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{kong_url}}/v1/conversations"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[Enabled-01] Conversation created', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.id).to.include('conv_');",
+                  "    pm.collectionVariables.set('conv_title_enabled', response.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Enabled-01b: Create Conversation (Single Message)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{kong_url}}/v1/conversations"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[Enabled-01b] Conversation created', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('conv_title_enabled_single', response.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Enabled-02: Single Message Title After Response",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Kickoff notes for Q2 planning include owners, timelines, dependencies, and budget constraints. Please generate a short title.\"\n    }\n  ],\n  \"conversation\": {\n    \"id\": \"{{conv_title_enabled_single}}\"\n  },\n  \"stream\": false,\n  \"max_tokens\": 32\n}"
+          },
+          "url": "{{kong_url}}/v1/chat/completions"
+        },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "function sanitizeTitleContent(content) {",
+                  "  const urlPattern = /(?:https?:\\/\\/|ftp:\\/\\/|www\\.)[^\\s]+/gi;",
+                  "  const markdownLinkPattern = /\\[([^\\]]*)\\]\\([^)]+\\)/g;",
+                  "  const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}/g;",
+                  "  let text = content.replace(urlPattern, '');",
+                  "  text = text.replace(markdownLinkPattern, '$1');",
+                  "  text = text.replace(emailPattern, '');",
+                  "  let result = '';",
+                  "  for (let i = 0; i < text.length; i++) {",
+                  "    const ch = text[i];",
+                  "    if (/[A-Za-z0-9]/.test(ch) || /\\s/.test(ch) || \".,!?-'\".includes(ch)) {",
+                  "      result += ch;",
+                  "    }",
+                  "  }",
+                  "  result = result.replace(/\\s+/g, ' ').trim();",
+                  "  result = result.replace(/[ .,!?-']+$/g, '');",
+                  "  return result;",
+                  "}",
+                  "function truncateTitle(title, maxLen) {",
+                  "  if (title.length <= maxLen) {",
+                  "    return title;",
+                  "  }",
+                  "  const ellipsis = '...';",
+                  "  let contentLimit = maxLen - ellipsis.length;",
+                  "  if (contentLimit < 0) {",
+                  "    contentLimit = 0;",
+                  "  }",
+                  "  let truncated = title.slice(0, contentLimit);",
+                  "  const minLen = Math.floor(contentLimit / 2);",
+                  "  const lastSpace = truncated.lastIndexOf(' ');",
+                  "  if (lastSpace > minLen) {",
+                  "    truncated = truncated.slice(0, lastSpace).trimRight();",
+                  "  }",
+                  "  return truncated + ellipsis;",
+                  "}",
+                  "function generateTitle(content, maxLen) {",
+                  "  const sanitized = sanitizeTitleContent(content);",
+                  "  if (!sanitized) {",
+                  "    return '';",
+                  "  }",
+                  "  return truncateTitle(sanitized, maxLen);",
+                  "}",
+                  "const data = pm.response.json();",
+                  "const defaultTitle = generateTitle('Kickoff notes for Q2 planning include owners, timelines, dependencies, and budget constraints. Please generate a short title.', 256);",
+                  "pm.test('[Enabled-02] Title updated after first response', function () {",
+                  "    pm.expect(data.conversation).to.exist;",
+                  "    pm.expect(data.conversation.title).to.be.a('string').and.not.empty;",
+                  "    pm.expect(data.conversation.title).to.not.equal('New Conversation');",
+                  "    pm.expect(data.conversation.title).to.not.equal(defaultTitle);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Enabled-03: Generate Title via Model",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"We need a title about Q2 planning for product launches.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Include highlights about timelines, owners, and dependencies.\"\n    }\n  ],\n  \"conversation\": {\n    \"id\": \"{{conv_title_enabled}}\"\n  },\n  \"stream\": false,\n  \"max_tokens\": 64\n}"
+            },
+            "url": "{{kong_url}}/v1/chat/completions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.test('[Enabled-03] Title present', function () {",
+                  "    pm.expect(data.conversation).to.exist;",
+                  "    pm.expect(data.conversation.title).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('[Enabled-03] Title length within limit', function () {",
+                  "    pm.expect(data.conversation.title.length).to.be.at.most(256);",
+                  "});",
+                  "pm.test('[Enabled-03] Title not default', function () {",
+                  "    pm.expect(data.conversation.title).to.not.equal('New Conversation');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Enabled-08: Create Conversation for 5x Update",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{kong_url}}/v1/conversations"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[Enabled-08] Conversation created', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('conv_title_enabled_five', response.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Enabled-09: First Message Sets Default Title",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Kickoff notes for the Q2 planning session.\"\n    }\n  ],\n  \"conversation\": {\n    \"id\": \"{{conv_title_enabled_five}}\"\n  },\n  \"stream\": false,\n  \"max_tokens\": 32\n}"
+            },
+            "url": "{{kong_url}}/v1/chat/completions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "function sanitizeTitleContent(content) {",
+                  "  const urlPattern = /(?:https?:\\/\\/|ftp:\\/\\/|www\\.)[^\\s]+/gi;",
+                  "  const markdownLinkPattern = /\\[([^\\]]*)\\]\\([^)]+\\)/g;",
+                  "  const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}/g;",
+                  "  let text = content.replace(urlPattern, '');",
+                  "  text = text.replace(markdownLinkPattern, '$1');",
+                  "  text = text.replace(emailPattern, '');",
+                  "  let result = '';",
+                  "  for (let i = 0; i < text.length; i++) {",
+                  "    const ch = text[i];",
+                  "    if (/[A-Za-z0-9]/.test(ch) || /\\s/.test(ch) || \".,!?-'\".includes(ch)) {",
+                  "      result += ch;",
+                  "    }",
+                  "  }",
+                  "  result = result.replace(/\\s+/g, ' ').trim();",
+                  "  result = result.replace(/[ .,!?-']+$/g, '');",
+                  "  return result;",
+                  "}",
+                  "function truncateTitle(title, maxLen) {",
+                  "  if (title.length <= maxLen) {",
+                  "    return title;",
+                  "  }",
+                  "  const ellipsis = '...';",
+                  "  let contentLimit = maxLen - ellipsis.length;",
+                  "  if (contentLimit < 0) {",
+                  "    contentLimit = 0;",
+                  "  }",
+                  "  let truncated = title.slice(0, contentLimit);",
+                  "  const minLen = Math.floor(contentLimit / 2);",
+                  "  const lastSpace = truncated.lastIndexOf(' ');",
+                  "  if (lastSpace > minLen) {",
+                  "    truncated = truncated.slice(0, lastSpace).trimRight();",
+                  "  }",
+                  "  return truncated + ellipsis;",
+                  "}",
+                  "function generateTitle(content, maxLen) {",
+                  "  const sanitized = sanitizeTitleContent(content);",
+                  "  if (!sanitized) {",
+                  "    return '';",
+                  "  }",
+                  "  return truncateTitle(sanitized, maxLen);",
+                  "}",
+                  "const data = pm.response.json();",
+                  "const defaultTitle = generateTitle('Kickoff notes for the Q2 planning session.', 256);",
+                  "pm.test('[Enabled-09] Title captured', function () {",
+                  "    pm.expect(data.conversation).to.exist;",
+                  "    pm.expect(data.conversation.title).to.be.a('string').and.not.empty;",
+                  "    pm.expect(data.conversation.title).to.not.equal(defaultTitle);",
+                  "    pm.collectionVariables.set('conv_title_first_default', defaultTitle);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Enabled-10: Title Updates After 5 User Messages",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Kickoff notes for the Q2 planning session.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"We covered budget expectations and staffing needs.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Marketing dependencies include launch assets and partner updates.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Engineering risks focus on integration testing timelines.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Owners were assigned for each workstream and follow-ups.\"\n    }\n  ],\n  \"conversation\": {\n    \"id\": \"{{conv_title_enabled_five}}\"\n  },\n  \"stream\": false,\n  \"max_tokens\": 64\n}"
+            },
+            "url": "{{kong_url}}/v1/chat/completions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "const previousTitle = pm.collectionVariables.get('conv_title_first_default');",
+                  "pm.test('[Enabled-10] Title updated after 5 messages', function () {",
+                  "    pm.expect(data.conversation).to.exist;",
+                  "    pm.expect(data.conversation.title).to.be.a('string').and.not.empty;",
+                  "    pm.expect(data.conversation.title).to.not.equal(previousTitle);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Enabled-04: Create Conversation for Max Length",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{kong_url}}/v1/conversations"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[Enabled-04] Conversation created', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('conv_title_enabled_long', response.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Enabled-05: Title Max Length (Model)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"This conversation title should be very long so we can confirm the max length is enforced across a large prompt that keeps going with many details about planning, resourcing, timelines, execution risks, and resource allocation across multiple workstreams and departments.\"\n    }\n  ],\n  \"conversation\": {\n    \"id\": \"{{conv_title_enabled_long}}\"\n  },\n  \"stream\": false,\n  \"max_tokens\": 64\n}"
+            },
+            "url": "{{kong_url}}/v1/chat/completions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.test('[Enabled-05] Title length within limit', function () {",
+                  "    pm.expect(data.conversation.title.length).to.be.at.most(256);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Enabled-06: Create Conversation with Preset Title",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Preset Conversation Title\"\n}"
+            },
+            "url": "{{kong_url}}/v1/conversations"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[Enabled-06] Conversation created with title', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('conv_title_preset', response.id);",
+                  "    pm.collectionVariables.set('conv_title_preset_value', response.title);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Enabled-07: Preset Title Unchanged",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"This should not override the preset title.\"\n    }\n  ],\n  \"conversation\": {\n    \"id\": \"{{conv_title_preset}}\"\n  },\n  \"stream\": false,\n  \"max_tokens\": 32\n}"
+            },
+            "url": "{{kong_url}}/v1/chat/completions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.test('[Enabled-07] Preset title remains', function () {",
+                  "    pm.expect(data.conversation.title).to.equal(pm.collectionVariables.get('conv_title_preset_value'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Enabled-11: Create Conversation for Manual Lock",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{kong_url}}/v1/conversations"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[Enabled-11] Conversation created', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('conv_title_manual_lock', response.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Enabled-12: Prime Title Before Manual Lock",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Set an initial title before we manually lock it.\"\n    }\n  ],\n  \"conversation\": {\n    \"id\": \"{{conv_title_manual_lock}}\"\n  },\n  \"stream\": false,\n  \"max_tokens\": 32\n}"
+            },
+            "url": "{{kong_url}}/v1/chat/completions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.test('[Enabled-12] Title generated before manual lock', function () {",
+                  "    pm.expect(data.conversation).to.exist;",
+                  "    pm.expect(data.conversation.title).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Enabled-13: Manual Title Update Locks Title",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Manual Locked Title\"\n}"
+            },
+            "url": "{{kong_url}}/v1/conversations/{{conv_title_manual_lock}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set('conv_title_manual_lock_title', data.title);",
+                  "pm.test('[Enabled-13] Manual title applied', function () {",
+                  "    pm.expect(data.title).to.equal('Manual Locked Title');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Enabled-14: Locked Title Remains After More Messages",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Message one after manual lock.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Message two after manual lock.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Message three after manual lock.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Message four after manual lock.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Message five after manual lock.\"\n    }\n  ],\n  \"conversation\": {\n    \"id\": \"{{conv_title_manual_lock}}\"\n  },\n  \"stream\": false,\n  \"max_tokens\": 64\n}"
+            },
+            "url": "{{kong_url}}/v1/chat/completions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "const lockedTitle = pm.collectionVariables.get('conv_title_manual_lock_title');",
+                  "pm.test('[Enabled-14] Locked title unchanged after 5 messages', function () {",
+                  "    pm.expect(data.conversation).to.exist;",
+                  "    pm.expect(data.conversation.title).to.equal(lockedTitle);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Title Generation - Disabled (Fallback)",
+      "description": "Requires CONVERSATION_TITLE_GENERATION_ENABLED=false. Uses first user message for title generation.",
+      "item": [
+        {
+          "name": "Disabled-01: Create Conversation (No Title)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{kong_url}}/v1/conversations"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[Disabled-01] Conversation created', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('conv_title_disabled', response.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Disabled-02: Fallback Title from First Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Plan a trip to Paris! See https://example.com for details.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"We should keep it short.\"\n    }\n  ],\n  \"conversation\": {\n    \"id\": \"{{conv_title_disabled}}\"\n  },\n  \"stream\": false,\n  \"max_tokens\": 32\n}"
+            },
+            "url": "{{kong_url}}/v1/chat/completions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sanitizeTitleContent(content) {",
+                  "  const urlPattern = /(?:https?:\\/\\/|ftp:\\/\\/|www\\.)[^\\s]+/gi;",
+                  "  const markdownLinkPattern = /\\[([^\\]]*)\\]\\([^)]+\\)/g;",
+                  "  const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}/g;",
+                  "  let text = content.replace(urlPattern, '');",
+                  "  text = text.replace(markdownLinkPattern, '$1');",
+                  "  text = text.replace(emailPattern, '');",
+                  "  let result = '';",
+                  "  for (let i = 0; i < text.length; i++) {",
+                  "    const ch = text[i];",
+                  "    if (/[A-Za-z0-9]/.test(ch) || /\\s/.test(ch) || \".,!?-'\".includes(ch)) {",
+                  "      result += ch;",
+                  "    }",
+                  "  }",
+                  "  result = result.replace(/\\s+/g, ' ').trim();",
+                  "  result = result.replace(/[ .,!?-']+$/g, '');",
+                  "  return result;",
+                  "}",
+                  "function truncateTitle(title, maxLen) {",
+                  "  if (title.length <= maxLen) {",
+                  "    return title;",
+                  "  }",
+                  "  const ellipsis = '...';",
+                  "  let contentLimit = maxLen - ellipsis.length;",
+                  "  if (contentLimit < 0) {",
+                  "    contentLimit = 0;",
+                  "  }",
+                  "  let truncated = title.slice(0, contentLimit);",
+                  "  const minLen = Math.floor(contentLimit / 2);",
+                  "  const lastSpace = truncated.lastIndexOf(' ');",
+                  "  if (lastSpace > minLen) {",
+                  "    truncated = truncated.slice(0, lastSpace).trimRight();",
+                  "  }",
+                  "  return truncated + ellipsis;",
+                  "}",
+                  "function generateTitle(content, maxLen) {",
+                  "  const sanitized = sanitizeTitleContent(content);",
+                  "  if (!sanitized) {",
+                  "    return '';",
+                  "  }",
+                  "  return truncateTitle(sanitized, maxLen);",
+                  "}",
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "const expected = generateTitle('Plan a trip to Paris! See https://example.com for details.', 256);",
+                  "pm.test('[Disabled-02] Title matches fallback generator', function () {",
+                  "  pm.expect(data.conversation.title).to.equal(expected);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Disabled-03: Create Conversation for Max Length",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{kong_url}}/v1/conversations"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[Disabled-03] Conversation created', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "  const response = pm.response.json();",
+                  "  pm.collectionVariables.set('conv_title_disabled_long', response.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Disabled-04: Title Max Length (Fallback)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"This is a very long user message designed to exceed the title length limit. It keeps going with extra details to ensure truncation is required by the server-side generator so we can validate the maximum length rule for conversation titles.\"\n    }\n  ],\n  \"conversation\": {\n    \"id\": \"{{conv_title_disabled_long}}\"\n  },\n  \"stream\": false,\n  \"max_tokens\": 32\n}"
+            },
+            "url": "{{kong_url}}/v1/chat/completions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.test('[Disabled-04] Title length within limit', function () {",
+                  "  pm.expect(data.conversation.title.length).to.be.at.most(256);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Cleanup",
+      "item": [
+        {
+          "name": "Delete Enabled Conversation",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/v1/conversations/{{conv_title_enabled}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('enabled conversation deleted or not found', function () {",
+                  "  pm.expect([200, 204, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Enabled Single Conversation",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/v1/conversations/{{conv_title_enabled_single}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('enabled single conversation deleted or not found', function () {",
+                  "  pm.expect([200, 204, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Enabled Long Conversation",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/v1/conversations/{{conv_title_enabled_long}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('enabled long conversation deleted or not found', function () {",
+                  "  pm.expect([200, 204, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Enabled 5x Conversation",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/v1/conversations/{{conv_title_enabled_five}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('enabled 5x conversation deleted or not found', function () {",
+                  "  pm.expect([200, 204, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Preset Conversation",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/v1/conversations/{{conv_title_preset}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('preset conversation deleted or not found', function () {",
+                  "  pm.expect([200, 204, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Disabled Conversation",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/v1/conversations/{{conv_title_disabled}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('disabled conversation deleted or not found', function () {",
+                  "  pm.expect([200, 204, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+        ,
+        {
+          "name": "Delete Disabled Long Conversation",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/v1/conversations/{{conv_title_disabled_long}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('disabled long conversation deleted or not found', function () {",
+                  "  pm.expect([200, 204, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+        ,
+        {
+          "name": "Delete Manual Lock Conversation",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/v1/conversations/{{conv_title_manual_lock}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('manual lock conversation deleted or not found', function () {",
+                  "  pm.expect([200, 204, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

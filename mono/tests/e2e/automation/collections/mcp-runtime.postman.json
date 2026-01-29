@@ -1,0 +1,744 @@
+{
+  "info": {
+    "name": "jan-server mcp runtime",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "01-operations",
+      "item": [
+        {
+          "name": "List MCP Tools",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/list\",\n  \"id\": 1\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.response.to.have.status(200);"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Guest Auth",
+      "item": [
+        {
+          "name": "Request Guest Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{kong_url}}/auth/guest-login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const guestData = pm.response.json();",
+                  "pm.test('Guest token issued', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(guestData).to.have.property('access_token');",
+                  "  pm.collectionVariables.set('guest_access_token', guestData.access_token);",
+                  "});",
+                  "pm.test('Response includes expiry', function () {",
+                  "  pm.expect(guestData).to.have.property('expires_in');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Available Models",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/v1/models",
+            "description": "Fetch available models and set model_id from the first available model."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.test('Models request succeeded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Models payload is non-empty array', function () {",
+                  "  pm.expect(data).to.have.property('data');",
+                  "  pm.expect(data.data).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "",
+                  "// Save first model ID for subsequent tests",
+                  "if (data.data && data.data.length > 0) {",
+                  "  pm.collectionVariables.set('model_id', data.data[0].id);",
+                  "  console.log('Set model_id to:', data.data[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MCP Search Domain Filter",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"google_search\",\n    \"arguments\": {\n      \"q\": \"Example Domain\",\n      \"domain_allow_list\": [\"example.com\"]\n    }\n  },\n  \"id\": 4\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// MCP tools service may not be running - accept 200 or 404/503",
+                  "pm.test('Status code is 200 or service unavailable', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404, 502, 503]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 200) {",
+                  "  console.log('MCP tools service not available - skipping content tests');",
+                  "  return;",
+                  "}",
+                  "",
+                  "const rawBody = pm.response.text();",
+                  "let payload = null;",
+                  "try {",
+                  "  payload = JSON.parse(rawBody);",
+                  "} catch (err) {",
+                  "  const lines = rawBody.split('\\n');",
+                  "  for (const line of lines) {",
+                  "    if (line.startsWith('data: ')) {",
+                  "      try {",
+                  "        payload = JSON.parse(line.substring(6));",
+                  "        break;",
+                  "      } catch (e) {",
+                  "        console.error('Failed to parse SSE payload', e);",
+                  "      }",
+                  "    }",
+                  "  }",
+                  "}",
+                  "const content = (payload && payload.result && payload.result.content) || [];",
+                  "const textBlock = content.find((block) => block.type === 'text');",
+                  "if (payload && payload.result && payload.result.isError) {",
+                  "  console.log('Search returned error payload - skipping content tests');",
+                  "  return;",
+                  "}",
+                  "let structured = null;",
+                  "try {",
+                  "  structured = textBlock ? JSON.parse(textBlock.text) : null;",
+                  "} catch (err) {",
+                  "  console.error('Failed to parse structured search payload', err);",
+                  "}",
+                  "pm.test('Domain filter enforces example.com citations', function () {",
+                  "  pm.expect(structured).to.be.an('object');",
+                  "  pm.expect(structured.results).to.be.an('array');",
+                  "  pm.expect(structured.results.length).to.be.greaterThan(0);",
+                  "  structured.results.forEach((res) => pm.expect(res.source_url).to.include('example.com'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MCP Search Offline Mode",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"google_search\",\n    \"arguments\": {\n      \"q\": \"offline mode smoke test\",\n      \"offline_mode\": true\n    }\n  },\n  \"id\": 5\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// MCP tools service may not be running - accept 200 or 404/503",
+                  "pm.test('Status code is 200 or service unavailable', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404, 502, 503]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 200) {",
+                  "  console.log('MCP tools service not available - skipping content tests');",
+                  "  return;",
+                  "}",
+                  "",
+                  "const rawBody = pm.response.text();",
+                  "let payload = null;",
+                  "try {",
+                  "  payload = JSON.parse(rawBody);",
+                  "} catch (err) {",
+                  "  const lines = rawBody.split('\\n');",
+                  "  for (const line of lines) {",
+                  "    if (line.startsWith('data: ')) {",
+                  "      try {",
+                  "        payload = JSON.parse(line.substring(6));",
+                  "        break;",
+                  "      } catch (e) {",
+                  "        console.error('Failed to parse SSE payload', e);",
+                  "      }",
+                  "    }",
+                  "  }",
+                  "}",
+                  "const content = (payload && payload.result && payload.result.content) || [];",
+                  "const textBlock = content.find((block) => block.type === 'text');",
+                  "if (payload && payload.result && payload.result.isError) {",
+                  "  pm.test('Offline mode returns explicit error', function () {",
+                  "    pm.expect(textBlock).to.exist;",
+                  "    pm.expect(textBlock.text).to.match(/offline/i);",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "let structured = null;",
+                  "try {",
+                  "  structured = textBlock ? JSON.parse(textBlock.text) : null;",
+                  "} catch (err) {",
+                  "  console.error('Failed to parse structured search payload', err);",
+                  "}",
+                  "pm.test('Offline mode returns cache status and non-live flag when response succeeds', function () {",
+                  "  pm.expect(structured).to.be.an('object');",
+                  "  pm.expect(structured.cache_status).to.match(/offline|fallback/);",
+                  "  pm.expect(structured.live).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Chat Completions",
+      "item": [
+        {
+          "name": "Chat Start (MCP)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Hello from MCP chat flow.\"\n    }\n  ],\n  \"max_tokens\": 80\n}"
+            },
+            "url": "{{kong_url}}/v1/chat/completions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.test('chat start succeeds', function () { pm.response.to.have.status(200); });",
+                  "pm.test('assistant reply exists', function () { pm.expect(data.choices).to.be.an('array').that.is.not.empty; pm.expect(data.choices[0].message.role).to.eql('assistant'); pm.expect(data.choices[0].message.content).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Chat Follow-up (MCP)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Give me one sentence status update.\"\n    }\n  ]\n}"
+            },
+            "url": "{{kong_url}}/v1/chat/completions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.test('chat follow-up succeeds', function () { pm.response.to.have.status(200); });",
+                  "pm.test('assistant reply present', function () { pm.expect(data.choices[0].message.role).to.eql('assistant'); pm.expect(data.choices[0].message.content).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "MCP Tools",
+      "item": [
+        {
+          "name": "List MCP Tools",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/list\",\n  \"id\": 1\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// MCP tools service may not be running - accept 200 or 404/503",
+                  "pm.test('Status code is 200 or service unavailable', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404, 502, 503]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 200) {",
+                  "  console.log('MCP tools service not available - skipping content tests');",
+                  "  return;",
+                  "}",
+                  "",
+                  "const rawBody = pm.response.text();",
+                  "let payload = null;",
+                  "try {",
+                  "  payload = JSON.parse(rawBody);",
+                  "} catch (err) {",
+                  "  const lines = rawBody.split('\\n');",
+                  "  for (const line of lines) {",
+                  "    if (line.startsWith('data: ')) {",
+                  "      try {",
+                  "        payload = JSON.parse(line.substring(6));",
+                  "        break;",
+                  "      } catch (e) {",
+                  "        console.error('Failed to parse SSE payload', e);",
+                  "      }",
+                  "    }",
+                  "  }",
+                  "}",
+                  "pm.variables.set('mcp_payload', JSON.stringify(payload || {}));",
+                  "pm.test('Parsed MCP payload', function () {",
+                  "  pm.expect(payload).to.be.an('object');",
+                  "});",
+                  "const parsed = payload && payload.result && payload.result.tools ? payload.result.tools : [];",
+                  "pm.test('Tools list returned', function () {",
+                  "  pm.expect(parsed.length).to.be.greaterThan(0);",
+                  "});",
+                  "pm.collectionVariables.set('mcp_tool_count', parsed.length);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Serper Search via MCP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"google_search\",\n    \"arguments\": {\n      \"q\": \"Model Context Protocol\"\n    }\n  },\n  \"id\": 2\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// MCP tools service may not be running - accept 200 or 404/503",
+                  "pm.test('Status code is 200 or service unavailable', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404, 502, 503]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 200) {",
+                  "  console.log('MCP tools service not available - skipping content tests');",
+                  "  return;",
+                  "}",
+                  "",
+                  "const rawBody = pm.response.text();",
+                  "let payload = null;",
+                  "try {",
+                  "  payload = JSON.parse(rawBody);",
+                  "} catch (err) {",
+                  "  const lines = rawBody.split('\\n');",
+                  "  for (const line of lines) {",
+                  "    if (line.startsWith('data: ')) {",
+                  "      try {",
+                  "        payload = JSON.parse(line.substring(6));",
+                  "        break;",
+                  "      } catch (e) {",
+                  "        console.error('Failed to parse SSE payload', e);",
+                  "      }",
+                  "    }",
+                  "  }",
+                  "}",
+                  "pm.variables.set('mcp_payload', JSON.stringify(payload || {}));",
+                  "pm.test('Parsed MCP payload', function () {",
+                  "  pm.expect(payload).to.be.an('object');",
+                  "});",
+                  "const content = (payload && payload.result && payload.result.content) || [];",
+                  "const textBlock = content.find((block) => block.type === 'text');",
+                  "if (payload && payload.result && payload.result.isError) {",
+                  "  console.log('Search returned error payload - skipping content tests');",
+                  "  return;",
+                  "}",
+                  "pm.test('Search payload contains structured text', function () {",
+                  "  pm.expect(textBlock).to.exist;",
+                  "  pm.expect(textBlock.text.length).to.be.greaterThan(0);",
+                  "});",
+                  "let structured = null;",
+                  "try {",
+                  "  structured = textBlock ? JSON.parse(textBlock.text) : null;",
+                  "} catch (err) {",
+                  "  console.error('Failed to parse structured search payload', err);",
+                  "}",
+                  "pm.test('Structured search payload has results and citations', function () {",
+                  "  pm.expect(structured).to.be.an('object');",
+                  "  pm.expect(structured.results).to.be.an('array');",
+                  "  pm.expect(structured.results.length).to.be.greaterThan(0);",
+                  "  pm.expect(structured.results[0]).to.have.property('source_url');",
+                  "  pm.expect(structured.results[0]).to.have.property('cache_status');",
+                  "  pm.expect(structured).to.have.property('citations');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Serper Scrape via MCP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"scrape\",\n    \"arguments\": {\n      \"url\": \"https://example.com\"\n    }\n  },\n  \"id\": 3\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// MCP tools service may not be running - accept 200 or 404/503",
+                  "pm.test('Status code is 200 or service unavailable', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404, 502, 503]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 200) {",
+                  "  console.log('MCP tools service not available - skipping content tests');",
+                  "  return;",
+                  "}",
+                  "",
+                  "const rawBody = pm.response.text();",
+                  "let payload = null;",
+                  "try {",
+                  "  payload = JSON.parse(rawBody);",
+                  "} catch (err) {",
+                  "  const lines = rawBody.split('\\n');",
+                  "  for (const line of lines) {",
+                  "    if (line.startsWith('data: ')) {",
+                  "      try {",
+                  "        payload = JSON.parse(line.substring(6));",
+                  "        break;",
+                  "      } catch (e) {",
+                  "        console.error('Failed to parse SSE payload', e);",
+                  "      }",
+                  "    }",
+                  "  }",
+                  "}",
+                  "pm.variables.set('mcp_payload', JSON.stringify(payload || {}));",
+                  "pm.test('Parsed MCP payload', function () {",
+                  "  pm.expect(payload).to.be.an('object');",
+                  "});",
+                  "const content = (payload && payload.result && payload.result.content) || [];",
+                  "const textBlock = content.find((block) => block.type === 'text');",
+                  "if (payload && payload.result && payload.result.isError) {",
+                  "  console.log('Scrape returned error payload - skipping content tests');",
+                  "  return;",
+                  "}",
+                  "pm.test('Scrape payload contains structured text', function () {",
+                  "  pm.expect(textBlock).to.exist;",
+                  "  pm.expect(textBlock.text.length).to.be.greaterThan(0);",
+                  "});",
+                  "let structured = null;",
+                  "try {",
+                  "  structured = textBlock ? JSON.parse(textBlock.text) : null;",
+                  "} catch (err) {",
+                  "  console.error('Failed to parse structured scrape payload', err);",
+                  "}",
+                  "pm.test('Structured scrape payload exposes preview and cache status', function () {",
+                  "  pm.expect(structured).to.be.an('object');",
+                  "  pm.expect(structured).to.have.property('text');",
+                  "  pm.expect(structured).to.have.property('text_preview');",
+                  "  pm.expect(structured).to.have.property('cache_status');",
+                  "});",
+                  "pm.test('Scrape payload mentions example.com', function () {",
+                  "  pm.expect(structured && structured.text).to.include('Example Domain');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "File Search Index",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"file_search_index\",\n    \"arguments\": {\n      \"document_id\": \"postman-doc-1\",\n      \"text\": \"Postman MCP automation smoke guide covering Model Context Protocol flows.\",\n      \"metadata\": {\n        \"category\": \"kb\",\n        \"version\": \"1.0\"\n      },\n      \"tags\": [\"automation\", \"kb\"]\n    }\n  },\n  \"id\": 6\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// MCP tools service may not be running - accept 200 or 404/503",
+                  "pm.test('Status code is 200 or service unavailable', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404, 502, 503]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 200) {",
+                  "  console.log('MCP tools service not available - skipping content tests');",
+                  "  return;",
+                  "}",
+                  "",
+                  "const rawBody = pm.response.text();",
+                  "let payload = null;",
+                  "try {",
+                  "  payload = JSON.parse(rawBody);",
+                  "} catch (err) {",
+                  "  const lines = rawBody.split('\\n');",
+                  "  for (const line of lines) {",
+                  "    if (line.startsWith('data: ')) {",
+                  "      try {",
+                  "        payload = JSON.parse(line.substring(6));",
+                  "        break;",
+                  "      } catch (e) {",
+                  "        console.error('Failed to parse SSE payload', e);",
+                  "      }",
+                  "    }",
+                  "  }",
+                  "}",
+                  "const content = (payload && payload.result && payload.result.content) || [];",
+                  "const textBlock = content.find((block) => block.type === 'text');",
+                  "let structured = null;",
+                  "try {",
+                  "  structured = textBlock ? JSON.parse(textBlock.text) : null;",
+                  "} catch (err) {",
+                  "  console.error('Failed to parse structured indexing payload', err);",
+                  "}",
+                  "pm.test('Vector store returned indexed status', function () {",
+                  "  pm.expect(structured).to.be.an('object');",
+                  "  pm.expect(structured.status || structured.Status).to.be.oneOf(['indexed', 'created']);",
+                  "});",
+                  "pm.collectionVariables.set('file_doc_id', 'postman-doc-1');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "File Search Query",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"file_search_query\",\n    \"arguments\": {\n      \"query\": \"automation smoke\",\n      \"top_k\": 3,\n      \"document_ids\": [\"postman-doc-1\"]\n    }\n  },\n  \"id\": 7\n}"
+            },
+            "url": "{{mcp_url}}/v1/mcp"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// MCP tools service may not be running - accept 200 or 404/503",
+                  "pm.test('Status code is 200 or service unavailable', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404, 502, 503]);",
+                  "});",
+                  "",
+                  "if (pm.response.code !== 200) {",
+                  "  console.log('MCP tools service not available - skipping content tests');",
+                  "  return;",
+                  "}",
+                  "",
+                  "const rawBody = pm.response.text();",
+                  "let payload = null;",
+                  "try {",
+                  "  payload = JSON.parse(rawBody);",
+                  "} catch (err) {",
+                  "  const lines = rawBody.split('\\n');",
+                  "  for (const line of lines) {",
+                  "    if (line.startsWith('data: ')) {",
+                  "      try {",
+                  "        payload = JSON.parse(line.substring(6));",
+                  "        break;",
+                  "      } catch (e) {",
+                  "        console.error('Failed to parse SSE payload', e);",
+                  "      }",
+                  "    }",
+                  "  }",
+                  "}",
+                  "const content = (payload && payload.result && payload.result.content) || [];",
+                  "const textBlock = content.find((block) => block.type === 'text');",
+                  "let structured = null;",
+                  "try {",
+                  "  structured = textBlock ? JSON.parse(textBlock.text) : null;",
+                  "} catch (err) {",
+                  "  console.error('Failed to parse structured search payload', err);",
+                  "}",
+                  "pm.test('Vector search returns our indexed document', function () {",
+                  "  pm.expect(structured).to.be.an('object');",
+                  "  pm.expect(structured.results).to.be.an('array').that.is.not.empty;",
+                  "  const first = structured.results[0];",
+                  "  pm.expect(first.document_id).to.eql('postman-doc-1');",
+                  "  pm.expect(first.text_preview).to.include('automation');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

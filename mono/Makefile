@@ -1,7 +1,28 @@
-.PHONY: all setup build run dev test clean docker-up docker-down help
+.PHONY: all setup build run dev test clean docker-up docker-down help cli-build cli-install test-all test-auth test-conversation test-model
 
 # Variables
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+
+# CLI Tool
+ifeq ($(OS),Windows_NT)
+API_TEST := tools/jan-cli/jan-cli.exe api-test run
+else
+API_TEST := tools/jan-cli/jan-cli api-test run
+endif
+
+# Test Configuration
+GATEWAY_URL ?= http://localhost:8080
+TIMEOUT_MS ?= 30000
+COLLECTIONS_DIR := tests/e2e/automation/collections
+AUTH_MODE ?= guest
+
+# API test base flags
+API_TEST_FLAGS := --env-file tests/e2e/.env \
+  --env-var gateway_url=$(GATEWAY_URL) \
+  --auto-models \
+  --auto-auth $(AUTH_MODE) \
+  --timeout-request $(TIMEOUT_MS) \
+  --debug
 
 # ============================================
 # Quick Start
@@ -114,6 +135,60 @@ test-coverage:
 	cd apps/backend && make test-coverage
 
 # ============================================
+# CLI Tool
+# ============================================
+
+# Build jan-cli
+cli-build:
+	@echo "Building jan-cli..."
+	@cd tools/jan-cli && go build -o jan-cli$(if $(filter Windows_NT,$(OS)),.exe,) .
+	@echo "jan-cli built successfully"
+
+# Install jan-cli dependencies
+cli-deps:
+	@echo "Installing jan-cli dependencies..."
+	@cd tools/jan-cli && go mod tidy
+	@echo "Dependencies installed"
+
+# ============================================
+# Integration Tests (API Tests)
+# ============================================
+
+# Run all integration tests
+test-all: cli-build
+	@echo "Running all API integration tests..."
+	$(API_TEST) $(wildcard $(COLLECTIONS_DIR)/*.postman.json) $(API_TEST_FLAGS) --timeout-request 120000
+
+# Run auth tests
+test-auth: cli-build
+	$(API_TEST) $(COLLECTIONS_DIR)/auth.postman.json $(API_TEST_FLAGS)
+
+# Run conversation tests
+test-conversation: cli-build
+	$(API_TEST) $(COLLECTIONS_DIR)/conversation.postman.json $(API_TEST_FLAGS)
+
+# Run model tests
+test-model: cli-build
+	$(API_TEST) $(COLLECTIONS_DIR)/model.postman.json $(API_TEST_FLAGS)
+
+# Run media tests
+test-media: cli-build
+	$(API_TEST) $(COLLECTIONS_DIR)/media.postman.json $(API_TEST_FLAGS)
+
+# Run messages tests
+test-messages: cli-build
+	$(API_TEST) $(COLLECTIONS_DIR)/messages.postman.json $(API_TEST_FLAGS)
+
+# Run image tests
+test-image: cli-build
+	$(API_TEST) $(COLLECTIONS_DIR)/image.postman.json $(API_TEST_FLAGS) --timeout-request 120000
+
+# Run a quick test to verify setup
+test-quick: cli-build
+	@echo "Running quick test to verify API is working..."
+	$(API_TEST) $(COLLECTIONS_DIR)/auth.postman.json $(API_TEST_FLAGS)
+
+# ============================================
 # Database
 # ============================================
 
@@ -214,8 +289,17 @@ help:
 	@echo "  make db-reset        - Reset database"
 	@echo ""
 	@echo "Testing:"
-	@echo "  make test            - Run all tests"
+	@echo "  make test            - Run unit tests"
 	@echo "  make test-coverage   - Run tests with coverage"
+	@echo "  make test-all        - Run all API integration tests"
+	@echo "  make test-auth       - Run authentication tests"
+	@echo "  make test-conversation - Run conversation tests"
+	@echo "  make test-model      - Run model tests"
+	@echo "  make test-quick      - Quick test to verify setup"
+	@echo ""
+	@echo "CLI Tool:"
+	@echo "  make cli-build       - Build jan-cli tool"
+	@echo "  make cli-deps        - Install CLI dependencies"
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  make fmt             - Format code"

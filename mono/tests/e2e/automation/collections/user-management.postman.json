@@ -1,0 +1,510 @@
+{
+  "info": {
+    "name": "User Management API Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "0. Authentication (admin token)",
+      "item": [
+        {
+          "name": "Set Access Token (manual)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Paste a fresh admin access token below or set via environment/collection variable",
+                  "if (!pm.collectionVariables.get('access_token')) {",
+                  "    pm.collectionVariables.set('access_token', '<ADMIN_TOKEN_HERE>');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Token present', function () {",
+                  "    pm.expect(pm.collectionVariables.get('access_token')).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/healthz",
+              "host": ["{{base_url}}"],
+              "path": ["healthz"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Users",
+      "item": [
+        {
+          "name": "List Users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "if (Array.isArray(body.data) && body.data.length > 0) {",
+                  "    pm.collectionVariables.set('user_id', body.data[0].id || body.data[0].user_id || body.data[0].sub);",
+                  "    pm.collectionVariables.set('user_username', body.data[0].username || body.data[0].email);",
+                  "}",
+                  "const ts = Date.now().toString();",
+                  "pm.collectionVariables.set('new_user_email', `qa+${ts}@jan.ai`);",
+                  "pm.collectionVariables.set('new_username', `qa${ts}`);",
+                  "pm.collectionVariables.set('new_group_name', `pilotusers-${ts}`);",
+                  "pm.collectionVariables.set('new_flag_key', `memorytools${ts}`);",
+                  "pm.collectionVariables.set('new_flag_name', `Memory Tools ${ts}`);",
+                  "pm.environment.set('new_user_email', `qa+${ts}@jan.ai`);",
+                  "pm.environment.set('new_username', `qa${ts}`);",
+                  "pm.environment.set('new_group_name', `pilotusers-${ts}`);",
+                  "pm.environment.set('new_flag_key', `memorytools${ts}`);",
+                  "pm.environment.set('new_flag_name', `Memory Tools ${ts}`);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/v1/admin/users?first=0&max=20",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "users"],
+              "query": [
+                {
+                  "key": "first",
+                  "value": "0"
+                },
+                {
+                  "key": "max",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create User",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const ts = Date.now().toString();",
+                  "pm.collectionVariables.set('new_user_email', `qa+${ts}@jan.ai`);",
+                  "pm.collectionVariables.set('new_username', `qa${ts}`);",
+                  "pm.collectionVariables.set('new_group_name', `pilotusers-${ts}`);",
+                  "pm.collectionVariables.set('new_flag_key', `memorytools${ts}`);",
+                  "pm.collectionVariables.set('new_flag_name', `Memory Tools ${ts}`);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "if (body.id) pm.collectionVariables.set('user_id', body.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{new_user_email}}\",\n  \"username\": \"{{new_username}}\",\n  \"first_name\": \"QA\",\n  \"last_name\": \"User\",\n  \"enabled\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/admin/users",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "users"]
+            }
+          }
+        },
+        {
+          "name": "Get User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/v1/admin/users/{{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "users", "{{user_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Update User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"QA-Updated\",\n  \"username\": \"{{user_username}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/admin/users/{{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "users", "{{user_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Deactivate User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/v1/admin/users/{{user_id}}/deactivate",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "users", "{{user_id}}", "deactivate"]
+            }
+          }
+        },
+        {
+          "name": "Activate User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/v1/admin/users/{{user_id}}/activate",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "users", "{{user_id}}", "activate"]
+            }
+          }
+        },
+        {
+          "name": "Assign Admin Role",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/v1/admin/users/{{user_id}}/roles/admin",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "users", "{{user_id}}", "roles", "admin"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Groups",
+      "item": [
+        {
+          "name": "List Groups",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "if (Array.isArray(body.data) && body.data.length > 0) {",
+                  "    pm.collectionVariables.set('group_id', body.data[0].id || body.data[0].group_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/v1/admin/groups",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "groups"]
+            }
+          }
+        },
+        {
+          "name": "Create Group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json(); if (body.id) pm.collectionVariables.set('group_id', body.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{new_group_name}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/admin/groups",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "groups"]
+            }
+          }
+        },
+        {
+          "name": "Add User To Group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/v1/admin/users/{{user_id}}/groups/{{group_id}}",
+              "host": ["{{base_url}}"],
+              "path": [
+                "v1",
+                "admin",
+                "users",
+                "{{user_id}}",
+                "groups",
+                "{{group_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Group Flags",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/v1/admin/groups/{{group_id}}/feature-flags",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "groups", "{{group_id}}", "feature-flags"]
+            }
+          }
+        },
+        {
+          "name": "Set Group Flags",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"flags\": [\"experimental_models\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/admin/groups/{{group_id}}/feature-flags",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "groups", "{{group_id}}", "feature-flags"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Feature Flag Definitions",
+      "item": [
+        {
+          "name": "List Feature Flags",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "if (body.data && body.data.length) { pm.collectionVariables.set('feature_flag_id', body.data[0].id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/v1/admin/feature-flags",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "feature-flags"]
+            }
+          }
+        },
+        {
+          "name": "Create Feature Flag",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201', function () { pm.response.to.have.status(201); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"{{new_flag_key}}\",\n  \"name\": \"{{new_flag_name}}\",\n  \"description\": \"Access to memory features\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/admin/feature-flags",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "feature-flags"]
+            }
+          }
+        },
+        {
+          "name": "Update Feature Flag",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Updated description\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/admin/feature-flags/{{feature_flag_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "feature-flags", "{{feature_flag_id}}"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

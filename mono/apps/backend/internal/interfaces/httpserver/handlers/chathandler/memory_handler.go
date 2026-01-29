@@ -148,7 +148,7 @@ func (m *MemoryHandler) ObserveConversation(
 	}
 
 	req := memclient.ObserveRequest{
-		UserID:         fmt.Sprintf("%d", userID),
+		UserID:         userID,
 		ConversationID: conv.PublicID,
 		Messages:       conversationItems,
 	}
@@ -198,7 +198,7 @@ func (m *MemoryHandler) loadConversationMemory(
 	}
 
 	req := memclient.LoadRequest{
-		UserID:         fmt.Sprintf("%d", userID),
+		UserID:         userID,
 		ConversationID: conversationID,
 		Query:          extractQueryFromMessages(messages),
 		Options: memclient.LoadOptions{

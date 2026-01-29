@@ -1,0 +1,354 @@
+{
+  "info": {
+    "name": "jan-server response-artifact",
+    "description": "Validates response plan and artifact APIs with seeded data.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Request Guest Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{kong_url}}/auth/guest-login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const guestData = pm.response.json();",
+                  "pm.test('Guest token issued', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(guestData).to.have.property('access_token');",
+                  "  pm.collectionVariables.set('guest_access_token', guestData.access_token);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Plan APIs",
+      "item": [
+        {
+          "name": "Get Plan By Response",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/responses/v1/responses/{{response_artifact_response_id}}/plan"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "const expectedPlanId = pm.environment.get('response_artifact_plan_id');",
+                  "const expectedArtifactId = pm.environment.get('response_artifact_artifact_version_id');",
+                  "pm.test('Plan returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(data).to.have.property('id', expectedPlanId);",
+                  "  pm.expect(data).to.have.property('response_id', pm.environment.get('response_artifact_response_id'));",
+                  "  pm.expect(data).to.have.property('status', 'completed');",
+                  "  pm.expect(data).to.have.property('final_artifact_id', expectedArtifactId);",
+                  "  pm.expect(data).to.have.property('progress').that.is.a('number');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Plan Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/responses/v1/responses/{{response_artifact_response_id}}/plan/details"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.test('Plan details include tasks/steps', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(data).to.have.property('tasks');",
+                  "  pm.expect(data.tasks).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "pm.test('Task and step fields are present', function () {",
+                  "  const task = data.tasks[0];",
+                  "  pm.expect(task).to.have.property('id', 'task_artifact_test');",
+                  "  pm.expect(task).to.have.property('task_type', 'generation');",
+                  "  pm.expect(task).to.have.property('status', 'completed');",
+                  "  pm.expect(task).to.have.property('steps');",
+                  "  pm.expect(task.steps).to.be.an('array').that.is.not.empty;",
+                  "  const step = task.steps[0];",
+                  "  pm.expect(step).to.have.property('id', 'step_artifact_test');",
+                  "  pm.expect(step).to.have.property('action', 'tool_call');",
+                  "  pm.expect(step).to.have.property('status', 'completed');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Plan Progress",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/responses/v1/responses/{{response_artifact_response_id}}/plan/progress"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.test('Progress reflects completed steps', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(data).to.have.property('completed_steps', 1);",
+                  "  pm.expect(data).to.have.property('failed_steps', 0);",
+                  "  pm.expect(data).to.have.property('progress');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Plan Tasks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/responses/v1/responses/{{response_artifact_response_id}}/plan/tasks"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.test('Tasks list returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(data).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(data[0]).to.have.property('id', 'task_artifact_test');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Artifact APIs",
+      "item": [
+        {
+          "name": "List Artifacts By Response",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/responses/v1/responses/{{response_artifact_response_id}}/artifacts"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "const latestId = pm.environment.get('response_artifact_artifact_version_id');",
+                  "pm.test('Artifacts list returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(data).to.have.property('data');",
+                  "  pm.expect(data.data).to.be.an('array').that.has.length.greaterThan(1);",
+                  "});",
+                  "pm.test('Latest artifact present', function () {",
+                  "  const latest = data.data.find(a => a.id === latestId);",
+                  "  pm.expect(latest).to.exist;",
+                  "  pm.expect(latest.is_latest).to.eql(true);",
+                  "  pm.expect(latest.version).to.eql(2);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Latest Artifact",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/responses/v1/responses/{{response_artifact_response_id}}/artifacts/latest"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.test('Latest artifact returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(data).to.have.property('id', pm.environment.get('response_artifact_artifact_version_id'));",
+                  "  pm.expect(data).to.have.property('is_latest', true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Artifact By ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/responses/v1/artifacts/{{response_artifact_artifact_version_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.test('Artifact payload valid', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(data).to.have.property('content_type', 'slides');",
+                  "  pm.expect(data).to.have.property('mime_type', 'application/json');",
+                  "  pm.expect(data).to.have.property('version', 2);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Artifact Versions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/responses/v1/artifacts/{{response_artifact_artifact_version_id}}/versions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.test('Artifact versions returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(data).to.be.an('array').that.has.length.greaterThan(1);",
+                  "  const versions = data.map(a => a.version);",
+                  "  pm.expect(versions).to.include.members([1, 2]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Download Artifact",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/responses/v1/artifacts/{{response_artifact_artifact_version_id}}/download"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.text();",
+                  "pm.test('Download returns content', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(body).to.include('Seed Slide v2');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

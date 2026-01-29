@@ -1,0 +1,435 @@
+{
+  "info": {
+    "name": "jan-server response-agent-slide",
+    "description": "E2E coverage for slide_creator planning, execution, and PPTX artifacts.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Request Guest Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{kong_url}}/auth/guest-login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const guestData = pm.response.json();",
+                  "pm.test('Guest token issued', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(guestData).to.have.property('access_token');",
+                  "});",
+                  "pm.collectionVariables.set('guest_access_token', guestData.access_token);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Model Catalogue",
+      "item": [
+        {
+          "name": "List Available Models",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/v1/models"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json();",
+                  "pm.test('Models available', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(payload.data).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "pm.collectionVariables.set('default_model_id', payload.data[0].id);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Slide Creator Flow",
+      "item": [
+        {
+          "name": "Create Slide Creator Response",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"openai/gpt-5.2-codex\",\n  \"input\": \"Create a 1-slide presentation about solar energy adoption with a clear title and three bullet points.\",\n  \"background\": false,\n  \"store\": true,\n  \"tool_choice\": {\n    \"type\": \"tool\",\n    \"tool\": \"generate_slide\",\n    \"options\": {\n      \"options_count\": 1,\n      \"research_depth\": \"minimal\",\n      \"format\": \"pptx\",\n      \"num_slides\": 1\n    }\n  }\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Slide creator response accepted', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response).to.have.property('id');",
+                  "});",
+                  "pm.collectionVariables.set('slide_response_id', response.id);",
+                  "pm.collectionVariables.set('slide_response_status', response.status);",
+                  "pm.collectionVariables.unset('slide_poll_attempt');",
+                  "pm.test('Slide response status valid', function () {",
+                  "  pm.expect(response.status).to.be.oneOf(['queued', 'in_progress', 'planning', 'completed', 'wait_for_user']);",
+                  "});",
+                  "pm.test('Slide response has no error message', function () {",
+                  "  const err = response.error || {};",
+                  "  pm.expect(err.message || '').to.eql('');",
+                  "});",
+                  "if (response.status === 'completed') {",
+                  "  pm.test('Slide response completed with output', function () {",
+                  "    pm.expect(response).to.have.property('output');",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Poll Slide Creator Response",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/responses/{{slide_response_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Slide response retrieved', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const status = response.status;",
+                  "const terminalStatuses = ['completed', 'failed', 'cancelled', 'expired'];",
+                  "pm.test('Slide response status valid', function () {",
+                  "  pm.expect(terminalStatuses.concat(['queued', 'in_progress', 'planning', 'wait_for_user'])).to.include(status);",
+                  "});",
+                  "pm.collectionVariables.set('slide_response_status', status);",
+                  "if (status === 'completed') {",
+                  "  pm.collectionVariables.set('slide_response_completed', 'true');",
+                  "  pm.test('Slide response completed without error', function () {",
+                  "    const err = response.error || {};",
+                  "    pm.expect(err.message || '').to.eql('');",
+                  "  });",
+                  "} else {",
+                  "  pm.collectionVariables.set('slide_response_completed', 'false');",
+                  "}",
+                  "const maxAttempts = 40;",
+                  "const attempt = parseInt(pm.collectionVariables.get('slide_poll_attempt') || '0', 10);",
+                  "if (status !== 'completed' && !terminalStatuses.includes(status) && attempt < maxAttempts) {",
+                  "  pm.collectionVariables.set('slide_poll_attempt', attempt + 1);",
+                  "  pm.setNextRequest('Poll Slide Creator Response');",
+                  "} else {",
+                  "  pm.collectionVariables.unset('slide_poll_attempt');",
+                  "  if (status !== 'completed') {",
+                  "    pm.test('Slide response completed within poll limit', function () {",
+                  "      pm.expect(status).to.equal('completed');",
+                  "    });",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Slide Plan Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/responses/{{slide_response_id}}/plan"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.test('Plan summary returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(data).to.have.property('id');",
+                  "  pm.expect(data).to.have.property('status');",
+                  "});",
+                  "pm.test('Plan is slide creator', function () {",
+                  "  pm.expect(data.agent_type).to.equal('slide_creator');",
+                  "});",
+                  "pm.test('Plan is completed', function () {",
+                  "  pm.expect(data.status).to.equal('completed');",
+                  "});",
+                  "pm.collectionVariables.set('slide_plan_id', data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Slide Plan Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/responses/{{slide_response_id}}/plan/details"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.test('Plan details returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Plan details include tasks', function () {",
+                  "  pm.expect(data).to.have.property('tasks');",
+                  "  pm.expect(data.tasks).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "let failedSteps = 0;",
+                  "let failedTasks = 0;",
+                  "data.tasks.forEach(task => {",
+                  "  if (task.status === 'failed') {",
+                  "    failedTasks += 1;",
+                  "  }",
+                  "  if (Array.isArray(task.steps)) {",
+                  "    task.steps.forEach(step => {",
+                  "      if (step.status === 'failed') {",
+                  "        failedSteps += 1;",
+                  "      }",
+                  "    });",
+                  "  }",
+                  "});",
+                  "pm.test('No failed tasks', function () {",
+                  "  pm.expect(failedTasks).to.equal(0);",
+                  "});",
+                  "pm.test('No failed steps', function () {",
+                  "  pm.expect(failedSteps).to.equal(0);",
+                  "});",
+                  "pm.collectionVariables.set('slide_pptx_artifact_id', data.tasks[3].steps[1].output_data.artifact.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Slide Plan Tasks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/responses/{{slide_response_id}}/plan/tasks"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.test('Tasks list returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(data).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "const failed = data.filter(task => task.status === 'failed');",
+                  "pm.test('Tasks have no failures', function () {",
+                  "  pm.expect(failed.length).to.equal(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Response Artifacts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/responses/{{slide_response_id}}/artifacts"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let payload;",
+                  "try {",
+                  "  payload = pm.response.json();",
+                  "} catch (err) {",
+                  "  payload = null;",
+                  "}",
+                  "const artifacts = Array.isArray(payload?.data)",
+                  "  ? payload.data",
+                  "  : Array.isArray(payload)",
+                  "    ? payload",
+                  "    : [];",
+                  "pm.test('Artifacts list returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(Array.isArray(artifacts)).to.eql(true);",
+                  "  pm.expect(artifacts.length).to.be.greaterThan(0);",
+                  "});",
+                  "const pptxArtifact = artifacts.find(a => a.content_type === 'slides' || (a.mime_type || '').includes('presentationml'));",
+                  "pm.test('PPTX artifact present', function () {",
+                  "  pm.expect(pptxArtifact).to.exist;",
+                  "});",
+                  "if (pptxArtifact && pptxArtifact.id) {",
+                  "  pm.collectionVariables.set('slide_pptx_artifact_id', pptxArtifact.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get PPTX Artifact",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/artifacts/{{slide_pptx_artifact_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "pm.test('PPTX artifact returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Artifact content type is slides', function () {",
+                  "  pm.expect(data.content_type).to.equal('slides');",
+                  "});",
+                  "pm.test('Artifact mime type is PPTX', function () {",
+                  "  pm.expect((data.mime_type || '').toLowerCase()).to.include('presentation');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Download PPTX Artifact",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/artifacts/{{slide_pptx_artifact_id}}/download"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PPTX download returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Download has pptx content type or attachment', function () {",
+                  "  const contentType = (pm.response.headers.get('Content-Type') || '').toLowerCase();",
+                  "  const disposition = pm.response.headers.get('Content-Disposition') || '';",
+                  "  pm.expect(contentType).to.satisfy(ct => ct.includes('presentation') || ct.includes('octet-stream'));",
+                  "  if (disposition) {",
+                  "    pm.expect(disposition).to.include('.pptx');",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

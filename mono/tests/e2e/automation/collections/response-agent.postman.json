@@ -1,0 +1,873 @@
+{
+  "info": {
+    "name": "jan-server response-agent",
+    "description": "E2E coverage for agent-driven responses, wait/resume, tool visibility, artifacts, and idempotency.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Request Guest Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{kong_url}}/auth/guest-login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const guestData = pm.response.json();",
+                  "pm.test('Guest token issued', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(guestData).to.have.property('access_token');",
+                  "  pm.collectionVariables.set('guest_access_token', guestData.access_token);",
+                  "});",
+                  "pm.test('Response includes expiry', function () {",
+                  "  pm.expect(guestData).to.have.property('expires_in');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Model Catalogue",
+      "item": [
+        {
+          "name": "List Available Models",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/v1/models",
+            "description": "Fetch models from LLM API and store the first id as default."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json();",
+                  "pm.test('models request succeeded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(payload.data).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "const firstModel = payload.data[0];",
+                  "pm.test('first model exposes id', function () {",
+                  "  pm.expect(firstModel).to.have.property('id');",
+                  "});",
+                  "pm.collectionVariables.set('default_model_id', firstModel.id);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Agent Response - Slide Generation",
+      "item": [
+        {
+          "name": "Create Agent Response (Generate Slide)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Research stock market AI prediction trends and create a Python analysis script that demonstrates the concepts.\",\n  \"background\": false,\n  \"store\": true,\n  \"tools\": [\n    { \"type\": \"mcp\", \"server\": \"agents\" }\n  ],\n  \"metadata\": {\n    \"agent_type\": \"deep_research\",\n    \"research_depth\": \"deep\"\n  }\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Agent response created', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response).to.have.property('id');",
+                  "});",
+                  "pm.test('Agent response has no error message', function () {",
+                  "  const err = response.error || {};",
+                  "  pm.expect(err.message || '').to.eql('');",
+                  "});",
+                  "pm.collectionVariables.set('agent_response_id', response.id);",
+                  "if (response.conversation_id) {",
+                  "  pm.collectionVariables.set('agent_conversation_id', response.conversation_id);",
+                  "}",
+                  "pm.test('Response completed synchronously', function () {",
+                  "  pm.expect(response.status).to.equal('completed');",
+                  "});",
+                  "pm.test('Response has valid output', function () {",
+                  "  pm.expect(response).to.have.property('output');",
+                  "  const hasOutput = (typeof response.output === 'string' && response.output.trim().length > 0) || (Array.isArray(response.output) && response.output.length > 0);",
+                  "  pm.expect(hasOutput).to.be.true;",
+                  "});",
+                  "pm.test('No errors in response', function () {",
+                  "  if (response.error && response.error.message) {",
+                  "    pm.expect(response.error.message).to.equal('');",
+                  "  }",
+                  "});",
+                  "pm.test('Plan exists and completed', function () {",
+                  "  if (response.plan) {",
+                  "    pm.expect(response.plan.status).to.equal('completed');",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Poll Agent Response",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/responses/{{agent_response_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Response retrieved', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "if (response.output_count !== undefined) {",
+                  "  pm.collectionVariables.set('output_since_sequence', response.output_count);",
+                  "} else if (Array.isArray(response.output)) {",
+                  "  pm.collectionVariables.set('output_since_sequence', response.output.length);",
+                  "}",
+                  "const etag = pm.response.headers.get('ETag');",
+                  "if (etag) {",
+                  "  pm.collectionVariables.set('agent_etag', etag);",
+                  "}",
+                  "const status = response.status;",
+                  "const terminalStatuses = ['completed', 'failed', 'cancelled', 'expired'];",
+                  "pm.test('Response status is valid', function () {",
+                  "  pm.expect(terminalStatuses.concat(['queued', 'in_progress', 'wait_for_user'])).to.include(status);",
+                  "});",
+                  "pm.collectionVariables.set('agent_response_status', status);",
+                  "if (status === 'completed') {",
+                  "  pm.collectionVariables.set('agent_response_completed', 'true');",
+                  "  pm.test('Response completed without error', function () {",
+                  "    const err = response.error || {};",
+                  "    pm.expect(err.message || '').to.eql('');",
+                  "  });",
+                  "  pm.test('Response has output', function () {",
+                  "    const output = response.output;",
+                  "    const hasOutput = (typeof output === 'string' && output.trim().length > 0) || (Array.isArray(output) && output.length > 0);",
+                  "    pm.expect(hasOutput).to.eql(true);",
+                  "  });",
+                  "} else {",
+                  "  pm.collectionVariables.set('agent_response_completed', 'false');",
+                  "}",
+                  "if (status === 'completed' && Array.isArray(response.output)) {",
+                  "  const toolCalls = response.output.filter(item => item.type === 'tool_call');",
+                  "  const toolResults = response.output.filter(item => item.type === 'tool_result');",
+                  "  pm.test('Tool calls visible', function () {",
+                  "    pm.expect(toolCalls.length).to.be.greaterThan(0);",
+                  "  });",
+                  "  pm.test('Tool results visible', function () {",
+                  "    pm.expect(toolResults.length).to.be.greaterThan(0);",
+                  "  });",
+                  "  pm.test('Output items have type', function () {",
+                  "    response.output.forEach(item => pm.expect(item).to.have.property('type'));",
+                  "  });",
+                  "}",
+                  "const maxAttempts = 20;",
+                  "const attempt = parseInt(pm.collectionVariables.get('agent_poll_attempt') || '0', 10);",
+                  "if (status !== 'completed' && !terminalStatuses.includes(status) && attempt < maxAttempts) {",
+                  "  pm.collectionVariables.set('agent_poll_attempt', attempt + 1);",
+                  "  pm.setNextRequest('Poll Agent Response');",
+                  "} else {",
+                  "  pm.collectionVariables.unset('agent_poll_attempt');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Poll Agent Response (Incremental)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "If-None-Match",
+                "value": "{{agent_etag}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/responses/{{agent_response_id}}?output_since_sequence={{output_since_sequence}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Incremental poll returns 200 or 304', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 304]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Plan & Artifact APIs",
+      "item": [
+        {
+          "name": "Get Plan Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/responses/{{agent_response_id}}/plan"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Plan summary returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const data = pm.response.json();",
+                  "pm.test('Plan summary includes id and status', function () {",
+                  "  pm.expect(data).to.have.property('id');",
+                  "  pm.expect(data).to.have.property('status');",
+                  "});",
+                  "pm.collectionVariables.set('agent_plan_id', data.id);",
+                  "pm.collectionVariables.set('agent_plan_available', 'true');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Plan Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/responses/{{agent_response_id}}/plan/details"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Plan details returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const data = pm.response.json();",
+                  "pm.test('Plan details include tasks', function () {",
+                  "  pm.expect(data).to.have.property('tasks');",
+                  "  pm.expect(data.tasks).to.be.an('array').that.is.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Plan Progress",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/responses/{{agent_response_id}}/plan/progress"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Plan progress returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const data = pm.response.json();",
+                  "pm.test('Plan progress has progress field', function () {",
+                  "  pm.expect(data).to.have.property('progress');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Plan Tasks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/responses/{{agent_response_id}}/plan/tasks"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Tasks list returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const data = pm.response.json();",
+                  "pm.test('Tasks list is non-empty array', function () {",
+                  "  pm.expect(data).to.be.an('array').that.is.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Artifacts By Response",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/responses/{{agent_response_id}}/artifacts"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Artifacts list returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const responseCompleted = pm.collectionVariables.get('agent_response_completed') === 'true';",
+                  "if (!responseCompleted) {",
+                  "  pm.setNextRequest('Create Agent Response (Wait For User)');",
+                  "}",
+                  "let payload;",
+                  "try {",
+                  "  payload = pm.response.json();",
+                  "} catch (err) {",
+                  "  payload = null;",
+                  "}",
+                  "const artifacts = Array.isArray(payload?.data)",
+                  "  ? payload.data",
+                  "  : Array.isArray(payload)",
+                  "    ? payload",
+                  "    : [];",
+                  "pm.test('Artifacts list shape valid', function () {",
+                  "  pm.expect(Array.isArray(artifacts)).to.eql(true);",
+                  "});",
+                  "if (artifacts.length > 0) {",
+                  "  const latest = artifacts.find(a => a.is_latest) || artifacts[0];",
+                  "  if (latest && latest.id) {",
+                  "    pm.collectionVariables.set('agent_artifact_id', latest.id);",
+                  "    pm.collectionVariables.set('agent_artifact_available', 'true');",
+                  "  }",
+                  "} else {",
+                  "  pm.collectionVariables.set('agent_artifact_available', 'false');",
+                  "  pm.setNextRequest('Create Agent Response (Wait For User)');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Latest Artifact",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/responses/{{agent_response_id}}/artifacts/latest"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Latest artifact returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const data = pm.response.json();",
+                  "pm.test('Latest artifact includes id', function () {",
+                  "  pm.expect(data).to.have.property('id');",
+                  "});",
+                  "pm.collectionVariables.set('agent_artifact_id', data.id);",
+                  "pm.collectionVariables.set('agent_artifact_available', 'true');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Artifact By ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/artifacts/{{agent_artifact_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Artifact payload returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Artifact Versions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/artifacts/{{agent_artifact_id}}/versions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Artifact versions returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const data = pm.response.json();",
+                  "pm.test('Artifact versions are array', function () {",
+                  "  pm.expect(data).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Download Artifact",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/artifacts/{{agent_artifact_id}}/download"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Download returns content', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Wait/Resume Flow",
+      "item": [
+        {
+          "name": "Create Agent Response (Wait For User)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Create a presentation about AI in healthcare with multiple theme options.\",\n  \"background\": false,\n  \"store\": true,\n  \"tools\": [\n    { \"type\": \"mcp\", \"server\": \"agents\" }\n  ],\n  \"tool_choice\": {\n    \"type\": \"tool\",\n    \"tool\": \"generate_slide\",\n    \"options\": {\n      \"options_count\": 3,\n      \"research_depth\": \"deep\",\n      \"format\": \"pptx\",\n      \"num_slides\": 5\n    }\n  }\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Slide generation response accepted', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response).to.have.property('id');",
+                  "  pm.expect(response.status).to.be.oneOf(['wait_for_user', 'in_progress', 'completed']);",
+                  "});",
+                  "if (response.status === 'completed') {",
+                  "  pm.test('Completed response has valid output', function () {",
+                  "    pm.expect(response).to.have.property('output');",
+                  "    const hasOutput = (typeof response.output === 'string' && response.output.trim().length > 0) || (Array.isArray(response.output) && response.output.length > 0);",
+                  "    pm.expect(hasOutput).to.be.true;",
+                  "  });",
+                  "}",
+                  "pm.test('No errors in response', function () {",
+                  "  if (response.error) {",
+                  "    pm.expect(response.error.message || '').to.equal('');",
+                  "  }",
+                  "});",
+                  "pm.collectionVariables.set('wait_response_id', response.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Plan (Wait State)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/responses/{{wait_response_id}}/plan"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Plan returned', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const data = pm.response.json();",
+                  "pm.test('Plan status allows wait flow', function () {",
+                  "  pm.expect(data.status).to.be.oneOf(['wait_for_user', 'in_progress', 'planning', 'queued', 'completed']);",
+                  "});",
+                  "pm.collectionVariables.set('wait_plan_status', data.status);",
+                  "pm.collectionVariables.set('wait_selection', 'option_1');",
+                  "if (data.status !== 'wait_for_user') {",
+                  "  pm.setNextRequest('Poll Wait Response');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit User Selection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"selection\": \"{{wait_selection}}\"\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses/{{wait_response_id}}/plan/input"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Selection accepted', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Poll Wait Response",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              }
+            ],
+            "url": "{{kong_url}}/responses/v1/responses/{{wait_response_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Wait response retrieved', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Wait response status valid', function () {",
+                  "  pm.expect(response.status).to.be.oneOf(['in_progress', 'completed', 'queued', 'wait_for_user']);",
+                  "});",
+                  "if (response.status === 'completed') {",
+                  "  pm.test('Wait response completed without error', function () {",
+                  "    const err = response.error || {};",
+                  "    pm.expect(err.message || '').to.eql('');",
+                  "  });",
+                  "}",
+                  "const maxAttempts = 20;",
+                  "const attempt = parseInt(pm.collectionVariables.get('wait_poll_attempt') || '0', 10);",
+                  "if (response.status !== 'completed' && attempt < maxAttempts) {",
+                  "  pm.collectionVariables.set('wait_poll_attempt', attempt + 1);",
+                  "  pm.setNextRequest('Poll Wait Response');",
+                  "} else {",
+                  "  pm.collectionVariables.unset('wait_poll_attempt');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Idempotency",
+      "item": [
+        {
+          "name": "Create Agent Response (Idempotency)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('idempotency_key', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Idempotency response created', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(response).to.have.property('id');",
+                  "});",
+                  "pm.test('Response completed synchronously', function () {",
+                  "  pm.expect(response.status).to.equal('completed');",
+                  "});",
+                  "pm.test('Response has valid output', function () {",
+                  "  pm.expect(response).to.have.property('output');",
+                  "  const hasOutput = (typeof response.output === 'string' && response.output.trim().length > 0) || (Array.isArray(response.output) && response.output.length > 0);",
+                  "  pm.expect(hasOutput).to.be.true;",
+                  "});",
+                  "pm.test('No errors in response', function () {",
+                  "  if (response.error && response.error.message) {",
+                  "    pm.expect(response.error.message).to.equal('');",
+                  "  }",
+                  "});",
+                  "pm.collectionVariables.set('idempotency_response_id', response.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Create a short deck about testing idempotency.\",\n  \"background\": false,\n  \"store\": true,\n  \"tools\": [\n    { \"type\": \"mcp\", \"server\": \"agents\" }\n  ]\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          }
+        },
+        {
+          "name": "Create Agent Response (Idempotency Retry)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{guest_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotency_key}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Create a short deck about testing idempotency.\",\n  \"background\": false,\n  \"store\": true,\n  \"tools\": [\n    { \"type\": \"mcp\", \"server\": \"agents\" }\n  ]\n}"
+            },
+            "url": "{{kong_url}}/responses/v1/responses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.test('Idempotency retry succeeded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Response ID is stable for idempotency', function () {",
+                  "  pm.expect(response.id).to.equal(pm.collectionVariables.get('idempotency_response_id'));",
+                  "});",
+                  "pm.test('Response status is completed', function () {",
+                  "  pm.expect(response.status).to.equal('completed');",
+                  "});",
+                  "pm.test('Response has same output', function () {",
+                  "  pm.expect(response).to.have.property('output');",
+                  "  const hasOutput = (typeof response.output === 'string' && response.output.trim().length > 0) || (Array.isArray(response.output) && response.output.length > 0);",
+                  "  pm.expect(hasOutput).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "kong_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "guest_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "default_model_id",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

@@ -1,7 +1,6 @@
 package usagehandler
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 
@@ -41,7 +40,7 @@ func (h *UsageHandler) GetMyUsage(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
-	userID := fmt.Sprintf("%d", user.ID)
+	userID := user.ID
 
 	startDate, endDate := parseDateRange(c)
 
@@ -72,7 +71,7 @@ func (h *UsageHandler) GetMyDailyUsage(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
-	userID := fmt.Sprintf("%d", user.ID)
+	userID := user.ID
 
 	startDate, endDate := parseDateRange(c)
 
@@ -103,7 +102,7 @@ func (h *UsageHandler) GetMyActivityUsage(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
-	userID := fmt.Sprintf("%d", user.ID)
+	userID := user.ID
 
 	startDate, endDate := parseActivityDateRange(c)
 

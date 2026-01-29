@@ -467,7 +467,7 @@ func (h *ChatHandler) CreateChatCompletion(
 		// Record token usage to database for user dashboard
 		if h.tokenUsageService != nil {
 			usage := &tokenusage.TokenUsage{
-				UserID:           fmt.Sprintf("%d", userID),
+				UserID:           userID,
 				Model:            request.Model,
 				Provider:         selectedProvider.DisplayName,
 				PromptTokens:     response.Usage.PromptTokens,

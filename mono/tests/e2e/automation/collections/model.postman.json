@@ -1,0 +1,1404 @@
+{
+  "info": {
+    "name": "jan-server model",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "0. Authentication",
+      "item": [
+        {
+          "name": "Guest Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has access_token\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('access_token');",
+                  "    pm.collectionVariables.set('access_token', jsonData.access_token);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/guest-login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "guest-login"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "01-operations",
+      "item": [
+        {
+          "name": "List Models",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/v1/models"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "if (data.data && data.data.length > 0) {",
+                  "  pm.collectionVariables.set('model_id', data.data[0].id);",
+                  "  pm.collectionVariables.set('model_id_encoded', encodeURIComponent(data.data[0].id));",
+                  "  pm.collectionVariables.set('default_model_id', data.data[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. Providers API",
+      "item": [
+        {
+          "name": "List All Providers",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Providers array returned\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an('array');",
+                  "    if (jsonData.length > 0) {",
+                  "        pm.collectionVariables.set('provider_id', jsonData[0].id);",
+                  "        pm.collectionVariables.set('provider_public_id', jsonData[0].id);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/providers",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "providers"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Provider by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 404\", function () {",
+                  "    pm.expect([200, 404]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test(\"Provider has required fields\", function () {",
+                  "        pm.expect(jsonData).to.have.property('id');",
+                  "        pm.expect(jsonData).to.have.property('name');",
+                  "        pm.expect(jsonData).to.have.property('vendor');",
+                  "    });",
+                  "} else {",
+                  "    pm.test(\"Skipped - provider not found\", function () {",
+                  "        pm.expect(pm.response.code).to.eql(404);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/providers/:id",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "providers", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{provider_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Provider by Public ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 404\", function () {",
+                  "    pm.expect([200, 404]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test(\"Public ID matches\", function () {",
+                  "        pm.expect(jsonData.id).to.eql(pm.collectionVariables.get('provider_id'));",
+                  "    });",
+                  "} else {",
+                  "    pm.test(\"Skipped - provider not found\", function () {",
+                  "        pm.expect(pm.response.code).to.eql(404);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/providers/:public_id",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "providers", ":public_id"],
+              "variable": [
+                {
+                  "key": "public_id",
+                  "value": "{{provider_public_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filter Providers by Kind",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"All providers have openrouter kind\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    jsonData.forEach(function(provider) {",
+                  "        if (provider.vendor) {",
+                  "            pm.expect(provider.vendor).to.eql('openrouter');",
+                  "        }",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/providers?kind=openrouter",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "providers"],
+              "query": [
+                {
+                  "key": "kind",
+                  "value": "openrouter"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filter Active Providers",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"All providers are active\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    jsonData.forEach(function(provider) {",
+                  "        if (provider.active !== undefined) {",
+                  "            pm.expect(provider.active).to.be.true;",
+                  "        }",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/providers?active=true",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "providers"],
+              "query": [
+                {
+                  "key": "active",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Provider Models for Provider",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Provider models fetched\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('data');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/provider-models?provider_id={{provider_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "provider-models"],
+              "query": [
+                {
+                  "key": "provider_id",
+                  "value": "{{provider_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Provider Models API",
+      "item": [
+        {
+          "name": "List All Provider Models",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has data array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('data');",
+                  "    pm.expect(jsonData.data).to.be.an('array');",
+                  "    if (jsonData.data.length > 0) {",
+                  "        pm.collectionVariables.set('model_id', jsonData.data[0].id);",
+                  "        pm.collectionVariables.set('model_public_id', jsonData.data[0].model_public_id || jsonData.data[0].id);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/provider-models?limit=10&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "provider-models"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Provider Model by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 404\", function () {",
+                  "    pm.expect([200, 404]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test(\"Model has required fields\", function () {",
+                  "        pm.expect(jsonData).to.have.property('id');",
+                  "        pm.expect(jsonData).to.have.property('model_display_name');",
+                  "        pm.expect(jsonData).to.have.property('pricing');",
+                  "        pm.expect(jsonData).to.have.property('category');",
+                  "    });",
+                  "} else {",
+                  "    pm.test(\"Skipped - model not found\", function () {",
+                  "        pm.expect(pm.response.code).to.eql(404);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/provider-models/:id",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "provider-models", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{model_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filter by Provider",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"All models belong to provider\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var providerId = pm.collectionVariables.get('provider_id');",
+                  "    jsonData.data.forEach(function(model) {",
+                  "        if (providerId) {",
+                  "            pm.expect(model.provider_id).to.eql(providerId);",
+                  "        }",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/provider-models?provider_id={{provider_id}}&limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "provider-models"],
+              "query": [
+                {
+                  "key": "provider_id",
+                  "value": "{{provider_id}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filter by Category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"All models are Chat category\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    jsonData.data.forEach(function(model) {",
+                  "        pm.expect(model.category).to.eql('Chat');",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/provider-models?category=Chat&limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "provider-models"],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "Chat"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filter Active Models",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"All models are active\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    jsonData.data.forEach(function(model) {",
+                  "        pm.expect(model.active).to.be.true;",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/provider-models?active=true&limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "provider-models"],
+              "query": [
+                {
+                  "key": "active",
+                  "value": "true"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Sort by Category and Model Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Models are sorted\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/provider-models?sort_by=category_order,model_order&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "provider-models"],
+              "query": [
+                {
+                  "key": "sort_by",
+                  "value": "category_order,model_order"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Search Models by Name",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Search results contain GPT\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    jsonData.data.forEach(function(model) {",
+                  "        pm.expect(model.model_display_name.toLowerCase()).to.include('gpt');",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/provider-models?search=gpt&limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "provider-models"],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "gpt"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Model (Activate)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 404\", function () {",
+                  "    pm.expect([200, 404]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test(\"Model is activated\", function () {",
+                  "        pm.expect(jsonData.active).to.be.true;",
+                  "    });",
+                  "} else {",
+                  "    pm.test(\"Skipped - model not found\", function () {",
+                  "        pm.expect(pm.response.code).to.eql(404);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/provider-models/:id",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "provider-models", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{model_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Batch Update Active Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Batch update affected rows\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('updated_count');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider_id\": \"{{provider_id}}\",\n  \"enable\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/provider-models/bulk-toggle",
+              "host": ["{{base_url}}"],
+              "path": [
+                "v1",
+                "admin",
+                "models",
+                "provider-models",
+                "bulk-toggle"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Model Catalogs API",
+      "item": [
+        {
+          "name": "List All Model Catalogs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 429', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 429]);",
+                  "});",
+                  "if (pm.response.code === 429) { return; }",
+                  "",
+                  "pm.test('Response has data array', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('data');",
+                  "    pm.expect(jsonData.data).to.be.an('array');",
+                  "    if (jsonData.data.length > 0) {",
+                  "        pm.collectionVariables.set('catalog_id', jsonData.data[0].id);",
+                  "        pm.collectionVariables.set('catalog_public_id', jsonData.data[0].id);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/catalogs?limit=10&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "catalogs"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Model Catalog by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 429', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 429]);",
+                  "});",
+                  "if (pm.response.code === 429) { return; }",
+                  "",
+                  "pm.test('Catalog has required fields', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('public_id');",
+                  "    pm.expect(jsonData).to.have.property('supported_parameters');",
+                  "    pm.expect(jsonData).to.have.property('architecture');",
+                  "    pm.expect(jsonData).to.have.property('supports_images');",
+                  "    pm.expect(jsonData).to.have.property('supports_embeddings');",
+                  "    pm.expect(jsonData).to.have.property('family');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/catalogs/:id",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "catalogs", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{catalog_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Catalog by Public ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 429', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 429]);",
+                  "});",
+                  "if (pm.response.code === 429) { return; }",
+                  "",
+                  "pm.test('Public ID matches', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.id).to.eql(pm.collectionVariables.get('catalog_public_id'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/catalogs/:public_id",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "catalogs", ":public_id"],
+              "variable": [
+                {
+                  "key": "public_id",
+                  "value": "{{catalog_public_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filter by Family",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 429', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 429]);",
+                  "});",
+                  "if (pm.response.code === 429) { return; }",
+                  "",
+                  "pm.test('All catalogs belong to gpt-4 family', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    jsonData.data.forEach(function(catalog) {",
+                  "        pm.expect(catalog.family).to.eql('gpt-4');",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/catalogs?family=gpt-4&limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "catalogs"],
+              "query": [
+                {
+                  "key": "family",
+                  "value": "gpt-4"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filter Embedding Models",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 429', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 429]);",
+                  "});",
+                  "if (pm.response.code === 429) { return; }",
+                  "",
+                  "pm.test('All catalogs support embeddings', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    jsonData.data.forEach(function(catalog) {",
+                  "        pm.expect(catalog.supports_embeddings).to.be.true;",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/catalogs?supports_embeddings=true&limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "catalogs"],
+              "query": [
+                {
+                  "key": "supports_embeddings",
+                  "value": "true"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filter Vision Models",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 429', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 429]);",
+                  "});",
+                  "if (pm.response.code === 429) { return; }",
+                  "",
+                  "pm.test('All catalogs support images', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    jsonData.data.forEach(function(catalog) {",
+                  "        pm.expect(catalog.supports_images).to.be.true;",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/catalogs?supports_images=true&limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "catalogs"],
+              "query": [
+                {
+                  "key": "supports_images",
+                  "value": "true"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filter Reasoning Models",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 429', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 429]);",
+                  "});",
+                  "if (pm.response.code === 429) { return; }",
+                  "",
+                  "pm.test('All catalogs support reasoning', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    jsonData.data.forEach(function(catalog) {",
+                  "        pm.expect(catalog.supports_reasoning).to.be.true;",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/catalogs?supports_reasoning=true&limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "catalogs"],
+              "query": [
+                {
+                  "key": "supports_reasoning",
+                  "value": "true"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filter Audio Models",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 429', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 429]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/catalogs?supports_audio=true&limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "catalogs"],
+              "query": [
+                {
+                  "key": "supports_audio",
+                  "value": "true"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filter Video Models",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 429', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 429]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/catalogs?supports_video=true&limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "catalogs"],
+              "query": [
+                {
+                  "key": "supports_video",
+                  "value": "true"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filter by Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 429', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 429]);",
+                  "});",
+                  "if (pm.response.code === 429) { return; }",
+                  "",
+                  "pm.test('All catalogs have filled status', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    jsonData.data.forEach(function(catalog) {",
+                  "        pm.expect(catalog.status).to.eql('filled');",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/catalogs?status=filled&limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "catalogs"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "filled"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Catalog Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 429', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 429]);",
+                  "});",
+                  "if (pm.response.code === 429) { return; }",
+                  "",
+                  "pm.test('Status updated', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.eql('updated');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"updated\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/catalogs/:id",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "catalogs", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{catalog_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Batch Update Catalog Active Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 429', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 429]);",
+                  "});",
+                  "if (pm.response.code === 429) { return; }",
+                  "",
+                  "pm.test('Batch update affected rows', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('updated_count');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enable\": true,\n  \"catalog_ids\": []\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/catalogs/bulk-toggle",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "catalogs", "bulk-toggle"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Complex Queries",
+      "item": [
+        {
+          "name": "Get Provider with Model Counts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 429', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 429]);",
+                  "});",
+                  "if (pm.response.code === 429) { return; }",
+                  "",
+                  "pm.test('Provider has model counts', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('total_models');",
+                  "    pm.expect(jsonData).to.have.property('active_models');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/providers/:id?include_counts=true",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "providers", ":id"],
+              "query": [
+                {
+                  "key": "include_counts",
+                  "value": "true"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{provider_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Models with Catalog Info",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 429', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 429]);",
+                  "});",
+                  "if (pm.response.code === 429) { return; }",
+                  "",
+                  "pm.test('Models include catalog info', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/provider-models?include_catalog=true&limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "provider-models"],
+              "query": [
+                {
+                  "key": "include_catalog",
+                  "value": "true"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Combined Filters - Active GPT-4 Vision Models",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 429', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 429]);",
+                  "});",
+                  "if (pm.response.code === 429) { return; }",
+                  "",
+                  "pm.test('Results match all filters', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/admin/models/provider-models?active=true&family=gpt-4&supports_images=true&include_catalog=true",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "models", "provider-models"],
+              "query": [
+                {
+                  "key": "active",
+                  "value": "true"
+                },
+                {
+                  "key": "family",
+                  "value": "gpt-4"
+                },
+                {
+                  "key": "supports_images",
+                  "value": "true"
+                },
+                {
+                  "key": "include_catalog",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

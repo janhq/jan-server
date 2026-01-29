@@ -1,0 +1,901 @@
+{
+  "info": {
+    "name": "Model Prompt Templates API Tests",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Setup",
+      "item": [
+        {
+          "name": "Admin Login (Get Token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has access token', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('access_token');",
+                  "    pm.collectionVariables.set('admin_token', jsonData.access_token);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "password",
+                  "type": "text"
+                },
+                {
+                  "key": "client_id",
+                  "value": "jan-admin",
+                  "type": "text"
+                },
+                {
+                  "key": "username",
+                  "value": "admin",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "admin",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/realms/jan/protocol/openid-connect/token",
+              "host": ["{{base_url}}"],
+              "path": [
+                "auth",
+                "realms",
+                "jan",
+                "protocol",
+                "openid-connect",
+                "token"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Model Catalog ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has catalogs', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('data');",
+                  "    pm.expect(jsonData.data).to.be.an('array');",
+                  "    if (jsonData.data.length > 0) {",
+                  "        pm.collectionVariables.set('model_catalog_id', jsonData.data[0].id);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/models/catalogs?limit=1",
+              "host": ["{{base_url}}"],
+              "path": ["llm", "v1", "admin", "models", "catalogs"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Prompt Template ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has templates', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('data');",
+                  "    pm.expect(jsonData.data).to.be.an('array');",
+                  "    if (jsonData.data.length > 0) {",
+                  "        // Find a template matching our template_key or use first one",
+                  "        const targetKey = pm.collectionVariables.get('template_key');",
+                  "        const matchedTemplate = jsonData.data.find(t => t.template_key === targetKey);",
+                  "        const template = matchedTemplate || jsonData.data[0];",
+                  "        pm.collectionVariables.set('prompt_template_id', template.id);",
+                  "        pm.collectionVariables.set('template_key', template.template_key);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/prompt-templates?limit=10&is_active=true",
+              "host": ["{{base_url}}"],
+              "path": ["llm", "v1", "admin", "prompt-templates"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "is_active",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Model Prompt Templates CRUD",
+      "item": [
+        {
+          "name": "List Templates for Model - Initially Empty",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has data array', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('data');",
+                  "    pm.expect(jsonData.data).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test('Response has pagination', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('total');",
+                  "    pm.expect(jsonData).to.have.property('page');",
+                  "    pm.expect(jsonData).to.have.property('limit');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/models/catalog-prompt-templates/{{model_catalog_id}}",
+              "host": ["{{base_url}}"],
+              "path": [
+                "llm",
+                "v1",
+                "admin",
+                "models",
+                "catalogs",
+                "{{model_catalog_id}}",
+                "prompt-templates"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Template to Model",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response has assignment data', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('model_catalog_id');",
+                  "    pm.expect(jsonData).to.have.property('prompt_template_id');",
+                  "    pm.expect(jsonData).to.have.property('template_key');",
+                  "    pm.expect(jsonData).to.have.property('is_active');",
+                  "});",
+                  "",
+                  "pm.test('Assignment has correct model', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.model_catalog_id).to.equal(pm.collectionVariables.get('model_catalog_id'));",
+                  "});",
+                  "",
+                  "pm.test('Assignment is active by default', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.is_active).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt_template_id\": \"{{prompt_template_id}}\",\n  \"template_key\": \"{{template_key}}\",\n  \"priority\": 10\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/models/catalog-prompt-templates/{{model_catalog_id}}",
+              "host": ["{{base_url}}"],
+              "path": [
+                "llm",
+                "v1",
+                "admin",
+                "models",
+                "catalogs",
+                "{{model_catalog_id}}",
+                "prompt-templates"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Templates - Has Assignment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has at least one assignment', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.length).to.be.greaterThan(0);",
+                  "});",
+                  "",
+                  "pm.test('Assignment has correct fields', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    const assignment = jsonData.data[0];",
+                  "    pm.expect(assignment).to.have.property('id');",
+                  "    pm.expect(assignment).to.have.property('template_key');",
+                  "    pm.expect(assignment).to.have.property('priority');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/models/catalog-prompt-templates/{{model_catalog_id}}",
+              "host": ["{{base_url}}"],
+              "path": [
+                "llm",
+                "v1",
+                "admin",
+                "models",
+                "catalogs",
+                "{{model_catalog_id}}",
+                "prompt-templates"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Effective Templates",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has templates map', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('templates');",
+                  "    pm.expect(jsonData.templates).to.be.an('object');",
+                  "});",
+                  "",
+                  "pm.test('Template has source indicator', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    const templateKey = pm.collectionVariables.get('template_key');",
+                  "    if (jsonData.templates[templateKey]) {",
+                  "        const template = jsonData.templates[templateKey];",
+                  "        pm.expect(template).to.have.property('source');",
+                  "        // Source should be 'model' since we assigned it",
+                  "        pm.expect(template.source).to.equal('model');",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/models/catalog-prompt-templates/{{model_catalog_id}}/effective",
+              "host": ["{{base_url}}"],
+              "path": [
+                "llm",
+                "v1",
+                "admin",
+                "models",
+                "catalogs",
+                "{{model_catalog_id}}",
+                "prompt-templates",
+                "effective"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Assignment Priority",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Priority is updated', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.priority).to.equal(20);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"priority\": 20\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/models/catalog-prompt-templates/{{model_catalog_id}}/{{template_key}}",
+              "host": ["{{base_url}}"],
+              "path": [
+                "llm",
+                "v1",
+                "admin",
+                "models",
+                "catalogs",
+                "{{model_catalog_id}}",
+                "prompt-templates",
+                "{{template_key}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Assignment - Deactivate",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Assignment is deactivated', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.is_active).to.be.false;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_active\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/models/catalog-prompt-templates/{{model_catalog_id}}/{{template_key}}",
+              "host": ["{{base_url}}"],
+              "path": [
+                "llm",
+                "v1",
+                "admin",
+                "models",
+                "catalogs",
+                "{{model_catalog_id}}",
+                "prompt-templates",
+                "{{template_key}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Effective Templates - Falls Back to Global",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Template source is global (deactivated model override)', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    const templateKey = pm.collectionVariables.get('template_key');",
+                  "    if (jsonData.templates[templateKey]) {",
+                  "        const template = jsonData.templates[templateKey];",
+                  "        // Should fall back to 'global' since model override is deactivated",
+                  "        pm.expect(template.source).to.equal('global');",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/models/catalog-prompt-templates/{{model_catalog_id}}/effective",
+              "host": ["{{base_url}}"],
+              "path": [
+                "llm",
+                "v1",
+                "admin",
+                "models",
+                "catalogs",
+                "{{model_catalog_id}}",
+                "prompt-templates",
+                "effective"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Unassign Template from Model",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 204 or 200', function () {",
+                  "    pm.expect([200, 204]).to.include(pm.response.code);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/models/catalog-prompt-templates/{{model_catalog_id}}/{{template_key}}",
+              "host": ["{{base_url}}"],
+              "path": [
+                "llm",
+                "v1",
+                "admin",
+                "models",
+                "catalogs",
+                "{{model_catalog_id}}",
+                "prompt-templates",
+                "{{template_key}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Templates - Empty After Unassign",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('No assignments for this model', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.length).to.equal(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/models/catalog-prompt-templates/{{model_catalog_id}}",
+              "host": ["{{base_url}}"],
+              "path": [
+                "llm",
+                "v1",
+                "admin",
+                "models",
+                "catalogs",
+                "{{model_catalog_id}}",
+                "prompt-templates"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Error Cases",
+      "item": [
+        {
+          "name": "Assign - Invalid Model ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt_template_id\": \"{{prompt_template_id}}\",\n  \"template_key\": \"{{template_key}}\",\n  \"priority\": 10\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/models/catalogs/non-existent-model-id/prompt-templates",
+              "host": ["{{base_url}}"],
+              "path": [
+                "llm",
+                "v1",
+                "admin",
+                "models",
+                "catalogs",
+                "non-existent-model-id",
+                "prompt-templates"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Assign - Invalid Template ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 or 404', function () {",
+                  "    pm.expect([400, 404]).to.include(pm.response.code);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt_template_id\": \"non-existent-template-id\",\n  \"template_key\": \"{{template_key}}\",\n  \"priority\": 10\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/models/catalog-prompt-templates/{{model_catalog_id}}",
+              "host": ["{{base_url}}"],
+              "path": [
+                "llm",
+                "v1",
+                "admin",
+                "models",
+                "catalogs",
+                "{{model_catalog_id}}",
+                "prompt-templates"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Assign - Missing Required Fields",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error message present', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"priority\": 10\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/models/catalog-prompt-templates/{{model_catalog_id}}",
+              "host": ["{{base_url}}"],
+              "path": [
+                "llm",
+                "v1",
+                "admin",
+                "models",
+                "catalogs",
+                "{{model_catalog_id}}",
+                "prompt-templates"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Unassign - Non-existent Template Key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/models/catalog-prompt-templates/{{model_catalog_id}}/non_existent_key",
+              "host": ["{{base_url}}"],
+              "path": [
+                "llm",
+                "v1",
+                "admin",
+                "models",
+                "catalogs",
+                "{{model_catalog_id}}",
+                "prompt-templates",
+                "non_existent_key"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List - Unauthorized (No Token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/llm/v1/admin/models/catalog-prompt-templates/{{model_catalog_id}}",
+              "host": ["{{base_url}}"],
+              "path": [
+                "llm",
+                "v1",
+                "admin",
+                "models",
+                "catalogs",
+                "{{model_catalog_id}}",
+                "prompt-templates"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
