@@ -1,8 +1,11 @@
 package config
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -11,62 +14,39 @@ import (
 	"github.com/caarlos0/env/v10"
 )
 
-var Version = "dev"
+// Global singleton for backwards compatibility with envs package
+var globalConfig *Config
 
-// Config holds all configuration for the unified backend.
-// Combines settings from llm-api, response-api, media-api, mcp-tools, memory-tools, and realtime-api.
+// Config holds all environment backed configuration for llm-api.
 type Config struct {
-	// ============================================
 	// HTTP Server
-	// ============================================
 	HTTPPort    int `env:"HTTP_PORT" envDefault:"8080"`
 	MetricsPort int `env:"METRICS_PORT" envDefault:"9091"`
 
-	// ============================================
-	// Database (Single shared DB with table prefixes)
-	// ============================================
+	// Database - Read/Write Split (required, no defaults)
 	DBPostgresqlWriteDSN string `env:"DB_POSTGRESQL_WRITE_DSN,notEmpty"`
 	DBPostgresqlRead1DSN string `env:"DB_POSTGRESQL_READ1_DSN"` // Optional read replica
 
-	// Table prefixes for each domain
-	DBPrefixLLM      string `env:"DB_PREFIX_LLM" envDefault:"llm_"`
-	DBPrefixResponse string `env:"DB_PREFIX_RESPONSE" envDefault:"resp_"`
-	DBPrefixMedia    string `env:"DB_PREFIX_MEDIA" envDefault:"media_"`
-	DBPrefixMemory   string `env:"DB_PREFIX_MEMORY" envDefault:"mem_"`
-
-	// ============================================
-	// Authentication - Dual Auth Support
-	// ============================================
-
-	// Keycloak Auth (optional - can be disabled for local-only deployments)
-	KeycloakEnabled     bool   `env:"KEYCLOAK_ENABLED" envDefault:"true"`
-	KeycloakBaseURL     string `env:"KEYCLOAK_BASE_URL"`
-	KeycloakPublicURL   string `env:"KEYCLOAK_PUBLIC_URL"` // Browser-accessible URL
-	KeycloakRealm       string `env:"KEYCLOAK_REALM" envDefault:"jan"`
-	BackendClientID     string `env:"BACKEND_CLIENT_ID"`
-	BackendClientSecret string `env:"BACKEND_CLIENT_SECRET"`
-	Client              string `env:"CLIENT"`
-	OAuthRedirectURI    string `env:"OAUTH_REDIRECT_URI"`
-	GuestRole           string `env:"GUEST_ROLE" envDefault:"guest"`
-	KeycloakAdminUser   string `env:"KEYCLOAK_ADMIN"`
-	KeycloakAdminPass   string `env:"KEYCLOAK_ADMIN_PASSWORD"`
-	KeycloakAdminRealm  string `env:"KEYCLOAK_ADMIN_REALM" envDefault:"master"`
-	KeycloakAdminClient string `env:"KEYCLOAK_ADMIN_CLIENT_ID" envDefault:"admin-cli"`
-	KeycloakAdminSecret string `env:"KEYCLOAK_ADMIN_CLIENT_SECRET"`
-	JWKSURL             string `env:"JWKS_URL"`
-	OIDCDiscoveryURL    string `env:"OIDC_DISCOVERY_URL"`
-	Issuer              string `env:"ISSUER"`
-	Account             string `env:"ACCOUNT"`
+	// Keycloak / Auth
+	KeycloakBaseURL     string        `env:"KEYCLOAK_BASE_URL,notEmpty"`
+	KeycloakPublicURL   string        `env:"KEYCLOAK_PUBLIC_URL"` // Browser-accessible URL (defaults to KeycloakBaseURL)
+	KeycloakRealm       string        `env:"KEYCLOAK_REALM" envDefault:"jan"`
+	BackendClientID     string        `env:"BACKEND_CLIENT_ID,notEmpty"`
+	BackendClientSecret string        `env:"BACKEND_CLIENT_SECRET,notEmpty"`
+	Client              string        `env:"CLIENT,notEmpty"`
+	OAuthRedirectURI    string        `env:"OAUTH_REDIRECT_URI,notEmpty"`
+	GuestRole           string        `env:"GUEST_ROLE" envDefault:"guest"`
+	KeycloakAdminUser   string        `env:"KEYCLOAK_ADMIN"`
+	KeycloakAdminPass   string        `env:"KEYCLOAK_ADMIN_PASSWORD"`
+	KeycloakAdminRealm  string        `env:"KEYCLOAK_ADMIN_REALM" envDefault:"master"`
+	KeycloakAdminClient string        `env:"KEYCLOAK_ADMIN_CLIENT_ID" envDefault:"admin-cli"`
+	KeycloakAdminSecret string        `env:"KEYCLOAK_ADMIN_CLIENT_SECRET"`
+	JWKSURL             string        `env:"JWKS_URL"`
+	OIDCDiscoveryURL    string        `env:"OIDC_DISCOVERY_URL"`
+	Issuer              string        `env:"ISSUER,notEmpty"`
+	Account             string        `env:"ACCOUNT,notEmpty"`
 	RefreshJWKSInterval time.Duration `env:"JWKS_REFRESH_INTERVAL" envDefault:"5m"`
 	AuthClockSkew       time.Duration `env:"AUTH_CLOCK_SKEW" envDefault:"60s"`
-
-	// Local Auth (PostgreSQL + bcrypt)
-	LocalAuthEnabled   bool          `env:"LOCAL_AUTH_ENABLED" envDefault:"true"`
-	LocalJWTSecret     string        `env:"LOCAL_JWT_SECRET"` // HS256 secret for local JWTs
-	LocalJWTIssuer     string        `env:"LOCAL_JWT_ISSUER" envDefault:"jan-server-local"`
-	LocalJWTExpiration time.Duration `env:"LOCAL_JWT_EXPIRATION" envDefault:"24h"`
-	LocalJWTRefreshTTL time.Duration `env:"LOCAL_JWT_REFRESH_TTL" envDefault:"168h"` // 7 days
-	BcryptCost         int           `env:"BCRYPT_COST" envDefault:"12"`
 
 	// API Keys
 	APIKeySecret     []byte        `env:"APIKEY_SECRET"`
@@ -74,42 +54,55 @@ type Config struct {
 	APIKeyMaxTTL     time.Duration `env:"API_KEY_MAX_TTL" envDefault:"2160h"`
 	APIKeyMaxPerUser int           `env:"API_KEY_MAX_PER_USER" envDefault:"5"`
 	APIKeyPrefix     string        `env:"API_KEY_PREFIX" envDefault:"sk_live"`
+	KongAdminURL     string        `env:"KONG_ADMIN_URL" envDefault:"http://kong:8001"`
 
-	// ============================================
-	// Kong Gateway (Optional)
-	// ============================================
-	KongEnabled  bool   `env:"KONG_ENABLED" envDefault:"false"`
-	KongAdminURL string `env:"KONG_ADMIN_URL" envDefault:"http://kong:8001"`
+	// Model Provider
+	ModelProviderSecret       string                   `env:"MODEL_PROVIDER_SECRET" envDefault:"jan-model-provider-secret-2024"`
+	JanProviderConfigsEnabled bool                     `env:"JAN_PROVIDER_CONFIGS" envDefault:"true"`
+	JanProviderConfigSet      string                   `env:"JAN_PROVIDER_CONFIG_SET" envDefault:"default"`
+	JanProviderConfigFile     string                   `env:"JAN_PROVIDER_CONFIGS_FILE"`
+	ProviderBootstrap         *ProviderBootstrapConfig `env:"-"`
 
-	// ============================================
+	// Model Sync
+	ModelSyncIntervalMinutes int  `env:"MODEL_SYNC_INTERVAL_MINUTES" envDefault:"60"`
+	ModelSyncEnabled         bool `env:"MODEL_SYNC_ENABLED" envDefault:"true"`
+
 	// Observability / Logging
-	// ============================================
 	HTTPTimeout      time.Duration `env:"HTTP_TIMEOUT" envDefault:"30s"`
 	OTLPEndpoint     string        `env:"OTEL_EXPORTER_OTLP_ENDPOINT"`
 	OTLPHeaders      string        `env:"OTEL_EXPORTER_OTLP_HEADERS"`
-	ServiceName      string        `env:"SERVICE_NAME" envDefault:"jan-server"`
+	ServiceName      string        `env:"SERVICE_NAME" envDefault:"llm-api"`
 	ServiceNamespace string        `env:"SERVICE_NAMESPACE" envDefault:"jan"`
 	Environment      string        `env:"ENVIRONMENT" envDefault:"development"`
 	LogLevel         string        `env:"LOG_LEVEL" envDefault:"info"`
 	LogFormat        string        `env:"LOG_FORMAT" envDefault:"console"`
-	EnablePprof      bool          `env:"ENABLE_PPROF" envDefault:"false"`
 
-	// ============================================
 	// Features
-	// ============================================
 	AutoMigrate   bool `env:"AUTO_MIGRATE" envDefault:"true"`
 	EnableSwagger bool `env:"ENABLE_SWAGGER" envDefault:"true"`
 
-	// ============================================
-	// LLM API Settings
-	// ============================================
-	StreamTimeout                      time.Duration `env:"STREAM_TIMEOUT" envDefault:"600s"`
-	ModelProviderSecret                string        `env:"MODEL_PROVIDER_SECRET" envDefault:"jan-model-provider-secret-2024"`
-	ModelSyncIntervalMinutes           int           `env:"MODEL_SYNC_INTERVAL_MINUTES" envDefault:"60"`
-	ModelSyncEnabled                   bool          `env:"MODEL_SYNC_ENABLED" envDefault:"true"`
-	ConversationSharingEnabled         bool          `env:"CONVERSATION_SHARING_ENABLED" envDefault:"false"`
-	ConversationTitleGenerationEnabled bool          `env:"CONVERSATION_TITLE_GENERATION_ENABLED" envDefault:"false"`
-	ConversationTitleGenerationModelID string        `env:"CONVERSATION_TITLE_GENERATION_MODEL_ID" envDefault:"LFM2-8B-A1B"`
+	// Media integration
+	MediaResolveURL     string        `env:"MEDIA_RESOLVE_URL" envDefault:"http://media-api:8285/v1/media"`
+	MediaIngestURL      string        `env:"MEDIA_INGEST_URL" envDefault:"http://kong:8000/media/v1/media"`
+	MediaResolveTimeout time.Duration `env:"MEDIA_RESOLVE_TIMEOUT" envDefault:"5s"`
+
+	// Media Storage
+	MaxMediaBytes      int64         `env:"MEDIA_MAX_BYTES" envDefault:"52428800"` // 50MB
+	RetentionDays      int           `env:"MEDIA_RETENTION_DAYS" envDefault:"30"`
+	RemoteFetchTimeout time.Duration `env:"MEDIA_REMOTE_FETCH_TIMEOUT" envDefault:"15s"`
+	StorageBackend     string        `env:"MEDIA_STORAGE_BACKEND" envDefault:"s3"`
+	S3Endpoint         string        `env:"MEDIA_S3_ENDPOINT" envDefault:"https://s3.menlo.ai"`
+	S3PublicEndpoint   string        `env:"MEDIA_S3_PUBLIC_ENDPOINT"`
+	S3Region           string        `env:"MEDIA_S3_REGION" envDefault:"us-west-2"`
+	S3Bucket           string        `env:"MEDIA_S3_BUCKET"`
+	S3AccessKeyID      string        `env:"MEDIA_S3_ACCESS_KEY_ID"`
+	S3SecretKey        string        `env:"MEDIA_S3_SECRET_ACCESS_KEY"`
+	S3UsePathStyle     bool          `env:"MEDIA_S3_USE_PATH_STYLE" envDefault:"true"`
+	S3PresignTTL       time.Duration `env:"MEDIA_S3_PRESIGN_TTL" envDefault:"168h"`
+	ProxyDownload      bool          `env:"MEDIA_PROXY_DOWNLOAD" envDefault:"true"`
+
+	// Streaming timeout for LLM responses (increase for large/complex requests)
+	StreamTimeout time.Duration `env:"STREAM_TIMEOUT" envDefault:"600s"`
 
 	// Prompt Orchestration
 	PromptOrchestrationEnabled         bool `env:"PROMPT_ORCHESTRATION_ENABLED" envDefault:"false"`
@@ -117,189 +110,225 @@ type Config struct {
 	PromptOrchestrationEnableTemplates bool `env:"PROMPT_ORCHESTRATION_TEMPLATES" envDefault:"false"`
 	PromptOrchestrationEnableTools     bool `env:"PROMPT_ORCHESTRATION_TOOLS" envDefault:"false"`
 
-	// ============================================
-	// Media API Settings (S3)
-	// ============================================
-	S3Endpoint        string `env:"S3_ENDPOINT"`
-	S3Region          string `env:"S3_REGION" envDefault:"us-east-1"`
-	S3Bucket          string `env:"S3_BUCKET" envDefault:"jan-media"`
-	S3AccessKeyID     string `env:"S3_ACCESS_KEY_ID"`
-	S3SecretAccessKey string `env:"S3_SECRET_ACCESS_KEY"`
-	S3UsePathStyle    bool   `env:"S3_USE_PATH_STYLE" envDefault:"false"`
-	MediaPresignTTL   time.Duration `env:"MEDIA_PRESIGN_TTL" envDefault:"1h"`
-	MediaMaxUploadSize int64 `env:"MEDIA_MAX_UPLOAD_SIZE" envDefault:"104857600"` // 100MB
+	// Memory integration
+	MemoryEnabled bool          `env:"MEMORY_ENABLED" envDefault:"false"`
+	MemoryBaseURL string        `env:"MEMORY_BASE_URL" envDefault:"http://memory-tools:8090"`
+	MemoryTimeout time.Duration `env:"MEMORY_TIMEOUT" envDefault:"5s"`
 
-	// ============================================
-	// MCP Tools Settings
-	// ============================================
+	// Conversation Sharing
+	ConversationSharingEnabled bool `env:"CONVERSATION_SHARING_ENABLED" envDefault:"false"`
 
-	// Search providers (cascading fallback: Serper → Exa → Tavily → SearXNG)
-	SerperEnabled bool   `env:"SERPER_ENABLED" envDefault:"false"`
-	SerperAPIKey  string `env:"SERPER_API_KEY"`
+	// Conversation Title Generation
+	ConversationTitleGenerationEnabled bool   `env:"CONVERSATION_TITLE_GENERATION_ENABLED" envDefault:"false"`
+	ConversationTitleGenerationModelID string `env:"CONVERSATION_TITLE_GENERATION_MODEL_ID" envDefault:"LFM2-8B-A1B"`
 
-	ExaEnabled bool   `env:"EXA_ENABLED" envDefault:"false"`
-	ExaAPIKey  string `env:"EXA_API_KEY"`
+	// Image Generation
+	ImageGenerationEnabled     bool          `env:"IMAGE_GENERATION_ENABLED" envDefault:"false"`
+	ImageGenerationTimeout     time.Duration `env:"IMAGE_GENERATION_TIMEOUT" envDefault:"120s"`
+	ImageDefaultModel          string        `env:"IMAGE_DEFAULT_MODEL" envDefault:"z-image"`
+	ImageDefaultSize           string        `env:"IMAGE_DEFAULT_SIZE" envDefault:"1024x1024"`
+	ImageMaxN                  int           `env:"IMAGE_MAX_N" envDefault:"4"`
+	ImageDefaultQuality        string        `env:"IMAGE_DEFAULT_QUALITY" envDefault:"standard"`
+	ImageDefaultStyle          string        `env:"IMAGE_DEFAULT_STYLE" envDefault:"natural"`
+	ImageDefaultResponseFormat string        `env:"IMAGE_DEFAULT_RESPONSE_FORMAT" envDefault:"url"`
+	ImageMediaPresignTTL       time.Duration `env:"IMAGE_MEDIA_PRESIGN_TTL" envDefault:"1h"`
 
-	TavilyEnabled bool   `env:"TAVILY_ENABLED" envDefault:"false"`
-	TavilyAPIKey  string `env:"TAVILY_API_KEY"`
+	// Document OCR
+	DocumentOCREnabled     bool          `env:"DOCUMENT_OCR_ENABLED" envDefault:"false"`
+	DocumentOCRTimeout     time.Duration `env:"DOCUMENT_OCR_TIMEOUT" envDefault:"300s"`
+	DocumentOCRModel       string        `env:"DOCUMENT_OCR_MODEL" envDefault:"docling-v1"`
+	DocumentMaxBytes       int64         `env:"DOCUMENT_MAX_BYTES" envDefault:"52428800"` // 50MB
+	DocumentSupportedTypes string        `env:"DOCUMENT_SUPPORTED_TYPES" envDefault:"application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown,text/html,application/rtf"`
 
-	SearXNGEnabled bool   `env:"SEARXNG_ENABLED" envDefault:"false"`
-	SearXNGURL     string `env:"SEARXNG_URL"`
+	// Connectors (OAuth integrations)
+	GitHubClientID               string        `env:"GITHUB_CLIENT_ID"`
+	GitHubClientSecret           string        `env:"GITHUB_CLIENT_SECRET"`
+	GitHubConnectorEnabled       bool          `env:"GITHUB_CONNECTOR_ENABLED" envDefault:"false"`
+	GoogleClientID               string        `env:"GOOGLE_CLIENT_ID"`
+	GoogleClientSecret           string        `env:"GOOGLE_CLIENT_SECRET"`
+	GoogleConnectorEnabled       bool          `env:"GOOGLE_CONNECTOR_ENABLED" envDefault:"false"`
+	ConnectorTokenEncryptionKey  string        `env:"CONNECTOR_TOKEN_ENCRYPTION_KEY"`
+	ConnectorTokenEncryptionKeyID string       `env:"CONNECTOR_TOKEN_ENCRYPTION_KEY_ID" envDefault:"v1"`
+	ConnectorTokenEncryptionKeyPrevious string `env:"CONNECTOR_TOKEN_ENCRYPTION_KEY_PREVIOUS"`
+	ConnectorTokenEncryptionKeyIDPrevious string `env:"CONNECTOR_TOKEN_ENCRYPTION_KEY_ID_PREVIOUS"`
+	OAuthStateSecret             string        `env:"OAUTH_STATE_SECRET"`
+	OAuthStateExpiration         time.Duration `env:"OAUTH_STATE_EXPIRATION" envDefault:"5m"`
+	OAuthRedirectBaseURL         string        `env:"OAUTH_REDIRECT_BASE_URL" envDefault:"http://localhost:8000"`
+	OAuthFrontendURL             string        `env:"OAUTH_FRONTEND_URL" envDefault:"http://localhost:3001"`
 
-	// Sandbox (code execution)
-	SandboxProvider string `env:"SANDBOX_PROVIDER" envDefault:"e2b"` // "e2b" or "aio"
-	E2BAPIKey       string `env:"E2B_API_KEY"`
-	AIOSandboxURL   string `env:"AIO_SANDBOX_URL"`
-
-	// Image generation
-	ImageGenerationEnabled bool          `env:"IMAGE_GENERATION_ENABLED" envDefault:"false"`
-	ImageGenerationTimeout time.Duration `env:"IMAGE_GENERATION_TIMEOUT" envDefault:"120s"`
-	ImageDefaultModel      string        `env:"IMAGE_DEFAULT_MODEL" envDefault:"z-image"`
-
-	// ============================================
-	// Memory Tools Settings
-	// ============================================
-	MemoryEnabled        bool          `env:"MEMORY_ENABLED" envDefault:"false"`
-	MemoryEmbeddingModel string        `env:"MEMORY_EMBEDDING_MODEL" envDefault:"bge-m3"`
-	MemoryEmbeddingDim   int           `env:"MEMORY_EMBEDDING_DIM" envDefault:"1024"`
-	MemoryCacheEnabled   bool          `env:"MEMORY_CACHE_ENABLED" envDefault:"true"`
-	MemoryCacheTTL       time.Duration `env:"MEMORY_CACHE_TTL" envDefault:"5m"`
-
-	// ============================================
-	// Realtime API Settings (LiveKit)
-	// ============================================
-	RealtimeEnabled   bool   `env:"REALTIME_ENABLED" envDefault:"false"`
-	LiveKitURL        string `env:"LIVEKIT_URL"`
-	LiveKitAPIKey     string `env:"LIVEKIT_API_KEY"`
-	LiveKitAPISecret  string `env:"LIVEKIT_API_SECRET"`
-
-	// ============================================
-	// OAuth Connectors (GitHub, Google)
-	// ============================================
-	GitHubClientID         string `env:"GITHUB_CLIENT_ID"`
-	GitHubClientSecret     string `env:"GITHUB_CLIENT_SECRET"`
-	GitHubConnectorEnabled bool   `env:"GITHUB_CONNECTOR_ENABLED" envDefault:"false"`
-
-	GoogleClientID         string `env:"GOOGLE_CLIENT_ID"`
-	GoogleClientSecret     string `env:"GOOGLE_CLIENT_SECRET"`
-	GoogleConnectorEnabled bool   `env:"GOOGLE_CONNECTOR_ENABLED" envDefault:"false"`
-
-	ConnectorTokenEncryptionKey   string        `env:"CONNECTOR_TOKEN_ENCRYPTION_KEY"`
-	ConnectorTokenEncryptionKeyID string        `env:"CONNECTOR_TOKEN_ENCRYPTION_KEY_ID" envDefault:"v1"`
-	OAuthStateSecret              string        `env:"OAUTH_STATE_SECRET"`
-	OAuthStateExpiration          time.Duration `env:"OAUTH_STATE_EXPIRATION" envDefault:"5m"`
-	OAuthRedirectBaseURL          string        `env:"OAUTH_REDIRECT_BASE_URL" envDefault:"http://localhost:8080"`
-	OAuthFrontendURL              string        `env:"OAUTH_FRONTEND_URL" envDefault:"http://localhost:3001"`
-
-	// ============================================
-	// Analytics
-	// ============================================
-	AnalyticsEnabled     bool          `env:"ANALYTICS_ENABLED" envDefault:"false"`
+	// Analytics (PostHog + OTel)
+	AnalyticsEnabled     bool          `env:"ANALYTICS_ENABLED" envDefault:"true"`
 	PostHogEnabled       bool          `env:"POSTHOG_ENABLED" envDefault:"false"`
 	PostHogAPIKey        string        `env:"POSTHOG_API_KEY"`
 	PostHogHost          string        `env:"POSTHOG_HOST" envDefault:"https://eu.posthog.com"`
+	PostHogDebug         bool          `env:"POSTHOG_DEBUG" envDefault:"false"`
 	PostHogBatchSize     int           `env:"POSTHOG_BATCH_SIZE" envDefault:"100"`
 	PostHogFlushInterval time.Duration `env:"POSTHOG_FLUSH_INTERVAL" envDefault:"10s"`
+	OTelAnalyticsEnabled bool          `env:"OTEL_ANALYTICS" envDefault:"false"`
+	AnalyticsPIILevel    string        `env:"ANALYTICS_PII_LEVEL" envDefault:"hashed"`
+	AnalyticsEnvironment string        `env:"ANALYTICS_ENVIRONMENT" envDefault:"dev"`
 
-	// ============================================
-	// Redis (optional caching)
-	// ============================================
-	RedisEnabled  bool   `env:"REDIS_ENABLED" envDefault:"false"`
-	RedisURL      string `env:"REDIS_URL" envDefault:"redis://localhost:6379"`
-	RedisPassword string `env:"REDIS_PASSWORD"`
-	RedisDB       int    `env:"REDIS_DB" envDefault:"0"`
+	// MCP Tools
+	EnableFileSearch             bool          `env:"ENABLE_FILE_SEARCH" envDefault:"false"`
+	EnablePythonExec             bool          `env:"ENABLE_PYTHON_EXEC" envDefault:"false"`
+	SandboxFusionRequireApproval bool          `env:"SANDBOX_FUSION_REQUIRE_APPROVAL" envDefault:"true"`
+	EnableMemoryRetrieve         bool          `env:"ENABLE_MEMORY_RETRIEVE" envDefault:"false"`
+	MemoryToolsURL               string        `env:"MEMORY_TOOLS_URL" envDefault:"http://memory-tools:8090"`
+	EnableImageGenerate          bool          `env:"ENABLE_IMAGE_GENERATE" envDefault:"false"`
+	EnableImageEdit              bool          `env:"ENABLE_IMAGE_EDIT" envDefault:"false"`
+	LLMAPIBaseURL                string        `env:"LLM_API_BASE_URL" envDefault:"http://llm-api:8080"`
 
-	// Internal tracking
+	// Sandbox Providers
+	SandboxProvider string        `env:"SANDBOX_PROVIDER"` // "aio", "e2b", or empty
+	E2BServiceURL   string        `env:"E2B_SERVICE_URL" envDefault:"https://api.e2b.dev"`
+	E2BTimeout      time.Duration `env:"E2B_TIMEOUT" envDefault:"120s"`
+	AIOURL          string        `env:"AIO_URL" envDefault:"http://aio-service:8080"`
+	AIOTimeout      time.Duration `env:"AIO_TIMEOUT" envDefault:"120s"`
+
+	// Agent Proxy
+	AgentProxyEnabled bool   `env:"MCP_AGENT_PROXY_ENABLED" envDefault:"false"`
+	ResponseAPIURL    string `env:"RESPONSE_API_URL" envDefault:"http://response-api:8082"`
+
+	// Connector MCP Tools
+	EnableGitHubConnector   bool `env:"MCP_ENABLE_GITHUB_CONNECTOR" envDefault:"false"`
+	EnableGmailConnector    bool `env:"MCP_ENABLE_GMAIL_CONNECTOR" envDefault:"false"`
+	EnableDriveConnector    bool `env:"MCP_ENABLE_DRIVE_CONNECTOR" envDefault:"false"`
+	EnableCalendarConnector bool `env:"MCP_ENABLE_CALENDAR_CONNECTOR" envDefault:"false"`
+
+	// Internal
 	EnvReloadedAt time.Time
 }
 
-// Load parses environment variables into Config and performs validation.
+// Load parses environment variables into Config and performs minimal validation.
 func Load() (*Config, error) {
 	cfg := &Config{}
 	if err := env.Parse(cfg); err != nil {
 		return nil, fmt.Errorf("parse env: %w", err)
 	}
 
-	// Normalize log settings
-	cfg.LogLevel = strings.ToLower(cfg.LogLevel)
-	cfg.LogFormat = strings.ToLower(cfg.LogFormat)
-
-	// Validate authentication config
-	if err := cfg.validateAuth(); err != nil {
-		return nil, err
+	if llmLogLevel := strings.TrimSpace(os.Getenv("LLM_API_LOG_LEVEL")); llmLogLevel != "" {
+		cfg.LogLevel = llmLogLevel
+	}
+	if llmLogFormat := strings.TrimSpace(os.Getenv("LLM_API_LOG_FORMAT")); llmLogFormat != "" {
+		cfg.LogFormat = llmLogFormat
 	}
 
-	// Validate database config
-	if _, err := url.Parse(cfg.DBPostgresqlWriteDSN); err != nil {
-		return nil, fmt.Errorf("invalid DB_POSTGRESQL_WRITE_DSN: %w", err)
+	cfg.JanProviderConfigSet = strings.TrimSpace(cfg.JanProviderConfigSet)
+	if cfg.JanProviderConfigSet == "" {
+		cfg.JanProviderConfigSet = "default"
 	}
 
-	// Set defaults
+	// Default KeycloakPublicURL to KeycloakBaseURL if not set
 	if cfg.KeycloakPublicURL == "" {
 		cfg.KeycloakPublicURL = cfg.KeycloakBaseURL
 	}
 
+	if cfg.JanProviderConfigsEnabled {
+		configFile := strings.TrimSpace(cfg.JanProviderConfigFile)
+		if configFile == "" {
+			configFile = DefaultProviderConfigFile
+		}
+		bootstrap, err := LoadProviderBootstrapConfig(configFile)
+		if err != nil {
+			return nil, fmt.Errorf("load provider configs: %w", err)
+		}
+		cfg.ProviderBootstrap = bootstrap
+		if len(bootstrap.ProvidersForSet(cfg.JanProviderConfigSet)) == 0 {
+			return nil, fmt.Errorf("provider config set %q is missing or empty in %s", cfg.JanProviderConfigSet, configFile)
+		}
+	}
+
+	if cfg.JWKSURL == "" && cfg.OIDCDiscoveryURL == "" {
+		return nil, errors.New("either JWKS_URL or OIDC_DISCOVERY_URL must be provided")
+	}
+
+	if cfg.JWKSURL != "" {
+		if _, err := url.ParseRequestURI(cfg.JWKSURL); err != nil {
+			return nil, fmt.Errorf("invalid JWKS_URL: %w", err)
+		}
+	}
+
+	if cfg.OIDCDiscoveryURL != "" {
+		if _, err := url.ParseRequestURI(cfg.OIDCDiscoveryURL); err != nil {
+			return nil, fmt.Errorf("invalid OIDC_DISCOVERY_URL: %w", err)
+		}
+	}
+
+	if strings.TrimSpace(cfg.KongAdminURL) == "" {
+		return nil, errors.New("KONG_ADMIN_URL is required")
+	}
+	if _, err := url.ParseRequestURI(cfg.KongAdminURL); err != nil {
+		return nil, fmt.Errorf("invalid KONG_ADMIN_URL: %w", err)
+	}
+
+	if cfg.APIKeyDefaultTTL <= 0 {
+		return nil, errors.New("API_KEY_DEFAULT_TTL must be > 0")
+	}
+	if cfg.APIKeyMaxTTL < cfg.APIKeyDefaultTTL {
+		return nil, errors.New("API_KEY_MAX_TTL must be >= API_KEY_DEFAULT_TTL")
+	}
+	if cfg.APIKeyMaxPerUser <= 0 {
+		cfg.APIKeyMaxPerUser = 5
+	}
+	cfg.APIKeyPrefix = strings.TrimSpace(cfg.APIKeyPrefix)
 	if cfg.APIKeyPrefix == "" {
 		cfg.APIKeyPrefix = "sk_live"
 	}
 
 	if cfg.AuthClockSkew < 0 {
-		cfg.AuthClockSkew = -cfg.AuthClockSkew
+		cfg.AuthClockSkew = cfg.AuthClockSkew * -1
 	}
 
+	if _, err := url.ParseRequestURI(cfg.KeycloakBaseURL); err != nil {
+		return nil, fmt.Errorf("invalid KEYCLOAK_BASE_URL: %w", err)
+	}
+
+	cfg.LogLevel = strings.ToLower(cfg.LogLevel)
+	cfg.LogFormat = strings.ToLower(cfg.LogFormat)
 	cfg.EnvReloadedAt = time.Now()
 
+	cfg.ConversationTitleGenerationModelID = strings.TrimSpace(cfg.ConversationTitleGenerationModelID)
+	if cfg.ConversationTitleGenerationModelID == "" {
+		cfg.ConversationTitleGenerationModelID = "LFM2-8B-A1B"
+	}
+
+	// Update global singletons for backwards compatibility
+	globalConfig = cfg
+
 	return cfg, nil
-}
-
-func (c *Config) validateAuth() error {
-	// At least one auth method must be enabled
-	if !c.KeycloakEnabled && !c.LocalAuthEnabled {
-		return errors.New("at least one auth method must be enabled (KEYCLOAK_ENABLED or LOCAL_AUTH_ENABLED)")
+} // ResolveJWKSURL returns the JWKS endpoint using either the explicit JWKS_URL or the OIDC discovery document.
+func (c *Config) ResolveJWKSURL(ctx context.Context) (string, error) {
+	if c.JWKSURL != "" {
+		return c.JWKSURL, nil
 	}
 
-	// Validate Keycloak config if enabled
-	if c.KeycloakEnabled {
-		if c.KeycloakBaseURL == "" {
-			return errors.New("KEYCLOAK_BASE_URL is required when KEYCLOAK_ENABLED=true")
-		}
-		if _, err := url.ParseRequestURI(c.KeycloakBaseURL); err != nil {
-			return fmt.Errorf("invalid KEYCLOAK_BASE_URL: %w", err)
-		}
-		if c.JWKSURL == "" && c.OIDCDiscoveryURL == "" {
-			return errors.New("either JWKS_URL or OIDC_DISCOVERY_URL is required when KEYCLOAK_ENABLED=true")
-		}
-		if c.Issuer == "" {
-			return errors.New("ISSUER is required when KEYCLOAK_ENABLED=true")
-		}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.OIDCDiscoveryURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("oidc discovery request: %w", err)
 	}
 
-	// Validate local auth config if enabled
-	if c.LocalAuthEnabled {
-		if c.LocalJWTSecret == "" {
-			// Generate a warning but allow startup with a random secret (not recommended for production)
-			c.LocalJWTSecret = generateRandomSecret()
-			fmt.Fprintf(os.Stderr, "WARNING: LOCAL_JWT_SECRET not set, using random secret (tokens will be invalid after restart)\n")
-		}
-		if len(c.LocalJWTSecret) < 32 {
-			return errors.New("LOCAL_JWT_SECRET must be at least 32 characters")
-		}
-		if c.BcryptCost < 10 || c.BcryptCost > 14 {
-			return errors.New("BCRYPT_COST must be between 10 and 14")
-		}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("fetch oidc discovery: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("oidc discovery unexpected status: %s", resp.Status)
 	}
 
-	// Validate Kong config if enabled
-	if c.KongEnabled {
-		if c.KongAdminURL == "" {
-			return errors.New("KONG_ADMIN_URL is required when KONG_ENABLED=true")
-		}
-		if _, err := url.ParseRequestURI(c.KongAdminURL); err != nil {
-			return fmt.Errorf("invalid KONG_ADMIN_URL: %w", err)
-		}
+	var doc struct {
+		JWKSURL string `json:"jwks_uri"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
+		return "", fmt.Errorf("decode oidc discovery: %w", err)
 	}
 
-	return nil
+	if doc.JWKSURL == "" {
+		return "", errors.New("jwks_uri not found in discovery document")
+	}
+
+	return doc.JWKSURL, nil
 }
 
 // GetDatabaseWriteDSN returns the write database connection string.
@@ -308,6 +337,8 @@ func (c *Config) GetDatabaseWriteDSN() string {
 }
 
 // GetDatabaseReadDSN returns the read database connection string.
+// If DB_POSTGRESQL_READ1_DSN is set, it returns that.
+// Otherwise, falls back to write DSN (no replica configured).
 func (c *Config) GetDatabaseReadDSN() string {
 	if c.DBPostgresqlRead1DSN != "" {
 		return c.DBPostgresqlRead1DSN
@@ -315,13 +346,31 @@ func (c *Config) GetDatabaseReadDSN() string {
 	return c.GetDatabaseWriteDSN()
 }
 
-// IsDev returns true if running in development mode.
-func IsDev() bool {
-	return strings.HasPrefix(Version, "dev")
+// GetGlobal returns the global config instance for backwards compatibility.
+// Deprecated: Use dependency injection with Load() instead.
+func GetGlobal() *Config {
+	return globalConfig
 }
 
-func generateRandomSecret() string {
-	// Simple random string generation for development
-	// In production, LOCAL_JWT_SECRET should always be set explicitly
-	return fmt.Sprintf("dev-secret-%d", time.Now().UnixNano())
+// GetEnvReloadedAt returns when the environment was last reloaded
+// Deprecated: Use GetGlobal().EnvReloadedAt instead
+func GetEnvReloadedAt() time.Time {
+	if globalConfig != nil {
+		return globalConfig.EnvReloadedAt
+	}
+	return time.Time{}
+}
+
+// ProviderBootstrapEntries returns the configured provider definitions for the active set.
+func (c *Config) ProviderBootstrapEntries() []ProviderBootstrapEntry {
+	if c == nil || c.ProviderBootstrap == nil {
+		return nil
+	}
+	return c.ProviderBootstrap.ProvidersForSet(c.JanProviderConfigSet)
+}
+
+var Version = "dev"
+
+func IsDev() bool {
+	return strings.HasPrefix(Version, "dev")
 }

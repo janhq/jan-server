@@ -1,0 +1,14 @@
+{
+  "id": 86,
+  "dir": "86",
+  "name": "Public Brief",
+  "tone": "Government/Public Sector",
+  "description": "Formal, legible, and conservative layout for public comms.",
+  "variants": {
+    "base": 9,
+    "bullets": 1,
+    "split": 3,
+    "hero": 1,
+    "title": 1
+  }
+}

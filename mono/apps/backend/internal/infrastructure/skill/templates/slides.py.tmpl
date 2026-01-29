@@ -1,0 +1,104 @@
+from pptx import Presentation
+from pptx.util import Inches
+import json
+
+data = {{.ContentJSON}}
+options = {{.OptionsJSON}}
+
+prs = Presentation()
+
+# Get presentation title - support multiple formats from LLM
+title_text = (
+    data.get("title") or 
+    data.get("presentation_title") or 
+    options.get("title") or 
+    "Untitled Presentation"
+)
+subtitle_text = data.get("subtitle") or options.get("subtitle")
+
+# Title slide
+title_slide = prs.slides.add_slide(prs.slide_layouts[0])
+title_slide.shapes.title.text = title_text
+if subtitle_text and len(title_slide.placeholders) > 1:
+    title_slide.placeholders[1].text = subtitle_text
+
+layout_map = {
+    "title": 0,
+    "title_content": 1,
+    "section": 2,
+    "two_column": 3,
+    "blank": 6,
+    "title_only": 5,
+}
+
+for slide_def in data.get("slides", []):
+    layout_key = slide_def.get("layout", "title_content")
+    layout_idx = layout_map.get(layout_key, 1)
+    slide = prs.slides.add_slide(prs.slide_layouts[layout_idx])
+
+    # Handle slide title - support multiple LLM output formats
+    slide_title = (
+        slide_def.get("title") or 
+        slide_def.get("slide_title") or 
+        slide_def.get("headline")  # Common LLM output format
+    )
+    if slide_title and slide.shapes.title:
+        slide.shapes.title.text = slide_title
+
+    # Get content - support multiple formats
+    content = slide_def.get("content", {})
+    if isinstance(content, list):
+        # If content is a list, treat it as bullets
+        bullets = content
+    else:
+        # If content is a dict, look for bullets inside
+        bullets = content.get("bullets", []) if isinstance(content, dict) else []
+    
+    # Also check for key_points (common LLM output format)
+    if not bullets:
+        bullets = slide_def.get("key_points", [])
+    
+    # Also check for bullet_points
+    if not bullets:
+        bullets = slide_def.get("bullet_points", [])
+    
+    # Add bullets to slide
+    if bullets and layout_idx in (1, 3, 5) and len(slide.placeholders) > 1:
+        tf = slide.placeholders[1].text_frame
+        for i, bullet in enumerate(bullets):
+            bullet_text = str(bullet)
+            if i == 0:
+                tf.text = bullet_text
+            else:
+                p = tf.add_paragraph()
+                p.text = bullet_text
+                p.level = 0
+
+    # Handle text content
+    text_content = content.get("text") if isinstance(content, dict) else None
+    if text_content and layout_idx in (1, 5) and len(slide.placeholders) > 1:
+        tf = slide.placeholders[1].text_frame
+        if not tf.text:
+            tf.text = str(text_content)
+
+    # Handle table content
+    table_data = content.get("table") if isinstance(content, dict) else None
+    if table_data:
+        table_data = content["table"]
+        headers = table_data.get("headers", [])
+        rows = table_data.get("rows", [])
+        if headers and rows:
+            n_rows = len(rows) + 1
+            n_cols = len(headers)
+            table = slide.shapes.add_table(
+                n_rows, n_cols, Inches(1), Inches(2), Inches(8), Inches(0.5 * n_rows)
+            ).table
+            for i, h in enumerate(headers):
+                table.cell(0, i).text = str(h)
+            for r_idx, row in enumerate(rows):
+                for c_idx, val in enumerate(row):
+                    table.cell(r_idx + 1, c_idx).text = str(val)
+
+output_path = "{{.OutputPath}}"
+prs.save(output_path)
+print(f"OUTPUT_PATH:{output_path}")

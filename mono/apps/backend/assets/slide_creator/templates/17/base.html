@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0; padding:0; background:#000;">
+<div style="width:100vw; aspect-ratio:16 / 9; max-width:{{.SlideW}}px; margin:0; background:{{.Background}}; color:{{.Theme.TextColor}}; font-family:{{.Theme.FontFamily}}; display:flex; flex-direction:column; box-sizing:border-box; position:relative; overflow:hidden;">
+  <div style="position:absolute; top:-360px; right:-360px; width:980px; height:980px; border-radius:999px; background:radial-gradient(circle at 30% 30%, {{withAlpha .Theme.AccentColor 0.35}} 0%, rgba(0,0,0,0) 70%); pointer-events:none;"></div>
+  <div style="position:absolute; bottom:-420px; left:-420px; width:1100px; height:1100px; border-radius:999px; background:radial-gradient(circle at 50% 50%, {{withAlpha .Theme.TextColor 0.18}} 0%, rgba(0,0,0,0) 72%); pointer-events:none;"></div>
+
+  <header style="height:92px; padding:0 96px; display:flex; align-items:center; justify-content:space-between; box-sizing:border-box; border-bottom:1px solid {{withAlpha .Theme.TextColor 0.16}}; position:relative; z-index:1;">
+    <div style="display:flex; align-items:center; gap:14px; min-width:0;">
+      <div style="width:12px; height:12px; border-radius:999px; background:{{.Theme.AccentColor}};"></div>
+      <div style="font-size:22px; font-weight:900; letter-spacing:0.2px; color:{{.Theme.TextColor}}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:980px;">{{.Plan.Title}}</div>
+    </div>
+    <div style="font-size:14px; font-weight:850; color:{{withAlpha .Theme.TextColor 0.70}}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:760px;">{{.Slide.Title}}</div>
+  </header>
+
+  <main style="flex:1; padding:64px 96px; box-sizing:border-box; overflow:hidden; position:relative; z-index:1;">
+    <div style="height:100%; border:1px solid {{withAlpha .Theme.TextColor 0.16}}; border-radius:32px; background:{{withAlpha .Theme.TextColor 0.04}}; box-shadow:0 34px 92px {{withAlpha .Theme.TextColor 0.20}}; padding:52px 56px; box-sizing:border-box; overflow:hidden; backdrop-filter: blur(2px);">
+      {{template "body" .}}
+    </div>
+  </main>
+
+  <footer style="height:64px; padding:0 96px; display:flex; align-items:center; justify-content:space-between; box-sizing:border-box; border-top:1px solid {{withAlpha .Theme.TextColor 0.16}}; position:relative; z-index:1;">
+    <div style="font-size:14px; font-weight:800; color:{{withAlpha .Theme.TextColor 0.70}};">Slide {{.Index}}/{{.Total}}</div>
+    <div style="font-size:14px; font-weight:800; color:{{withAlpha .Theme.TextColor 0.70}}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:760px;">{{.Plan.Title}}</div>
+  </footer>
+</div>
+</body>
+</html>

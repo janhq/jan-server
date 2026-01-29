@@ -1,0 +1,14 @@
+{
+  "id": 30,
+  "dir": "30",
+  "name": "Bubblegum",
+  "tone": "Playful Pastel",
+  "description": "Soft patterns and friendly shapes; great for consumer topics.",
+  "variants": {
+    "base": 7,
+    "bullets": 5,
+    "split": 5,
+    "hero": 2,
+    "title": 1
+  }
+}

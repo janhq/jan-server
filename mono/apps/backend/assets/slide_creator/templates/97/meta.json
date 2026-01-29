@@ -1,0 +1,14 @@
+{
+  "id": 97,
+  "dir": "97",
+  "name": "Pulse",
+  "tone": "Sports/Energy",
+  "description": "Bold band framing; dynamic pacing and clear takeaways.",
+  "variants": {
+    "base": 4,
+    "bullets": 2,
+    "split": 1,
+    "hero": 2,
+    "title": 2
+  }
+}

@@ -8,16 +8,14 @@ import (
 	"syscall"
 	"time"
 
-	"jan-server/mono/apps/backend/internal/infrastructure/config"
-	"jan-server/mono/apps/backend/internal/infrastructure/database"
-	"jan-server/mono/apps/backend/internal/interfaces/httpserver"
-
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 
 	_ "github.com/joho/godotenv/autoload"
 	_ "net/http/pprof"
+
+	"jan-server/mono/apps/backend/internal/config"
 )
 
 // @title Jan Server Unified API
@@ -45,7 +43,7 @@ func main() {
 	// Initialize logger
 	initLogger()
 
-	// Load configuration
+	// Load configuration for early logging
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to load config")
@@ -57,32 +55,21 @@ func main() {
 	log.Info().
 		Str("version", config.Version).
 		Str("environment", cfg.Environment).
-		Bool("keycloak_enabled", cfg.KeycloakEnabled).
-		Bool("local_auth_enabled", cfg.LocalAuthEnabled).
-		Bool("kong_enabled", cfg.KongEnabled).
+		Int("port", cfg.HTTPPort).
 		Msg("starting jan-server unified backend")
 
-	// Initialize database
-	db, err := database.NewConnection(cfg)
+	// Initialize HTTP server via wire dependency injection
+	server, cleanup, err := InitializeHTTPServer()
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to connect to database")
+		log.Fatal().Err(err).Msg("failed to initialize HTTP server")
 	}
-
-	// Run migrations if enabled
-	if cfg.AutoMigrate {
-		if err := database.RunMigrations(db, cfg); err != nil {
-			log.Fatal().Err(err).Msg("failed to run migrations")
-		}
-	}
-
-	// Create HTTP server
-	server := httpserver.NewServer(cfg, db)
+	defer cleanup()
 
 	// Start server with graceful shutdown
 	var eg errgroup.Group
 
-	// pprof server for debugging
-	if cfg.EnablePprof {
+	// pprof server for debugging (always enabled in development)
+	if config.IsDev() {
 		eg.Go(func() error {
 			log.Info().Int("port", 6060).Msg("starting pprof server")
 			return http.ListenAndServe("0.0.0.0:6060", nil)
@@ -102,9 +89,9 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Error().Err(err).Msg("failed to shutdown server gracefully")
-	}
+	// Note: HTTPServer.Run() uses gin.Run() which doesn't support graceful shutdown directly
+	// The errgroup will handle the shutdown when context is cancelled
+	_ = shutdownCtx
 
 	log.Info().Msg("server stopped")
 }

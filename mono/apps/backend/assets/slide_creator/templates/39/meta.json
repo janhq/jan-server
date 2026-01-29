@@ -1,0 +1,14 @@
+{
+  "id": 39,
+  "dir": "39",
+  "name": "Noir Elegant",
+  "tone": "Luxury Elegant",
+  "description": "Rounded stage, premium spacing, gallery-like feel.",
+  "variants": {
+    "base": 10,
+    "bullets": 4,
+    "split": 1,
+    "hero": 1,
+    "title": 4
+  }
+}

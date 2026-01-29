@@ -1,0 +1,14 @@
+{
+  "id": 84,
+  "dir": "84",
+  "name": "Spectrum",
+  "tone": "Gradient Modern",
+  "description": "Band gradient + modern spacing; works with gradient palettes.",
+  "variants": {
+    "base": 4,
+    "bullets": 4,
+    "split": 5,
+    "hero": 1,
+    "title": 4
+  }
+}

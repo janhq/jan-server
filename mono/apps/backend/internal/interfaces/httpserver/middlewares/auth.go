@@ -6,303 +6,469 @@ import (
 	"net/http"
 	"strings"
 
-	"jan-server/mono/apps/backend/internal/domain/user"
-	"jan-server/mono/apps/backend/internal/infrastructure/config"
-	"jan-server/mono/apps/backend/internal/infrastructure/database/repository"
-
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
-	"gorm.io/gorm"
+	"github.com/rs/zerolog"
+
+	"jan-server/mono/apps/backend/internal/domain"
+	"jan-server/mono/apps/backend/internal/domain/apikey"
+	authvalidator "jan-server/mono/apps/backend/internal/infrastructure/auth"
+	"jan-server/mono/apps/backend/internal/interfaces/httpserver/responses"
 )
 
-// Helper functions for creating service instances
-func newUserRepository(db *gorm.DB) user.Repository {
-	return repository.NewUserRepository(db)
-}
+const principalContextKey = "principal"
 
-func newUserService(repo user.Repository, cfg *config.Config) *user.Service {
-	return user.NewService(repo, user.ServiceConfig{
-		JWTSecret:        cfg.LocalJWTSecret,
-		JWTIssuer:        cfg.LocalJWTIssuer,
-		JWTExpiration:    cfg.LocalJWTExpiration,
-		RefreshTokenTTL:  cfg.LocalJWTRefreshTTL,
-		BcryptCost:       cfg.BcryptCost,
-		APIKeyPrefix:     cfg.APIKeyPrefix,
-		APIKeyMaxPerUser: cfg.APIKeyMaxPerUser,
-		APIKeyDefaultTTL: cfg.APIKeyDefaultTTL,
-	})
-}
-
-const (
-	// Context keys
-	PrincipalKey = "principal"
-
-	// Header keys
-	AuthorizationHeader = "Authorization"
-	APIKeyHeader        = "X-API-Key"
-
-	// Kong gateway headers (when Kong is enabled)
-	KongUserIDHeader     = "X-User-ID"
-	KongUserSubject      = "X-User-Subject"
-	KongUserEmail        = "X-User-Email"
-	KongUserUsername     = "X-User-Username"
-	KongAuthMethod       = "X-Auth-Method"
-)
-
-// AuthMethod represents the authentication method used.
-type AuthMethod string
-
-const (
-	AuthMethodJWT       AuthMethod = "jwt"
-	AuthMethodAPIKey    AuthMethod = "apikey"
-	AuthMethodLocalJWT  AuthMethod = "local_jwt"
-	AuthMethodKong      AuthMethod = "kong"
-)
-
-// Principal represents the authenticated user.
-type Principal struct {
-	ID           string            `json:"id"`
-	Subject      string            `json:"subject"`
-	Email        string            `json:"email"`
-	Username     string            `json:"username"`
-	Name         string            `json:"name"`
-	Roles        []string          `json:"roles"`
-	Groups       []string          `json:"groups"`
-	AuthMethod   AuthMethod        `json:"auth_method"`
-	AuthProvider string            `json:"auth_provider"` // "keycloak" or "local"
-	Issuer       string            `json:"issuer"`
-	Attributes   map[string]any    `json:"attributes,omitempty"`
-}
-
-// Auth middleware validates authentication tokens.
-// Supports: Keycloak JWT, Local JWT, API Keys, and Kong gateway headers.
-func Auth(cfg *config.Config, db *gorm.DB) gin.HandlerFunc {
+// AuthMiddleware validates API key headers injected by Kong or JWT bearer tokens issued by Keycloak.
+func AuthMiddleware(validator *authvalidator.KeycloakValidator, apiKeyService *apikey.Service, logger zerolog.Logger, fallbackIssuer string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var principal *Principal
-		var err error
+		// First check X-API-Key header (used by internal services like response-api)
+		xAPIKeyPrincipal, hasXAPIKey := principalFromXAPIKey(c, apiKeyService, fallbackIssuer, logger)
 
-		// 1. Check Kong gateway headers first (if Kong is enabled and headers present)
-		if cfg.KongEnabled && c.GetHeader(KongAuthMethod) != "" {
-			principal, err = extractFromKongHeaders(c)
-			if err == nil {
-				setPrincipal(c, principal)
-				c.Next()
-				return
-			}
-		}
+		// Then check if Bearer token contains an API key (sk_*)
+		bearerAPIKeyPrincipal, hasBearerAPIKey := principalFromBearerAPIKey(c, apiKeyService, fallbackIssuer, logger)
 
-		// 2. Check API Key header
-		apiKey := c.GetHeader(APIKeyHeader)
-		if apiKey != "" {
-			principal, err = validateAPIKey(c.Request.Context(), cfg, db, apiKey)
-			if err == nil {
-				setPrincipal(c, principal)
-				c.Next()
-				return
-			}
-		}
+		apiPrincipal, hasAPIKey := principalFromAPIKey(c, fallbackIssuer)
+		jwtPrincipal, hasJWT, jwtErr := principalFromJWT(c, validator)
 
-		// 3. Check Authorization header (Bearer token)
-		authHeader := c.GetHeader(AuthorizationHeader)
-		if authHeader != "" {
-			// Check for Bearer token
-			if strings.HasPrefix(authHeader, "Bearer ") {
-				token := strings.TrimPrefix(authHeader, "Bearer ")
-
-				// Check if it's an API key (starts with sk_)
-				if strings.HasPrefix(token, "sk_") {
-					principal, err = validateAPIKey(c.Request.Context(), cfg, db, token)
-					if err == nil {
-						setPrincipal(c, principal)
-						c.Next()
-						return
-					}
-				} else {
-					// Try to validate as JWT
-					principal, err = validateJWT(c.Request.Context(), cfg, db, token)
-					if err == nil {
-						setPrincipal(c, principal)
-						c.Next()
-						return
-					}
-				}
-			}
-		}
-
-		// No valid authentication found
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-			"error": "unauthorized",
-			"message": "valid authentication required",
-		})
-	}
-}
-
-// RequireAdmin middleware ensures the user has admin role.
-func RequireAdmin() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		principal := GetPrincipal(c)
-		if principal == nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "unauthorized",
-			})
+		if jwtErr != nil && !errors.Is(jwtErr, http.ErrNoCookie) {
+			logger.Error().Err(jwtErr).Msg("jwt validation failed")
+			responses.HandleErrorWithStatus(c, http.StatusUnauthorized, jwtErr, "unauthorized")
 			return
 		}
 
-		// Check for admin role
-		for _, role := range principal.Roles {
-			if role == "admin" {
-				c.Next()
+		switch {
+		case hasXAPIKey:
+			// X-API-Key header takes highest precedence (internal service-to-service calls)
+			setPrincipal(c, xAPIKeyPrincipal)
+		case hasBearerAPIKey:
+			// Bearer API key takes precedence (user explicitly sent sk_* in Authorization header)
+			setPrincipal(c, bearerAPIKeyPrincipal)
+		case hasAPIKey && hasJWT:
+			merged, err := mergePrincipals(apiPrincipal, jwtPrincipal)
+			if err != nil {
+				logger.Warn().Err(err).Msg("principal mismatch between JWT and API key")
+				responses.HandleErrorWithStatus(c, http.StatusUnauthorized, err, "conflicting credentials")
 				return
 			}
+			setPrincipal(c, merged)
+		case hasJWT:
+			setPrincipal(c, jwtPrincipal)
+		case hasAPIKey:
+			setPrincipal(c, apiPrincipal)
+		default:
+			logger.Warn().
+				Str("path", c.FullPath()).
+				Str("method", c.Request.Method).
+				Msg("unauthenticated request")
+			responses.HandleErrorWithStatus(c, http.StatusUnauthorized, errors.New("authentication required"), "unauthorized")
+			return
 		}
 
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-			"error": "forbidden",
-			"message": "admin role required",
-		})
+		c.Next()
 	}
 }
 
-// GetPrincipal retrieves the authenticated principal from the context.
-func GetPrincipal(c *gin.Context) *Principal {
-	if p, exists := c.Get(PrincipalKey); exists {
-		if principal, ok := p.(*Principal); ok {
-			return principal
-		}
+// PrincipalFromContext returns the authenticated principal, if any.
+func PrincipalFromContext(c *gin.Context) (domain.Principal, bool) {
+	val, ok := c.Get(principalContextKey)
+	if !ok {
+		return domain.Principal{}, false
 	}
-	return nil
+	principal, ok := val.(domain.Principal)
+	return principal, ok
 }
 
-func setPrincipal(c *gin.Context, p *Principal) {
-	c.Set(PrincipalKey, p)
+func setPrincipal(c *gin.Context, principal domain.Principal) {
+	c.Set(principalContextKey, principal)
+	// expose commonly-used identity values for downstream handlers
+	c.Set("user_id", principal.ID)
+	c.Set("user_email", principal.Email)
+	if len(principal.Groups) > 0 {
+		c.Set("user_groups", principal.Groups)
+	}
+	if len(principal.FeatureFlags) > 0 {
+		c.Set("feature_flags", principal.FeatureFlags)
+	}
+	if len(principal.Roles) > 0 {
+		c.Set("realm_roles", principal.Roles)
+	}
+	c.Request.Header.Set("X-Principal-Id", principal.ID)
+	c.Request.Header.Set("X-Auth-Method", string(principal.AuthMethod))
+	if principal.ID != "" {
+		c.Request.Header.Set("X-User-ID", principal.ID)
+		c.Writer.Header().Set("X-User-ID", principal.ID)
+	}
+	if principal.Subject != "" {
+		c.Request.Header.Set("X-User-Subject", principal.Subject)
+		c.Writer.Header().Set("X-User-Subject", principal.Subject)
+	}
+	if principal.Username != "" {
+		c.Request.Header.Set("X-User-Username", principal.Username)
+		c.Writer.Header().Set("X-User-Username", principal.Username)
+	}
+	if principal.Email != "" {
+		c.Request.Header.Set("X-User-Email", principal.Email)
+		c.Writer.Header().Set("X-User-Email", principal.Email)
+	}
+	if len(principal.Scopes) > 0 {
+		c.Request.Header.Set("X-Scopes", strings.Join(principal.Scopes, " "))
+	}
+	c.Writer.Header().Set("X-Principal-Id", principal.ID)
+	c.Writer.Header().Set("X-Auth-Method", string(principal.AuthMethod))
+	if len(principal.Scopes) > 0 {
+		c.Writer.Header().Set("X-Scopes", strings.Join(principal.Scopes, " "))
+	}
 }
 
-func extractFromKongHeaders(c *gin.Context) (*Principal, error) {
-	userID := c.GetHeader(KongUserIDHeader)
-	if userID == "" {
-		return nil, errors.New("missing X-User-ID header")
+func principalFromAPIKey(c *gin.Context, fallbackIssuer string) (domain.Principal, bool) {
+	headers := c.Request.Header
+
+	// Prefer gateway injected headers (custom plugin) if available
+	if principal, ok := principalFromGatewayHeaders(headers, fallbackIssuer); ok {
+		return principal, true
 	}
 
-	authMethod := AuthMethod(c.GetHeader(KongAuthMethod))
-	if authMethod == "" {
-		authMethod = AuthMethodKong
+	// Fallback to classic Kong consumer headers
+	if headers.Get("X-Credential-Identifier") == "" {
+		return domain.Principal{}, false
 	}
 
-	return &Principal{
-		ID:           userID,
-		Subject:      c.GetHeader(KongUserSubject),
-		Email:        c.GetHeader(KongUserEmail),
-		Username:     c.GetHeader(KongUserUsername),
-		AuthMethod:   authMethod,
-		AuthProvider: "keycloak", // Kong validates Keycloak tokens
-	}, nil
+	consumerID := headers.Get("X-Consumer-ID")
+	if consumerID == "" {
+		return domain.Principal{}, false
+	}
+
+	username := headers.Get("X-Consumer-Username")
+	customID := headers.Get("X-Consumer-Custom-ID")
+
+	principalID := firstNonEmpty(customID, username, consumerID)
+	if principalID == "" {
+		return domain.Principal{}, false
+	}
+
+	scopes := parseScopes(headers.Get("X-Consumer-Groups"))
+	credentials := map[string]string{
+		"consumer_id":        consumerID,
+		"consumer_custom_id": customID,
+		"consumer_username":  username,
+	}
+	if credID := headers.Get("X-Credential-Identifier"); credID != "" {
+		credentials["credential_identifier"] = credID
+	}
+	if route := headers.Get("X-Route-Id"); route != "" {
+		credentials["route_id"] = route
+	}
+
+	return domain.Principal{
+		ID:          principalID,
+		AuthMethod:  domain.AuthMethodAPIKey,
+		Subject:     principalID,
+		Issuer:      fallbackIssuer,
+		Username:    username,
+		Scopes:      scopes,
+		Credentials: credentials,
+	}, true
 }
 
-func validateJWT(ctx context.Context, cfg *config.Config, db *gorm.DB, tokenString string) (*Principal, error) {
-	// Try local JWT validation first (if enabled)
-	if cfg.LocalAuthEnabled {
-		principal, err := validateLocalJWT(cfg, tokenString)
-		if err == nil {
-			return principal, nil
-		}
+// principalFromBearerAPIKey checks if the Bearer token is actually an API key (starts with sk_)
+// and validates it using the API key service.
+func principalFromBearerAPIKey(c *gin.Context, apiKeyService *apikey.Service, fallbackIssuer string, logger zerolog.Logger) (domain.Principal, bool) {
+	if apiKeyService == nil {
+		return domain.Principal{}, false
 	}
 
-	// Try Keycloak JWT validation (if enabled)
-	if cfg.KeycloakEnabled {
-		principal, err := validateKeycloakJWT(ctx, cfg, tokenString)
-		if err == nil {
-			return principal, nil
-		}
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		return domain.Principal{}, false
 	}
 
-	return nil, errors.New("invalid token")
-}
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		return domain.Principal{}, false
+	}
 
-func validateLocalJWT(cfg *config.Config, tokenString string) (*Principal, error) {
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		// Validate signing method
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, errors.New("unexpected signing method")
-		}
-		return []byte(cfg.LocalJWTSecret), nil
-	})
+	token := strings.TrimSpace(parts[1])
+	if token == "" || !strings.HasPrefix(token, "sk_") {
+		return domain.Principal{}, false
+	}
 
+	// User sent an API key in the Authorization Bearer header
+	logger.Info().
+		Str("token_prefix", token[:5]+"...").
+		Msg("API key detected in Authorization header - validating directly")
+
+	// Validate the API key using the service
+	userInfo, err := apiKeyService.ValidateAPIKey(context.Background(), token)
 	if err != nil {
-		return nil, err
+		logger.Warn().
+			Err(err).
+			Str("token_prefix", token[:5]+"...").
+			Msg("API key validation failed")
+		return domain.Principal{}, false
 	}
 
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok || !token.Valid {
-		return nil, errors.New("invalid token claims")
+	// Create principal from validated API key
+	logger.Info().
+		Str("user_id", userInfo.UserID).
+		Str("email", userInfo.Email).
+		Msg("API key validated successfully")
+
+	return domain.Principal{
+		ID:         userInfo.UserID,
+		AuthMethod: domain.AuthMethodAPIKey,
+		Subject:    userInfo.Subject,
+		Issuer:     fallbackIssuer,
+		Username:   userInfo.Username,
+		Email:      userInfo.Email,
+		Credentials: map[string]string{
+			"api_key_validation": "direct",
+			"user_id":            userInfo.UserID,
+		},
+	}, true
+}
+
+// principalFromXAPIKey checks if the X-API-Key header contains a valid API key
+// and validates it using the API key service. This is used for internal service-to-service calls.
+func principalFromXAPIKey(c *gin.Context, apiKeyService *apikey.Service, fallbackIssuer string, logger zerolog.Logger) (domain.Principal, bool) {
+	if apiKeyService == nil {
+		return domain.Principal{}, false
 	}
 
-	// Check issuer
-	iss, _ := claims["iss"].(string)
-	if iss != cfg.LocalJWTIssuer {
-		return nil, errors.New("invalid issuer")
+	apiKey := strings.TrimSpace(c.GetHeader("X-API-Key"))
+	if apiKey == "" {
+		return domain.Principal{}, false
 	}
 
-	// Extract principal from claims
-	principal := &Principal{
-		ID:           getStringClaim(claims, "sub"),
-		Subject:      getStringClaim(claims, "sub"),
-		Email:        getStringClaim(claims, "email"),
-		Username:     getStringClaim(claims, "preferred_username"),
-		Name:         getStringClaim(claims, "name"),
-		Issuer:       iss,
-		AuthMethod:   AuthMethodLocalJWT,
-		AuthProvider: "local",
+	// Validate the API key using the service
+	userInfo, err := apiKeyService.ValidateAPIKey(context.Background(), apiKey)
+	if err != nil {
+		logger.Warn().
+			Err(err).
+			Msg("X-API-Key validation failed")
+		return domain.Principal{}, false
 	}
 
-	// Extract roles
-	if roles, ok := claims["roles"].([]interface{}); ok {
-		for _, r := range roles {
-			if role, ok := r.(string); ok {
-				principal.Roles = append(principal.Roles, role)
-			}
+	// Create principal from validated API key
+	logger.Debug().
+		Str("user_id", userInfo.UserID).
+		Msg("X-API-Key validated successfully")
+
+	return domain.Principal{
+		ID:         userInfo.UserID,
+		AuthMethod: domain.AuthMethodAPIKey,
+		Subject:    userInfo.Subject,
+		Issuer:     fallbackIssuer,
+		Username:   userInfo.Username,
+		Email:      userInfo.Email,
+		Credentials: map[string]string{
+			"api_key_validation": "x-api-key",
+			"user_id":            userInfo.UserID,
+		},
+	}, true
+}
+
+func principalFromJWT(c *gin.Context, validator *authvalidator.KeycloakValidator) (domain.Principal, bool, error) {
+	if validator == nil {
+		return domain.Principal{}, false, http.ErrNoCookie
+	}
+
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		return domain.Principal{}, false, http.ErrNoCookie
+	}
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		return domain.Principal{}, false, http.ErrNoCookie
+	}
+	token := strings.TrimSpace(parts[1])
+	if token == "" {
+		return domain.Principal{}, false, http.ErrNoCookie
+	}
+
+	// Check if the token is an API key (starts with sk_)
+	// If so, don't treat it as JWT - return not found to let API key validation handle it
+	if strings.HasPrefix(token, "sk_") {
+		return domain.Principal{}, false, http.ErrNoCookie
+	}
+
+	claims, err := validator.Validate(c.Request.Context(), token)
+	if err != nil {
+		return domain.Principal{}, false, err
+	}
+	credentials := map[string]string{
+		"token_id": claims.TokenID,
+	}
+	if claims.Issuer != "" {
+		credentials["issuer"] = claims.Issuer
+	}
+	if claims.Picture != "" {
+		credentials["picture"] = claims.Picture
+	}
+	if claims.AuthorizedParty != "" {
+		credentials["authorized_party"] = claims.AuthorizedParty
+	}
+
+	return domain.Principal{
+		ID:              claims.Subject,
+		AuthMethod:      domain.AuthMethodJWT,
+		Subject:         claims.Subject,
+		Issuer:          claims.Issuer,
+		AuthorizedParty: claims.AuthorizedParty,
+		Audience:        claims.Audience,
+		Username:        claims.PreferredUsername,
+		Email:           claims.Email,
+		Name:            claims.Name,
+		Roles:           claims.Roles,
+		Groups:          claims.Groups,
+		FeatureFlags:    claims.FeatureFlags,
+		Attributes:      claims.Attributes,
+		Scopes:          claims.Scopes,
+		Credentials:     credentials,
+	}, true, nil
+}
+
+func mergePrincipals(apiPrincipal, jwtPrincipal domain.Principal) (domain.Principal, error) {
+	if apiPrincipal.Subject != "" && jwtPrincipal.Subject != "" && !strings.EqualFold(apiPrincipal.Subject, jwtPrincipal.Subject) {
+		return domain.Principal{}, errors.New("principal subjects mismatch")
+	}
+
+	merged := jwtPrincipal
+	merged.AuthMethod = domain.AuthMethodJWT
+	merged.Credentials = map[string]string{}
+	for k, v := range jwtPrincipal.Credentials {
+		merged.Credentials[k] = v
+	}
+	for k, v := range apiPrincipal.Credentials {
+		merged.Credentials[k] = v
+	}
+	merged.Credentials["authenticated_via"] = "jwt+api_key"
+	merged.Credentials["api_key_subject"] = apiPrincipal.Subject
+	merged.Credentials["api_key_consumer_id"] = apiPrincipal.Credentials["consumer_id"]
+	merged.Credentials["api_key_username"] = apiPrincipal.Username
+
+	if merged.Username == "" {
+		merged.Username = apiPrincipal.Username
+	}
+	if merged.Email == "" {
+		merged.Email = apiPrincipal.Email
+	}
+	if merged.Name == "" {
+		merged.Name = apiPrincipal.Name
+	}
+
+	merged.Scopes = mergeScopes(jwtPrincipal.Scopes, apiPrincipal.Scopes)
+
+	return merged, nil
+}
+
+func mergeScopes(primary, secondary []string) []string {
+	if len(secondary) == 0 {
+		return primary
+	}
+	seen := make(map[string]struct{}, len(primary)+len(secondary))
+	var out []string
+	for _, scope := range primary {
+		scope = strings.TrimSpace(scope)
+		if scope == "" {
+			continue
+		}
+		if _, exists := seen[scope]; !exists {
+			out = append(out, scope)
+			seen[scope] = struct{}{}
 		}
 	}
-
-	return principal, nil
+	for _, scope := range secondary {
+		scope = strings.TrimSpace(scope)
+		if scope == "" {
+			continue
+		}
+		if _, exists := seen[scope]; !exists {
+			out = append(out, scope)
+			seen[scope] = struct{}{}
+		}
+	}
+	return out
 }
 
-func validateKeycloakJWT(ctx context.Context, cfg *config.Config, tokenString string) (*Principal, error) {
-	// TODO: Implement Keycloak JWT validation using JWKS
-	// This requires fetching the JWKS from Keycloak and validating the signature
-	// For now, return an error to indicate not implemented
-	return nil, errors.New("keycloak jwt validation not yet implemented")
-}
+func principalFromGatewayHeaders(headers http.Header, fallbackIssuer string) (domain.Principal, bool) {
+	userID := strings.TrimSpace(headers.Get("X-User-ID"))
+	subject := strings.TrimSpace(headers.Get("X-User-Subject"))
+	authMethod := strings.TrimSpace(headers.Get("X-Auth-Method"))
 
-func validateAPIKey(ctx context.Context, cfg *config.Config, db *gorm.DB, apiKey string) (*Principal, error) {
-	// Use the user service to validate the API key
-	repo := newUserRepository(db)
-	svc := newUserService(repo, cfg)
-
-	user, _, err := svc.ValidateAPIKey(ctx, apiKey)
-	if err != nil {
-		return nil, err
+	if userID == "" && subject == "" && !strings.EqualFold(authMethod, string(domain.AuthMethodAPIKey)) {
+		return domain.Principal{}, false
 	}
 
-	roles := []string{"user"}
-	if user.IsAdmin {
-		roles = append(roles, "admin")
+	principalID := firstNonEmpty(
+		userID,
+		subject,
+		headers.Get("X-Consumer-Custom-ID"),
+		headers.Get("X-Consumer-ID"),
+	)
+	if principalID == "" {
+		return domain.Principal{}, false
 	}
 
-	return &Principal{
-		ID:           user.ID,
-		Subject:      user.ID,
-		Email:        user.Email,
-		Username:     user.Username,
-		Name:         user.Name,
-		Roles:        roles,
-		AuthMethod:   AuthMethodAPIKey,
-		AuthProvider: "local",
-	}, nil
+	credentials := map[string]string{}
+	if userID != "" {
+		credentials["gateway_user_id"] = userID
+	}
+	if subject != "" {
+		credentials["gateway_subject"] = subject
+	}
+	if consumerID := headers.Get("X-Consumer-ID"); consumerID != "" {
+		credentials["consumer_id"] = consumerID
+	}
+	if consumerCustomID := headers.Get("X-Consumer-Custom-ID"); consumerCustomID != "" {
+		credentials["consumer_custom_id"] = consumerCustomID
+	}
+	if consumerUsername := headers.Get("X-Consumer-Username"); consumerUsername != "" {
+		credentials["consumer_username"] = consumerUsername
+	}
+	if credID := headers.Get("X-Credential-Identifier"); credID != "" {
+		credentials["credential_identifier"] = credID
+	}
+
+	return domain.Principal{
+		ID:          principalID,
+		AuthMethod:  domain.AuthMethodAPIKey,
+		Subject:     firstNonEmpty(subject, principalID),
+		Issuer:      fallbackIssuer,
+		Username:    firstNonEmpty(headers.Get("X-User-Username"), headers.Get("X-Consumer-Username")),
+		Email:       headers.Get("X-User-Email"),
+		Scopes:      parseScopes(headers.Get("X-Consumer-Groups")),
+		Credentials: credentials,
+	}, true
 }
 
-func getStringClaim(claims jwt.MapClaims, key string) string {
-	if v, ok := claims[key].(string); ok {
-		return v
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
 	}
 	return ""
+}
+
+func parseScopes(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	items := strings.Split(raw, ",")
+	var out []string
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+// GetUserIDFromContext returns the authenticated user's ID as a string
+func GetUserIDFromContext(c *gin.Context) string {
+	principal, ok := PrincipalFromContext(c)
+	if !ok {
+		return ""
+	}
+	return principal.ID
 }

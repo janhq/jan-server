@@ -1,0 +1,14 @@
+{
+  "id": 59,
+  "dir": "59",
+  "name": "Eco Report",
+  "tone": "Sustainability Earthy",
+  "description": "Grid/paper background pairs well with earthy palettes.",
+  "variants": {
+    "base": 6,
+    "bullets": 4,
+    "split": 5,
+    "hero": 1,
+    "title": 4
+  }
+}

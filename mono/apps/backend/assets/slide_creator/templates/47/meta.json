@@ -1,0 +1,14 @@
+{
+  "id": 47,
+  "dir": "47",
+  "name": "Notebook",
+  "tone": "Education Friendly",
+  "description": "Sidebar guidance + structured body; classroom/learning friendly.",
+  "variants": {
+    "base": 3,
+    "bullets": 2,
+    "split": 1,
+    "hero": 2,
+    "title": 2
+  }
+}

@@ -1,26 +1,34 @@
 package middlewares
 
 import (
-	"jan-server/mono/apps/backend/internal/infrastructure/config"
-
 	"github.com/gin-gonic/gin"
 )
 
-// CORS middleware handles Cross-Origin Resource Sharing.
-func CORS(cfg *config.Config) gin.HandlerFunc {
+// CORSMiddleware returns a middleware that handles CORS
+func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		origin := c.GetHeader("Origin")
+		origin := c.Request.Header.Get("Origin")
 
-		// Allow all origins in development, restrict in production
-		if cfg.Environment == "development" || origin != "" {
-			c.Header("Access-Control-Allow-Origin", origin)
-			c.Header("Access-Control-Allow-Credentials", "true")
-			c.Header("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-API-Key, X-Request-ID, Accept, Origin, Cache-Control, X-Requested-With")
-			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD")
-			c.Header("Access-Control-Expose-Headers", "Content-Length, X-Request-ID")
-			c.Header("Access-Control-Max-Age", "86400")
+		// List of allowed origins
+		allowedOrigins := map[string]bool{
+			"http://localhost":      true,
+			"http://localhost:3000": true,
+			"http://localhost:8080": true,
+			"http://127.0.0.1":      true,
 		}
 
+		// Check if origin is allowed
+		if allowedOrigins[origin] {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
+
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-API-Key, Idempotency-Key, X-Request-Id, Mcp-Session-Id")
+		c.Writer.Header().Set("Access-Control-Expose-Headers", "X-Request-Id")
+		c.Writer.Header().Set("Access-Control-Max-Age", "3600")
+
+		// Handle preflight requests
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
 			return

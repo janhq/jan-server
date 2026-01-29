@@ -2,62 +2,113 @@ package artifact
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
-	"errors"
+	"encoding/json"
+	"fmt"
+	"time"
 )
 
-var (
-	ErrArtifactNotFound = errors.New("artifact not found")
-	ErrUnauthorized     = errors.New("unauthorized")
-)
+// Service defines the interface for artifact business logic.
+type Service interface {
+	// Create creates a new artifact.
+	Create(ctx context.Context, params CreateParams) (*Artifact, error)
 
-// Repository defines the interface for artifact data operations.
-type Repository interface {
-	Create(ctx context.Context, artifact *Artifact) error
+	// CreateVersion creates a new version of an existing artifact.
+	CreateVersion(ctx context.Context, artifactID string, params UpdateParams) (*Artifact, error)
+
+	// GetByID retrieves an artifact by ID.
 	GetByID(ctx context.Context, id string) (*Artifact, error)
-	GetByShareToken(ctx context.Context, token string) (*Artifact, error)
-	Update(ctx context.Context, artifact *Artifact) error
-	Delete(ctx context.Context, id string) error
-	List(ctx context.Context, filter ListArtifactsFilter) ([]*Artifact, int64, error)
 
-	// Version operations
-	CreateVersion(ctx context.Context, version *ArtifactVersion) error
-	ListVersions(ctx context.Context, artifactID string) ([]*ArtifactVersion, error)
-	GetVersion(ctx context.Context, artifactID string, version int) (*ArtifactVersion, error)
+	// ResolveInternalID resolves a public ID to internal ID (for cursor pagination).
+	ResolveInternalID(ctx context.Context, publicID string) (*uint, error)
+
+	// GetLatestByResponseID gets the latest artifact for a response.
+	GetLatestByResponseID(ctx context.Context, responseID string) (*Artifact, error)
+
+	// GetLatestByPlanID gets the latest artifact for a plan.
+	GetLatestByPlanID(ctx context.Context, planID string) (*Artifact, error)
+
+	// GetVersions retrieves all versions of an artifact.
+	GetVersions(ctx context.Context, artifactID string) ([]*Artifact, error)
+
+	// UpdateMetadata updates artifact metadata.
+	UpdateMetadata(ctx context.Context, id string, metadata json.RawMessage) error
+
+	// SetRetention updates the retention policy.
+	SetRetention(ctx context.Context, id string, policy RetentionPolicy, expiresAt *time.Time) error
+
+	// Delete removes an artifact.
+	Delete(ctx context.Context, id string) error
+
+	// CleanupExpired removes expired artifacts.
+	CleanupExpired(ctx context.Context) (int64, error)
+
+	// List retrieves artifacts matching the filter.
+	List(ctx context.Context, filter *Filter) ([]*Artifact, int64, error)
 }
 
-// Service handles artifact-related business logic.
-type Service struct {
+// CreateParams contains parameters for creating a new artifact.
+type CreateParams struct {
+	ResponseID      string
+	PlanID          *string
+	ContentType     ContentType
+	MimeType        *string // Optional, defaults based on ContentType
+	Title           string
+	Content         *string // For inline content
+	StoragePath     *string // For file-based content
+	SizeBytes       int64
+	RetentionPolicy RetentionPolicy
+	Metadata        json.RawMessage
+	ExpiresAt       *time.Time
+}
+
+// UpdateParams contains parameters for updating/versioning an artifact.
+type UpdateParams struct {
+	Title       *string
+	Content     *string
+	StoragePath *string
+	SizeBytes   *int64
+	Metadata    json.RawMessage
+}
+
+// DefaultService implements the Service interface.
+type DefaultService struct {
 	repo Repository
 }
 
 // NewService creates a new artifact service.
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repository) Service {
+	return &DefaultService{repo: repo}
 }
 
 // Create creates a new artifact.
-func (s *Service) Create(ctx context.Context, userID string, req CreateArtifactRequest) (*Artifact, error) {
-	artifact := &Artifact{
-		UserID:         userID,
-		ConversationID: req.ConversationID,
-		ResponseID:     req.ResponseID,
-		Title:          req.Title,
-		Description:    req.Description,
-		Type:           req.Type,
-		Language:       req.Language,
-		Content:        req.Content,
-		Version:        1,
-		Metadata:       req.Metadata,
-		IsPublic:       req.IsPublic,
+func (s *DefaultService) Create(ctx context.Context, params CreateParams) (*Artifact, error) {
+	// Validate content
+	if params.Content == nil && params.StoragePath == nil {
+		return nil, fmt.Errorf("artifact must have either content or storage_path")
 	}
 
-	if artifact.Title == "" {
-		artifact.Title = "Untitled"
+	// Determine MIME type
+	mimeType := params.ContentType.MimeTypeFor()
+	if params.MimeType != nil {
+		mimeType = *params.MimeType
 	}
-	if artifact.Type == "" {
-		artifact.Type = "code"
+
+	artifact := &Artifact{
+		ResponseID:      params.ResponseID,
+		PlanID:          params.PlanID,
+		ContentType:     params.ContentType,
+		MimeType:        mimeType,
+		Title:           params.Title,
+		Content:         params.Content,
+		StoragePath:     params.StoragePath,
+		SizeBytes:       params.SizeBytes,
+		Version:         1,
+		IsLatest:        true,
+		RetentionPolicy: params.RetentionPolicy,
+		Metadata:        params.Metadata,
+		CreatedAt:       time.Now().UTC(),
+		UpdatedAt:       time.Now().UTC(),
+		ExpiresAt:       params.ExpiresAt,
 	}
 
 	if err := s.repo.Create(ctx, artifact); err != nil {
@@ -67,152 +118,109 @@ func (s *Service) Create(ctx context.Context, userID string, req CreateArtifactR
 	return artifact, nil
 }
 
-// GetByID retrieves an artifact by ID.
-func (s *Service) GetByID(ctx context.Context, userID, id string) (*Artifact, error) {
-	artifact, err := s.repo.GetByID(ctx, id)
+// CreateVersion creates a new version of an existing artifact.
+func (s *DefaultService) CreateVersion(ctx context.Context, artifactID string, params UpdateParams) (*Artifact, error) {
+	existing, err := s.repo.FindByID(ctx, artifactID)
 	if err != nil {
-		return nil, ErrArtifactNotFound
-	}
-
-	// Check ownership or public access
-	if artifact.UserID != userID && !artifact.IsPublic {
-		return nil, ErrUnauthorized
-	}
-
-	return artifact, nil
-}
-
-// Update updates an artifact and creates a version backup.
-func (s *Service) Update(ctx context.Context, userID, id string, req UpdateArtifactRequest) (*Artifact, error) {
-	artifact, err := s.repo.GetByID(ctx, id)
-	if err != nil {
-		return nil, ErrArtifactNotFound
-	}
-
-	if artifact.UserID != userID {
-		return nil, ErrUnauthorized
-	}
-
-	// Create version backup if content is changing
-	if req.Content != nil && *req.Content != artifact.Content {
-		version := &ArtifactVersion{
-			ArtifactID: artifact.ID,
-			Version:    artifact.Version,
-			Content:    artifact.Content,
-		}
-		if err := s.repo.CreateVersion(ctx, version); err != nil {
-			return nil, err
-		}
-		artifact.Version++
-		artifact.Content = *req.Content
-	}
-
-	if req.Title != nil {
-		artifact.Title = *req.Title
-	}
-	if req.Description != nil {
-		artifact.Description = *req.Description
-	}
-	if req.Language != nil {
-		artifact.Language = *req.Language
-	}
-	if req.IsPublic != nil {
-		artifact.IsPublic = *req.IsPublic
-	}
-	if req.Metadata != nil {
-		artifact.Metadata = req.Metadata
-	}
-
-	if err := s.repo.Update(ctx, artifact); err != nil {
 		return nil, err
 	}
 
-	return artifact, nil
+	// Create new version
+	newArtifact := existing.CreateNextVersion()
+
+	// Apply updates
+	if params.Title != nil {
+		newArtifact.Title = *params.Title
+	}
+	if params.Content != nil {
+		newArtifact.Content = params.Content
+	}
+	if params.StoragePath != nil {
+		newArtifact.StoragePath = params.StoragePath
+	}
+	if params.SizeBytes != nil {
+		newArtifact.SizeBytes = *params.SizeBytes
+	}
+	if params.Metadata != nil {
+		newArtifact.Metadata = params.Metadata
+	}
+
+	// Save new version
+	if err := s.repo.Create(ctx, newArtifact); err != nil {
+		return nil, err
+	}
+
+	// Mark old versions as not latest
+	if err := s.repo.MarkOldVersionsNotLatest(ctx, newArtifact.ID, artifactID); err != nil {
+		return nil, err
+	}
+
+	return newArtifact, nil
 }
 
-// Delete deletes an artifact.
-func (s *Service) Delete(ctx context.Context, userID, id string) error {
-	artifact, err := s.repo.GetByID(ctx, id)
+// GetByID retrieves an artifact by ID.
+func (s *DefaultService) GetByID(ctx context.Context, id string) (*Artifact, error) {
+	return s.repo.FindByID(ctx, id)
+}
+
+// ResolveInternalID resolves a public ID to internal ID (for cursor pagination).
+func (s *DefaultService) ResolveInternalID(ctx context.Context, publicID string) (*uint, error) {
+	return s.repo.FindInternalIDByPublicID(ctx, publicID)
+}
+
+// GetLatestByResponseID gets the latest artifact for a response.
+func (s *DefaultService) GetLatestByResponseID(ctx context.Context, responseID string) (*Artifact, error) {
+	return s.repo.FindLatestByResponseID(ctx, responseID)
+}
+
+// GetLatestByPlanID gets the latest artifact for a plan.
+func (s *DefaultService) GetLatestByPlanID(ctx context.Context, planID string) (*Artifact, error) {
+	return s.repo.FindLatestByPlanID(ctx, planID)
+}
+
+// GetVersions retrieves all versions of an artifact.
+func (s *DefaultService) GetVersions(ctx context.Context, artifactID string) ([]*Artifact, error) {
+	return s.repo.ListVersions(ctx, artifactID)
+}
+
+// UpdateMetadata updates artifact metadata.
+func (s *DefaultService) UpdateMetadata(ctx context.Context, id string, metadata json.RawMessage) error {
+	artifact, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		return ErrArtifactNotFound
+		return err
 	}
 
-	if artifact.UserID != userID {
-		return ErrUnauthorized
+	artifact.Metadata = metadata
+	artifact.UpdatedAt = time.Now().UTC()
+
+	return s.repo.Update(ctx, artifact)
+}
+
+// SetRetention updates the retention policy.
+func (s *DefaultService) SetRetention(ctx context.Context, id string, policy RetentionPolicy, expiresAt *time.Time) error {
+	artifact, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return err
 	}
 
+	artifact.RetentionPolicy = policy
+	artifact.ExpiresAt = expiresAt
+	artifact.UpdatedAt = time.Now().UTC()
+
+	return s.repo.Update(ctx, artifact)
+}
+
+// Delete removes an artifact.
+func (s *DefaultService) Delete(ctx context.Context, id string) error {
 	return s.repo.Delete(ctx, id)
 }
 
-// List lists artifacts for a user.
-func (s *Service) List(ctx context.Context, filter ListArtifactsFilter) ([]*Artifact, int64, error) {
-	if filter.Limit <= 0 {
-		filter.Limit = 20
-	}
-	if filter.Limit > 100 {
-		filter.Limit = 100
-	}
+// CleanupExpired removes expired artifacts.
+func (s *DefaultService) CleanupExpired(ctx context.Context) (int64, error) {
+	return s.repo.DeleteExpired(ctx)
+}
 
+// List retrieves artifacts matching the filter.
+func (s *DefaultService) List(ctx context.Context, filter *Filter) ([]*Artifact, int64, error) {
 	return s.repo.List(ctx, filter)
-}
-
-// ListVersions lists all versions of an artifact.
-func (s *Service) ListVersions(ctx context.Context, userID, id string) ([]*ArtifactVersion, error) {
-	artifact, err := s.repo.GetByID(ctx, id)
-	if err != nil {
-		return nil, ErrArtifactNotFound
-	}
-
-	if artifact.UserID != userID {
-		return nil, ErrUnauthorized
-	}
-
-	return s.repo.ListVersions(ctx, id)
-}
-
-// GetVersion retrieves a specific version of an artifact.
-func (s *Service) GetVersion(ctx context.Context, userID, id string, version int) (*ArtifactVersion, error) {
-	artifact, err := s.repo.GetByID(ctx, id)
-	if err != nil {
-		return nil, ErrArtifactNotFound
-	}
-
-	if artifact.UserID != userID {
-		return nil, ErrUnauthorized
-	}
-
-	return s.repo.GetVersion(ctx, id, version)
-}
-
-// Share generates a share token for an artifact.
-func (s *Service) Share(ctx context.Context, userID, id string) (*Artifact, error) {
-	artifact, err := s.repo.GetByID(ctx, id)
-	if err != nil {
-		return nil, ErrArtifactNotFound
-	}
-
-	if artifact.UserID != userID {
-		return nil, ErrUnauthorized
-	}
-
-	// Generate share token
-	tokenBytes := make([]byte, 16)
-	if _, err := rand.Read(tokenBytes); err != nil {
-		return nil, err
-	}
-	token := base64.RawURLEncoding.EncodeToString(tokenBytes)
-
-	artifact.ShareToken = &token
-	artifact.IsPublic = true
-
-	if err := s.repo.Update(ctx, artifact); err != nil {
-		return nil, err
-	}
-
-	return artifact, nil
-}
-
-// GetByShareToken retrieves an artifact by its share token.
-func (s *Service) GetByShareToken(ctx context.Context, token string) (*Artifact, error) {
-	return s.repo.GetByShareToken(ctx, token)
 }

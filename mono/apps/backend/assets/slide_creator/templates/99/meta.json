@@ -1,0 +1,14 @@
+{
+  "id": 99,
+  "dir": "99",
+  "name": "Athlete Story",
+  "tone": "Sports/Energy",
+  "description": "Bold band framing; dynamic pacing and clear takeaways.",
+  "variants": {
+    "base": 4,
+    "bullets": 4,
+    "split": 3,
+    "hero": 1,
+    "title": 4
+  }
+}

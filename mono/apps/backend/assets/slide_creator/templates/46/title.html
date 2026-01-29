@@ -1,0 +1,12 @@
+{{define "body"}}
+<section style="height:100%; display:flex; align-items:center; justify-content:center; text-align:center; overflow:hidden;">
+  <div style="max-width:1200px;">
+    <div style="font-size:14px; font-weight:900; letter-spacing:0.18em; text-transform:uppercase; color:{{.Theme.AccentColor}};">Slide {{.Index}}/{{.Total}}</div>
+    <h1 style="margin:18px 0 0 0; font-size:84px; line-height:1.03; font-weight:950; letter-spacing:-0.02em; color:{{.Theme.TextColor}}; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Slide.Title 120}}</h1>
+    {{if .Slide.Subtitle}}<p style="margin:22px 0 0 0; font-size:30px; line-height:1.25; font-weight:650; color:{{.Muted}}; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;">{{trimToRunes .Slide.Subtitle 220}}</p>{{end}}
+    {{if .Title.Notes}}<div style="margin-top:28px; display:flex; justify-content:center; gap:14px; flex-wrap:wrap;">
+      <span style="font-size:14px; font-weight:850; color:{{.Theme.TextColor}}; background:{{withAlpha .Theme.TextColor 0.06}}; border:1px solid {{.BodyBorder}}; padding:10px 14px; border-radius:999px;">{{trimToRunes .Title.Notes 80}}</span>
+    </div>{{end}}
+  </div>
+</section>
+{{end}}

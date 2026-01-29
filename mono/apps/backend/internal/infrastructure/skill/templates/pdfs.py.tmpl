@@ -1,0 +1,48 @@
+from reportlab.lib.pagesizes import A4, LETTER
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+import json
+
+data = {{.ContentJSON}}
+options = {{.OptionsJSON}}
+
+page_sizes = {"A4": A4, "Letter": LETTER, "Legal": (8.5 * inch, 14 * inch)}
+page_size = page_sizes.get(options.get("page_size") or data.get("page_size") or "A4", A4)
+
+output_path = "{{.OutputPath}}"
+doc = SimpleDocTemplate(output_path, pagesize=page_size)
+styles = getSampleStyleSheet()
+story = []
+
+title_style = ParagraphStyle("Title", parent=styles["Heading1"], fontSize=24, spaceAfter=30)
+story.append(Paragraph(data.get("title", "Untitled"), title_style))
+
+for section in data.get("sections", []):
+    if section.get("heading"):
+        story.append(Paragraph(section["heading"], styles["Heading2"]))
+        story.append(Spacer(1, 12))
+
+    if section.get("text"):
+        story.append(Paragraph(section["text"], styles["Normal"]))
+        story.append(Spacer(1, 12))
+
+    if section.get("table"):
+        table_data = section["table"]
+        headers = table_data.get("headers", [])
+        rows = table_data.get("rows", [])
+        if headers:
+            all_data = [headers] + rows
+            t = Table(all_data)
+            t.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("GRID", (0, 0), (-1, -1), 1, colors.black),
+            ]))
+            story.append(t)
+            story.append(Spacer(1, 12))
+
+doc.build(story)
+print(f"OUTPUT_PATH:{output_path}")

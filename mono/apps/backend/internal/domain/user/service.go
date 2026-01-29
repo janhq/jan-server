@@ -417,3 +417,69 @@ func hashToken(token string) string {
 	h := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(h[:])
 }
+
+// EnsureUser creates or updates a user based on the given identity.
+// This is used to ensure a user record exists for OIDC-authenticated principals.
+func (s *Service) EnsureUser(ctx context.Context, identity Identity) (*User, error) {
+	if identity.Issuer == "" || identity.Subject == "" {
+		return nil, ErrInvalidIdentity
+	}
+
+	// Use issuer + subject as a stable identifier
+	// This creates a user ID based on the external identity
+	userID := identity.Subject
+
+	// Try to find existing user by ID (subject)
+	existing, err := s.repo.GetByID(ctx, userID)
+	if err == nil && existing != nil {
+		// Update fields if they changed
+		needUpdate := false
+		if identity.Email != nil && *identity.Email != existing.Email {
+			existing.Email = *identity.Email
+			needUpdate = true
+		}
+		if identity.Username != nil && *identity.Username != existing.Username {
+			existing.Username = *identity.Username
+			needUpdate = true
+		}
+		if identity.Name != nil && *identity.Name != existing.Name {
+			existing.Name = *identity.Name
+			needUpdate = true
+		}
+		if needUpdate {
+			if err := s.repo.Update(ctx, existing); err != nil {
+				return nil, fmt.Errorf("update user: %w", err)
+			}
+		}
+		return existing, nil
+	}
+
+	// Create new user
+	email := ""
+	if identity.Email != nil {
+		email = *identity.Email
+	}
+	username := userID
+	if identity.Username != nil {
+		username = *identity.Username
+	}
+	name := ""
+	if identity.Name != nil {
+		name = *identity.Name
+	}
+
+	user := &User{
+		ID:       userID,
+		Email:    email,
+		Username: username,
+		Name:     name,
+		IsActive: true,
+		IsAdmin:  false,
+	}
+
+	if err := s.repo.Create(ctx, user); err != nil {
+		return nil, fmt.Errorf("create user: %w", err)
+	}
+
+	return user, nil
+}

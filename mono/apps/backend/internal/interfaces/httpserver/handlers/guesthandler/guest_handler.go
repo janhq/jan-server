@@ -1,0 +1,112 @@
+package guestauth
+
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"jan-server/mono/apps/backend/pkg/common/analytics"
+	"github.com/rs/zerolog"
+
+	"jan-server/mono/apps/backend/internal/domain"
+	"jan-server/mono/apps/backend/internal/infrastructure/keycloak"
+	"jan-server/mono/apps/backend/internal/interfaces/httpserver/middlewares"
+	"jan-server/mono/apps/backend/internal/interfaces/httpserver/responses"
+)
+
+const (
+	// RefreshTokenCookieName is the name of the cookie that stores the refresh token
+	RefreshTokenCookieName = "refresh_token"
+)
+
+// GuestHandler handles guest authentication flows.
+type GuestHandler struct {
+	kc     *keycloak.Client
+	logger zerolog.Logger
+}
+
+// NewGuestHandler constructs a handler instance.
+func NewGuestHandler(kc *keycloak.Client, logger zerolog.Logger) *GuestHandler {
+	return &GuestHandler{kc: kc, logger: logger}
+}
+
+// UpgradeHandler handles user upgrade flows.
+type UpgradeHandler struct {
+	kc     *keycloak.Client
+	logger zerolog.Logger
+}
+
+// NewUpgradeHandler constructs an upgrade handler instance.
+func NewUpgradeHandler(kc *keycloak.Client, logger zerolog.Logger) *UpgradeHandler {
+	return &UpgradeHandler{kc: kc, logger: logger}
+}
+
+// CreateGuest handles POST /auth/guest-login requests.
+func (h *GuestHandler) CreateGuest(c *gin.Context) {
+	creds, err := h.kc.CreateGuest(c.Request.Context())
+	if err != nil {
+		h.logger.Error().Err(err).Msg("create guest user")
+		responses.HandleErrorWithStatus(c, http.StatusBadGateway, err, "failed to provision guest")
+
+		return
+	}
+
+	// Track user_logged_in event
+	if creds.PrincipalID != "" {
+		tracker := analytics.TrackerFromContext(c.Request.Context())
+		if tracker != nil {
+			values := analytics.ValuesFromContext(c.Request.Context())
+			event := analytics.NewEvent(analytics.EventUserLoggedIn, creds.PrincipalID).
+				WithProperties(map[string]interface{}{
+					analytics.PropAuthMethod: "guest",
+					analytics.PropIsNewUser:  true,
+					analytics.PropUserStatus: "guest",
+					analytics.PropPlatform:   values.Platform,
+				})
+			go func() {
+				_ = tracker.Track(c.Request.Context(), event)
+			}()
+		}
+	}
+
+	// Return tokens in JSON response (token-based authentication, not cookies)
+	c.JSON(http.StatusCreated, gin.H{
+		"user_id":       creds.UserID,
+		"username":      creds.Username,
+		"principal_id":  creds.PrincipalID,
+		"access_token":  creds.Tokens.AccessToken,
+		"refresh_token": creds.Tokens.RefreshToken,
+		"token_type":    creds.Tokens.TokenType,
+		"expires_in":    creds.Tokens.ExpiresIn,
+	})
+}
+
+// Upgrade processes POST /auth/upgrade.
+func (h *UpgradeHandler) Upgrade(c *gin.Context) {
+	principal, ok := middlewares.PrincipalFromContext(c)
+	if !ok || principal.ID == "" {
+		responses.HandleErrorWithStatus(c, http.StatusUnauthorized, nil, "principal missing")
+		return
+	}
+
+	var payload keycloak.UpgradePayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		responses.HandleErrorWithStatus(c, http.StatusBadRequest, err, "invalid payload")
+
+		return
+	}
+
+	if err := h.kc.UpgradeUser(c.Request.Context(), subjectFromPrincipal(principal), payload); err != nil {
+		h.logger.Error().Err(err).Str("subject", principal.Subject).Msg("upgrade user failed")
+		responses.HandleErrorWithStatus(c, http.StatusBadGateway, err, "failed to upgrade user")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "upgraded"})
+}
+
+func subjectFromPrincipal(p domain.Principal) string {
+	if p.Subject != "" {
+		return p.Subject
+	}
+	return p.ID
+}

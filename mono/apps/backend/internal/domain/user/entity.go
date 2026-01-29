@@ -13,6 +13,7 @@ type User struct {
 	Name         string
 	IsActive     bool
 	IsAdmin      bool
+	IsGuest      bool
 	LastLoginAt  *time.Time
 	CreatedAt    time.Time
 	UpdatedAt    time.Time

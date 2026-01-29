@@ -5,30 +5,28 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-	RequestIDHeader = "X-Request-ID"
-	RequestIDKey    = "request_id"
-)
+const requestIDHeader = "X-Request-Id"
 
-// RequestID middleware adds a unique request ID to each request.
+// RequestID injects an X-Request-Id header when missing and makes it available via gin context.
 func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		requestID := c.GetHeader(RequestIDHeader)
+		requestID := c.GetHeader(requestIDHeader)
 		if requestID == "" {
-			requestID = uuid.New().String()
+			requestID = uuid.NewString()
+			c.Request.Header.Set(requestIDHeader, requestID)
 		}
-
-		c.Set(RequestIDKey, requestID)
-		c.Header(RequestIDHeader, requestID)
-
+		c.Writer.Header().Set(requestIDHeader, requestID)
+		c.Set(requestIDHeader, requestID)
 		c.Next()
 	}
 }
 
-// GetRequestID retrieves the request ID from the context.
-func GetRequestID(c *gin.Context) string {
-	if id, exists := c.Get(RequestIDKey); exists {
-		return id.(string)
+// RequestIDFromContext returns the request id stored in the gin context.
+func RequestIDFromContext(c *gin.Context) string {
+	if val, ok := c.Get(requestIDHeader); ok {
+		if id, ok := val.(string); ok {
+			return id
+		}
 	}
 	return ""
 }

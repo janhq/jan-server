@@ -1,0 +1,14 @@
+{
+  "id": 51,
+  "dir": "51",
+  "name": "Market Brief",
+  "tone": "Finance Professional",
+  "description": "Structured, conservative frames for finance/strategy decks.",
+  "variants": {
+    "base": 9,
+    "bullets": 1,
+    "split": 1,
+    "hero": 1,
+    "title": 1
+  }
+}

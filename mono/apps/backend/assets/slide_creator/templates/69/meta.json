@@ -1,0 +1,14 @@
+{
+  "id": 69,
+  "dir": "69",
+  "name": "Insight Pack",
+  "tone": "Data Analyst",
+  "description": "Grid-forward layout for charts/tables and analytic narratives.",
+  "variants": {
+    "base": 6,
+    "bullets": 4,
+    "split": 2,
+    "hero": 1,
+    "title": 4
+  }
+}

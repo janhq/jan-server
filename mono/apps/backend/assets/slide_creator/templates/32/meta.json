@@ -1,0 +1,14 @@
+{
+  "id": 32,
+  "dir": "32",
+  "name": "Op-Ed",
+  "tone": "Editorial Serif",
+  "description": "Paper/grid editorial vibe; strong reading flow.",
+  "variants": {
+    "base": 6,
+    "bullets": 2,
+    "split": 3,
+    "hero": 2,
+    "title": 2
+  }
+}

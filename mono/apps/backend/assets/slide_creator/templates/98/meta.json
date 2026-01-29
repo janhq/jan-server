@@ -1,0 +1,14 @@
+{
+  "id": 98,
+  "dir": "98",
+  "name": "Game Plan",
+  "tone": "Sports/Energy",
+  "description": "Bold band framing; dynamic pacing and clear takeaways.",
+  "variants": {
+    "base": 4,
+    "bullets": 3,
+    "split": 2,
+    "hero": 3,
+    "title": 3
+  }
+}

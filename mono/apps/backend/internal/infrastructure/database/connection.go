@@ -5,7 +5,10 @@ import (
 	"time"
 
 	"jan-server/mono/apps/backend/internal/infrastructure/config"
-	"jan-server/mono/apps/backend/internal/infrastructure/database/dbschema"
+	"jan-server/mono/apps/backend/internal/infrastructure/database/registry"
+
+	// Import dbschema to register schemas via init()
+	_ "jan-server/mono/apps/backend/internal/infrastructure/database/dbschema"
 
 	"github.com/rs/zerolog/log"
 	"gorm.io/driver/postgres"
@@ -51,32 +54,11 @@ func NewConnection(cfg *config.Config) (*gorm.DB, error) {
 func RunMigrations(db *gorm.DB, cfg *config.Config) error {
 	log.Info().Msg("running database migrations")
 
-	// Auto-migrate all schemas
-	// Note: In production, use proper migration files instead
-	if err := db.AutoMigrate(
-		// User domain tables
-		&dbschema.User{},
-		&dbschema.APIKey{},
-		&dbschema.RefreshToken{},
-		// LLM domain tables
-		&dbschema.Provider{},
-		&dbschema.Model{},
-		&dbschema.Conversation{},
-		&dbschema.Message{},
-		&dbschema.PromptTemplate{},
-		// Response domain tables
-		&dbschema.Response{},
-		&dbschema.ResponseItem{},
-		&dbschema.Artifact{},
-		&dbschema.ArtifactVersion{},
-		&dbschema.Agent{},
-		// Media domain tables
-		&dbschema.Media{},
-		// Connector tables
-		&dbschema.Connector{},
-		&dbschema.ConnectorOAuthState{},
-	); err != nil {
-		return fmt.Errorf("auto-migrate failed: %w", err)
+	// Auto-migrate all registered schemas
+	for _, model := range registry.SchemaRegistry {
+		if err := db.AutoMigrate(model); err != nil {
+			return fmt.Errorf("auto-migrate failed for %T: %w", model, err)
+		}
 	}
 
 	log.Info().Msg("database migrations completed")

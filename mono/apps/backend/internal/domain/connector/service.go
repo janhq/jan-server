@@ -3,417 +3,573 @@ package connector
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"net/url"
-	"strings"
 	"time"
+
+	"github.com/rs/zerolog"
 )
 
+// Common errors
 var (
-	ErrConnectorNotFound     = errors.New("connector not found")
-	ErrUnauthorized          = errors.New("unauthorized")
-	ErrInvalidProvider       = errors.New("invalid provider")
-	ErrProviderNotEnabled    = errors.New("provider not enabled")
-	ErrInvalidState          = errors.New("invalid or expired state")
-	ErrConnectorExists       = errors.New("connector already exists")
+	ErrConnectorNotFound    = errors.New("connector connection not found")
+	ErrConnectorNotEnabled  = errors.New("connector type is not enabled")
+	ErrInvalidConnectorType = errors.New("invalid connector type")
+	ErrOAuthStateNotFound   = errors.New("OAuth state not found")
+	ErrOAuthStateExpired    = errors.New("OAuth state has expired")
+	ErrOAuthStateInvalid    = errors.New("OAuth state is invalid")
+	ErrTokenEncryption      = errors.New("token encryption failed")
+	ErrTokenDecryption      = errors.New("token decryption failed")
+	ErrTokenRefreshFailed   = errors.New("token refresh failed")
+	ErrAlreadyConnected     = errors.New("connector is already connected")
 )
 
-// Repository defines the interface for connector data operations.
-type Repository interface {
-	Create(ctx context.Context, connector *Connector) error
-	GetByID(ctx context.Context, id string) (*Connector, error)
-	GetByUserAndProvider(ctx context.Context, userID, provider string) (*Connector, error)
-	Update(ctx context.Context, connector *Connector) error
-	Delete(ctx context.Context, id string) error
-	ListByUser(ctx context.Context, userID string) ([]*Connector, error)
-
-	// OAuth state operations
-	CreateState(ctx context.Context, state *OAuthState) error
-	GetState(ctx context.Context, state string) (*OAuthState, error)
-	DeleteState(ctx context.Context, state string) error
-	DeleteExpiredStates(ctx context.Context) error
-}
-
-// TokenEncryptor defines the interface for token encryption.
+// TokenEncryptor interface for encrypting/decrypting OAuth tokens.
 type TokenEncryptor interface {
-	Encrypt(plaintext string) (string, error)
-	Decrypt(ciphertext string) (string, error)
+	Encrypt(plaintext string) (ciphertext string, keyID string, err error)
+	Decrypt(ciphertext string, keyID string) (plaintext string, err error)
 }
 
-// OAuthClient defines the interface for OAuth operations.
-type OAuthClient interface {
-	GetAuthURL(state string) string
-	ExchangeCode(ctx context.Context, code string) (*TokenResponse, error)
-	RefreshToken(ctx context.Context, refreshToken string) (*TokenResponse, error)
-	GetUserInfo(ctx context.Context, accessToken string) (*UserInfo, error)
+// OAuthProvider interface for OAuth operations.
+type OAuthProvider interface {
+	GetAuthURL(connectorType ConnectorType, state, redirectURI, codeChallenge string) (string, error)
+	ExchangeCode(ctx context.Context, connectorType ConnectorType, code, codeVerifier, redirectURI string) (*OAuthTokens, error)
+	RefreshToken(ctx context.Context, connectorType ConnectorType, refreshToken string) (*OAuthTokens, error)
+	GetUserInfo(ctx context.Context, connectorType ConnectorType, accessToken string) (*ProviderUserInfo, error)
+	RevokeToken(ctx context.Context, connectorType ConnectorType, token string) error
 }
 
-// TokenResponse contains tokens from OAuth exchange.
-type TokenResponse struct {
+// OAuthTokens represents tokens from OAuth exchange.
+type OAuthTokens struct {
 	AccessToken  string
 	RefreshToken string
 	TokenType    string
-	ExpiresIn    int64
+	ExpiresIn    int // seconds until expiry
+	Scope        string
 }
 
-// UserInfo contains user information from the provider.
-type UserInfo struct {
-	ID       string
-	Username string
-	Email    string
-	Name     string
-	Metadata map[string]any
+// ProviderUserInfo represents user info from the OAuth provider.
+type ProviderUserInfo struct {
+	ID        string
+	Username  string
+	Email     string
+	Name      string
+	AvatarURL string
 }
 
 // ServiceConfig holds configuration for the connector service.
 type ServiceConfig struct {
-	GitHubEnabled    bool
-	GitHubConfig     ConnectorConfig
-	GoogleEnabled    bool
-	GoogleConfig     ConnectorConfig
-	StateExpiration  time.Duration
-	FrontendURL      string
-	EncryptionKeyID  string
+	GitHubEnabled        bool
+	GoogleEnabled        bool
+	OAuthStateExpiration time.Duration
+	OAuthRedirectBaseURL string
+	OAuthFrontendURL     string
 }
 
-// Service handles connector-related business logic.
+// Service provides connector domain operations.
 type Service struct {
-	repo        Repository
-	encryptor   TokenEncryptor
-	config      ServiceConfig
-	oauthClients map[string]OAuthClient
+	repo       Repository
+	encryptor  TokenEncryptor
+	provider   OAuthProvider
+	config     ServiceConfig
+	stateHMAC  []byte
+	logger     zerolog.Logger
 }
 
 // NewService creates a new connector service.
-func NewService(repo Repository, encryptor TokenEncryptor, config ServiceConfig) *Service {
+func NewService(
+	repo Repository,
+	encryptor TokenEncryptor,
+	provider OAuthProvider,
+	config ServiceConfig,
+	stateHMAC []byte,
+	logger zerolog.Logger,
+) *Service {
 	return &Service{
-		repo:         repo,
-		encryptor:    encryptor,
-		config:       config,
-		oauthClients: make(map[string]OAuthClient),
+		repo:      repo,
+		encryptor: encryptor,
+		provider:  provider,
+		config:    config,
+		stateHMAC: stateHMAC,
+		logger:    logger.With().Str("component", "connector_service").Logger(),
 	}
 }
 
-// RegisterOAuthClient registers an OAuth client for a provider.
-func (s *Service) RegisterOAuthClient(provider string, client OAuthClient) {
-	s.oauthClients[provider] = client
-}
-
-// GetAuthURL generates an OAuth authorization URL for a provider.
-func (s *Service) GetAuthURL(ctx context.Context, userID, provider, redirectURL string) (*AuthURLResponse, error) {
-	if !IsValidProvider(provider) {
-		return nil, ErrInvalidProvider
-	}
-
-	if !s.isProviderEnabled(provider) {
-		return nil, ErrProviderNotEnabled
-	}
-
-	client, ok := s.oauthClients[provider]
-	if !ok {
-		return nil, ErrProviderNotEnabled
-	}
-
-	// Generate state
-	stateBytes := make([]byte, 16)
-	if _, err := rand.Read(stateBytes); err != nil {
-		return nil, err
-	}
-	state := base64.RawURLEncoding.EncodeToString(stateBytes)
-
-	// Save state
-	oauthState := &OAuthState{
-		State:       state,
-		UserID:      userID,
-		Provider:    provider,
-		RedirectURL: redirectURL,
-		ExpiresAt:   time.Now().Add(s.config.StateExpiration),
-	}
-
-	if err := s.repo.CreateState(ctx, oauthState); err != nil {
-		return nil, err
-	}
-
-	authURL := client.GetAuthURL(state)
-
-	return &AuthURLResponse{
-		AuthURL: authURL,
-		State:   state,
-	}, nil
-}
-
-// HandleCallback handles the OAuth callback and creates/updates the connector.
-func (s *Service) HandleCallback(ctx context.Context, provider, code, state string) (*Connector, string, error) {
-	// Validate state
-	oauthState, err := s.repo.GetState(ctx, state)
-	if err != nil || oauthState == nil {
-		return nil, "", ErrInvalidState
-	}
-
-	if time.Now().After(oauthState.ExpiresAt) {
-		_ = s.repo.DeleteState(ctx, state)
-		return nil, "", ErrInvalidState
-	}
-
-	if oauthState.Provider != provider {
-		return nil, "", ErrInvalidState
-	}
-
-	// Delete state (one-time use)
-	_ = s.repo.DeleteState(ctx, state)
-
-	client, ok := s.oauthClients[provider]
-	if !ok {
-		return nil, "", ErrProviderNotEnabled
-	}
-
-	// Exchange code for tokens
-	tokens, err := client.ExchangeCode(ctx, code)
-	if err != nil {
-		return nil, "", fmt.Errorf("exchange code: %w", err)
-	}
-
-	// Get user info
-	userInfo, err := client.GetUserInfo(ctx, tokens.AccessToken)
-	if err != nil {
-		return nil, "", fmt.Errorf("get user info: %w", err)
-	}
-
-	// Encrypt tokens
-	encAccessToken, err := s.encryptor.Encrypt(tokens.AccessToken)
-	if err != nil {
-		return nil, "", fmt.Errorf("encrypt access token: %w", err)
-	}
-
-	var encRefreshToken string
-	if tokens.RefreshToken != "" {
-		encRefreshToken, err = s.encryptor.Encrypt(tokens.RefreshToken)
-		if err != nil {
-			return nil, "", fmt.Errorf("encrypt refresh token: %w", err)
-		}
-	}
-
-	// Calculate expiration
-	var expiresAt *time.Time
-	if tokens.ExpiresIn > 0 {
-		t := time.Now().Add(time.Duration(tokens.ExpiresIn) * time.Second)
-		expiresAt = &t
-	}
-
-	// Check if connector already exists
-	existing, _ := s.repo.GetByUserAndProvider(ctx, oauthState.UserID, provider)
-	if existing != nil {
-		// Update existing connector
-		existing.ProviderUserID = userInfo.ID
-		existing.ProviderUsername = userInfo.Username
-		existing.ProviderEmail = userInfo.Email
-		existing.AccessToken = encAccessToken
-		existing.RefreshToken = encRefreshToken
-		existing.TokenType = tokens.TokenType
-		existing.ExpiresAt = expiresAt
-		existing.Metadata = userInfo.Metadata
-		existing.IsActive = true
-		existing.EncryptionKeyID = s.config.EncryptionKeyID
-
-		if err := s.repo.Update(ctx, existing); err != nil {
-			return nil, "", err
-		}
-
-		return existing, oauthState.RedirectURL, nil
-	}
-
-	// Create new connector
-	connector := &Connector{
-		UserID:           oauthState.UserID,
-		Provider:         provider,
-		ProviderUserID:   userInfo.ID,
-		ProviderUsername: userInfo.Username,
-		ProviderEmail:    userInfo.Email,
-		AccessToken:      encAccessToken,
-		RefreshToken:     encRefreshToken,
-		TokenType:        tokens.TokenType,
-		ExpiresAt:        expiresAt,
-		Metadata:         userInfo.Metadata,
-		IsActive:         true,
-		EncryptionKeyID:  s.config.EncryptionKeyID,
-	}
-
-	if err := s.repo.Create(ctx, connector); err != nil {
-		return nil, "", err
-	}
-
-	return connector, oauthState.RedirectURL, nil
-}
-
-// Disconnect disconnects a connector.
-func (s *Service) Disconnect(ctx context.Context, userID, provider string) error {
-	connector, err := s.repo.GetByUserAndProvider(ctx, userID, provider)
-	if err != nil {
-		return ErrConnectorNotFound
-	}
-
-	if connector.UserID != userID {
-		return ErrUnauthorized
-	}
-
-	return s.repo.Delete(ctx, connector.ID)
-}
-
-// List lists all connectors for a user.
-func (s *Service) List(ctx context.Context, userID string) ([]*Connector, error) {
-	return s.repo.ListByUser(ctx, userID)
-}
-
-// GetAccessToken retrieves and decrypts the access token for a connector.
-// It will refresh the token if expired.
-func (s *Service) GetAccessToken(ctx context.Context, userID, provider string) (string, error) {
-	connector, err := s.repo.GetByUserAndProvider(ctx, userID, provider)
-	if err != nil {
-		return "", ErrConnectorNotFound
-	}
-
-	// Check if token is expired
-	if connector.ExpiresAt != nil && time.Now().After(*connector.ExpiresAt) {
-		// Try to refresh
-		if connector.RefreshToken != "" {
-			refreshed, err := s.refreshToken(ctx, connector)
-			if err == nil {
-				connector = refreshed
-			}
-		}
-	}
-
-	// Decrypt access token
-	accessToken, err := s.encryptor.Decrypt(connector.AccessToken)
-	if err != nil {
-		return "", fmt.Errorf("decrypt access token: %w", err)
-	}
-
-	return accessToken, nil
-}
-
-func (s *Service) refreshToken(ctx context.Context, connector *Connector) (*Connector, error) {
-	client, ok := s.oauthClients[connector.Provider]
-	if !ok {
-		return nil, ErrProviderNotEnabled
-	}
-
-	// Decrypt refresh token
-	refreshToken, err := s.encryptor.Decrypt(connector.RefreshToken)
-	if err != nil {
-		return nil, fmt.Errorf("decrypt refresh token: %w", err)
-	}
-
-	// Refresh tokens
-	tokens, err := client.RefreshToken(ctx, refreshToken)
-	if err != nil {
-		return nil, fmt.Errorf("refresh token: %w", err)
-	}
-
-	// Encrypt new tokens
-	encAccessToken, err := s.encryptor.Encrypt(tokens.AccessToken)
-	if err != nil {
-		return nil, err
-	}
-
-	var encRefreshToken string
-	if tokens.RefreshToken != "" {
-		encRefreshToken, err = s.encryptor.Encrypt(tokens.RefreshToken)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		encRefreshToken = connector.RefreshToken // Keep old refresh token
-	}
-
-	// Update connector
-	connector.AccessToken = encAccessToken
-	connector.RefreshToken = encRefreshToken
-	if tokens.ExpiresIn > 0 {
-		t := time.Now().Add(time.Duration(tokens.ExpiresIn) * time.Second)
-		connector.ExpiresAt = &t
-	}
-
-	if err := s.repo.Update(ctx, connector); err != nil {
-		return nil, err
-	}
-
-	return connector, nil
-}
-
-func (s *Service) isProviderEnabled(provider string) bool {
-	switch provider {
-	case ProviderGitHub:
+// IsEnabled checks if a connector type is enabled.
+func (s *Service) IsEnabled(connectorType ConnectorType) bool {
+	switch connectorType {
+	case ConnectorTypeGitHub:
 		return s.config.GitHubEnabled
-	case ProviderGoogle, ProviderGmail, ProviderGoogleDrive, ProviderGoogleCalendar:
+	case ConnectorTypeGmail, ConnectorTypeGoogleDrive, ConnectorTypeGoogleCalendar:
 		return s.config.GoogleEnabled
 	default:
 		return false
 	}
 }
 
-// BuildFrontendRedirectURL builds the redirect URL back to the frontend.
-func (s *Service) BuildFrontendRedirectURL(redirectURL, provider string, success bool, errMsg string) string {
-	baseURL := redirectURL
-	if baseURL == "" {
-		baseURL = s.config.FrontendURL + "/connectors"
-	}
-
-	u, err := url.Parse(baseURL)
+// ListConnectors returns all connector types with their connection status for a user.
+func (s *Service) ListConnectors(ctx context.Context, userID string) ([]ConnectorInfo, error) {
+	connections, err := s.repo.FindAllByUser(ctx, userID)
 	if err != nil {
-		return baseURL
+		return nil, fmt.Errorf("list connections: %w", err)
 	}
 
-	q := u.Query()
-	q.Set("provider", provider)
-	if success {
-		q.Set("success", "true")
-	} else {
-		q.Set("error", errMsg)
+	connMap := make(map[ConnectorType]*Connection)
+	for _, conn := range connections {
+		connMap[conn.ConnectorType] = conn
 	}
-	u.RawQuery = q.Encode()
 
-	return u.String()
+	return GetConnectorInfos(connMap), nil
 }
 
-// GetProviderScopes returns the scopes for a provider.
-func GetProviderScopes(provider string) []string {
-	switch provider {
-	case ProviderGitHub:
-		return []string{"read:user", "user:email", "repo"}
-	case ProviderGmail:
-		return []string{
-			"https://www.googleapis.com/auth/gmail.readonly",
-			"https://www.googleapis.com/auth/gmail.send",
-			"https://www.googleapis.com/auth/userinfo.email",
-			"https://www.googleapis.com/auth/userinfo.profile",
+// GetConnection returns a user's connection for a specific connector type.
+func (s *Service) GetConnection(ctx context.Context, userID string, connectorType ConnectorType) (*Connection, error) {
+	if !connectorType.IsValid() {
+		return nil, ErrInvalidConnectorType
+	}
+
+	conn, err := s.repo.FindByUserAndType(ctx, userID, connectorType)
+	if err != nil {
+		return nil, fmt.Errorf("find connection: %w", err)
+	}
+
+	return conn, nil
+}
+
+// InitiateOAuth starts the OAuth flow for a connector.
+func (s *Service) InitiateOAuth(ctx context.Context, userID string, connectorType ConnectorType) (authURL string, state string, err error) {
+	if !connectorType.IsValid() {
+		return "", "", ErrInvalidConnectorType
+	}
+
+	if !s.IsEnabled(connectorType) {
+		return "", "", ErrConnectorNotEnabled
+	}
+
+	// Check if already connected
+	existing, err := s.repo.FindByUserAndType(ctx, userID, connectorType)
+	if err != nil {
+		return "", "", fmt.Errorf("check existing connection: %w", err)
+	}
+	if existing != nil && existing.IsConnected {
+		return "", "", ErrAlreadyConnected
+	}
+
+	// Generate PKCE
+	verifier, challenge, err := s.generatePKCE()
+	if err != nil {
+		return "", "", fmt.Errorf("generate PKCE: %w", err)
+	}
+
+	// Generate state with HMAC
+	stateValue, stateHash, err := s.generateState()
+	if err != nil {
+		return "", "", fmt.Errorf("generate state: %w", err)
+	}
+
+	// Build redirect URI
+	redirectURI := fmt.Sprintf("%s/v1/connectors/%s/callback", s.config.OAuthRedirectBaseURL, connectorType)
+
+	// Store OAuth state
+	oauthState := &OAuthState{
+		UserID:        userID,
+		ConnectorType: connectorType,
+		State:         stateValue,
+		StateHash:     stateHash,
+		CodeVerifier:  verifier,
+		RedirectURI:   redirectURI,
+		ExpiresAt:     time.Now().Add(s.config.OAuthStateExpiration),
+	}
+
+	if _, err := s.repo.CreateOAuthState(ctx, oauthState); err != nil {
+		return "", "", fmt.Errorf("store OAuth state: %w", err)
+	}
+
+	// Get auth URL from provider
+	authURL, err = s.provider.GetAuthURL(connectorType, stateValue, redirectURI, challenge)
+	if err != nil {
+		return "", "", fmt.Errorf("get auth URL: %w", err)
+	}
+
+	s.logger.Info().
+		Str("user_id", userID).
+		Str("connector_type", string(connectorType)).
+		Msg("OAuth flow initiated")
+
+	return authURL, stateValue, nil
+}
+
+// CompleteOAuth completes the OAuth flow with the authorization code.
+func (s *Service) CompleteOAuth(ctx context.Context, code, state string) (*Connection, string, error) {
+	// Find and validate OAuth state
+	oauthState, err := s.repo.FindOAuthStateByState(ctx, state)
+	if err != nil {
+		return nil, "", fmt.Errorf("find OAuth state: %w", err)
+	}
+	if oauthState == nil {
+		return nil, "", ErrOAuthStateNotFound
+	}
+
+	if oauthState.IsExpired() {
+		_ = s.repo.DeleteOAuthState(ctx, state)
+		return nil, "", ErrOAuthStateExpired
+	}
+
+	// Verify state hash
+	if !s.verifyState(state, oauthState.StateHash) {
+		return nil, "", ErrOAuthStateInvalid
+	}
+
+	// Exchange code for tokens
+	tokens, err := s.provider.ExchangeCode(ctx, oauthState.ConnectorType, code, oauthState.CodeVerifier, oauthState.RedirectURI)
+	if err != nil {
+		return nil, "", fmt.Errorf("exchange code: %w", err)
+	}
+
+	// Get user info from provider
+	userInfo, err := s.provider.GetUserInfo(ctx, oauthState.ConnectorType, tokens.AccessToken)
+	if err != nil {
+		return nil, "", fmt.Errorf("get user info: %w", err)
+	}
+
+	// Encrypt tokens
+	accessTokenEnc, keyID, err := s.encryptor.Encrypt(tokens.AccessToken)
+	if err != nil {
+		return nil, "", ErrTokenEncryption
+	}
+
+	var refreshTokenEnc string
+	if tokens.RefreshToken != "" {
+		refreshTokenEnc, _, err = s.encryptor.Encrypt(tokens.RefreshToken)
+		if err != nil {
+			return nil, "", ErrTokenEncryption
 		}
-	case ProviderGoogleDrive:
-		return []string{
-			"https://www.googleapis.com/auth/drive.readonly",
-			"https://www.googleapis.com/auth/userinfo.email",
-			"https://www.googleapis.com/auth/userinfo.profile",
+	}
+
+	// Calculate token expiry
+	var expiresAt *time.Time
+	if tokens.ExpiresIn > 0 {
+		exp := time.Now().Add(time.Duration(tokens.ExpiresIn) * time.Second)
+		expiresAt = &exp
+	}
+
+	// Parse scopes
+	var scopes []string
+	if tokens.Scope != "" {
+		scopes = parseScopes(tokens.Scope)
+	}
+
+	// Create or update connection
+	conn := &Connection{
+		UserID:                oauthState.UserID,
+		ConnectorType:         oauthState.ConnectorType,
+		AccessTokenEncrypted:  accessTokenEnc,
+		RefreshTokenEncrypted: refreshTokenEnc,
+		EncryptionKeyID:       keyID,
+		TokenType:             tokens.TokenType,
+		ExpiresAt:             expiresAt,
+		ProviderUserID:        userInfo.ID,
+		ProviderUsername:      userInfo.Username,
+		ProviderEmail:         userInfo.Email,
+		ProviderAvatarURL:     userInfo.AvatarURL,
+		Scopes:                scopes,
+		IsConnected:           true,
+	}
+
+	// Check if connection exists
+	existing, err := s.repo.FindByUserAndType(ctx, oauthState.UserID, oauthState.ConnectorType)
+	if err != nil {
+		return nil, "", fmt.Errorf("check existing connection: %w", err)
+	}
+
+	if existing != nil {
+		conn.ID = existing.ID
+		conn, err = s.repo.Update(ctx, conn)
+	} else {
+		conn, err = s.repo.Create(ctx, conn)
+	}
+
+	if err != nil {
+		return nil, "", fmt.Errorf("save connection: %w", err)
+	}
+
+	// Clean up OAuth state
+	_ = s.repo.DeleteOAuthState(ctx, state)
+
+	// Create audit log
+	_ = s.repo.CreateAuditLog(ctx, &AuditLog{
+		UserID:        oauthState.UserID,
+		ConnectorType: oauthState.ConnectorType,
+		Action:        AuditActionConnect,
+		Success:       true,
+	})
+
+	s.logger.Info().
+		Str("user_id", oauthState.UserID).
+		Str("connector_type", string(oauthState.ConnectorType)).
+		Str("provider_username", userInfo.Username).
+		Msg("OAuth flow completed")
+
+	// Build frontend redirect URL
+	frontendRedirect := fmt.Sprintf(
+		"%s/connectors/callback?status=success&connector=%s",
+		s.config.OAuthFrontendURL,
+		oauthState.ConnectorType,
+	)
+
+	return conn, frontendRedirect, nil
+}
+
+// Disconnect removes a connector connection.
+func (s *Service) Disconnect(ctx context.Context, userID string, connectorType ConnectorType) error {
+	if !connectorType.IsValid() {
+		return ErrInvalidConnectorType
+	}
+
+	conn, err := s.repo.FindByUserAndType(ctx, userID, connectorType)
+	if err != nil {
+		return fmt.Errorf("find connection: %w", err)
+	}
+	if conn == nil {
+		return ErrConnectorNotFound
+	}
+
+	// Try to revoke token with provider (best effort)
+	if conn.RefreshTokenEncrypted != "" {
+		refreshToken, err := s.encryptor.Decrypt(conn.RefreshTokenEncrypted, conn.EncryptionKeyID)
+		if err == nil {
+			_ = s.provider.RevokeToken(ctx, connectorType, refreshToken)
 		}
-	case ProviderGoogleCalendar:
-		return []string{
-			"https://www.googleapis.com/auth/calendar.readonly",
-			"https://www.googleapis.com/auth/calendar.events",
-			"https://www.googleapis.com/auth/userinfo.email",
-			"https://www.googleapis.com/auth/userinfo.profile",
+	}
+
+	// Delete connection
+	if err := s.repo.Delete(ctx, userID, connectorType); err != nil {
+		return fmt.Errorf("delete connection: %w", err)
+	}
+
+	// Create audit log
+	_ = s.repo.CreateAuditLog(ctx, &AuditLog{
+		UserID:        userID,
+		ConnectorType: connectorType,
+		Action:        AuditActionDisconnect,
+		Success:       true,
+	})
+
+	s.logger.Info().
+		Str("user_id", userID).
+		Str("connector_type", string(connectorType)).
+		Msg("Connector disconnected")
+
+	return nil
+}
+
+// GetDecryptedAccessToken returns the decrypted access token, refreshing if necessary.
+func (s *Service) GetDecryptedAccessToken(ctx context.Context, userID string, connectorType ConnectorType) (string, error) {
+	conn, err := s.repo.FindByUserAndType(ctx, userID, connectorType)
+	if err != nil {
+		return "", fmt.Errorf("find connection: %w", err)
+	}
+	if conn == nil || !conn.IsConnected {
+		return "", ErrConnectorNotFound
+	}
+
+	// Check if token needs refresh
+	if conn.NeedsRefresh() && conn.RefreshTokenEncrypted != "" {
+		conn, err = s.refreshConnection(ctx, conn)
+		if err != nil {
+			// Log error but try to use existing token
+			s.logger.Warn().Err(err).
+				Str("user_id", userID).
+				Str("connector_type", string(connectorType)).
+				Msg("Token refresh failed, using existing token")
 		}
-	case ProviderGoogle:
-		return []string{
-			"https://www.googleapis.com/auth/userinfo.email",
-			"https://www.googleapis.com/auth/userinfo.profile",
+	}
+
+	// Decrypt access token
+	accessToken, err := s.encryptor.Decrypt(conn.AccessTokenEncrypted, conn.EncryptionKeyID)
+	if err != nil {
+		return "", ErrTokenDecryption
+	}
+
+	return accessToken, nil
+}
+
+// refreshConnection refreshes the OAuth tokens for a connection.
+func (s *Service) refreshConnection(ctx context.Context, conn *Connection) (*Connection, error) {
+	if conn.RefreshTokenEncrypted == "" {
+		return nil, errors.New("no refresh token available")
+	}
+
+	// Decrypt refresh token
+	refreshToken, err := s.encryptor.Decrypt(conn.RefreshTokenEncrypted, conn.EncryptionKeyID)
+	if err != nil {
+		return nil, ErrTokenDecryption
+	}
+
+	// Refresh with provider
+	tokens, err := s.provider.RefreshToken(ctx, conn.ConnectorType, refreshToken)
+	if err != nil {
+		// Mark connection as needing re-auth
+		conn.LastError = "Token refresh failed: " + err.Error()
+		_, _ = s.repo.Update(ctx, conn)
+		return nil, ErrTokenRefreshFailed
+	}
+
+	// Encrypt new tokens
+	accessTokenEnc, keyID, err := s.encryptor.Encrypt(tokens.AccessToken)
+	if err != nil {
+		return nil, ErrTokenEncryption
+	}
+
+	conn.AccessTokenEncrypted = accessTokenEnc
+	conn.EncryptionKeyID = keyID
+
+	if tokens.RefreshToken != "" {
+		refreshTokenEnc, _, err := s.encryptor.Encrypt(tokens.RefreshToken)
+		if err != nil {
+			return nil, ErrTokenEncryption
 		}
-	default:
+		conn.RefreshTokenEncrypted = refreshTokenEnc
+	}
+
+	// Update expiry
+	if tokens.ExpiresIn > 0 {
+		exp := time.Now().Add(time.Duration(tokens.ExpiresIn) * time.Second)
+		conn.ExpiresAt = &exp
+	}
+
+	conn.LastError = ""
+	now := time.Now()
+	conn.LastSyncAt = &now
+
+	// Save updated connection
+	conn, err = s.repo.Update(ctx, conn)
+	if err != nil {
+		return nil, fmt.Errorf("update connection: %w", err)
+	}
+
+	// Create audit log
+	_ = s.repo.CreateAuditLog(ctx, &AuditLog{
+		UserID:        conn.UserID,
+		ConnectorType: conn.ConnectorType,
+		Action:        AuditActionRefresh,
+		Success:       true,
+	})
+
+	s.logger.Debug().
+		Str("user_id", conn.UserID).
+		Str("connector_type", string(conn.ConnectorType)).
+		Msg("Token refreshed")
+
+	return conn, nil
+}
+
+// LogAPICall logs an API call for auditing.
+func (s *Service) LogAPICall(ctx context.Context, userID string, connectorType ConnectorType, toolName string, success bool, errMsg string) {
+	_ = s.repo.CreateAuditLog(ctx, &AuditLog{
+		UserID:        userID,
+		ConnectorType: connectorType,
+		Action:        AuditActionAPICall,
+		ToolName:      toolName,
+		Success:       success,
+		ErrorMessage:  errMsg,
+	})
+}
+
+// LogWriteOperation logs a write operation for auditing (higher visibility).
+func (s *Service) LogWriteOperation(ctx context.Context, userID string, connectorType ConnectorType, toolName string, success bool, errMsg string, metadata map[string]interface{}) {
+	_ = s.repo.CreateAuditLog(ctx, &AuditLog{
+		UserID:        userID,
+		ConnectorType: connectorType,
+		Action:        AuditActionWriteOperation,
+		ToolName:      toolName,
+		Success:       success,
+		ErrorMessage:  errMsg,
+		Metadata:      metadata,
+	})
+}
+
+// CleanupExpiredStates removes expired OAuth states.
+func (s *Service) CleanupExpiredStates(ctx context.Context) (int64, error) {
+	return s.repo.DeleteExpiredOAuthStates(ctx)
+}
+
+// generatePKCE generates a PKCE code verifier and challenge.
+func (s *Service) generatePKCE() (verifier, challenge string, err error) {
+	// Generate 32 bytes of random data for verifier
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", "", err
+	}
+
+	verifier = base64.RawURLEncoding.EncodeToString(b)
+
+	// Generate challenge as SHA256 of verifier
+	h := sha256.New()
+	h.Write([]byte(verifier))
+	challenge = base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+
+	return verifier, challenge, nil
+}
+
+// generateState generates a random state with HMAC signature.
+func (s *Service) generateState() (state, hash string, err error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", "", err
+	}
+
+	state = base64.RawURLEncoding.EncodeToString(b)
+	hash = s.computeStateHash(state)
+
+	return state, hash, nil
+}
+
+// computeStateHash computes HMAC-SHA256 of the state.
+func (s *Service) computeStateHash(state string) string {
+	h := sha256.New()
+	h.Write(s.stateHMAC)
+	h.Write([]byte(state))
+	return base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+}
+
+// verifyState verifies the state against its HMAC hash.
+func (s *Service) verifyState(state, expectedHash string) bool {
+	return s.computeStateHash(state) == expectedHash
+}
+
+// parseScopes parses a space-separated scope string into a slice.
+func parseScopes(scopeStr string) []string {
+	if scopeStr == "" {
 		return nil
 	}
+	var scopes []string
+	for _, s := range splitScopes(scopeStr) {
+		if s != "" {
+			scopes = append(scopes, s)
+		}
+	}
+	return scopes
 }
 
-// JoinScopes joins scopes with a space.
-func JoinScopes(scopes []string) string {
-	return strings.Join(scopes, " ")
+// splitScopes splits scopes by space or comma.
+func splitScopes(s string) []string {
+	var result []string
+	var current string
+	for _, c := range s {
+		if c == ' ' || c == ',' {
+			if current != "" {
+				result = append(result, current)
+				current = ""
+			}
+		} else {
+			current += string(c)
+		}
+	}
+	if current != "" {
+		result = append(result, current)
+	}
+	return result
 }

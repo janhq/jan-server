@@ -1,0 +1,14 @@
+{
+  "id": 15,
+  "dir": "15",
+  "name": "Client Brief",
+  "tone": "Corporate Consulting",
+  "description": "Executive framing, clear hierarchy, client-ready polish.",
+  "variants": {
+    "base": 9,
+    "bullets": 5,
+    "split": 2,
+    "hero": 2,
+    "title": 1
+  }
+}

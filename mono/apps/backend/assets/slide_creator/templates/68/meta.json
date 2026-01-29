@@ -1,0 +1,14 @@
+{
+  "id": 68,
+  "dir": "68",
+  "name": "Analytics",
+  "tone": "Data Analyst",
+  "description": "Grid-forward layout for charts/tables and analytic narratives.",
+  "variants": {
+    "base": 6,
+    "bullets": 3,
+    "split": 1,
+    "hero": 3,
+    "title": 3
+  }
+}

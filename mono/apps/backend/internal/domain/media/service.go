@@ -1,224 +1,195 @@
 package media
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
-	"path"
+	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/gabriel-vasile/mimetype"
+	"github.com/rs/zerolog"
+
+	"jan-server/mono/apps/backend/internal/infrastructure/config"
+	"jan-server/mono/apps/backend/internal/utils/platformerrors"
+	"jan-server/mono/apps/backend/pkg/utils/mediaid"
 )
 
-var (
-	ErrMediaNotFound     = errors.New("media not found")
-	ErrUnauthorized      = errors.New("unauthorized")
-	ErrFileTooLarge      = errors.New("file too large")
-	ErrInvalidMimeType   = errors.New("invalid mime type")
-	ErrUploadFailed      = errors.New("upload failed")
-)
-
-// Repository defines the interface for media data operations.
+// Repository defines persistence operations needed by the service.
 type Repository interface {
-	Create(ctx context.Context, media *Media) error
-	GetByID(ctx context.Context, id string) (*Media, error)
-	Delete(ctx context.Context, id string) error
-	List(ctx context.Context, userID string, limit, offset int) ([]*Media, int64, error)
+	FindByHash(ctx context.Context, hash string) (*MediaObject, error)
+	Create(ctx context.Context, obj *MediaObject) error
+	GetByID(ctx context.Context, id string) (*MediaObject, error)
 }
 
-// StorageClient defines the interface for object storage operations.
-type StorageClient interface {
-	Upload(ctx context.Context, key string, data io.Reader, size int64, contentType string) error
-	Download(ctx context.Context, key string) (io.ReadCloser, error)
-	Delete(ctx context.Context, key string) error
-	GetPresignedUploadURL(ctx context.Context, key string, contentType string, expires time.Duration) (string, error)
-	GetPresignedDownloadURL(ctx context.Context, key string, expires time.Duration) (string, error)
+// Storage defines media storage operations.
+type Storage interface {
+	Upload(ctx context.Context, key string, body io.Reader, size int64, contentType string) error
+	Download(ctx context.Context, key string) (io.ReadCloser, string, error)
 }
 
-// ServiceConfig holds configuration for the media service.
-type ServiceConfig struct {
-	Bucket        string
-	MaxUploadSize int64
-	PresignTTL    time.Duration
-}
-
-// Service handles media-related business logic.
+// Service orchestrates media ingestion and retrieval.
 type Service struct {
-	repo    Repository
-	storage StorageClient
-	config  ServiceConfig
+	cfg        *config.Config
+	repo       Repository
+	storage    Storage
+	log        zerolog.Logger
+	httpClient *http.Client
 }
 
-// NewService creates a new media service.
-func NewService(repo Repository, storage StorageClient, config ServiceConfig) *Service {
+func NewService(cfg *config.Config, repo Repository, storage Storage, log zerolog.Logger) *Service {
 	return &Service{
+		cfg:     cfg,
 		repo:    repo,
 		storage: storage,
-		config:  config,
-	}
-}
-
-// Upload uploads a file and creates a media record.
-func (s *Service) Upload(ctx context.Context, userID string, req UploadRequest, data io.Reader) (*Media, error) {
-	if req.Size > s.config.MaxUploadSize {
-		return nil, ErrFileTooLarge
-	}
-
-	// Generate storage key
-	id := uuid.New().String()
-	ext := path.Ext(req.Filename)
-	storageKey := fmt.Sprintf("%s/%s/%s%s", userID, req.Purpose, id, ext)
-
-	// Calculate content hash while uploading
-	hasher := sha256.New()
-	teeReader := io.TeeReader(data, hasher)
-
-	// Upload to storage
-	if err := s.storage.Upload(ctx, storageKey, teeReader, req.Size, req.MimeType); err != nil {
-		return nil, ErrUploadFailed
-	}
-
-	contentHash := hex.EncodeToString(hasher.Sum(nil))
-
-	media := &Media{
-		ID:           id,
-		UserID:       userID,
-		Filename:     sanitizeFilename(req.Filename),
-		OriginalName: req.Filename,
-		MimeType:     req.MimeType,
-		Size:         req.Size,
-		StorageKey:   storageKey,
-		Bucket:       s.config.Bucket,
-		ContentHash:  contentHash,
-		Purpose:      req.Purpose,
-		Metadata:     req.Metadata,
-	}
-
-	if err := s.repo.Create(ctx, media); err != nil {
-		// Try to clean up the uploaded file
-		_ = s.storage.Delete(ctx, storageKey)
-		return nil, err
-	}
-
-	return media, nil
-}
-
-// GetPresignedUploadURL generates a presigned URL for direct upload.
-func (s *Service) GetPresignedUploadURL(ctx context.Context, userID string, req PresignedUploadRequest) (*PresignedUploadResponse, error) {
-	if req.Size > s.config.MaxUploadSize {
-		return nil, ErrFileTooLarge
-	}
-
-	// Generate storage key
-	id := uuid.New().String()
-	ext := path.Ext(req.Filename)
-	storageKey := fmt.Sprintf("%s/%s/%s%s", userID, req.Purpose, id, ext)
-
-	// Get presigned URL
-	uploadURL, err := s.storage.GetPresignedUploadURL(ctx, storageKey, req.MimeType, s.config.PresignTTL)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create media record (pending)
-	media := &Media{
-		ID:           id,
-		UserID:       userID,
-		Filename:     sanitizeFilename(req.Filename),
-		OriginalName: req.Filename,
-		MimeType:     req.MimeType,
-		Size:         req.Size,
-		StorageKey:   storageKey,
-		Bucket:       s.config.Bucket,
-		Purpose:      req.Purpose,
-	}
-
-	if err := s.repo.Create(ctx, media); err != nil {
-		return nil, err
-	}
-
-	return &PresignedUploadResponse{
-		MediaID:   id,
-		UploadURL: uploadURL,
-		Method:    "PUT",
-		Headers: map[string]string{
-			"Content-Type": req.MimeType,
+		log:     log.With().Str("component", "media-service").Logger(),
+		httpClient: &http.Client{
+			Timeout: cfg.RemoteFetchTimeout,
 		},
-		ExpiresAt: time.Now().Add(s.config.PresignTTL),
-	}, nil
+	}
 }
 
-// GetByID retrieves a media file with download URL.
-func (s *Service) GetByID(ctx context.Context, userID, id string) (*Media, string, error) {
-	media, err := s.repo.GetByID(ctx, id)
+// Ingest stores media and returns metadata. bool indicates whether content was deduplicated.
+func (s *Service) Ingest(ctx context.Context, req IngestRequest) (*MediaObject, bool, error) {
+	data, err := s.loadBytes(ctx, req.Source)
 	if err != nil {
-		return nil, "", ErrMediaNotFound
+		return nil, false, err
 	}
 
-	// Check ownership (unless it's a public file)
-	if media.UserID != userID {
-		return nil, "", ErrUnauthorized
+	if int64(len(data)) == 0 {
+		return nil, false, errors.New("file is empty")
+	}
+	if int64(len(data)) > s.cfg.MaxMediaBytes {
+		return nil, false, fmt.Errorf("file exceeds max size of %d bytes", s.cfg.MaxMediaBytes)
 	}
 
-	// Generate presigned download URL
-	url, err := s.storage.GetPresignedDownloadURL(ctx, media.StorageKey, s.config.PresignTTL)
+	detected := mimetype.Detect(data)
+	mimeType := detected.String()
+	ext := strings.TrimPrefix(filepath.Ext(strings.TrimSpace(req.Filename)), ".")
+	if ext == "" {
+		ext = strings.TrimPrefix(detected.Extension(), ".")
+	}
+	if ext == "" {
+		ext = "bin"
+	}
+
+	sum := sha256.Sum256(data)
+	hash := fmt.Sprintf("%x", sum[:])
+
+	if existing, err := s.repo.FindByHash(ctx, hash); err != nil {
+		return nil, false, err
+	} else if existing != nil {
+		return existing, true, nil
+	}
+
+	id := mediaid.New()
+	key := fmt.Sprintf("files/%s.%s", id, ext)
+
+	if err := s.storage.Upload(ctx, key, bytes.NewReader(data), int64(len(data)), mimeType); err != nil {
+		return nil, false, err
+	}
+
+	obj := &MediaObject{
+		ID:              id,
+		StorageProvider: "s3",
+		StorageKey:      key,
+		MimeType:        mimeType,
+		Bytes:           int64(len(data)),
+		Sha256:          hash,
+		CreatedBy:       req.UserID,
+		RetentionUntil:  time.Now().Add(time.Duration(s.cfg.RetentionDays) * 24 * time.Hour),
+	}
+
+	if err := s.repo.Create(ctx, obj); err != nil {
+		return nil, false, err
+	}
+
+	return obj, false, nil
+}
+
+// Download fetches object contents for proxying.
+func (s *Service) Download(ctx context.Context, id string) (io.ReadCloser, string, error) {
+	obj, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, "", err
 	}
-
-	return media, url, nil
-}
-
-// GetMetadata retrieves media metadata without generating a download URL.
-func (s *Service) GetMetadata(ctx context.Context, userID, id string) (*Media, error) {
-	media, err := s.repo.GetByID(ctx, id)
+	if obj == nil {
+		return nil, "", fmt.Errorf("media %s not found", id)
+	}
+	reader, mime, err := s.storage.Download(ctx, obj.StorageKey)
 	if err != nil {
-		return nil, ErrMediaNotFound
+		return nil, "", err
 	}
-
-	if media.UserID != userID {
-		return nil, ErrUnauthorized
+	if mime == "" {
+		mime = obj.MimeType
 	}
-
-	return media, nil
+	return reader, mime, nil
 }
 
-// Delete deletes a media file.
-func (s *Service) Delete(ctx context.Context, userID, id string) error {
-	media, err := s.repo.GetByID(ctx, id)
+// Get returns media metadata.
+func (s *Service) Get(ctx context.Context, id string) (*MediaObject, error) {
+	obj, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		return ErrMediaNotFound
+		return nil, err
 	}
-
-	if media.UserID != userID {
-		return ErrUnauthorized
+	if obj == nil {
+		return nil, fmt.Errorf("media %s not found", id)
 	}
-
-	// Delete from storage
-	if err := s.storage.Delete(ctx, media.StorageKey); err != nil {
-		// Log but don't fail - storage might be cleaned up separately
-	}
-
-	return s.repo.Delete(ctx, id)
+	return obj, nil
 }
 
-// sanitizeFilename removes potentially dangerous characters from filenames.
-func sanitizeFilename(filename string) string {
-	// Remove path separators and null bytes
-	filename = strings.ReplaceAll(filename, "/", "_")
-	filename = strings.ReplaceAll(filename, "\\", "_")
-	filename = strings.ReplaceAll(filename, "\x00", "")
+func (s *Service) loadBytes(ctx context.Context, source Source) ([]byte, error) {
+	switch strings.ToLower(source.Type) {
+	case "data_url", "datauri", "dataurl":
+		return decodeDataURL(source.DataURL)
+	case "remote_url", "remoteuri", "remote":
+		return s.fetchRemote(ctx, source.URL)
+	default:
+		return nil, platformerrors.NewError(ctx, platformerrors.LayerDomain, platformerrors.ErrorTypeValidation, fmt.Sprintf("unknown source type %s", source.Type), nil, "")
+	}
+}
 
-	// Limit length
-	if len(filename) > 255 {
-		ext := path.Ext(filename)
-		name := filename[:255-len(ext)]
-		filename = name + ext
+func decodeDataURL(value string) ([]byte, error) {
+	if value == "" {
+		return nil, errors.New("data_url is required")
+	}
+	parts := strings.SplitN(value, ",", 2)
+	if len(parts) != 2 {
+		return nil, errors.New("invalid data url")
+	}
+	if !strings.Contains(parts[0], ";base64") {
+		return nil, errors.New("data url must be base64 encoded")
+	}
+	return base64.StdEncoding.DecodeString(parts[1])
+}
+
+func (s *Service) fetchRemote(ctx context.Context, url string) ([]byte, error) {
+	if url == "" {
+		return nil, errors.New("url is required")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("remote fetch error: %s", resp.Status)
 	}
 
-	return filename
+	data, err := io.ReadAll(io.LimitReader(resp.Body, s.cfg.MaxMediaBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
 }

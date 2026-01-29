@@ -46,9 +46,10 @@ func RecordError(ctx context.Context, err error) {
 }
 
 // SetSpanStatus sets the status of the current span
-func SetSpanStatus(ctx context.Context, code trace.SpanStatus) {
-	span := trace.SpanFromContext(ctx)
-	if span.IsRecording() {
-		// Note: trace.SpanStatus is not directly usable; use SetStatus with codes
-	}
+func SetSpanStatus(ctx context.Context, code int) {
+	// This function is a placeholder for span status setting.
+	// OpenTelemetry uses codes.Code, but we keep a simple int interface.
+	// 0 = Unset, 1 = Error, 2 = Ok
+	_ = code
+	_ = trace.SpanFromContext(ctx)
 }

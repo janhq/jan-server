@@ -1,0 +1,38 @@
+from docx import Document
+import json
+
+data = {{.ContentJSON}}
+options = {{.OptionsJSON}}
+
+doc = Document()
+title_text = data.get("title") or options.get("title") or "Untitled Document"
+doc.add_heading(title_text, 0)
+
+for section in data.get("sections", []):
+    level = section.get("level", 1)
+    if section.get("heading"):
+        doc.add_heading(section["heading"], level)
+
+    for para in section.get("paragraphs", []):
+        doc.add_paragraph(str(para))
+
+    bullets = section.get("bullet_points", [])
+    for bullet in bullets:
+        doc.add_paragraph(str(bullet), style="List Bullet")
+
+    if section.get("table"):
+        table_data = section["table"]
+        headers = table_data.get("headers", [])
+        rows = table_data.get("rows", [])
+        if headers:
+            table = doc.add_table(rows=1 + len(rows), cols=len(headers))
+            table.style = "Table Grid"
+            for i, h in enumerate(headers):
+                table.rows[0].cells[i].text = str(h)
+            for r_idx, row in enumerate(rows):
+                for c_idx, val in enumerate(row):
+                    table.rows[r_idx + 1].cells[c_idx].text = str(val)
+
+output_path = "{{.OutputPath}}"
+doc.save(output_path)
+print(f"OUTPUT_PATH:{output_path}")

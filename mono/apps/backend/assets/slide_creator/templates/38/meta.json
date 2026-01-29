@@ -1,0 +1,14 @@
+{
+  "id": 38,
+  "dir": "38",
+  "name": "Chateau",
+  "tone": "Luxury Elegant",
+  "description": "Rounded stage, premium spacing, gallery-like feel.",
+  "variants": {
+    "base": 10,
+    "bullets": 3,
+    "split": 5,
+    "hero": 3,
+    "title": 3
+  }
+}

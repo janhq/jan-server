@@ -1,0 +1,14 @@
+{
+  "id": 48,
+  "dir": "48",
+  "name": "Campus",
+  "tone": "Education Friendly",
+  "description": "Sidebar guidance + structured body; classroom/learning friendly.",
+  "variants": {
+    "base": 3,
+    "bullets": 3,
+    "split": 2,
+    "hero": 3,
+    "title": 3
+  }
+}

@@ -1,0 +1,40 @@
+package v1
+
+import (
+	"github.com/gin-gonic/gin"
+
+	"jan-server/mono/apps/backend/internal/config"
+	"jan-server/mono/apps/backend/internal/interfaces/httpserver/handlers"
+)
+
+// Routes encapsulates versioned route registration.
+type Routes struct {
+	handlers *handlers.Provider
+	cfg      *config.Config
+}
+
+func NewRoutes(provider *handlers.Provider, cfg *config.Config) *Routes {
+	return &Routes{
+		handlers: provider,
+		cfg:      cfg,
+	}
+}
+
+// Register attaches all v1 routes under /v1 prefix.
+func (r *Routes) Register(router gin.IRouter) {
+	group := router.Group("/v1")
+	group.POST("/media", r.handlers.Media.Ingest)
+	group.POST("/media/upload", r.handlers.Media.DirectUpload)
+	group.GET("/media/:id", r.handlers.Media.Proxy)
+	group.GET("/media/:id/metadata", r.handlers.Media.GetMetadata)
+	group.POST("/files", r.handlers.Media.Ingest)
+	group.POST("/files/upload", r.handlers.Media.DirectUpload)
+	group.GET("/files/:id", r.handlers.Media.Proxy)
+	group.GET("/files/:id/metadata", r.handlers.Media.GetMetadata)
+
+	// Serve static files from local storage if configured
+	if r.cfg.IsLocalStorage() && r.cfg.LocalStoragePath != "" {
+		// Strip /v1 prefix and serve files from /v1/files/*
+		group.Static("/files", r.cfg.LocalStoragePath)
+	}
+}

@@ -1,0 +1,14 @@
+{
+  "id": 5,
+  "dir": "5",
+  "name": "Night Neon",
+  "tone": "Neon Cyberpunk",
+  "description": "Aurora glows + high-energy composition for futuristic themes.",
+  "variants": {
+    "base": 1,
+    "bullets": 5,
+    "split": 5,
+    "hero": 2,
+    "title": 1
+  }
+}

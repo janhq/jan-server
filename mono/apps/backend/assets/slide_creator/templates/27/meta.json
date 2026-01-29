@@ -1,0 +1,14 @@
+{
+  "id": 27,
+  "dir": "27",
+  "name": "Peach Pop",
+  "tone": "Playful Pastel",
+  "description": "Soft patterns and friendly shapes; great for consumer topics.",
+  "variants": {
+    "base": 7,
+    "bullets": 2,
+    "split": 2,
+    "hero": 2,
+    "title": 2
+  }
+}

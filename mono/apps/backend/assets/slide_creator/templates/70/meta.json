@@ -1,0 +1,14 @@
+{
+  "id": 70,
+  "dir": "70",
+  "name": "Metrics Review",
+  "tone": "Data Analyst",
+  "description": "Grid-forward layout for charts/tables and analytic narratives.",
+  "variants": {
+    "base": 6,
+    "bullets": 5,
+    "split": 3,
+    "hero": 2,
+    "title": 1
+  }
+}

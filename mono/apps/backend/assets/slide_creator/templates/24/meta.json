@@ -1,0 +1,14 @@
+{
+  "id": 24,
+  "dir": "24",
+  "name": "Growth Sprint",
+  "tone": "Startup Bold",
+  "description": "Accent band + bold rhythm, pitch-deck energy.",
+  "variants": {
+    "base": 4,
+    "bullets": 4,
+    "split": 3,
+    "hero": 1,
+    "title": 4
+  }
+}
