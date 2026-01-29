@@ -1,0 +1,623 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable react-hooks/rules-of-hooks */
+import { memo, useState } from "react";
+import type { UIMessage, ChatStatus } from "ai";
+import {
+  TOOL_STATE,
+  CHAT_STATUS,
+  CONTENT_TYPE,
+  MESSAGE_ROLE,
+} from "@/constants";
+import { useResolvedMediaUrl } from "@/hooks/use-resolved-media-url";
+import {
+  Message,
+  MessageContent,
+  MessageResponse,
+  MessageActions,
+  MessageAction,
+  MessageAttachments,
+  MessageAttachment,
+} from "@janhq/interfaces/ai-elements/message";
+import {
+  Reasoning,
+  ReasoningTrigger,
+  ReasoningContent,
+} from "@janhq/interfaces/ai-elements/reasoning";
+import {
+  Tool,
+  ToolHeader,
+  ToolContent,
+  ToolInput,
+  ToolOutput,
+} from "@janhq/interfaces/ai-elements/tool";
+import {
+  Dialog,
+  DialogTitle,
+  DialogOverlay,
+  DialogPortal,
+  DialogClose,
+} from "@janhq/interfaces/dialog";
+import {
+  CopyIcon,
+  CheckIcon,
+  RefreshCcwIcon,
+  DownloadIcon,
+  XIcon,
+  FileTextIcon,
+  Loader2Icon,
+} from "lucide-react";
+import { Button } from "@janhq/interfaces/button";
+import { twMerge } from "tailwind-merge";
+import { cn } from "@/lib/utils";
+import AgentExecutionPanel from "./agent-execution";
+
+export type MessageItemProps = {
+  message: UIMessage;
+  isFirstMessage: boolean;
+  isLastMessage: boolean;
+  status: ChatStatus;
+  reasoningContainerRef?: React.RefObject<HTMLDivElement | null>;
+  onRegenerate?: (messageId: string) => Promise<void>;
+  conversationId?: string;
+};
+
+export const MessageItem = memo(
+  ({
+    message,
+    isFirstMessage,
+    isLastMessage,
+    status,
+    reasoningContainerRef,
+    onRegenerate,
+    conversationId: _conversationId,
+  }: MessageItemProps) => {
+    const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+    const [previewImage, setPreviewImage] = useState<{
+      url: string;
+      filename?: string;
+    } | null>(null);
+
+    // Resolver function for media URLs - returns the URL as-is
+    const mediaResolver = async (input: string): Promise<string> => input;
+
+    const handleCopy = (text: string) => {
+      navigator.clipboard.writeText(text.trim());
+      setCopiedMessageId(message.id);
+      setTimeout(() => setCopiedMessageId(null), 2000);
+    };
+
+    const handleRegenerate = () => {
+      onRegenerate?.(message.id);
+    };
+
+    const handleDownload = async (url: string, filename?: string) => {
+      try {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = filename || "generated-image.png";
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(blobUrl);
+        document.body.removeChild(a);
+      } catch (error) {
+        console.error("Failed to download image:", error);
+      }
+    };
+
+    const isStreaming = isLastMessage && status === CHAT_STATUS.STREAMING;
+
+    // Cache for normalized LaTeX content
+    const latexCache = new Map<string, string>();
+
+    /**
+     * Optimized preprocessor: normalize LaTeX fragments into $ / $$.
+     * Uses caching to avoid reprocessing the same content.
+     */
+    const normalizeLatex = (input: string): string => {
+      // Check cache first
+      if (latexCache.has(input)) {
+        return latexCache.get(input)!;
+      }
+
+      const segments = input.split(/(```[\s\S]*?```|`[^`]*`|<[^>]+>)/g);
+
+      const result = segments
+        .map((segment) => {
+          if (!segment) return "";
+
+          // Skip code blocks, inline code, html tags
+          if (/^```[\s\S]*```$/.test(segment)) return segment;
+          if (/^`[^`]*`$/.test(segment)) return segment;
+          if (/^<[^>]+>$/.test(segment)) return segment;
+
+          let s = segment;
+
+          // --- Display math: \[...\] surrounded by newlines
+          s = s.replace(
+            /(^|\n)\\\[\s*\n([\s\S]*?)\n\s*\\\](?=\n|$)/g,
+            (_, pre, inner) => `${pre}$$\n${inner.trim()}\n$$`,
+          );
+
+          // --- Inline math: space \( ... \)
+          s = s.replace(
+            /(^|[^$\\])\\\((.+?)\\\)(?=[^$\\]|$)/g,
+            (_, pre, inner) => `${pre}$${inner.trim()}$`,
+          );
+
+          // --- Escape $<number> to prevent Markdown from treating it as LaTeX
+          // Example: "$1" → "\$1"
+          s = s.replace(/\$(\d+)/g, (_, num) => "\\$" + num);
+
+          return s;
+        })
+        .join("");
+
+      // Cache the result (with size limit to prevent memory leaks)
+      if (latexCache.size > 100) {
+        const firstKey = latexCache.keys().next().value || "";
+        latexCache.delete(firstKey);
+      }
+      latexCache.set(input, result);
+
+      return result;
+    };
+
+    // Strip <attached_url>...</attached_url> tags from display text
+    const stripAttachedUrlTags = (text: string): string => {
+      return text
+        .replace(/<attached_url>.*?<\/attached_url>\n?/g, "")
+        .replace(/\n+$/, "")
+        .trim();
+    };
+
+    // Strip <attached_document ...>...</attached_document> blocks from display text
+    const stripAttachedDocumentTags = (text: string): string => {
+      return text
+        .replace(/<attached_document\b[^>]*>[\s\S]*?<\/attached_document>\n?/g, "")
+        .replace(/\n+$/, "")
+        .trim();
+    };
+    // Render user text with code blocks only (no other markdown)
+    const renderUserTextWithCodeBlocks = (text: string) => {
+      const codeBlockRegex = /(```[\s\S]*?```)/g;
+      const parts = text.split(codeBlockRegex);
+
+      return parts.map((part, index) => {
+        // Check if this part is a code block
+        if (part.startsWith("```") && part.endsWith("```")) {
+          // Remove the triple backticks and optional language identifier
+          const codeContent = part
+            .replace(/^```[^\n]*\n?/, "") // Remove opening ``` and language
+            .replace(/\n?```$/, ""); // Remove closing ```
+
+          return (
+            <pre
+              key={index}
+              className="bg-muted rounded-md p-2 overflow-x-auto"
+            >
+              <code>{codeContent}</code>
+            </pre>
+          );
+        } else {
+          // Render plain text (preserve whitespace)
+          return part ? (
+            <span key={index} className="whitespace-pre-wrap">
+              {part}
+            </span>
+          ) : null;
+        }
+      });
+    };
+
+    const renderTextPart = (part: { text: string }, partIndex: number) => {
+      // Don't render if text is empty
+      if (!part.text || part.text.trim() === "") {
+        return null;
+      }
+
+      const isLastPart = partIndex === message.parts.length - 1;
+
+      // Strip attached_url tags from user messages for display
+      const displayText =
+        message.role === MESSAGE_ROLE.USER
+          ? stripAttachedDocumentTags(stripAttachedUrlTags(part.text))
+          : part.text;
+
+      // Don't render if display text is empty after stripping
+      if (!displayText) {
+        return null;
+      }
+
+      return (
+        <Message
+          key={`${message.id}-${partIndex}`}
+          from={message.role}
+          className={cn(
+            "group",
+            isFirstMessage && message.role === MESSAGE_ROLE.USER && "mt-0!",
+          )}
+        >
+          <MessageContent
+            className={cn(
+              "leading-relaxed",
+              message.role === MESSAGE_ROLE.USER && "whitespace-pre-wrap",
+            )}
+          >
+            {message.role === MESSAGE_ROLE.USER ? (
+              renderUserTextWithCodeBlocks(displayText)
+            ) : (
+              <MessageResponse>{normalizeLatex(part.text)}</MessageResponse>
+            )}
+          </MessageContent>
+
+          {message.role === MESSAGE_ROLE.USER && isLastPart && (
+            <MessageActions
+              className={cn(
+                "gap-0 justify-end transition-opacity",
+                status === CHAT_STATUS.STREAMING
+                  ? "opacity-0 pointer-events-none"
+                  : "opacity-0 group-hover:opacity-100",
+              )}
+            >
+              {onRegenerate && (
+                <MessageAction onClick={handleRegenerate} label="Retry">
+                  <RefreshCcwIcon className="text-muted-foreground size-3" />
+                </MessageAction>
+              )}
+              <MessageAction onClick={() => handleCopy(part.text)} label="Copy">
+                {copiedMessageId === message.id ? (
+                  <CheckIcon className="text-green-600 dark:text-green-400 size-3" />
+                ) : (
+                  <CopyIcon className="text-muted-foreground size-3" />
+                )}
+              </MessageAction>
+            </MessageActions>
+          )}
+
+          {message.role === MESSAGE_ROLE.ASSISTANT && isLastPart && (
+            <MessageActions
+              className={cn(
+                "mt-1 gap-0 transition-opacity",
+                status === CHAT_STATUS.STREAMING &&
+                  "opacity-0 pointer-events-none",
+              )}
+            >
+              <MessageAction onClick={() => handleCopy(part.text)} label="Copy">
+                {copiedMessageId === message.id ? (
+                  <CheckIcon className="text-green-600 dark:text-green-400 size-3" />
+                ) : (
+                  <CopyIcon className="text-muted-foreground size-3" />
+                )}
+              </MessageAction>
+              {onRegenerate && (
+                <MessageAction onClick={handleRegenerate} label="Retry">
+                  <RefreshCcwIcon className="text-muted-foreground size-3" />
+                </MessageAction>
+              )}
+            </MessageActions>
+          )}
+        </Message>
+      );
+    };
+
+    const renderFilePart = (
+      part: { filename?: string; url?: string; mediaType?: string },
+      partIndex: number,
+    ) => {
+      const isAssistant = message.role === MESSAGE_ROLE.ASSISTANT;
+      const isImage = part.mediaType?.startsWith("image/");
+      const isLastPart = partIndex === message.parts.length - 1;
+
+      // Resolve Jan media URL to displayable URL using shared hook
+      const { displayUrl, isLoading } = useResolvedMediaUrl(part.url);
+
+      return (
+        <Message
+          key={`${message.id}-${partIndex}`}
+          from={message.role}
+          className="group"
+        >
+          <MessageAttachments
+            className={cn(
+              isAssistant && "ml-0 mr-auto", // Left-align for assistant
+            )}
+          >
+            {isImage ? (
+              <MessageAttachment
+                data={part as any}
+                key={part.filename || "image"}
+                className={cn(
+                  isAssistant && "size-64", // Bigger for assistant (size-64 = 16rem = 256px vs size-24 = 6rem = 96px)
+                  isImage && !isLoading && displayUrl && "cursor-pointer",
+                )}
+                resolver={mediaResolver}
+                onClick={() => {
+                  if (isImage && displayUrl && !isLoading) {
+                    setPreviewImage({
+                      url: displayUrl,
+                      filename: part.filename,
+                    });
+                  }
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                disabled={!displayUrl || isLoading}
+                onClick={() => {
+                  if (displayUrl && !isLoading) {
+                    handleDownload(displayUrl, part.filename);
+                  }
+                }}
+                className={cn(
+                  "flex max-w-[280px] items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-left text-sm transition hover:bg-muted",
+                  (!displayUrl || isLoading) && "cursor-not-allowed opacity-70",
+                )}
+                title={part.filename || "Document"}
+              >
+                <div className="flex size-8 items-center justify-center rounded-md bg-muted">
+                  {isLoading ? (
+                    <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
+                  ) : (
+                    <FileTextIcon className="size-4 text-muted-foreground" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate font-medium">
+                    {part.filename || "Document"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Click to download</p>
+                </div>
+              </button>
+            )}
+          </MessageAttachments>
+
+          {/* Message actions for assistant images */}
+          {message.role === MESSAGE_ROLE.ASSISTANT &&
+            isImage &&
+            displayUrl &&
+            isLastPart && (
+              <MessageActions
+                className={cn(
+                  "gap-0 transition-opacity",
+                  status === CHAT_STATUS.STREAMING &&
+                    "opacity-0 pointer-events-none",
+                )}
+              >
+                <MessageAction
+                  onClick={() => handleDownload(displayUrl, part.filename)}
+                  label="Download"
+                >
+                  <DownloadIcon className="text-muted-foreground size-3" />
+                </MessageAction>
+              </MessageActions>
+            )}
+        </Message>
+      );
+    };
+
+    const renderReasoningPart = (part: { text: string }, partIndex: number) => {
+      const isLastPart = partIndex === message.parts.length - 1;
+
+      // Only open if this reasoning part is actively being streamed
+      // (last part in message AND status is streaming AND this is the last message)
+      const shouldBeOpen = isStreaming && isLastPart;
+
+      return (
+        <Reasoning
+          key={`${message.id}-${partIndex}`}
+          className="w-full text-muted-foreground"
+          isStreaming={isStreaming && isLastPart}
+          defaultOpen={shouldBeOpen}
+        >
+          <ReasoningTrigger />
+          <div className="relative">
+            {isStreaming && (
+              <div className="absolute top-0 left-0 right-0 h-8 bg-linear-to-br from-background to-transparent pointer-events-none z-10" />
+            )}
+            <div
+              ref={isStreaming ? reasoningContainerRef : null}
+              className={twMerge(
+                "w-full overflow-auto relative",
+                isStreaming
+                  ? "max-h-32 opacity-70 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                  : "h-auto opacity-100",
+              )}
+            >
+              <ReasoningContent>{part.text}</ReasoningContent>
+            </div>
+          </div>
+        </Reasoning>
+      );
+    };
+
+    const renderToolPart = (part: any, partIndex: number) => {
+      if (!part.type.startsWith("tool-") || !("state" in part)) {
+        return null;
+      }
+
+      const toolName = part.type.split("-").slice(1).join("-");
+
+      // For run_agent tool, render AgentExecutionPanel instead of normal tool block
+      if (toolName === "run_agent") {
+        let responseId: string | undefined;
+
+        if (part.output && Array.isArray(part.output)) {
+          try {
+            // Try streaming format: { type: "text", text: "..." }
+            const textContent = part.output.find((c: any) => c.type === "text");
+            if (textContent?.text) {
+              const parsed = JSON.parse(textContent.text);
+              responseId = parsed.id || parsed.response_id;
+            }
+
+            // Try history format: { tool_result: "..." } or { mcp_call: "..." }
+            if (!responseId) {
+              const toolResultContent = part.output.find((c: any) => c.tool_result || c.mcp_call);
+              if (toolResultContent) {
+                const resultText = toolResultContent.tool_result || toolResultContent.mcp_call;
+                if (typeof resultText === "string") {
+                  const parsed = JSON.parse(resultText);
+                  responseId = parsed.id || parsed.response_id;
+                }
+              }
+            }
+
+            if (!responseId) {
+              const contentItem = part.output.find((c: any) => c.content);
+              if (contentItem?.content) {
+                const parsed = JSON.parse(contentItem.content);
+                responseId = parsed.id || parsed.response_id;
+              }
+            }
+          } catch {
+            // Ignore parse errors
+          }
+        }
+
+        return (
+          <AgentExecutionPanel
+            key={`${message.id}-${partIndex}`}
+            toolState={part.state}
+            responseId={responseId}
+          />
+        );
+      }
+
+      // Check if there's any text/file/reasoning part before this tool
+      const hasContentBefore = message.parts
+        .slice(0, partIndex)
+        .some(
+          (p) =>
+            p.type === CONTENT_TYPE.TEXT ||
+            p.type === CONTENT_TYPE.FILE ||
+            p.type === CONTENT_TYPE.REASONING,
+        );
+
+      // Check if this is the first tool part
+      const isFirstTool = !message.parts
+        .slice(0, partIndex)
+        .some((p) => p.type.startsWith("tool-"));
+
+      return (
+        <Tool
+          key={`${message.id}-${partIndex}`}
+          className={cn(hasContentBefore && isFirstTool && "mt-4")}
+        >
+          <ToolHeader
+            title={toolName}
+            type={part.type as `tool-${string}`}
+            state={part.state}
+          />
+          <ToolContent>
+            <ToolInput input={part.input} />
+            {part.state === TOOL_STATE.OUTPUT_AVAILABLE && "output" in part && (
+              <ToolOutput
+                output={part.output}
+                errorText={"errorText" in part ? part.errorText : undefined}
+                resolver={mediaResolver}
+              />
+            )}
+            {part.state === TOOL_STATE.OUTPUT_ERROR && (
+              <ToolOutput
+                output={undefined}
+                errorText={"errorText" in part ? part.errorText : undefined}
+                resolver={mediaResolver}
+              />
+            )}
+          </ToolContent>
+        </Tool>
+      );
+    };
+
+    return (
+      <>
+        <div>
+          {message.parts.map((part, i) => {
+            switch (part.type) {
+              case CONTENT_TYPE.TEXT:
+                return renderTextPart(part, i);
+              case CONTENT_TYPE.FILE:
+                return renderFilePart(part, i);
+              case CONTENT_TYPE.REASONING:
+                return renderReasoningPart(part, i);
+              default:
+                return renderToolPart(part, i);
+            }
+          })}
+        </div>
+
+        {/* Image Preview Dialog */}
+        <Dialog
+          open={!!previewImage}
+          onOpenChange={() => setPreviewImage(null)}
+        >
+          <DialogPortal>
+            <DialogOverlay
+              className="bg-black/90 backdrop-blur-md data-[state=open]:animate-none data-[state=closed]:animate-none"
+              onClick={() => setPreviewImage(null)}
+            />
+            <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+              <DialogTitle className="sr-only">
+                {previewImage?.filename || "Image Preview"}
+              </DialogTitle>
+
+              {/* Action buttons */}
+              <div className="absolute top-4 right-4 z-10 flex gap-2 pointer-events-auto">
+                <Button
+                  size="icon"
+                  variant="secondary"
+                  className="rounded-full bg-background/80 backdrop-blur-sm hover:bg-background shadow-lg"
+                  onClick={() => {
+                    if (previewImage?.url) {
+                      handleDownload(previewImage.url, previewImage.filename);
+                    }
+                  }}
+                >
+                  <DownloadIcon className="size-4" />
+                  <span className="sr-only">Download</span>
+                </Button>
+                <DialogClose asChild>
+                  <Button
+                    size="icon"
+                    variant="secondary"
+                    className="rounded-full bg-background/80 backdrop-blur-sm hover:bg-background shadow-lg"
+                  >
+                    <XIcon className="size-4" />
+                    <span className="sr-only">Close</span>
+                  </Button>
+                </DialogClose>
+              </div>
+
+              {/* Image */}
+              {previewImage && (
+                <img
+                  src={previewImage.url}
+                  alt={previewImage.filename || "Preview"}
+                  className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg pointer-events-auto"
+                />
+              )}
+            </div>
+          </DialogPortal>
+        </Dialog>
+      </>
+    );
+  },
+  (prevProps, nextProps) => {
+    if (nextProps.isLastMessage && nextProps.status === CHAT_STATUS.STREAMING) {
+      return false;
+    }
+
+    return (
+      prevProps.message === nextProps.message &&
+      prevProps.isFirstMessage === nextProps.isFirstMessage &&
+      prevProps.isLastMessage === nextProps.isLastMessage &&
+      prevProps.status === nextProps.status
+    );
+  },
+);
+
+MessageItem.displayName = "MessageItem";

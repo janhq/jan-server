@@ -1,0 +1,231 @@
+.PHONY: all setup build run dev test clean docker-up docker-down help
+
+# Variables
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+
+# ============================================
+# Quick Start
+# ============================================
+
+# Setup environment and start all services
+quickstart: setup docker-up
+	@echo "Jan Server is starting..."
+	@echo "Backend API: http://localhost:8080"
+	@echo "Web UI: http://localhost:3001"
+	@echo "MinIO Console: http://localhost:9001"
+
+# Setup environment file
+setup:
+	@if [ ! -f .env ]; then \
+		echo "Creating .env from template..."; \
+		cp .env.template .env; \
+		echo "Please review and update .env with your settings"; \
+	else \
+		echo ".env already exists"; \
+	fi
+
+# ============================================
+# Development
+# ============================================
+
+# Run backend in development mode
+dev-backend:
+	cd apps/backend && make dev
+
+# Run web in development mode
+dev-web:
+	cd apps/web && npm run dev
+
+# Run all in development mode (requires multiple terminals or tmux)
+dev:
+	@echo "Starting development servers..."
+	@echo "Run 'make dev-backend' in one terminal"
+	@echo "Run 'make dev-web' in another terminal"
+
+# ============================================
+# Build
+# ============================================
+
+# Build backend
+build-backend:
+	cd apps/backend && make build
+
+# Build web
+build-web:
+	cd apps/web && npm run build
+
+# Build all
+build: build-backend build-web
+
+# ============================================
+# Docker
+# ============================================
+
+# Start all services with Docker Compose
+docker-up:
+	docker compose up -d
+
+# Start with Keycloak
+docker-up-keycloak:
+	docker compose --profile keycloak up -d
+
+# Start with Redis
+docker-up-redis:
+	docker compose --profile redis up -d
+
+# Start all optional services
+docker-up-full:
+	docker compose --profile keycloak --profile redis up -d
+
+# Stop all services
+docker-down:
+	docker compose down
+
+# Stop and remove volumes
+docker-down-clean:
+	docker compose down -v
+
+# View logs
+docker-logs:
+	docker compose logs -f
+
+# View backend logs
+docker-logs-backend:
+	docker compose logs -f backend
+
+# Rebuild and restart
+docker-rebuild:
+	docker compose build --no-cache
+	docker compose up -d
+
+# ============================================
+# Testing
+# ============================================
+
+# Run backend tests
+test-backend:
+	cd apps/backend && make test
+
+# Run all tests
+test: test-backend
+
+# Run tests with coverage
+test-coverage:
+	cd apps/backend && make test-coverage
+
+# ============================================
+# Database
+# ============================================
+
+# Open database console
+db-console:
+	docker compose exec postgres psql -U jan -d jan
+
+# Run migrations
+db-migrate:
+	cd apps/backend && make migrate-up
+
+# Rollback migration
+db-rollback:
+	cd apps/backend && make migrate-down
+
+# Reset database
+db-reset:
+	docker compose down postgres
+	docker volume rm mono_postgres_data || true
+	docker compose up -d postgres
+	@echo "Waiting for postgres..."
+	@sleep 5
+	cd apps/backend && make migrate-up
+
+# ============================================
+# Code Quality
+# ============================================
+
+# Format code
+fmt:
+	cd apps/backend && make fmt
+
+# Lint code
+lint:
+	cd apps/backend && make lint
+
+# Security scan
+security:
+	cd apps/backend && make security
+
+# Generate swagger docs
+swagger:
+	cd apps/backend && make swagger
+
+# ============================================
+# Health & Status
+# ============================================
+
+# Check service health
+health-check:
+	@echo "Checking backend health..."
+	@curl -sf http://localhost:8080/healthz && echo "Backend: OK" || echo "Backend: FAILED"
+	@echo "Checking database readiness..."
+	@curl -sf http://localhost:8080/readyz && echo "Database: OK" || echo "Database: FAILED"
+
+# Show running containers
+status:
+	docker compose ps
+
+# ============================================
+# Cleanup
+# ============================================
+
+# Clean build artifacts
+clean:
+	cd apps/backend && make clean
+	rm -rf apps/web/dist
+	rm -rf apps/web/node_modules
+
+# Clean everything including Docker
+clean-all: clean docker-down-clean
+
+# ============================================
+# Help
+# ============================================
+
+help:
+	@echo "Jan Server Mono - Available Commands"
+	@echo ""
+	@echo "Quick Start:"
+	@echo "  make quickstart      - Setup and start all services"
+	@echo "  make setup           - Create .env from template"
+	@echo ""
+	@echo "Development:"
+	@echo "  make dev-backend     - Run backend with hot reload"
+	@echo "  make dev-web         - Run web frontend with hot reload"
+	@echo ""
+	@echo "Docker:"
+	@echo "  make docker-up       - Start all services"
+	@echo "  make docker-up-full  - Start with Keycloak and Redis"
+	@echo "  make docker-down     - Stop all services"
+	@echo "  make docker-logs     - View logs"
+	@echo "  make docker-rebuild  - Rebuild and restart"
+	@echo ""
+	@echo "Database:"
+	@echo "  make db-console      - Open PostgreSQL shell"
+	@echo "  make db-migrate      - Run migrations"
+	@echo "  make db-reset        - Reset database"
+	@echo ""
+	@echo "Testing:"
+	@echo "  make test            - Run all tests"
+	@echo "  make test-coverage   - Run tests with coverage"
+	@echo ""
+	@echo "Code Quality:"
+	@echo "  make fmt             - Format code"
+	@echo "  make lint            - Lint code"
+	@echo "  make swagger         - Generate API docs"
+	@echo ""
+	@echo "Status:"
+	@echo "  make health-check    - Check service health"
+	@echo "  make status          - Show running containers"
+	@echo ""
+	@echo "Cleanup:"
+	@echo "  make clean           - Clean build artifacts"
+	@echo "  make clean-all       - Clean everything including Docker"

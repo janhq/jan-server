@@ -1,0 +1,198 @@
+import type { UIMessage } from "ai";
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+import { TOOL_STATE, CONTENT_TYPE, MESSAGE_ROLE } from "@/constants";
+import { FileIcon, FileTextIcon, PresentationIcon } from "lucide-react";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+/**
+ * Strip <attached_url>...</attached_url> tags from text for display
+ * These tags are used internally to pass image URLs to the API
+ */
+export const stripAttachedUrlTags = (text: string): string => {
+  if (!text) return text;
+  return text
+    .replace(/<attached_url>.*?<\/attached_url>\n?/g, "")
+    .replace(/\n+$/, "")
+    .trim();
+};
+
+/**
+ * Check if text content is an attached document block
+ * These are stored separately for AI context but shouldn't be displayed as text
+ */
+const isAttachedDocumentContent = (text: string): boolean => {
+  if (!text) return false;
+  const trimmed = text.trim();
+  return (
+    trimmed.startsWith("<attached_document") &&
+    trimmed.endsWith("</attached_document>")
+  );
+};
+
+export const getInitialsAvatar = (name: string) => {
+  const words = name.trim().split(/\s+/);
+  if (words.length >= 2) {
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
+  return words[0][0].toUpperCase();
+};
+
+/**
+ * Convert ConversationItems to UIMessage format
+ * @param items - Array of ConversationItems
+ * @returns  Array of UIMessage objects
+ */
+export const convertToUIMessages = (items: ConversationItem[]): UIMessage[] => {
+  return items
+    .filter(
+      (e) => e.role !== MESSAGE_ROLE.TOOL && e.type !== "image_generation_call",
+    )
+    .map((item) => {
+      const parts = item.content
+        .map((content) => {
+          // Determine the content type
+          let contentType: "text" | "reasoning" | "file" = CONTENT_TYPE.TEXT;
+
+          if (content.type === CONTENT_TYPE.REASONING_TEXT) {
+            contentType = CONTENT_TYPE.REASONING;
+          } else if (
+            content.type === CONTENT_TYPE.INPUT_TEXT ||
+            content.type === CONTENT_TYPE.TEXT
+          ) {
+            // Skip attached document content - it's stored for AI context but has a file part for display
+            const textContent = content.input_text || content.text?.text || content.text || "";
+            if (isAttachedDocumentContent(textContent)) {
+              return []; // Skip this content, the file part will be used for display
+            }
+            contentType = CONTENT_TYPE.TEXT;
+          } else if (content.type === "image") {
+            contentType = CONTENT_TYPE.FILE;
+          } else if (content.type === "file" || content.type === "file_url") {
+            // Document file - return early with file-specific data
+            // Handle both "file" (stored format) and "file_url" (API format)
+            const fileData = content.file || content.file_url;
+            return [
+              {
+                type: CONTENT_TYPE.FILE,
+                mediaType: fileData?.mediaType || fileData?.mime_type || "application/octet-stream",
+                url: fileData?.url,
+                filename: fileData?.filename || fileData?.name,
+              },
+            ];
+          } else if (content.type === CONTENT_TYPE.TOOL_CALLS) {
+            contentType = CONTENT_TYPE.TEXT;
+            return (
+              content.tool_calls?.map((toolCall) => {
+                // Find the corresponding tool result by matching tool_call_id
+                const toolResult = items.find(
+                  (item) =>
+                    item.role === MESSAGE_ROLE.TOOL &&
+                    (item.content.some(
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      (c: any) => c.tool_call_id === toolCall.id,
+                    ) ||
+                      // @ts-expect-error fallback for older structure
+                      (item.call_id === toolCall.id &&
+                        item.type === "message")),
+                );
+                const isError =
+                  !toolResult?.content ||
+                  toolResult?.content.some(
+                    (e) =>
+                      (typeof e.mcp_call === "string" &&
+                        e.mcp_call?.toLowerCase().includes("error:")) ||
+                      (typeof e.tool_result === "string" &&
+                        e.tool_result?.toLowerCase().includes("error:")),
+                  ) ||
+                  false;
+
+                const error = isError
+                  ? toolResult?.content.find((e) => e.tool_result || e.mcp_call)
+                  : undefined;
+
+                return {
+                  type: `tool-${toolCall.function.name}`,
+                  input:
+                    typeof toolCall.function.arguments === "string"
+                      ? JSON.parse(toolCall.function.arguments)
+                      : toolCall.function.arguments,
+                  output: toolResult?.content || "",
+                  state: isError
+                    ? TOOL_STATE.OUTPUT_ERROR
+                    : TOOL_STATE.OUTPUT_AVAILABLE,
+                  errorText: isError
+                    ? error?.tool_result || error?.mcp_call
+                    : undefined,
+                  toolCallId: toolCall.id || "",
+                };
+              }) || []
+            );
+          } else {
+            contentType = content.type as "text" | "reasoning" | "file";
+          }
+
+          return [
+            {
+              type: contentType,
+              text: stripAttachedUrlTags(
+                content.text?.text ||
+                  content.text ||
+                  content.input_text ||
+                  content.reasoning_text ||
+                  "",
+              ),
+              mediaType:
+                contentType === CONTENT_TYPE.FILE ? "image/jpeg" : undefined,
+              url:
+                contentType === CONTENT_TYPE.FILE
+                  ? content.image?.url
+                  : undefined,
+            },
+          ];
+        })
+        .flat();
+
+      // Sort parts: reasoning first, then other types
+      const sortedParts = parts.sort((a, b) => {
+        if (
+          a.type === CONTENT_TYPE.REASONING &&
+          b.type !== CONTENT_TYPE.REASONING
+        )
+          return -1;
+        if (
+          a.type !== CONTENT_TYPE.REASONING &&
+          b.type === CONTENT_TYPE.REASONING
+        )
+          return 1;
+        return 0;
+      });
+
+      return {
+        id: item.id,
+        role: item.role as "user" | "assistant" | "system",
+        parts: sortedParts,
+      } as UIMessage;
+    });
+};
+
+export const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+};
+
+export const getArtifactIcon = (contentType: string, mimeType: string) => {
+  if (contentType === "slides" || mimeType.includes("presentation")) {
+    return PresentationIcon;
+  }
+  if (contentType === "document" || mimeType.includes("document") || mimeType.includes("pdf")) {
+    return FileTextIcon;
+  }
+  return FileIcon;
+};

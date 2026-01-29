@@ -1,0 +1,81 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Go binaries and build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+apps/backend/build/
+apps/backend/bin/
+apps/backend/tmp/
+apps/backend/coverage.out
+apps/backend/coverage.html
+
+# Go workspace
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Local data
+data/
+*.db
+*.sqlite
+
+# Docker
+docker-compose.override.yml
+
+# Test artifacts
+coverage/
+.nyc_output/
+junit.xml
+
+# Generated docs
+docs/swagger/docs.go
+docs/swagger/swagger.json
+docs/swagger/swagger.yaml
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Secrets
+*.pem
+*.key
+*.crt
+secrets/
+
+# Build outputs
+dist/
+build/
+out/
+
+# Package lock files (keep only one)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml

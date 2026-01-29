@@ -1,0 +1,224 @@
+services:
+  # ============================================
+  # Backend (Unified Go Server)
+  # ============================================
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    container_name: jan-server-backend
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+      - "${METRICS_PORT:-9091}:9091"
+    environment:
+      # Server
+      - HTTP_PORT=8080
+      - METRICS_PORT=9091
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_FORMAT=${LOG_FORMAT:-console}
+      - ENABLE_PPROF=${ENABLE_PPROF:-false}
+      - ENABLE_SWAGGER=${ENABLE_SWAGGER:-true}
+      - AUTO_MIGRATE=${AUTO_MIGRATE:-true}
+
+      # Database
+      - DB_POSTGRESQL_WRITE_DSN=postgresql://${POSTGRES_USER:-jan}:${POSTGRES_PASSWORD:-jan}@postgres:5432/${POSTGRES_DB:-jan}?sslmode=disable
+      - DB_PREFIX_LLM=llm_
+      - DB_PREFIX_RESPONSE=resp_
+      - DB_PREFIX_MEDIA=media_
+      - DB_PREFIX_MEMORY=mem_
+
+      # Authentication - Keycloak (optional)
+      - KEYCLOAK_ENABLED=${KEYCLOAK_ENABLED:-false}
+      - KEYCLOAK_BASE_URL=${KEYCLOAK_BASE_URL:-http://keycloak:8085}
+      - KEYCLOAK_PUBLIC_URL=${KEYCLOAK_PUBLIC_URL:-http://localhost:8085}
+      - KEYCLOAK_REALM=${KEYCLOAK_REALM:-jan}
+      - BACKEND_CLIENT_ID=${BACKEND_CLIENT_ID:-backend}
+      - BACKEND_CLIENT_SECRET=${BACKEND_CLIENT_SECRET:-backend-secret}
+      - CLIENT=${CLIENT:-jan-client}
+      - ISSUER=${ISSUER:-http://keycloak:8085/realms/jan}
+      - ACCOUNT=${ACCOUNT:-http://keycloak:8085/realms/jan/account}
+      - OIDC_DISCOVERY_URL=${OIDC_DISCOVERY_URL:-http://keycloak:8085/realms/jan/.well-known/openid-configuration}
+      - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI:-http://localhost:8080/auth/callback}
+
+      # Authentication - Local
+      - LOCAL_AUTH_ENABLED=${LOCAL_AUTH_ENABLED:-true}
+      - LOCAL_JWT_SECRET=${LOCAL_JWT_SECRET:-your-super-secret-jwt-key-at-least-32-chars}
+      - LOCAL_JWT_ISSUER=${LOCAL_JWT_ISSUER:-jan-server-local}
+      - LOCAL_JWT_EXPIRATION=${LOCAL_JWT_EXPIRATION:-24h}
+      - BCRYPT_COST=${BCRYPT_COST:-12}
+
+      # Kong Gateway (optional)
+      - KONG_ENABLED=${KONG_ENABLED:-false}
+      - KONG_ADMIN_URL=${KONG_ADMIN_URL:-http://kong:8001}
+
+      # S3 Storage
+      - S3_ENDPOINT=${S3_ENDPOINT:-http://minio:9000}
+      - S3_REGION=${S3_REGION:-us-east-1}
+      - S3_BUCKET=${S3_BUCKET:-jan-media}
+      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID:-minioadmin}
+      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY:-minioadmin}
+      - S3_USE_PATH_STYLE=${S3_USE_PATH_STYLE:-true}
+
+      # Search Providers
+      - SERPER_ENABLED=${SERPER_ENABLED:-false}
+      - SERPER_API_KEY=${SERPER_API_KEY:-}
+      - EXA_ENABLED=${EXA_ENABLED:-false}
+      - EXA_API_KEY=${EXA_API_KEY:-}
+      - TAVILY_ENABLED=${TAVILY_ENABLED:-false}
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - SEARXNG_ENABLED=${SEARXNG_ENABLED:-false}
+      - SEARXNG_URL=${SEARXNG_URL:-}
+
+      # Sandbox
+      - SANDBOX_PROVIDER=${SANDBOX_PROVIDER:-e2b}
+      - E2B_API_KEY=${E2B_API_KEY:-}
+
+      # Memory
+      - MEMORY_ENABLED=${MEMORY_ENABLED:-false}
+      - MEMORY_EMBEDDING_MODEL=${MEMORY_EMBEDDING_MODEL:-bge-m3}
+
+      # Realtime
+      - REALTIME_ENABLED=${REALTIME_ENABLED:-false}
+      - LIVEKIT_URL=${LIVEKIT_URL:-}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:-}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:-}
+
+      # OAuth Connectors
+      - GITHUB_CONNECTOR_ENABLED=${GITHUB_CONNECTOR_ENABLED:-false}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      - GOOGLE_CONNECTOR_ENABLED=${GOOGLE_CONNECTOR_ENABLED:-false}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+
+      # Redis (optional)
+      - REDIS_ENABLED=${REDIS_ENABLED:-false}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - jan-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ============================================
+  # Web Frontend (React + Vite)
+  # ============================================
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: jan-server-web
+    ports:
+      - "${WEB_PORT:-3001}:80"
+    environment:
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:8080}
+    depends_on:
+      - backend
+    networks:
+      - jan-network
+    restart: unless-stopped
+
+  # ============================================
+  # Infrastructure
+  # ============================================
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: jan-server-postgres
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-jan}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-jan}
+      - POSTGRES_DB=${POSTGRES_DB:-jan}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - jan-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jan}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # MinIO (S3-compatible storage)
+  minio:
+    image: minio/minio:latest
+    container_name: jan-server-minio
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      - MINIO_ROOT_USER=${S3_ACCESS_KEY_ID:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${S3_SECRET_ACCESS_KEY:-minioadmin}
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - jan-network
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis (optional caching)
+  redis:
+    image: redis:7-alpine
+    container_name: jan-server-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - jan-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    profiles:
+      - redis
+
+  # Keycloak (optional - for OIDC auth)
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.5
+    container_name: jan-server-keycloak
+    ports:
+      - "${KEYCLOAK_PORT:-8085}:8080"
+    environment:
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB:-jan}
+      - KC_DB_USERNAME=${POSTGRES_USER:-jan}
+      - KC_DB_PASSWORD=${POSTGRES_PASSWORD:-jan}
+    command: start-dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - jan-network
+    restart: unless-stopped
+    profiles:
+      - keycloak
+
+networks:
+  jan-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  minio_data:
+  redis_data:
