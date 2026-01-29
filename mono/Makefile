@@ -147,11 +147,44 @@ test-coverage:
 # CLI Tool
 # ============================================
 
-# Build jan-cli
+# Build jan-cli (uses Docker if Go is not installed)
 cli-build:
-	@echo "Building jan-cli..."
-	@cd tools/jan-cli && go build -o jan-cli$(if $(filter Windows_NT,$(OS)),.exe,) .
-	@echo "jan-cli built successfully"
+ifeq ($(OS),Windows_NT)
+	@if not exist tools\jan-cli\jan-cli.exe ( \
+		echo "Building jan-cli..." && \
+		cd tools/jan-cli && go build -o jan-cli.exe . && \
+		echo "jan-cli built successfully" \
+	) else ( \
+		echo "jan-cli already exists" \
+	)
+else
+	@if [ ! -f tools/jan-cli/jan-cli ]; then \
+		echo "Building jan-cli..."; \
+		if command -v go >/dev/null 2>&1; then \
+			cd tools/jan-cli && go build -o jan-cli .; \
+		else \
+			echo "Go not found, using Docker to build..."; \
+			docker run --rm -v "$(PWD)/tools/jan-cli:/app" -w /app golang:1.24 go build -o jan-cli .; \
+		fi; \
+		echo "jan-cli built successfully"; \
+	else \
+		echo "jan-cli already exists"; \
+	fi
+endif
+
+# Force rebuild jan-cli
+cli-rebuild:
+	@echo "Rebuilding jan-cli..."
+ifeq ($(OS),Windows_NT)
+	@cd tools/jan-cli && go build -o jan-cli.exe .
+else
+	@if command -v go >/dev/null 2>&1; then \
+		cd tools/jan-cli && go build -o jan-cli .; \
+	else \
+		docker run --rm -v "$(PWD)/tools/jan-cli:/app" -w /app golang:1.24 go build -o jan-cli .; \
+	fi
+endif
+	@echo "jan-cli rebuilt successfully"
 
 # Install jan-cli dependencies
 cli-deps:
