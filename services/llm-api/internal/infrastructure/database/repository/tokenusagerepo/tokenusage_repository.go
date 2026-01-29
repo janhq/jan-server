@@ -225,3 +225,106 @@ func (r *TokenUsageGormRepository) GetActivityBuckets(ctx context.Context, userI
 
 	return buckets, err
 }
+
+// GetAllUsersUsage retrieves aggregated usage for all users within a date range (admin)
+func (r *TokenUsageGormRepository) GetAllUsersUsage(ctx context.Context, startDate, endDate time.Time, limit, offset int) ([]tokenusage.UserUsageDetail, int64, error) {
+	var users []tokenusage.UserUsageDetail
+	var total int64
+
+	// Count total distinct users with usage in the period
+	err := r.db.WithContext(ctx).
+		Model(&tokenusage.TokenUsage{}).
+		Where("created_at >= ? AND created_at <= ?", startDate, endDate).
+		Distinct("user_id").
+		Count(&total).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Get paginated user usage summaries
+	err = r.db.WithContext(ctx).
+		Model(&tokenusage.TokenUsage{}).
+		Select(`
+			user_id,
+			SUM(prompt_tokens) as total_prompt_tokens,
+			SUM(completion_tokens) as total_completion_tokens,
+			SUM(total_tokens) as total_tokens,
+			SUM(estimated_cost_usd) as estimated_cost_usd,
+			COUNT(*) as request_count
+		`).
+		Where("created_at >= ? AND created_at <= ?", startDate, endDate).
+		Group("user_id").
+		Order("total_tokens DESC").
+		Limit(limit).
+		Offset(offset).
+		Scan(&users).Error
+
+	return users, total, err
+}
+
+// GetUserUsageDetail retrieves detailed usage for a specific user (admin)
+func (r *TokenUsageGormRepository) GetUserUsageDetail(ctx context.Context, userID string, startDate, endDate time.Time) (*tokenusage.UserUsageDetail, error) {
+	var detail tokenusage.UserUsageDetail
+
+	// Get total usage for the user
+	err := r.db.WithContext(ctx).
+		Model(&tokenusage.TokenUsage{}).
+		Select(`
+			user_id,
+			SUM(prompt_tokens) as total_prompt_tokens,
+			SUM(completion_tokens) as total_completion_tokens,
+			SUM(total_tokens) as total_tokens,
+			SUM(estimated_cost_usd) as estimated_cost_usd,
+			COUNT(*) as request_count
+		`).
+		Where("user_id = ? AND created_at >= ? AND created_at <= ?", userID, startDate, endDate).
+		Group("user_id").
+		Scan(&detail).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Get usage by model
+	var byModel []tokenusage.UsageSummary
+	err = r.db.WithContext(ctx).
+		Model(&tokenusage.TokenUsage{}).
+		Select(`
+			model,
+			SUM(prompt_tokens) as total_prompt_tokens,
+			SUM(completion_tokens) as total_completion_tokens,
+			SUM(total_tokens) as total_tokens,
+			SUM(estimated_cost_usd) as estimated_cost_usd,
+			COUNT(*) as request_count
+		`).
+		Where("user_id = ? AND created_at >= ? AND created_at <= ?", userID, startDate, endDate).
+		Group("model").
+		Order("total_tokens DESC").
+		Scan(&byModel).Error
+	if err != nil {
+		return nil, err
+	}
+	detail.ByModel = byModel
+
+	// Get usage by provider
+	var byProvider []tokenusage.UsageSummary
+	err = r.db.WithContext(ctx).
+		Model(&tokenusage.TokenUsage{}).
+		Select(`
+			provider,
+			SUM(prompt_tokens) as total_prompt_tokens,
+			SUM(completion_tokens) as total_completion_tokens,
+			SUM(total_tokens) as total_tokens,
+			SUM(estimated_cost_usd) as estimated_cost_usd,
+			COUNT(*) as request_count
+		`).
+		Where("user_id = ? AND created_at >= ? AND created_at <= ?", userID, startDate, endDate).
+		Group("provider").
+		Order("total_tokens DESC").
+		Scan(&byProvider).Error
+	if err != nil {
+		return nil, err
+	}
+	detail.ByProvider = byProvider
+
+	return &detail, nil
+}

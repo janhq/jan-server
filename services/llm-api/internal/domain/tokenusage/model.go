@@ -91,6 +91,20 @@ type UsageFilter struct {
 	EndDate   time.Time
 }
 
+// UserUsageDetail represents detailed usage for a specific user (admin view)
+type UserUsageDetail struct {
+	UserID                string          `json:"user_id"`
+	Email                 string          `json:"email,omitempty"`
+	Username              string          `json:"username,omitempty"`
+	TotalPromptTokens     int64           `json:"total_prompt_tokens"`
+	TotalCompletionTokens int64           `json:"total_completion_tokens"`
+	TotalTokens           int64           `json:"total_tokens"`
+	RequestCount          int64           `json:"request_count"`
+	EstimatedCostUSD      decimal.Decimal `json:"estimated_cost_usd"`
+	ByModel               []UsageSummary  `json:"by_model,omitempty" gorm:"-"`
+	ByProvider            []UsageSummary  `json:"by_provider,omitempty" gorm:"-"`
+}
+
 // ActivityBucket represents a 5-minute bucket of usage activity
 type ActivityBucket struct {
 	BucketTime            time.Time `json:"bucket_time"`

@@ -13,9 +13,9 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProfileIndexRouteImport } from './routes/profile/index'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
+import { Route as ConnectorsIndexRouteImport } from './routes/connectors/index'
 import { Route as ArtifactsIndexRouteImport } from './routes/artifacts/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
-import { Route as ConnectorsIndexRouteImport } from './routes/connectors/index'
 import { Route as ThreadsTemporaryRouteImport } from './routes/threads/temporary'
 import { Route as ThreadsConversationIdRouteImport } from './routes/threads/$conversationId'
 import { Route as ShareSlugRouteImport } from './routes/share/$slug'
@@ -24,8 +24,9 @@ import { Route as DocsRoadmapRouteImport } from './routes/docs/roadmap'
 import { Route as DocsQuickstartRouteImport } from './routes/docs/quickstart'
 import { Route as DashboardUsageRouteImport } from './routes/dashboard/usage'
 import { Route as DashboardApiKeysRouteImport } from './routes/dashboard/api-keys'
-import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
 import { Route as ConnectorsCallbackRouteImport } from './routes/connectors/callback'
+import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
+import { Route as AdminUsageRouteImport } from './routes/admin/usage'
 import { Route as AdminPromptTemplatesRouteImport } from './routes/admin/prompt-templates'
 import { Route as AdminMcpToolsRouteImport } from './routes/admin/mcp-tools'
 import { Route as DocsGuidesIndexRouteImport } from './routes/docs/guides/index'
@@ -75,6 +76,11 @@ const DashboardIndexRoute = DashboardIndexRouteImport.update({
   path: '/dashboard/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConnectorsIndexRoute = ConnectorsIndexRouteImport.update({
+  id: '/connectors/',
+  path: '/connectors/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ArtifactsIndexRoute = ArtifactsIndexRouteImport.update({
   id: '/artifacts/',
   path: '/artifacts/',
@@ -83,11 +89,6 @@ const ArtifactsIndexRoute = ArtifactsIndexRouteImport.update({
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/admin/',
   path: '/admin/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ConnectorsIndexRoute = ConnectorsIndexRouteImport.update({
-  id: '/connectors/',
-  path: '/connectors/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ThreadsTemporaryRoute = ThreadsTemporaryRouteImport.update({
@@ -130,14 +131,19 @@ const DashboardApiKeysRoute = DashboardApiKeysRouteImport.update({
   path: '/dashboard/api-keys',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConnectorsCallbackRoute = ConnectorsCallbackRouteImport.update({
+  id: '/connectors/callback',
+  path: '/connectors/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthCallbackRoute = AuthCallbackRouteImport.update({
   id: '/auth/callback',
   path: '/auth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ConnectorsCallbackRoute = ConnectorsCallbackRouteImport.update({
-  id: '/connectors/callback',
-  path: '/connectors/callback',
+const AdminUsageRoute = AdminUsageRouteImport.update({
+  id: '/admin/usage',
+  path: '/admin/usage',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminPromptTemplatesRoute = AdminPromptTemplatesRouteImport.update({
@@ -291,9 +297,9 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin/mcp-tools': typeof AdminMcpToolsRoute
   '/admin/prompt-templates': typeof AdminPromptTemplatesRoute
+  '/admin/usage': typeof AdminUsageRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/connectors/callback': typeof ConnectorsCallbackRoute
-  '/connectors/': typeof ConnectorsIndexRoute
   '/dashboard/api-keys': typeof DashboardApiKeysRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
@@ -304,6 +310,7 @@ export interface FileRoutesByFullPath {
   '/threads/temporary': typeof ThreadsTemporaryRoute
   '/admin/': typeof AdminIndexRoute
   '/artifacts/': typeof ArtifactsIndexRoute
+  '/connectors/': typeof ConnectorsIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/profile/': typeof ProfileIndexRoute
@@ -338,9 +345,9 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin/mcp-tools': typeof AdminMcpToolsRoute
   '/admin/prompt-templates': typeof AdminPromptTemplatesRoute
+  '/admin/usage': typeof AdminUsageRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/connectors/callback': typeof ConnectorsCallbackRoute
-  '/connectors': typeof ConnectorsIndexRoute
   '/dashboard/api-keys': typeof DashboardApiKeysRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
@@ -351,6 +358,7 @@ export interface FileRoutesByTo {
   '/threads/temporary': typeof ThreadsTemporaryRoute
   '/admin': typeof AdminIndexRoute
   '/artifacts': typeof ArtifactsIndexRoute
+  '/connectors': typeof ConnectorsIndexRoute
   '/dashboard': typeof DashboardIndexRoute
   '/docs': typeof DocsIndexRoute
   '/profile': typeof ProfileIndexRoute
@@ -386,9 +394,9 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin/mcp-tools': typeof AdminMcpToolsRoute
   '/admin/prompt-templates': typeof AdminPromptTemplatesRoute
+  '/admin/usage': typeof AdminUsageRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/connectors/callback': typeof ConnectorsCallbackRoute
-  '/connectors/': typeof ConnectorsIndexRoute
   '/dashboard/api-keys': typeof DashboardApiKeysRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
@@ -399,6 +407,7 @@ export interface FileRoutesById {
   '/threads/temporary': typeof ThreadsTemporaryRoute
   '/admin/': typeof AdminIndexRoute
   '/artifacts/': typeof ArtifactsIndexRoute
+  '/connectors/': typeof ConnectorsIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/profile/': typeof ProfileIndexRoute
@@ -435,9 +444,9 @@ export interface FileRouteTypes {
     | '/'
     | '/admin/mcp-tools'
     | '/admin/prompt-templates'
+    | '/admin/usage'
     | '/auth/callback'
     | '/connectors/callback'
-    | '/connectors/'
     | '/dashboard/api-keys'
     | '/dashboard/usage'
     | '/docs/quickstart'
@@ -448,6 +457,7 @@ export interface FileRouteTypes {
     | '/threads/temporary'
     | '/admin/'
     | '/artifacts/'
+    | '/connectors/'
     | '/dashboard/'
     | '/docs/'
     | '/profile/'
@@ -482,9 +492,9 @@ export interface FileRouteTypes {
     | '/'
     | '/admin/mcp-tools'
     | '/admin/prompt-templates'
+    | '/admin/usage'
     | '/auth/callback'
     | '/connectors/callback'
-    | '/connectors'
     | '/dashboard/api-keys'
     | '/dashboard/usage'
     | '/docs/quickstart'
@@ -495,6 +505,7 @@ export interface FileRouteTypes {
     | '/threads/temporary'
     | '/admin'
     | '/artifacts'
+    | '/connectors'
     | '/dashboard'
     | '/docs'
     | '/profile'
@@ -529,9 +540,9 @@ export interface FileRouteTypes {
     | '/'
     | '/admin/mcp-tools'
     | '/admin/prompt-templates'
+    | '/admin/usage'
     | '/auth/callback'
     | '/connectors/callback'
-    | '/connectors/'
     | '/dashboard/api-keys'
     | '/dashboard/usage'
     | '/docs/quickstart'
@@ -542,6 +553,7 @@ export interface FileRouteTypes {
     | '/threads/temporary'
     | '/admin/'
     | '/artifacts/'
+    | '/connectors/'
     | '/dashboard/'
     | '/docs/'
     | '/profile/'
@@ -577,6 +589,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminMcpToolsRoute: typeof AdminMcpToolsRoute
   AdminPromptTemplatesRoute: typeof AdminPromptTemplatesRoute
+  AdminUsageRoute: typeof AdminUsageRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   ConnectorsCallbackRoute: typeof ConnectorsCallbackRoute
   DashboardApiKeysRoute: typeof DashboardApiKeysRoute
@@ -588,8 +601,8 @@ export interface RootRouteChildren {
   ThreadsConversationIdRoute: typeof ThreadsConversationIdRoute
   ThreadsTemporaryRoute: typeof ThreadsTemporaryRoute
   AdminIndexRoute: typeof AdminIndexRoute
-  ConnectorsIndexRoute: typeof ConnectorsIndexRoute
   ArtifactsIndexRoute: typeof ArtifactsIndexRoute
+  ConnectorsIndexRoute: typeof ConnectorsIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
   DocsIndexRoute: typeof DocsIndexRoute
   ProfileIndexRoute: typeof ProfileIndexRoute
@@ -649,6 +662,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard/'
       preLoaderRoute: typeof DashboardIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/connectors/': {
+      id: '/connectors/'
+      path: '/connectors'
+      fullPath: '/connectors/'
+      preLoaderRoute: typeof ConnectorsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/artifacts/': {
@@ -721,6 +741,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardApiKeysRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/connectors/callback': {
+      id: '/connectors/callback'
+      path: '/connectors/callback'
+      fullPath: '/connectors/callback'
+      preLoaderRoute: typeof ConnectorsCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth/callback': {
       id: '/auth/callback'
       path: '/auth/callback'
@@ -728,18 +755,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/connectors/': {
-      id: '/connectors/'
-      path: '/connectors'
-      fullPath: '/connectors/'
-      preLoaderRoute: typeof ConnectorsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/connectors/callback': {
-      id: '/connectors/callback'
-      path: '/connectors/callback'
-      fullPath: '/connectors/callback'
-      preLoaderRoute: typeof ConnectorsCallbackRouteImport
+    '/admin/usage': {
+      id: '/admin/usage'
+      path: '/admin/usage'
+      fullPath: '/admin/usage'
+      preLoaderRoute: typeof AdminUsageRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/prompt-templates': {
@@ -945,6 +965,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminMcpToolsRoute: AdminMcpToolsRoute,
   AdminPromptTemplatesRoute: AdminPromptTemplatesRoute,
+  AdminUsageRoute: AdminUsageRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   ConnectorsCallbackRoute: ConnectorsCallbackRoute,
   DashboardApiKeysRoute: DashboardApiKeysRoute,
@@ -956,8 +977,8 @@ const rootRouteChildren: RootRouteChildren = {
   ThreadsConversationIdRoute: ThreadsConversationIdRoute,
   ThreadsTemporaryRoute: ThreadsTemporaryRoute,
   AdminIndexRoute: AdminIndexRoute,
-  ConnectorsIndexRoute: ConnectorsIndexRoute,
   ArtifactsIndexRoute: ArtifactsIndexRoute,
+  ConnectorsIndexRoute: ConnectorsIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,
   DocsIndexRoute: DocsIndexRoute,
   ProfileIndexRoute: ProfileIndexRoute,

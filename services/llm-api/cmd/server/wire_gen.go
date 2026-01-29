@@ -159,7 +159,7 @@ func CreateApplication() (*Application, error) {
 	mcpToolRepository := mcptoolrepo.NewMCPToolGormRepository(database)
 	mcptoolService := mcptool.NewService(mcpToolRepository)
 	mcpToolHandler := mcptoolhandler.NewMCPToolHandler(mcptoolService, adminAuditLogger)
-	usageHandler := usagehandler.NewUsageHandler(tokenusageService)
+	usageHandler := usagehandler.NewUsageHandler(tokenusageService, service)
 	adminRoute := admin2.NewAdminRoute(adminModelRoute, adminProviderRoute, adminUserHandler, adminGroupHandler, featureFlagHandler, promptTemplateHandler, mcpToolHandler, usageHandler)
 	userSettingsHandler := usersettingshandler.NewUserSettingsHandler(usersettingsService, providerService, config, zerologLogger)
 	usersRoute := users.NewUsersRoute(userSettingsHandler, authHandler)

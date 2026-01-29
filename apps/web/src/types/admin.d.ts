@@ -338,3 +338,48 @@ interface DailyAggregate {
   request_count: number;
   estimated_cost_usd: string;
 }
+
+interface AdminUsageSummary {
+  model: string;
+  provider: string;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  total_tokens: number;
+  request_count: number;
+}
+
+// Admin Usage Types
+interface UserUsageDetail {
+  user_id: string;
+  email?: string;
+  username?: string;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  total_tokens: number;
+  request_count: number;
+  by_model?: AdminUsageSummary[];
+  by_provider?: AdminUsageSummary[];
+}
+
+interface AllUsersUsageResponse {
+  period: UsagePeriod;
+  users: UserUsageDetail[];
+  total: number;
+}
+
+interface PlatformUsageResponse {
+  period: UsagePeriod;
+  total_usage: AdminUsageSummary;
+  by_model: AdminUsageSummary[];
+  by_provider: AdminUsageSummary[];
+  top_users: UserUsage[];
+}
+
+interface UserUsage {
+  user_id: string;
+  email?: string;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  total_tokens: number;
+  request_count: number;
+}

@@ -36,4 +36,10 @@ type Repository interface {
 
 	// GetActivityBuckets retrieves 5-minute bucket usage data for a user
 	GetActivityBuckets(ctx context.Context, userID string, startDate, endDate time.Time) ([]ActivityBucket, error)
+
+	// GetAllUsersUsage retrieves aggregated usage for all users within a date range (admin)
+	GetAllUsersUsage(ctx context.Context, startDate, endDate time.Time, limit, offset int) ([]UserUsageDetail, int64, error)
+
+	// GetUserUsageDetail retrieves detailed usage for a specific user (admin)
+	GetUserUsageDetail(ctx context.Context, userID string, startDate, endDate time.Time) (*UserUsageDetail, error)
 }
