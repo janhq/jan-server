@@ -12,7 +12,7 @@ jobs:
     with:
       runs-on: ubuntu-24-04-docker
       docker-file: apps/platform/Dockerfile
-      context: apps/platform
+      context: .
       registry-url: registry.menlo.ai
       tags: registry.menlo.ai/menlo-platform/platform-web:prod-${{ github.ref_name }}
       is_push: true
