@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"jan-server/services/llm-api/internal/domain/conversation"
+	domainmodel "jan-server/services/llm-api/internal/domain/model"
 	"jan-server/services/llm-api/internal/domain/tokenusage"
 	"jan-server/services/llm-api/internal/infrastructure/inference"
 	"jan-server/services/llm-api/internal/infrastructure/metrics"
@@ -74,7 +75,15 @@ func (h *MessagesHandler) CreateMessage(ctx context.Context, reqCtx *gin.Context
 
 	// Get provider for the requested model
 	observability.AddSpanEvent(ctx, "selecting_provider")
-	selectedProviderModel, selectedProvider, err := h.providerHandler.SelectProviderModelForModelPublicID(ctx, request.Model)
+	isAPIKeyAuth := strings.EqualFold(reqCtx.GetHeader("X-Auth-Method"), "apikey")
+	var selectedProviderModel *domainmodel.ProviderModel
+	var selectedProvider *domainmodel.Provider
+	var err error
+	if isAPIKeyAuth {
+		selectedProviderModel, selectedProvider, err = h.providerHandler.SelectProviderModelForModelPublicIDIncludingInactive(ctx, request.Model)
+	} else {
+		selectedProviderModel, selectedProvider, err = h.providerHandler.SelectProviderModelForModelPublicID(ctx, request.Model)
+	}
 	if err != nil {
 		observability.RecordError(ctx, err)
 		return h.writeErrorResponse(reqCtx, http.StatusBadRequest, "invalid_request_error", fmt.Sprintf("Model not found: %s", request.Model))
@@ -450,7 +459,14 @@ func (h *MessagesHandler) CountTokens(ctx context.Context, reqCtx *gin.Context, 
 	)
 
 	// Get provider for the requested model to validate it exists
-	selectedProviderModel, _, err := h.providerHandler.SelectProviderModelForModelPublicID(ctx, request.Model)
+	isAPIKeyAuth := strings.EqualFold(reqCtx.GetHeader("X-Auth-Method"), "apikey")
+	var selectedProviderModel *domainmodel.ProviderModel
+	var err error
+	if isAPIKeyAuth {
+		selectedProviderModel, _, err = h.providerHandler.SelectProviderModelForModelPublicIDIncludingInactive(ctx, request.Model)
+	} else {
+		selectedProviderModel, _, err = h.providerHandler.SelectProviderModelForModelPublicID(ctx, request.Model)
+	}
 	if err != nil || selectedProviderModel == nil {
 		return h.writeErrorResponse(reqCtx, http.StatusBadRequest, "invalid_request_error", fmt.Sprintf("Model not found: %s", request.Model))
 	}
