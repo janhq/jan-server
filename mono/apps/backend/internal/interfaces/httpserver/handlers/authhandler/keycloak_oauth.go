@@ -490,6 +490,12 @@ func (h *KeycloakOAuthHandler) exchangeCodeForTokens(code string, codeVerifier s
 
 // ProvideKeycloakOAuthHandler provides a KeycloakOAuthHandler for dependency injection
 func ProvideKeycloakOAuthHandler(cfg *config.Config) *KeycloakOAuthHandler {
+	if cfg == nil || !cfg.KeycloakEnabled {
+		return nil
+	}
+	if strings.TrimSpace(cfg.KeycloakBaseURL) == "" || strings.TrimSpace(cfg.Client) == "" || strings.TrimSpace(cfg.OAuthRedirectURI) == "" {
+		return nil
+	}
 	clientSecret := ""
 	if cfg.Client == cfg.BackendClientID {
 		clientSecret = cfg.BackendClientSecret

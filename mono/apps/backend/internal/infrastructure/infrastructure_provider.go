@@ -34,6 +34,9 @@ func ProvideConfig() (*config.Config, error) {
 
 // ProvideKeycloakClient provides a keycloak client
 func ProvideKeycloakClient(cfg *config.Config, log zerolog.Logger) *keycloak.Client {
+	if !cfg.KeycloakEnabled {
+		return nil
+	}
 	return keycloak.NewClient(
 		cfg.KeycloakBaseURL,
 		cfg.KeycloakRealm,
@@ -59,7 +62,13 @@ func ProvideKongClient(cfg *config.Config, log zerolog.Logger) *kong.Client {
 
 // ProvideKeycloakValidator provides a JWT validator
 func ProvideKeycloakValidator(cfg *config.Config, log zerolog.Logger) (*auth.KeycloakValidator, error) {
-	jwksURL := cfg.JWKSURL
+	if !cfg.KeycloakEnabled {
+		return nil, nil
+	}
+	jwksURL, err := cfg.ResolveJWKSURL(context.Background())
+	if err != nil {
+		return nil, err
+	}
 	return auth.NewKeycloakValidator(
 		context.Background(),
 		jwksURL,

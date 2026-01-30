@@ -28,13 +28,14 @@ type Config struct {
 	DBPostgresqlRead1DSN string `env:"DB_POSTGRESQL_READ1_DSN"` // Optional read replica
 
 	// Keycloak / Auth
-	KeycloakBaseURL     string        `env:"KEYCLOAK_BASE_URL,notEmpty"`
+	KeycloakEnabled     bool          `env:"KEYCLOAK_ENABLED" envDefault:"false"`
+	KeycloakBaseURL     string        `env:"KEYCLOAK_BASE_URL"`
 	KeycloakPublicURL   string        `env:"KEYCLOAK_PUBLIC_URL"` // Browser-accessible URL (defaults to KeycloakBaseURL)
 	KeycloakRealm       string        `env:"KEYCLOAK_REALM" envDefault:"jan"`
-	BackendClientID     string        `env:"BACKEND_CLIENT_ID,notEmpty"`
-	BackendClientSecret string        `env:"BACKEND_CLIENT_SECRET,notEmpty"`
-	Client              string        `env:"CLIENT,notEmpty"`
-	OAuthRedirectURI    string        `env:"OAUTH_REDIRECT_URI,notEmpty"`
+	BackendClientID     string        `env:"BACKEND_CLIENT_ID"`
+	BackendClientSecret string        `env:"BACKEND_CLIENT_SECRET"`
+	Client              string        `env:"CLIENT"`
+	OAuthRedirectURI    string        `env:"OAUTH_REDIRECT_URI"`
 	GuestRole           string        `env:"GUEST_ROLE" envDefault:"guest"`
 	KeycloakAdminUser   string        `env:"KEYCLOAK_ADMIN"`
 	KeycloakAdminPass   string        `env:"KEYCLOAK_ADMIN_PASSWORD"`
@@ -43,8 +44,8 @@ type Config struct {
 	KeycloakAdminSecret string        `env:"KEYCLOAK_ADMIN_CLIENT_SECRET"`
 	JWKSURL             string        `env:"JWKS_URL"`
 	OIDCDiscoveryURL    string        `env:"OIDC_DISCOVERY_URL"`
-	Issuer              string        `env:"ISSUER,notEmpty"`
-	Account             string        `env:"ACCOUNT,notEmpty"`
+	Issuer              string        `env:"ISSUER"`
+	Account             string        `env:"ACCOUNT"`
 	RefreshJWKSInterval time.Duration `env:"JWKS_REFRESH_INTERVAL" envDefault:"5m"`
 	AuthClockSkew       time.Duration `env:"AUTH_CLOCK_SKEW" envDefault:"60s"`
 
@@ -206,6 +207,18 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("parse env: %w", err)
 	}
 
+	keycloakEnabled := cfg.KeycloakEnabled
+	if !keycloakEnabled {
+		if _, ok := os.LookupEnv("KEYCLOAK_ENABLED"); !ok {
+			if strings.TrimSpace(cfg.KeycloakBaseURL) != "" ||
+				strings.TrimSpace(cfg.JWKSURL) != "" ||
+				strings.TrimSpace(cfg.OIDCDiscoveryURL) != "" {
+				keycloakEnabled = true
+			}
+		}
+	}
+	cfg.KeycloakEnabled = keycloakEnabled
+
 	if llmLogLevel := strings.TrimSpace(os.Getenv("LLM_API_LOG_LEVEL")); llmLogLevel != "" {
 		cfg.LogLevel = llmLogLevel
 	}
@@ -216,11 +229,6 @@ func Load() (*Config, error) {
 	cfg.JanProviderConfigSet = strings.TrimSpace(cfg.JanProviderConfigSet)
 	if cfg.JanProviderConfigSet == "" {
 		cfg.JanProviderConfigSet = "default"
-	}
-
-	// Default KeycloakPublicURL to KeycloakBaseURL if not set
-	if cfg.KeycloakPublicURL == "" {
-		cfg.KeycloakPublicURL = cfg.KeycloakBaseURL
 	}
 
 	if cfg.JanProviderConfigsEnabled {
@@ -238,19 +246,46 @@ func Load() (*Config, error) {
 		}
 	}
 
-	if cfg.JWKSURL == "" && cfg.OIDCDiscoveryURL == "" {
-		return nil, errors.New("either JWKS_URL or OIDC_DISCOVERY_URL must be provided")
-	}
-
-	if cfg.JWKSURL != "" {
-		if _, err := url.ParseRequestURI(cfg.JWKSURL); err != nil {
-			return nil, fmt.Errorf("invalid JWKS_URL: %w", err)
+	if cfg.KeycloakEnabled {
+		if strings.TrimSpace(cfg.KeycloakBaseURL) == "" {
+			return nil, errors.New("KEYCLOAK_BASE_URL is required when KEYCLOAK_ENABLED is true")
 		}
-	}
-
-	if cfg.OIDCDiscoveryURL != "" {
-		if _, err := url.ParseRequestURI(cfg.OIDCDiscoveryURL); err != nil {
-			return nil, fmt.Errorf("invalid OIDC_DISCOVERY_URL: %w", err)
+		if strings.TrimSpace(cfg.BackendClientID) == "" {
+			return nil, errors.New("BACKEND_CLIENT_ID is required when KEYCLOAK_ENABLED is true")
+		}
+		if strings.TrimSpace(cfg.BackendClientSecret) == "" {
+			return nil, errors.New("BACKEND_CLIENT_SECRET is required when KEYCLOAK_ENABLED is true")
+		}
+		if strings.TrimSpace(cfg.Client) == "" {
+			return nil, errors.New("CLIENT is required when KEYCLOAK_ENABLED is true")
+		}
+		if strings.TrimSpace(cfg.OAuthRedirectURI) == "" {
+			return nil, errors.New("OAUTH_REDIRECT_URI is required when KEYCLOAK_ENABLED is true")
+		}
+		if strings.TrimSpace(cfg.Issuer) == "" {
+			return nil, errors.New("ISSUER is required when KEYCLOAK_ENABLED is true")
+		}
+		if strings.TrimSpace(cfg.Account) == "" {
+			return nil, errors.New("ACCOUNT is required when KEYCLOAK_ENABLED is true")
+		}
+		if cfg.JWKSURL == "" && cfg.OIDCDiscoveryURL == "" {
+			return nil, errors.New("either JWKS_URL or OIDC_DISCOVERY_URL must be provided when KEYCLOAK_ENABLED is true")
+		}
+		if cfg.JWKSURL != "" {
+			if _, err := url.ParseRequestURI(cfg.JWKSURL); err != nil {
+				return nil, fmt.Errorf("invalid JWKS_URL: %w", err)
+			}
+		}
+		if cfg.OIDCDiscoveryURL != "" {
+			if _, err := url.ParseRequestURI(cfg.OIDCDiscoveryURL); err != nil {
+				return nil, fmt.Errorf("invalid OIDC_DISCOVERY_URL: %w", err)
+			}
+		}
+		if cfg.KeycloakPublicURL == "" {
+			cfg.KeycloakPublicURL = cfg.KeycloakBaseURL
+		}
+		if _, err := url.ParseRequestURI(cfg.KeycloakBaseURL); err != nil {
+			return nil, fmt.Errorf("invalid KEYCLOAK_BASE_URL: %w", err)
 		}
 	}
 
@@ -277,10 +312,6 @@ func Load() (*Config, error) {
 
 	if cfg.AuthClockSkew < 0 {
 		cfg.AuthClockSkew = cfg.AuthClockSkew * -1
-	}
-
-	if _, err := url.ParseRequestURI(cfg.KeycloakBaseURL); err != nil {
-		return nil, fmt.Errorf("invalid KEYCLOAK_BASE_URL: %w", err)
 	}
 
 	cfg.LogLevel = strings.ToLower(cfg.LogLevel)

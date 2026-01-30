@@ -19,6 +19,11 @@ CMD_DIR := ./cmd/server
 BUILD_DIR := ./build
 MIGRATIONS_DIR := ./migrations
 
+AIR_CONFIG := .air.toml
+ifeq ($(OS),Windows_NT)
+AIR_CONFIG := .air.windows.toml
+endif
+
 # Default target
 all: build
 
@@ -36,7 +41,7 @@ run: build
 # Run in development mode with hot reload (requires air)
 dev:
 	@command -v air >/dev/null 2>&1 || { echo "Installing air..."; go install github.com/air-verse/air@latest; }
-	air
+	air -c $(AIR_CONFIG)
 
 # Run tests
 test:
