@@ -168,7 +168,7 @@ func CreateApplication() (*Application, error) {
 	shareHandler := sharehandler.NewShareHandler(shareService, conversationHandler, config)
 	shareRoute := share2.NewShareRoute(shareHandler, authHandler, conversationHandler)
 	publicShareRoute := public.NewPublicShareRoute(shareHandler)
-	messagesHandler := messageshandler.NewMessagesHandler(inferenceProvider, providerHandler, conversationService)
+	messagesHandler := messageshandler.NewMessagesHandler(inferenceProvider, providerHandler, conversationService, tokenusageService)
 	messagesRoute := messages.NewMessagesRoute(messagesHandler, authHandler)
 	usageRoute := usage.NewUsageRoute(usageHandler, authHandler)
 	// Document OCR service and routes

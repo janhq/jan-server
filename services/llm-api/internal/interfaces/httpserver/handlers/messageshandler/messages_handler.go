@@ -15,7 +15,9 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"jan-server/services/llm-api/internal/domain/conversation"
+	"jan-server/services/llm-api/internal/domain/tokenusage"
 	"jan-server/services/llm-api/internal/infrastructure/inference"
+	"jan-server/services/llm-api/internal/infrastructure/metrics"
 	"jan-server/services/llm-api/internal/infrastructure/observability"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/modelhandler"
 	messagesrequests "jan-server/services/llm-api/internal/interfaces/httpserver/requests/messages"
@@ -35,6 +37,7 @@ type MessagesHandler struct {
 	inferenceProvider   *inference.InferenceProvider
 	providerHandler     *modelhandler.ProviderHandler
 	conversationService *conversation.ConversationService
+	tokenUsageService   *tokenusage.Service
 }
 
 // NewMessagesHandler creates a new messages handler
@@ -42,11 +45,13 @@ func NewMessagesHandler(
 	inferenceProvider *inference.InferenceProvider,
 	providerHandler *modelhandler.ProviderHandler,
 	conversationService *conversation.ConversationService,
+	tokenUsageService *tokenusage.Service,
 ) *MessagesHandler {
 	return &MessagesHandler{
 		inferenceProvider:   inferenceProvider,
 		providerHandler:     providerHandler,
 		conversationService: conversationService,
+		tokenUsageService:   tokenUsageService,
 	}
 }
 
@@ -121,9 +126,9 @@ func (h *MessagesHandler) CreateMessage(ctx context.Context, reqCtx *gin.Context
 	llmStartTime := time.Now()
 
 	if request.Stream {
-		err = h.streamCompletion(ctx, reqCtx, chatClient, llmRequest, request.Model, conv, conversationID)
+		err = h.streamCompletion(ctx, reqCtx, chatClient, llmRequest, request.Model, selectedProvider.DisplayName, conv, conversationID, userID)
 	} else {
-		err = h.callCompletion(ctx, reqCtx, chatClient, llmRequest, request.Model, conv, conversationID, userID, request)
+		err = h.callCompletion(ctx, reqCtx, chatClient, llmRequest, request.Model, selectedProvider.DisplayName, conv, conversationID, userID, request)
 	}
 
 	llmDuration := time.Since(llmStartTime)
@@ -150,6 +155,7 @@ func (h *MessagesHandler) callCompletion(
 	chatClient *chat.ChatCompletionClient,
 	request chat.CompletionRequest,
 	originalModel string,
+	providerName string,
 	conv *conversation.Conversation,
 	conversationID string,
 	userID uint,
@@ -184,6 +190,29 @@ func (h *MessagesHandler) callCompletion(
 		h.storeToConversation(ctx, conv, anthropicReq, response)
 	}
 
+	// Record token usage for dashboard
+	if response != nil && response.Usage.TotalTokens > 0 && h.tokenUsageService != nil {
+		metrics.RecordTokens(originalModel, providerName, response.Usage.PromptTokens, response.Usage.CompletionTokens)
+		usage := &tokenusage.TokenUsage{
+			UserID:           fmt.Sprintf("%d", userID),
+			Model:            originalModel,
+			Provider:         providerName,
+			PromptTokens:     response.Usage.PromptTokens,
+			CompletionTokens: response.Usage.CompletionTokens,
+			TotalTokens:      response.Usage.TotalTokens,
+			Stream:           false,
+		}
+		if conversationID != "" {
+			usage.ConversationID = &conversationID
+		}
+		if conv != nil && conv.ProjectPublicID != nil {
+			usage.ProjectID = conv.ProjectPublicID
+		}
+		go func(ctx context.Context, u *tokenusage.TokenUsage) {
+			_ = h.tokenUsageService.RecordUsage(ctx, u)
+		}(context.Background(), usage)
+	}
+
 	reqCtx.JSON(http.StatusOK, anthropicResponse)
 	return nil
 }
@@ -195,8 +224,10 @@ func (h *MessagesHandler) streamCompletion(
 	chatClient *chat.ChatCompletionClient,
 	request chat.CompletionRequest,
 	originalModel string,
+	providerName string,
 	conv *conversation.Conversation,
 	conversationID string,
+	userID uint,
 ) error {
 	// Ensure streaming is enabled
 	request.Stream = true
@@ -260,6 +291,32 @@ func (h *MessagesHandler) streamCompletion(
 
 	if err := scanner.Err(); err != nil {
 		return platformerrors.AsError(ctx, platformerrors.LayerHandler, err, "streaming error")
+	}
+
+	// Record token usage for dashboard (streaming)
+	if h.tokenUsageService != nil && (state.InputTokens > 0 || state.OutputTokens > 0) {
+		totalTokens := state.InputTokens + state.OutputTokens
+		if totalTokens > 0 {
+			metrics.RecordTokens(originalModel, providerName, state.InputTokens, state.OutputTokens)
+			usage := &tokenusage.TokenUsage{
+				UserID:           fmt.Sprintf("%d", userID),
+				Model:            originalModel,
+				Provider:         providerName,
+				PromptTokens:     state.InputTokens,
+				CompletionTokens: state.OutputTokens,
+				TotalTokens:      totalTokens,
+				Stream:           true,
+			}
+			if conversationID != "" {
+				usage.ConversationID = &conversationID
+			}
+			if conv != nil && conv.ProjectPublicID != nil {
+				usage.ProjectID = conv.ProjectPublicID
+			}
+			go func(ctx context.Context, u *tokenusage.TokenUsage) {
+				_ = h.tokenUsageService.RecordUsage(ctx, u)
+			}(context.Background(), usage)
+		}
 	}
 
 	return nil

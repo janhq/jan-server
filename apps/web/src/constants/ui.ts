@@ -22,6 +22,7 @@ export const URL_PARAM = {
   SETTING: "setting",
   PROJECTS: "projects",
   SEARCH: "search",
+  REDIRECT: "redirect",
 } as const;
 
 // URL param values

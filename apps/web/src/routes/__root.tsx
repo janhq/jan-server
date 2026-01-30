@@ -32,6 +32,7 @@ function RootLayout() {
   const guestLogin = useAuth((state) => state.guestLogin);
   const hasAttemptedGuestLogin = useRef(false);
   const isAuthenticated = useAuth((state) => state.isAuthenticated);
+  const isGuest = useAuth((state) => state.isGuest);
   const clearRightSidebar = useRightSidebarStore(
     (state) => state.clearSelection
   );
@@ -56,21 +57,76 @@ function RootLayout() {
     setSidebarOpen(false);
   }, [location.pathname]);
 
-  // Auto guest login if no token exists
+  const isProtectedPath = (path: string) => {
+    if (path === "/login" || path === "/") {
+      return false;
+    }
+
+    const publicPrefixes = ["/auth", "/share", "/docs"];
+    if (publicPrefixes.some((prefix) => path.startsWith(prefix))) {
+      return false;
+    }
+
+    const protectedPrefixes = [
+      "/dashboard",
+      "/admin",
+      "/profile",
+      "/projects",
+      "/connectors",
+      "/artifacts",
+    ];
+
+    return protectedPrefixes.some((prefix) => path.startsWith(prefix));
+  };
+
+  const getRedirectTarget = () => {
+    const url = new URL(window.location.href);
+    const redirectParam = url.searchParams.get(URL_PARAM.REDIRECT);
+    if (redirectParam && redirectParam.startsWith("/")) {
+      return redirectParam;
+    }
+    return url.pathname + url.search;
+  };
+
+  const redirectToLogin = () => {
+    const redirectUrl = getRedirectTarget();
+    const params = new URLSearchParams();
+    params.set(URL_PARAM.REDIRECT, redirectUrl);
+    router.navigate({ to: `/login?${params.toString()}` });
+  };
+
+  // Auto guest login if no token exists (skip for protected pages)
   useEffect(() => {
-    if (!accessToken && !hasAttemptedGuestLogin.current) {
+    if (
+      !accessToken &&
+      !hasAttemptedGuestLogin.current &&
+      !isProtectedPath(location.pathname) &&
+      location.pathname !== "/login"
+    ) {
       hasAttemptedGuestLogin.current = true;
       guestLogin().catch((error) => {
         console.error("Auto guest login failed:", error);
         hasAttemptedGuestLogin.current = false; // Allow retry on failure
       });
     }
-  }, [accessToken, guestLogin]);
+  }, [accessToken, guestLogin, location.pathname]);
+
+  // Redirect unauthenticated/guest users to login for protected pages
+  useEffect(() => {
+    if (!isProtectedPath(location.pathname)) {
+      return;
+    }
+
+    if (!isAuthenticated || isGuest) {
+      redirectToLogin();
+    }
+  }, [isAuthenticated, isGuest, location.pathname]);
 
   // Check if modals should be shown via search params
   const searchParams = new URLSearchParams(location.search);
+  const isLoginRoute = location.pathname === "/login";
   const isLoginModal =
-    searchParams.get(URL_PARAM.MODAL) === URL_PARAM_VALUE.LOGIN;
+    isLoginRoute || searchParams.get(URL_PARAM.MODAL) === URL_PARAM_VALUE.LOGIN;
   const isRegisterModal =
     searchParams.get(URL_PARAM.MODAL) === URL_PARAM_VALUE.REGISTER;
   const settingSection = searchParams.get(URL_PARAM.SETTING);
@@ -80,10 +136,36 @@ function RootLayout() {
   const searchSection = searchParams.get(URL_PARAM.SEARCH);
   const isSearchOpen = !!searchSection;
 
-  const handleCloseModal = () => {
+  const isAllowedExternalRedirect = (value: string) => {
+    // Allow localhost with any port for development
+    return /^http:\/\/localhost:\d+/.test(value);
+  };
+
+  const handleCloseModal = (redirectUrl?: string) => {
+    // Handle external redirect (e.g., http://localhost:19999)
+    if (redirectUrl && isAllowedExternalRedirect(redirectUrl)) {
+      const target = new URL(redirectUrl);
+      target.searchParams.set("token", `Bearer ${accessToken}`);
+      window.location.href = target.toString();
+      return;
+    }
+
+    if (location.pathname === "/login") {
+      if (redirectUrl && redirectUrl.startsWith("/")) {
+        router.navigate({ to: redirectUrl });
+      }
+      return;
+    }
+
+    if (redirectUrl && redirectUrl.startsWith("/")) {
+      router.navigate({ to: redirectUrl });
+      return;
+    }
+
     // Remove the modal search param by navigating without it
     const url = new URL(window.location.href);
     url.searchParams.delete(URL_PARAM.MODAL);
+    url.searchParams.delete(URL_PARAM.REDIRECT);
     router.navigate({ to: url.pathname + url.search });
   };
 

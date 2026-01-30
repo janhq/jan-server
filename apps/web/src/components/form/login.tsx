@@ -21,7 +21,7 @@ export function LoginForm({
   className,
   onSuccess,
   ...props
-}: React.ComponentProps<"div"> & { onSuccess?: () => void }) {
+}: React.ComponentProps<"div"> & { onSuccess?: (redirectUrl?: string) => void }) {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isPasswordLoading, setIsPasswordLoading] = useState(false);
   const [email, setEmail] = useState("");
@@ -30,13 +30,30 @@ export function LoginForm({
   const { loginWithOAuth } = useAuth();
   const router = useRouter();
 
+  const isAllowedExternalRedirect = (value: string) => {
+    // Allow localhost with any port for development
+    return /^http:\/\/localhost:\d+/.test(value);
+  };
+
+  const getRedirectUrl = () => {
+    const url = new URL(window.location.href);
+    const redirectParam = url.searchParams.get(URL_PARAM.REDIRECT);
+    if (redirectParam && (redirectParam.startsWith("/") || isAllowedExternalRedirect(redirectParam))) {
+      return redirectParam;
+    }
+    if (url.pathname === "/login") {
+      return "/";
+    }
+    return url.pathname + url.search;
+  };
+
   const handleGoogleLogin = async () => {
     try {
       setIsGoogleLoading(true);
       setError(null);
 
       // Store the current URL to redirect back after OAuth
-      const currentUrl = window.location.pathname + window.location.search;
+      const currentUrl = getRedirectUrl();
 
       // Build Keycloak authorization URL with Google IdP
       const authUrl = await buildGoogleAuthUrl(currentUrl);
@@ -89,7 +106,7 @@ export function LoginForm({
 
       const tokens: OAuthTokenResponse = await response.json();
       loginWithOAuth(tokens);
-      onSuccess?.();
+      onSuccess?.(getRedirectUrl());
     } catch (error) {
       console.error("Password login error:", error);
       setError(
