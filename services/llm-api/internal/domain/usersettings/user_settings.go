@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"jan-server/services/llm-api/internal/config"
 )
 
 // UserSettings represents user preferences and feature toggles.
@@ -116,6 +118,8 @@ func DefaultPreferences() map[string]interface{} {
 		"enable_thinking":      false,
 		"enable_search":        true,
 		"enable_browser":       false,
+		"hide_connectors":      true,
+		"hide_artifacts":       true,
 	}
 }
 
@@ -212,14 +216,28 @@ type ModelProvider interface {
 type Service struct {
 	repo          Repository
 	modelProvider ModelProvider
+	cfg           *config.Config
 }
 
 // NewService constructs a Service with required dependencies.
-func NewService(repo Repository, modelProvider ModelProvider) *Service {
+func NewService(repo Repository, modelProvider ModelProvider, cfg *config.Config) *Service {
 	return &Service{
 		repo:          repo,
 		modelProvider: modelProvider,
+		cfg:           cfg,
 	}
+}
+
+func (s *Service) defaultPreferences() map[string]interface{} {
+	defaults := DefaultPreferences()
+	if s == nil || s.cfg == nil {
+		return defaults
+	}
+
+	defaults["hide_connectors"] = s.cfg.PreferencesDefaultHideConnectors
+	defaults["hide_artifacts"] = s.cfg.PreferencesDefaultHideArtifacts
+
+	return defaults
 }
 
 // GetOrCreateSettings retrieves existing settings or creates defaults for a user.
@@ -232,6 +250,7 @@ func (s *Service) GetOrCreateSettings(ctx context.Context, userID uint) (*UserSe
 	// Create default settings if none exist
 	if settings == nil {
 		defaults := DefaultUserSettings(userID)
+		defaults.Preferences = s.defaultPreferences()
 
 		// Set default selected_model from first active model
 		if s.modelProvider != nil {
@@ -256,7 +275,7 @@ func (s *Service) ensureDefaultPreferences(ctx context.Context, settings *UserSe
 		settings.Preferences = make(map[string]interface{})
 	}
 
-	defaults := DefaultPreferences()
+	defaults := s.defaultPreferences()
 
 	// Fill in missing preference keys with defaults
 	for key, defaultValue := range defaults {

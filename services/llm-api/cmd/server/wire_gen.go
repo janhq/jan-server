@@ -129,7 +129,7 @@ func CreateApplication() (*Application, error) {
 	processorImpl := domain.ProvidePromptProcessor(processorConfig, zerologLogger, prompttemplateService, modelprompttemplateService, projectFileService)
 	memoryClient := infrastructure.ProvideMemoryClient(config, zerologLogger)
 	usersettingsRepository := usersettingsrepo.NewUserSettingsGormRepository(db)
-	usersettingsService := usersettings.NewService(usersettingsRepository, modelHandler)
+	usersettingsService := usersettings.NewService(usersettingsRepository, modelHandler, config)
 	memoryHandler := handlers.ProvideMemoryHandler(memoryClient, config, usersettingsService)
 	tokenUsageRepository := tokenusagerepo.NewTokenUsageGormRepository(db)
 	tokenusageService := tokenusage.NewService(tokenUsageRepository)

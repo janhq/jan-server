@@ -17,6 +17,7 @@ import { Jan } from "@janhq/interfaces/svgs/jan";
 import { StaggeredAnimationProvider } from "@/hooks/useStaggeredFadeIn";
 import { useProjects } from "@/stores/projects-store";
 import { useConversations } from "@/stores/conversation-store";
+import { useProfile } from "@/stores/profile-store";
 
 export const AppSidebar = memo(function AppSidebar({
   ...props
@@ -28,15 +29,24 @@ export const AppSidebar = memo(function AppSidebar({
   const getProjects = useProjects((state) => state.getProjects);
   const getConversations = useConversations((state) => state.getConversations);
   const projects = useProjects((state) => state.projects);
+  const fetchPreferences = useProfile((state) => state.fetchPreferences);
+  const preferences = useProfile((state) => state.preferences);
   const [isTransitionComplete, setIsTransitionComplete] = useState(
     state === "collapsed",
   );
 
   // Calculate animation indices:
-  // NavMain: 0, 1, 2, 3 (4 items: New Chat, New Project, Connectors, Search)
-  // NavProjects: starts at 4
-  // NavChats: starts after projects (4 + 1 label + N projects, or 4 if no projects)
-  const chatsStartIndex = projects.length > 0 ? 4 + 1 + projects.length : 4;
+  // NavMain: 0..N (New Chat, New Project, Artifacts?, Connectors?, Search)
+  // NavProjects: starts at navMainCount
+  // NavChats: starts after projects (navMainCount + 1 label + N projects, or navMainCount)
+  const hideConnectors = preferences?.preferences?.hide_connectors ?? false;
+  const hideArtifacts = preferences?.preferences?.hide_artifacts ?? false;
+  const navMainCount =
+    3 + (hideArtifacts ? 0 : 1) + (hideConnectors ? 0 : 1);
+  const chatsStartIndex =
+    projects.length > 0
+      ? navMainCount + 1 + projects.length
+      : navMainCount;
 
   useEffect(() => {
     if (state === "collapsed") {
@@ -55,14 +65,14 @@ export const AppSidebar = memo(function AppSidebar({
 
   useEffect(() => {
     const loadData = async () => {
-      await Promise.all([getProjects(), getConversations()]);
+      await Promise.all([getProjects(), getConversations(), fetchPreferences()]);
       // Wait for next frame to ensure store updates have propagated
       requestAnimationFrame(() => {
         setIsReady(true);
       });
     };
     loadData();
-  }, [getProjects, getConversations]);
+  }, [getProjects, getConversations, fetchPreferences]);
 
   return (
     <Sidebar className="border-r-0" {...props} variant={variant}>
@@ -98,7 +108,7 @@ export const AppSidebar = memo(function AppSidebar({
           <NavMain />
         </SidebarHeader>
         <SidebarContent className="mask-b-from-95% mask-t-from-98%">
-          <NavProjects startIndex={4} />
+          <NavProjects startIndex={navMainCount} />
           <NavChats startIndex={chatsStartIndex} />
         </SidebarContent>
         <SidebarFooter className={cn(!isOpen && "pb-4")}>

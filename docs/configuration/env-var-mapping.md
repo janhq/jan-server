@@ -86,6 +86,8 @@ This document maps centralized configuration (`pkg/config/types.go`) environment
 | `DOCLING_ENABLED`             | bool     | `false`                                   | `DOCLING_ENABLED`             | New |
 | `DOCLING_PROVIDER_URL`        | string   | (empty)                                   | `DOCLING_PROVIDER_URL`        | New |
 | `DOCLING_API_KEY`             | string   | (secret)                                  | `DOCLING_API_KEY`             | New |
+| `PREFERENCES_DEFAULT_HIDE_CONNECTORS` | bool | `true` | `PREFERENCES_DEFAULT_HIDE_CONNECTORS` | New |
+| `PREFERENCES_DEFAULT_HIDE_ARTIFACTS` | bool | `true` | `PREFERENCES_DEFAULT_HIDE_ARTIFACTS` | New |
 
 **Provider Config:**
 | Centralized Env Var | Type | Default | Current Var | Status |
