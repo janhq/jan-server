@@ -142,27 +142,30 @@ function RootLayout() {
   };
 
   const handleCloseModal = (redirectUrl?: string) => {
-    // Handle external redirect (e.g., http://localhost:19999)
+    // Case 1: External redirect (e.g., http://localhost:29999 from install script)
     if (redirectUrl && isAllowedExternalRedirect(redirectUrl)) {
+      const bearerToken = `Bearer ${accessToken}`;
+      const encodedToken = btoa(bearerToken);
       const target = new URL(redirectUrl);
-      target.searchParams.set("token", `Bearer ${accessToken}`);
+      target.searchParams.set("token", encodedToken);
       window.location.href = target.toString();
       return;
     }
 
-    if (location.pathname === "/login") {
-      if (redirectUrl && redirectUrl.startsWith("/")) {
-        router.navigate({ to: redirectUrl });
-      }
-      return;
-    }
-
+    // Case 2: Internal redirect path (e.g., /dashboard)
     if (redirectUrl && redirectUrl.startsWith("/")) {
       router.navigate({ to: redirectUrl });
       return;
     }
 
-    // Remove the modal search param by navigating without it
+    // Case 3: Modal login (/?modal=login) - close modal and go to homepage
+    // Or /login route without redirect - go to homepage
+    if (location.pathname === "/login") {
+      router.navigate({ to: "/" });
+      return;
+    }
+
+    // Case 4: Modal was opened on another page - just close modal, stay on current page
     const url = new URL(window.location.href);
     url.searchParams.delete(URL_PARAM.MODAL);
     url.searchParams.delete(URL_PARAM.REDIRECT);
