@@ -1,0 +1,11 @@
+{
+  "name": "jan-server-e2e-tests",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "npx playwright test",
+    "test:ui": "npx playwright test --ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.0"
+  }
+}

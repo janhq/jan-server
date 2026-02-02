@@ -672,3 +672,39 @@ export const usageService = {
     );
   },
 };
+
+// ============================================================================
+// Admin Usage Service
+// ============================================================================
+
+export const adminUsageService = {
+  getPlatformUsage: async (
+    startDate: string,
+    endDate: string,
+  ): Promise<PlatformUsageResponse> => {
+    return fetchJsonWithAuth<PlatformUsageResponse>(
+      `${JAN_API_BASE_URL}v1/admin/usage?start_date=${startDate}&end_date=${endDate}`,
+    );
+  },
+
+  getAllUsersUsage: async (
+    startDate: string,
+    endDate: string,
+    limit: number = 20,
+    offset: number = 0,
+  ): Promise<AllUsersUsageResponse> => {
+    return fetchJsonWithAuth<AllUsersUsageResponse>(
+      `${JAN_API_BASE_URL}v1/admin/usage/users?start_date=${startDate}&end_date=${endDate}&limit=${limit}&offset=${offset}`,
+    );
+  },
+
+  getUserUsage: async (
+    userId: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<UserUsageDetail> => {
+    return fetchJsonWithAuth<UserUsageDetail>(
+      `${JAN_API_BASE_URL}v1/admin/usage/users/${userId}?start_date=${startDate}&end_date=${endDate}`,
+    );
+  },
+};

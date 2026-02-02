@@ -114,7 +114,7 @@ jobs:
     with:
       runs-on: ubuntu-24-04-docker
       docker-file: apps/platform/Dockerfile
-      context: apps/platform
+      context: .
       registry-url: registry.menlo.ai
       tags: registry.menlo.ai/menlo-platform/platform-web:prod-${{ github.ref_name }}
       is_push: true
@@ -138,17 +138,26 @@ jobs:
       CLOUDFLARE_PROJECT_NAME: "jan-server-web"
       ENVIRONMENT: "prod"
       VITE_REPORT_ISSUE_URL: "https://forms.gle/LoxNVacHqUT261sa9"
+      POSTHOG_ENABLED: true
+      POSTHOG_DEBUG: false
+      POSTHOG_BATCH_SIZE: 100
+      POSTHOG_FLUSH_INTERVAL: "10s"
+      ANALYTICS_PII_LEVEL: "hashed"
+      ANALYTICS_ENVIRONMENT: "prod"
+      POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v3
         with:
           node-version: 20
+      - uses: pnpm/action-setup@v4
       - name: Install jq
         uses: dcarbone/install-jq-action@v2.0.1
       - name: Install dependencies and build
         run: |
-          cd packages/interfaces/ && npm install --workspaces=false && cd ../../
-          cd apps/web/ && npm install --workspaces=false && npx vite build
+          pnpm install
+          pnpm build:interfaces
+          pnpm build:web
         env:
           JAN_BASE_URL: ${{ env.JAN_BASE_URL }}
           JAN_API_BASE_URL: ${{ env.JAN_API_BASE_URL }}
@@ -158,6 +167,7 @@ jobs:
           VITE_AUTH_CLIENT_ID: ${{ env.VITE_AUTH_CLIENT_ID }}
           VITE_OAUTH_REDIRECT_URI: ${{ env.VITE_OAUTH_REDIRECT_URI }}
           VITE_GA_ID: ${{ env.VITE_GA_ID }}
+          POSTHOG_API_KEY: ${{ env.POSTHOG_API_KEY }}
 
       - name: Add headers
         run: cp apps/web/_headers apps/web/dist/_headers

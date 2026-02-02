@@ -155,19 +155,19 @@ func GetAgentCapabilityRequirements(agentType string) AgentCapabilityRequirement
 		}
 	case "doc_generator":
 		return AgentCapabilityRequirements{
-			RequiresSandbox:       true,  // Needs sandbox for DOCX generation
+			RequiresSandbox:       true, // Needs sandbox for DOCX generation
 			RequiresBrowser:       false,
 			RequiresCodeExecution: true,
 		}
 	case "pdf_generator":
 		return AgentCapabilityRequirements{
-			RequiresSandbox:       true,  // Needs sandbox for PDF rendering
+			RequiresSandbox:       true, // Needs sandbox for PDF rendering
 			RequiresBrowser:       false,
 			RequiresCodeExecution: true,
 		}
 	case "spreadsheet_generator":
 		return AgentCapabilityRequirements{
-			RequiresSandbox:       true,  // Needs sandbox for XLSX generation
+			RequiresSandbox:       true, // Needs sandbox for XLSX generation
 			RequiresBrowser:       false,
 			RequiresCodeExecution: true,
 		}

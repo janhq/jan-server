@@ -46,10 +46,10 @@ type UploadRequest struct {
 
 // UploadResponse contains the result of an upload operation.
 type UploadResponse struct {
-	ID    string `json:"id"`    // jan_* format
-	URL   string `json:"url"`   // Public URL
-	Size  int64  `json:"bytes"` // File size
-	Mime  string `json:"mime"`  // MIME type
+	ID   string `json:"id"`    // jan_* format
+	URL  string `json:"url"`   // Public URL
+	Size int64  `json:"bytes"` // File size
+	Mime string `json:"mime"`  // MIME type
 }
 
 // UploadArtifact uploads content to media-api and returns artifact metadata.

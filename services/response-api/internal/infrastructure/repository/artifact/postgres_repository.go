@@ -175,6 +175,36 @@ func (r *PostgresRepository) FindByID(ctx context.Context, id string) (*domain.A
 	return artifact, nil
 }
 
+// FindInternalIDByPublicID resolves a public artifact ID to its internal ID.
+// Used for cursor-based pagination.
+func (r *PostgresRepository) FindInternalIDByPublicID(ctx context.Context, publicID string) (*uint, error) {
+	var entity entities.Artifact
+	if err := r.db.WithContext(ctx).
+		Select("id").
+		Where("public_id = ?", publicID).
+		First(&entity).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, platformerrors.NewError(
+				ctx,
+				platformerrors.LayerRepository,
+				platformerrors.ErrorTypeNotFound,
+				"artifact not found",
+				err,
+				"artifact-find-internal-id-notfound-001",
+			)
+		}
+		return nil, platformerrors.NewError(
+			ctx,
+			platformerrors.LayerRepository,
+			platformerrors.ErrorTypeDatabaseError,
+			"failed to find artifact internal ID",
+			err,
+			"artifact-find-internal-id-db-001",
+		)
+	}
+	return &entity.ID, nil
+}
+
 // FindLatestByResponseID finds the latest artifact for a response.
 func (r *PostgresRepository) FindLatestByResponseID(ctx context.Context, responseID string) (*domain.Artifact, error) {
 	var entity entities.Artifact
@@ -266,6 +296,17 @@ func (r *PostgresRepository) List(ctx context.Context, filter *domain.Filter) ([
 		query = query.Joins("JOIN plans ON plans.id = artifacts.plan_id").
 			Where("plans.public_id = ?", *filter.PlanID)
 	}
+	if filter.UserID != nil && filter.ResponseID == nil {
+		// Join responses only if not already joined by ResponseID filter
+		query = query.Joins("JOIN responses ON responses.id = artifacts.response_id").
+			Where("responses.user_id = ?", *filter.UserID)
+	} else if filter.UserID != nil && filter.ResponseID != nil {
+		// ResponseID filter already joined responses, just add user_id condition
+		query = query.Where("responses.user_id = ?", *filter.UserID)
+	}
+	if filter.TitleSearch != nil && *filter.TitleSearch != "" {
+		query = query.Where("artifacts.title ILIKE ?", "%"+*filter.TitleSearch+"%")
+	}
 	if filter.ContentType != nil {
 		query = query.Where("artifacts.content_type = ?", string(*filter.ContentType))
 	}
@@ -297,12 +338,26 @@ func (r *PostgresRepository) List(ctx context.Context, filter *domain.Filter) ([
 		)
 	}
 
-	var entities []entities.Artifact
+	// Apply cursor-based pagination
+	if filter.After != nil {
+		if filter.Order == "asc" {
+			query = query.Where("artifacts.id > ?", *filter.After)
+		} else {
+			query = query.Where("artifacts.id < ?", *filter.After)
+		}
+	}
+
+	// Determine sort order
+	orderClause := "artifacts.id DESC"
+	if filter.Order == "asc" {
+		orderClause = "artifacts.id ASC"
+	}
+
+	var entityList []entities.Artifact
 	if err := query.
-		Order("artifacts.created_at DESC").
-		Limit(filter.Limit).
-		Offset(filter.Offset).
-		Find(&entities).Error; err != nil {
+		Order(orderClause).
+		Limit(filter.Limit + 1). // Fetch one extra to determine has_more
+		Find(&entityList).Error; err != nil {
 		return nil, 0, platformerrors.NewError(
 			ctx,
 			platformerrors.LayerRepository,
@@ -313,8 +368,8 @@ func (r *PostgresRepository) List(ctx context.Context, filter *domain.Filter) ([
 		)
 	}
 
-	artifacts := make([]*domain.Artifact, 0, len(entities))
-	for _, e := range entities {
+	artifacts := make([]*domain.Artifact, 0, len(entityList))
+	for _, e := range entityList {
 		artifact := mapArtifactFromEntity(&e)
 		if err := r.hydrateArtifactRefs(ctx, artifact, &e); err != nil {
 			return nil, 0, err
@@ -564,12 +619,21 @@ func (r *PostgresRepository) resolveArtifactID(ctx context.Context, publicID *st
 }
 
 func (r *PostgresRepository) hydrateArtifactRefs(ctx context.Context, artifact *domain.Artifact, entity *entities.Artifact) error {
-	if artifact.ResponseID == "" && entity.ResponseID != 0 {
+	if entity.ResponseID != 0 {
 		var response entities.Response
-		if err := r.db.WithContext(ctx).Select("public_id").Where("id = ?", entity.ResponseID).First(&response).Error; err != nil {
+		if err := r.db.WithContext(ctx).
+			Select("id, public_id, parent_conversation_id").
+			Where("id = ?", entity.ResponseID).
+			First(&response).Error; err != nil {
 			return err
 		}
-		artifact.ResponseID = response.PublicID
+		if artifact.ResponseID == "" {
+			artifact.ResponseID = response.PublicID
+		}
+		// Use parent_conversation_id (llm-api conversation ID) for artifact linking
+		if response.ParentConversationID != nil && *response.ParentConversationID != "" {
+			artifact.ConversationID = response.ParentConversationID
+		}
 	}
 
 	if entity.PlanID != nil {

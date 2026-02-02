@@ -44,8 +44,8 @@ type Config struct {
 	SlideRendererEnabled bool   `env:"SLIDE_RENDERER_ENABLED" envDefault:"true"`
 
 	// Tool Execution
-	MaxToolDepth int           `env:"RESPONSE_MAX_TOOL_DEPTH" envDefault:"50"`
-	ToolTimeout  time.Duration `env:"TOOL_EXECUTION_TIMEOUT" envDefault:"300s"`
+	MaxToolDepth  int           `env:"RESPONSE_MAX_TOOL_DEPTH" envDefault:"50"`
+	ToolTimeout   time.Duration `env:"TOOL_EXECUTION_TIMEOUT" envDefault:"300s"`
 	LLMStreamMode string        `env:"RESPONSE_LLM_STREAM_MODE" envDefault:"auto"`
 
 	// Code Execution Retry

@@ -101,5 +101,7 @@ func (r *AdminRoute) RegisterRouter(router gin.IRouter) {
 
 		// Usage analytics (admin)
 		adminGroup.GET("/usage", r.usageHandler.GetPlatformUsage)
+		adminGroup.GET("/usage/users", r.usageHandler.GetAllUsersUsage)
+		adminGroup.GET("/usage/users/:user_id", r.usageHandler.GetAdminUserUsage)
 	}
 }

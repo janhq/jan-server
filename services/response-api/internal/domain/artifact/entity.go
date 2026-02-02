@@ -10,6 +10,7 @@ import (
 type Artifact struct {
 	ID              string          `json:"id"`
 	ResponseID      string          `json:"response_id"`
+	ConversationID  *string         `json:"conversation_id,omitempty"` // Derived from response
 	PlanID          *string         `json:"plan_id,omitempty"`
 	ContentType     ContentType     `json:"content_type"`
 	MimeType        string          `json:"mime_type"`

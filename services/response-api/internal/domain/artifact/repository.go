@@ -13,6 +13,9 @@ type Repository interface {
 	// FindByID retrieves an artifact by ID.
 	FindByID(ctx context.Context, id string) (*Artifact, error)
 
+	// FindInternalIDByPublicID resolves a public ID to internal ID (for cursor pagination).
+	FindInternalIDByPublicID(ctx context.Context, publicID string) (*uint, error)
+
 	// FindLatestByResponseID finds the latest artifact for a response.
 	FindLatestByResponseID(ctx context.Context, responseID string) (*Artifact, error)
 

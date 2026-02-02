@@ -96,10 +96,13 @@ type ArtifactResponse struct {
 	ID              string          `json:"id"`
 	Object          string          `json:"object"`
 	ResponseID      string          `json:"response_id"`
+	ConversationID  *string         `json:"conversation_id,omitempty"` // Thread ID for navigation
 	PlanID          *string         `json:"plan_id,omitempty"`
 	ContentType     string          `json:"content_type"`
 	MimeType        string          `json:"mime_type"`
 	Title           string          `json:"title"`
+	Content         *string         `json:"content,omitempty"`      // Inline content (for markdown, code, etc.)
+	StoragePath     *string         `json:"storage_path,omitempty"` // For file-based content
 	SizeBytes       int64           `json:"size_bytes"`
 	Version         int             `json:"version"`
 	ParentID        *string         `json:"parent_id,omitempty"`
@@ -111,12 +114,14 @@ type ArtifactResponse struct {
 	ExpiresAt       *int64          `json:"expires_at,omitempty"`
 }
 
-// ArtifactListResponse represents a paginated list of artifacts.
+// ArtifactListResponse represents a paginated list of artifacts (cursor-based).
 type ArtifactListResponse struct {
-	Data   []ArtifactResponse `json:"data"`
-	Total  int64              `json:"total"`
-	Limit  int                `json:"limit"`
-	Offset int                `json:"offset"`
+	Object  string             `json:"object"`
+	Data    []ArtifactResponse `json:"data"`
+	FirstID string             `json:"first_id"`
+	LastID  string             `json:"last_id"`
+	HasMore bool               `json:"has_more"`
+	Total   int64              `json:"total"`
 }
 
 // Mapping functions
@@ -395,10 +400,13 @@ func MapArtifactToResponse(a *artifact.Artifact) ArtifactResponse {
 		ID:              a.ID,
 		Object:          "artifact",
 		ResponseID:      a.ResponseID,
+		ConversationID:  a.ConversationID,
 		PlanID:          a.PlanID,
 		ContentType:     string(a.ContentType),
 		MimeType:        a.MimeType,
 		Title:           a.Title,
+		Content:         a.Content,
+		StoragePath:     a.StoragePath,
 		SizeBytes:       a.SizeBytes,
 		Version:         a.Version,
 		ParentID:        a.ParentID,

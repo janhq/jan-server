@@ -221,13 +221,16 @@ func (a *AgentProxyMCP) handleRunAgent(ctx context.Context, req *mcpsdk.CallTool
 		"background": true, // Run in background for long-running agents
 	}
 
-	// Only add conversation ID if explicitly provided in input
-	// Do NOT use tracking.ConversationID as that's the parent conversation
-	// which may belong to a different service (web app) and won't exist in Response API
-	if input.ConversationID != "" {
-		payload["conversation"] = input.ConversationID
+	// Pass conversation ID to response-api so artifacts link to the correct llm-api conversation.
+	// Priority: 1) explicit input.ConversationID, 2) tracking.ConversationID from parent context
+	// This is stored as parent_conversation_id in response-api for artifact linking (no lookup, just stored).
+	conversationID := input.ConversationID
+	if conversationID == "" && tracking.ConversationID != "" {
+		conversationID = tracking.ConversationID
 	}
-	// If no conversation provided, Response API will create a new one
+	if conversationID != "" {
+		payload["parent_conversation_id"] = conversationID
+	}
 
 	// Add user ID if provided
 	if input.UserID != "" {

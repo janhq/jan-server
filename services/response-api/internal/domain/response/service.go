@@ -111,7 +111,7 @@ func (s *ServiceImpl) createAsync(ctx context.Context, params CreateParams) (*Re
 		if params.ConversationID != nil && strings.TrimSpace(*params.ConversationID) != "" {
 			conv, err = s.conversations.FindByPublicID(ctx, *params.ConversationID)
 			if err != nil {
-				return nil, fmt.Errorf("fetch conversation: %w", err)
+				return nil, fmt.Errorf("conversation not found %s: %w", *params.ConversationID, err)
 			}
 		} else {
 			conv = &conversation.Conversation{
@@ -140,6 +140,7 @@ func (s *ServiceImpl) createAsync(ctx context.Context, params CreateParams) (*Re
 		Metadata:             params.Metadata,
 		ConversationID:       &conv.ID,
 		ConversationPublicID: &conv.PublicID,
+		ParentConversationID: params.ParentConversationID, // Store llm-api conversation ID (no lookup)
 		PreviousResponseID:   params.PreviousResponseID,
 		CreatedAt:            now,
 		UpdatedAt:            now,
@@ -188,7 +189,7 @@ func (s *ServiceImpl) createSync(ctx context.Context, params CreateParams) (*Res
 		if params.ConversationID != nil && strings.TrimSpace(*params.ConversationID) != "" {
 			conv, err = s.conversations.FindByPublicID(ctx, *params.ConversationID)
 			if err != nil {
-				return nil, fmt.Errorf("fetch conversation: %w", err)
+				return nil, fmt.Errorf("conversation not found %s: %w", *params.ConversationID, err)
 			}
 		} else {
 			conv = &conversation.Conversation{
@@ -220,6 +221,7 @@ func (s *ServiceImpl) createSync(ctx context.Context, params CreateParams) (*Res
 		Metadata:             params.Metadata,
 		ConversationID:       &conv.ID,
 		ConversationPublicID: &conv.PublicID,
+		ParentConversationID: params.ParentConversationID, // Store llm-api conversation ID (no lookup)
 		PreviousResponseID:   params.PreviousResponseID,
 		CreatedAt:            time.Now(),
 		UpdatedAt:            time.Now(),

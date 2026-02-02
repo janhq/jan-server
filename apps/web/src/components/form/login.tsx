@@ -21,7 +21,7 @@ export function LoginForm({
   className,
   onSuccess,
   ...props
-}: React.ComponentProps<"div"> & { onSuccess?: () => void }) {
+}: React.ComponentProps<"div"> & { onSuccess?: (redirectUrl?: string) => void }) {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isPasswordLoading, setIsPasswordLoading] = useState(false);
   const [email, setEmail] = useState("");
@@ -30,13 +30,43 @@ export function LoginForm({
   const { loginWithOAuth } = useAuth();
   const router = useRouter();
 
+  const isAllowedExternalRedirect = (value: string) => {
+    // Allow localhost with any port for development
+    return /^http:\/\/localhost:\d+/.test(value);
+  };
+
+  const getRedirectUrl = () => {
+    const url = new URL(window.location.href);
+    const redirectParam = url.searchParams.get(URL_PARAM.REDIRECT);
+
+    // Case 1: Has redirect param (external localhost or internal path)
+    if (redirectParam && (redirectParam.startsWith("/") || isAllowedExternalRedirect(redirectParam))) {
+      return redirectParam;
+    }
+
+    // Case 2: On /login route without redirect -> go to homepage
+    if (url.pathname === "/login") {
+      return undefined; // Let handleCloseModal decide
+    }
+
+    // Case 3: Modal login (/?modal=login) -> return undefined to close modal and stay/go home
+    if (url.searchParams.get(URL_PARAM.MODAL) === URL_PARAM_VALUE.LOGIN) {
+      return undefined;
+    }
+
+    // Case 4: Modal opened on another page -> stay on current page (without modal params)
+    url.searchParams.delete(URL_PARAM.MODAL);
+    url.searchParams.delete(URL_PARAM.REDIRECT);
+    return url.pathname + url.search;
+  };
+
   const handleGoogleLogin = async () => {
     try {
       setIsGoogleLoading(true);
       setError(null);
 
       // Store the current URL to redirect back after OAuth
-      const currentUrl = window.location.pathname + window.location.search;
+      const currentUrl = getRedirectUrl();
 
       // Build Keycloak authorization URL with Google IdP
       const authUrl = await buildGoogleAuthUrl(currentUrl);
@@ -89,7 +119,7 @@ export function LoginForm({
 
       const tokens: OAuthTokenResponse = await response.json();
       loginWithOAuth(tokens);
-      onSuccess?.();
+      onSuccess?.(getRedirectUrl());
     } catch (error) {
       console.error("Password login error:", error);
       setError(

@@ -16,10 +16,10 @@ func ConvertAnthropicToOpenAI(req *messagesrequests.AnthropicMessagesRequest) op
 	messages := make([]openai.ChatCompletionMessage, 0, len(req.Messages)+1)
 
 	// Add system message if present
-	if req.System != "" {
+	if !req.System.IsEmpty() {
 		messages = append(messages, openai.ChatCompletionMessage{
 			Role:    openai.ChatMessageRoleSystem,
-			Content: req.System,
+			Content: req.System.GetText(),
 		})
 	}
 

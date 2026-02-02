@@ -3,11 +3,6 @@ import { AuthProvider } from '@/components/auth-provider';
 import { SiteHeader } from '@/components/site-header';
 import { RootProvider } from 'fumadocs-ui/provider/next';
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
-
-const inter = Inter({
-  subsets: ['latin'],
-});
 
 export const metadata: Metadata = {
   title: 'Jan Platform',
@@ -21,7 +16,7 @@ export const metadata: Metadata = {
 
 export default function Layout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="en" className={inter.className} suppressHydrationWarning>
+    <html lang="en" className="font-sans" suppressHydrationWarning>
       <body className="flex flex-col min-h-screen" suppressHydrationWarning>
         <AuthProvider>
           <div className="relative flex min-h-screen flex-col">

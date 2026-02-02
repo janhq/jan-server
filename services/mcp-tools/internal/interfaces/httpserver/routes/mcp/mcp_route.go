@@ -57,6 +57,10 @@ type MCPRoute struct {
 	sandboxMCP        *SandboxMCP        // Unified sandbox provider (AIO or E2B)
 	sandboxManagement *SandboxManagement // Sandbox lifecycle management (E2B only)
 	agentProxyMCP     *AgentProxyMCP
+	githubMCP       *GitHubMCP
+	gmailMCP        *GmailMCP
+	driveMCP        *DriveMCP
+	calendarMCP     *CalendarMCP
 	llmClient         *llmapi.Client        // LLM-API client for tool call tracking
 	toolConfigCache   *toolconfig.Cache     // Cache for dynamic tool descriptions
 	sandboxManager    sandboxdomain.Manager // For E2B sandbox state checks
@@ -81,6 +85,10 @@ func NewMCPRoute(
 	sandboxMCP *SandboxMCP,
 	sandboxManagement *SandboxManagement,
 	agentProxyMCP *AgentProxyMCP,
+	githubMCP *GitHubMCP,
+	gmailMCP *GmailMCP,
+	driveMCP *DriveMCP,
+	calendarMCP *CalendarMCP,
 	llmClient *llmapi.Client,
 	toolConfigCache *toolconfig.Cache,
 	sandboxManager sandboxdomain.Manager,
@@ -146,6 +154,20 @@ func NewMCPRoute(
 		}
 	}
 
+	// Register connector MCP tools (GitHub, Gmail, Drive, Calendar)
+	if githubMCP != nil {
+		githubMCP.RegisterTools(server)
+	}
+	if gmailMCP != nil {
+		gmailMCP.RegisterTools(server)
+	}
+	if driveMCP != nil {
+		driveMCP.RegisterTools(server)
+	}
+	if calendarMCP != nil {
+		calendarMCP.RegisterTools(server)
+	}
+
 	return &MCPRoute{
 		searchMCP:         searchMCP,
 		providerMCP:       providerMCP,
@@ -156,6 +178,10 @@ func NewMCPRoute(
 		sandboxMCP:        sandboxMCP,
 		sandboxManagement: sandboxManagement,
 		agentProxyMCP:     agentProxyMCP,
+		githubMCP:       githubMCP,
+		gmailMCP:        gmailMCP,
+		driveMCP:        driveMCP,
+		calendarMCP:     calendarMCP,
 		llmClient:         llmClient,
 		toolConfigCache:   toolConfigCache,
 		sandboxManager:    sandboxManager,
@@ -695,9 +721,20 @@ func extractJSONFromSSE(data []byte) []byte {
 	return nil
 }
 
-// InjectUserContext extracts user_id from JWT token or API key and injects it into request context
+// InjectUserContext extracts user_id from JWT token and injects it into request context
+// Also injects auth_token for connector MCPs to use when calling llm-api
 func InjectUserContext() gin.HandlerFunc {
 	return func(reqCtx *gin.Context) {
+		ctx := reqCtx.Request.Context()
+
+		// Extract raw JWT token from Authorization header for connector MCPs
+		if authHeader := reqCtx.GetHeader("Authorization"); authHeader != "" {
+			if strings.HasPrefix(authHeader, "Bearer ") {
+				rawToken := strings.TrimPrefix(authHeader, "Bearer ")
+				ctx = context.WithValue(ctx, "auth_token", rawToken)
+			}
+		}
+
 		var userID string
 
 		// First, check if user_id was already set by API key validation (in gin context)
@@ -707,19 +744,23 @@ func InjectUserContext() gin.HandlerFunc {
 			}
 		}
 
-		// If not set by API key, try to extract from JWT token
-		if userID == "" {
-			if tokenVal, exists := reqCtx.Get("auth_token"); exists {
-				if token, ok := tokenVal.(*jwt.Token); ok && token.Valid {
-					if claims, ok := token.Claims.(jwt.MapClaims); ok {
-						// Try to extract user_id from various claim fields
-						if sub, ok := claims["sub"].(string); ok && sub != "" {
-							userID = sub
-						} else if uid, ok := claims["user_id"].(string); ok && uid != "" {
-							userID = uid
-						} else if uid, ok := claims["uid"].(string); ok && uid != "" {
-							userID = uid
-						}
+		// Try to get auth token from gin context (set by auth middleware)
+		if tokenVal, exists := reqCtx.Get("auth_token"); exists {
+			if token, ok := tokenVal.(*jwt.Token); ok && token.Valid {
+				if claims, ok := token.Claims.(jwt.MapClaims); ok {
+					// Try to extract user_id from various claim fields
+					var userID string
+					if sub, ok := claims["sub"].(string); ok && sub != "" {
+						userID = sub
+					} else if uid, ok := claims["user_id"].(string); ok && uid != "" {
+						userID = uid
+					} else if uid, ok := claims["uid"].(string); ok && uid != "" {
+						userID = uid
+					}
+
+					if userID != "" {
+						// Inject user_id into request context
+						ctx = context.WithValue(ctx, "user_id", userID)
 					}
 				}
 			}

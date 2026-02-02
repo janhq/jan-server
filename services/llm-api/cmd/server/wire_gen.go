@@ -34,6 +34,7 @@ import (
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/tokenusagerepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/userrepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/usersettingsrepo"
+	"jan-server/services/llm-api/internal/infrastructure/connector"
 	"jan-server/services/llm-api/internal/infrastructure/inference"
 	"jan-server/services/llm-api/internal/infrastructure/logger"
 	"jan-server/services/llm-api/internal/interfaces/httpserver"
@@ -42,6 +43,7 @@ import (
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/apikeyhandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/authhandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/chathandler"
+	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/connectorhandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/conversationhandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/documenthandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/guesthandler"
@@ -62,6 +64,7 @@ import (
 	model3 "jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/admin/model"
 	provider2 "jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/admin/provider"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/chat"
+	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/connectors"
 	conversation2 "jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/conversation"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/image"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/routes/v1/llm/documents"
@@ -126,7 +129,7 @@ func CreateApplication() (*Application, error) {
 	processorImpl := domain.ProvidePromptProcessor(processorConfig, zerologLogger, prompttemplateService, modelprompttemplateService, projectFileService)
 	memoryClient := infrastructure.ProvideMemoryClient(config, zerologLogger)
 	usersettingsRepository := usersettingsrepo.NewUserSettingsGormRepository(db)
-	usersettingsService := usersettings.NewService(usersettingsRepository, modelHandler)
+	usersettingsService := usersettings.NewService(usersettingsRepository, modelHandler, config)
 	memoryHandler := handlers.ProvideMemoryHandler(memoryClient, config, usersettingsService)
 	tokenUsageRepository := tokenusagerepo.NewTokenUsageGormRepository(db)
 	tokenusageService := tokenusage.NewService(tokenUsageRepository)
@@ -156,7 +159,7 @@ func CreateApplication() (*Application, error) {
 	mcpToolRepository := mcptoolrepo.NewMCPToolGormRepository(database)
 	mcptoolService := mcptool.NewService(mcpToolRepository)
 	mcpToolHandler := mcptoolhandler.NewMCPToolHandler(mcptoolService, adminAuditLogger)
-	usageHandler := usagehandler.NewUsageHandler(tokenusageService)
+	usageHandler := usagehandler.NewUsageHandler(tokenusageService, service)
 	adminRoute := admin2.NewAdminRoute(adminModelRoute, adminProviderRoute, adminUserHandler, adminGroupHandler, featureFlagHandler, promptTemplateHandler, mcpToolHandler, usageHandler)
 	userSettingsHandler := usersettingshandler.NewUserSettingsHandler(usersettingsService, providerService, config, zerologLogger)
 	usersRoute := users.NewUsersRoute(userSettingsHandler, authHandler)
@@ -165,14 +168,23 @@ func CreateApplication() (*Application, error) {
 	shareHandler := sharehandler.NewShareHandler(shareService, conversationHandler, config)
 	shareRoute := share2.NewShareRoute(shareHandler, authHandler, conversationHandler)
 	publicShareRoute := public.NewPublicShareRoute(shareHandler)
-	messagesHandler := messageshandler.NewMessagesHandler(inferenceProvider, providerHandler, conversationService)
+	messagesHandler := messageshandler.NewMessagesHandler(inferenceProvider, providerHandler, conversationService, tokenusageService)
 	messagesRoute := messages.NewMessagesRoute(messagesHandler, authHandler)
 	usageRoute := usage.NewUsageRoute(usageHandler, authHandler)
 	// Document OCR service and routes
 	documentOCRService := inference.NewDocumentOCRService(config)
 	documentHandler := documenthandler.NewDocumentHandler(documentService, projectFileService, projectService, providerService, documentOCRService, mediaclientClient, config)
 	documentRoute := documents.NewDocumentRoute(documentHandler, authHandler)
-	v1Route := v1.NewV1Route(modelRoute, chatRoute, imageRoute, conversationRoute, branchRoute, projectRoute, adminRoute, usersRoute, promptTemplateHandler, mcpToolHandler, shareRoute, publicShareRoute, messagesRoute, usageRoute, documentRoute)
+	// Connector service and routes
+	tokenEncryptor, err := connector.ProvideTokenEncryptor(config)
+	if err != nil {
+		return nil, err
+	}
+	oauthProvider := connector.ProvideOAuthProvider(config)
+	connectorService := connector.ProvideConnectorService(db, config, tokenEncryptor, oauthProvider, zerologLogger)
+	connectorHandler := connectorhandler.NewConnectorHandler(connectorService)
+	connectorRoute := connectors.NewConnectorRoute(connectorHandler, authHandler)
+	v1Route := v1.NewV1Route(modelRoute, chatRoute, imageRoute, conversationRoute, branchRoute, projectRoute, adminRoute, usersRoute, promptTemplateHandler, mcpToolHandler, shareRoute, publicShareRoute, messagesRoute, usageRoute, documentRoute, connectorRoute)
 	guestHandler := guestauth.NewGuestHandler(client, zerologLogger)
 	upgradeHandler := guestauth.NewUpgradeHandler(client, zerologLogger)
 	tokenHandler := authhandler.NewTokenHandler(client, zerologLogger)

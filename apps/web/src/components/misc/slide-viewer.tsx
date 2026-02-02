@@ -1,35 +1,59 @@
 // Slide viewer - full screen, rendered via portal
 import { createPortal } from "react-dom";
 import { useState, useEffect } from "react"
+import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import {
   type SlideImage,
 } from "@/stores/right-sidebar-store";
-import { ChevronLeftIcon, ChevronRightIcon, XIcon, DownloadIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, XIcon, DownloadIcon, ExternalLinkIcon } from "lucide-react";
 import { Button } from "@janhq/interfaces/button";
 
 export const SlideViewer = ({
   slides,
   initialIndex = 0,
   title,
-  downloadUrl,
+  onDownload,
+  conversationId,
   onClose,
 }: {
   slides: SlideImage[];
   initialIndex?: number;
   title?: string;
-  downloadUrl?: string;
+  onDownload?: () => void;
+  conversationId?: string;
   onClose: () => void;
 }) => {
+  const navigate = useNavigate();
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
+
+  // Guard against empty slides array
+  if (!slides || slides.length === 0) {
+    return createPortal(
+      <div className="fixed inset-0 z-100 flex items-center justify-center bg-background">
+        <div className="text-center">
+          <p className="text-muted-foreground mb-4">No slides available</p>
+          <Button variant="outline" onClick={onClose}>Close</Button>
+        </div>
+      </div>,
+      document.body
+    );
+  }
 
   const currentSlide = slides[currentIndex];
   const hasPrev = currentIndex > 0;
   const hasNext = currentIndex < slides.length - 1;
 
   const handleDownload = () => {
-    if (downloadUrl) {
-      window.open(downloadUrl, "_blank");
+    if (onDownload) {
+      onDownload();
+    }
+  };
+
+  const handleViewThread = () => {
+    if (conversationId) {
+      onClose();
+      navigate({ to: "/threads/$conversationId", params: { conversationId } });
     }
   };
 
@@ -105,7 +129,16 @@ export const SlideViewer = ({
             >
               <ChevronRightIcon className="size-4 ml-1" />
             </Button>
-            {downloadUrl && (
+            {conversationId && (
+              <>
+                <div className="w-px h-6 bg-border mx-2" />
+                <Button variant="outline" size="sm" onClick={handleViewThread}>
+                  <ExternalLinkIcon className="size-4 mr-2" />
+                  View Chat
+                </Button>
+              </>
+            )}
+            {onDownload && (
               <>
                 <div className="w-px h-6 bg-border mx-2" />
                 <Button variant="outline" size="icon-sm" onClick={handleDownload}>

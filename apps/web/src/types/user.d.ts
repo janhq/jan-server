@@ -74,6 +74,8 @@ interface Preferences {
   enable_image_generation: boolean;
   enable_agent_mode: boolean;
   selected_model: string;
+  hide_connectors?: boolean;
+  hide_artifacts?: boolean;
   theme_color?: string;
   theme_config?: ThemeConfig;
 }

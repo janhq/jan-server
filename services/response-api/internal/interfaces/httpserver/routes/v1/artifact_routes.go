@@ -7,6 +7,9 @@ import (
 )
 
 func registerArtifactRoutes(router gin.IRoutes, handler *handlers.ArtifactHandler) {
+	// List all artifacts for authenticated user (must be before :artifact_id to avoid conflicts)
+	router.GET("/artifacts", handler.List)
+
 	// Artifact routes
 	router.GET("/artifacts/:artifact_id", handler.Get)
 	router.GET("/artifacts/:artifact_id/versions", handler.GetVersions)

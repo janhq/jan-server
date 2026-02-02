@@ -106,6 +106,28 @@ func (s *Service) GetDailyTrends(ctx context.Context, filter UsageFilter) ([]Dai
 	return s.repo.GetDailyAggregates(ctx, filter)
 }
 
+// GetAllUsersUsage retrieves usage for all users (admin only)
+func (s *Service) GetAllUsersUsage(ctx context.Context, startDate, endDate time.Time, limit, offset int) (*AllUsersUsageResponse, error) {
+	users, total, err := s.repo.GetAllUsersUsage(ctx, startDate, endDate, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	return &AllUsersUsageResponse{
+		Period: Period{
+			StartDate: startDate,
+			EndDate:   endDate,
+		},
+		Users: users,
+		Total: total,
+	}, nil
+}
+
+// GetAdminUserUsage retrieves detailed usage for a specific user (admin only)
+func (s *Service) GetAdminUserUsage(ctx context.Context, userID string, startDate, endDate time.Time) (*UserUsageDetail, error) {
+	return s.repo.GetUserUsageDetail(ctx, userID, startDate, endDate)
+}
+
 // buildUsageResponse constructs a usage response from summaries
 func (s *Service) buildUsageResponse(summaries []UsageSummary, startDate, endDate time.Time) *UsageResponse {
 	response := &UsageResponse{
@@ -194,6 +216,13 @@ type PlatformUsageResponse struct {
 	ByModel    []UsageSummary `json:"by_model"`
 	ByProvider []UsageSummary `json:"by_provider"`
 	TopUsers   []UserUsage    `json:"top_users"`
+}
+
+// AllUsersUsageResponse represents paginated usage for all users (admin)
+type AllUsersUsageResponse struct {
+	Period Period            `json:"period"`
+	Users  []UserUsageDetail `json:"users"`
+	Total  int64             `json:"total"`
 }
 
 // Period represents a date range for usage queries

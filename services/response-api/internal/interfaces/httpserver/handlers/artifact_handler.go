@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/rs/zerolog"
 
 	"jan-server/services/response-api/internal/domain/artifact"
@@ -24,6 +25,95 @@ func NewArtifactHandler(service artifact.Service, log zerolog.Logger) *ArtifactH
 		service: service,
 		log:     log.With().Str("handler", "artifact").Logger(),
 	}
+}
+
+// List handles GET /v1/artifacts
+// @Summary List all artifacts for the authenticated user
+// @Description Retrieves all artifacts belonging to the authenticated user with cursor-based pagination
+// @Tags Artifacts
+// @Produce json
+// @Param content_type query string false "Filter by content type (slides, document, research, code, image, etc.)"
+// @Param search query string false "Search by title (case-insensitive)"
+// @Param latest query bool false "Only return latest versions" default(true)
+// @Param limit query int false "Maximum number of results" default(20)
+// @Param after query string false "Return artifacts after the given artifact ID (cursor pagination)"
+// @Param order query string false "Sort order: asc or desc" default(desc)
+// @Success 200 {object} responses.ArtifactListResponse
+// @Failure 401 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /v1/artifacts [get]
+func (h *ArtifactHandler) List(c *gin.Context) {
+	// Get user ID from JWT token (set by auth middleware)
+	userID := extractUserIDFromToken(c)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+		return
+	}
+
+	filter := artifact.NewFilter().WithUserID(userID).WithLatestOnly()
+
+	// Parse query params
+	if contentType := c.Query("content_type"); contentType != "" {
+		filter = filter.WithContentType(artifact.ContentType(contentType))
+	}
+
+	if search := c.Query("search"); search != "" {
+		filter = filter.WithTitleSearch(search)
+	}
+
+	if latestStr := c.Query("latest"); latestStr == "false" {
+		filter = filter.WithAllVersions()
+	}
+
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 {
+			filter.Limit = limit
+		}
+	}
+
+	// Parse cursor-based pagination params
+	if afterStr := c.Query("after"); afterStr != "" {
+		internalID, err := h.service.ResolveInternalID(c.Request.Context(), afterStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid pagination cursor"})
+			return
+		}
+		filter.After = internalID
+	}
+
+	if order := c.Query("order"); order == "asc" || order == "desc" {
+		filter.Order = order
+	}
+
+	artifacts, total, err := h.service.List(c.Request.Context(), filter)
+	if err != nil {
+		responses.HandleError(c, err, "failed to list artifacts")
+		return
+	}
+
+	// Determine has_more and trim to limit
+	hasMore := len(artifacts) > filter.Limit
+	if hasMore {
+		artifacts = artifacts[:filter.Limit]
+	}
+
+	// Build response with cursor info
+	data := responses.MapArtifactsToResponse(artifacts)
+	firstID := ""
+	lastID := ""
+	if len(data) > 0 {
+		firstID = data[0].ID
+		lastID = data[len(data)-1].ID
+	}
+
+	c.JSON(http.StatusOK, responses.ArtifactListResponse{
+		Object:  "list",
+		Data:    data,
+		FirstID: firstID,
+		LastID:  lastID,
+		HasMore: hasMore,
+		Total:   total,
+	})
 }
 
 // Get handles GET /v1/artifacts/:artifact_id
@@ -50,13 +140,14 @@ func (h *ArtifactHandler) Get(c *gin.Context) {
 
 // GetByResponse handles GET /v1/responses/:response_id/artifacts
 // @Summary List artifacts for a response
-// @Description Retrieves all artifacts associated with a response
+// @Description Retrieves all artifacts associated with a response with cursor-based pagination
 // @Tags Artifacts
 // @Produce json
 // @Param response_id path string true "Response ID"
 // @Param latest query bool false "Only return latest versions"
 // @Param limit query int false "Maximum number of results" default(20)
-// @Param offset query int false "Offset for pagination" default(0)
+// @Param after query string false "Return artifacts after the given artifact ID (cursor pagination)"
+// @Param order query string false "Sort order: asc or desc" default(desc)
 // @Success 200 {object} responses.ArtifactListResponse
 // @Failure 404 {object} map[string]string
 // @Failure 500 {object} map[string]string
@@ -77,10 +168,18 @@ func (h *ArtifactHandler) GetByResponse(c *gin.Context) {
 		}
 	}
 
-	if offsetStr := c.Query("offset"); offsetStr != "" {
-		if offset, err := strconv.Atoi(offsetStr); err == nil && offset >= 0 {
-			filter.Offset = offset
+	// Parse cursor-based pagination params
+	if afterStr := c.Query("after"); afterStr != "" {
+		internalID, err := h.service.ResolveInternalID(c.Request.Context(), afterStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid pagination cursor"})
+			return
 		}
+		filter.After = internalID
+	}
+
+	if order := c.Query("order"); order == "asc" || order == "desc" {
+		filter.Order = order
 	}
 
 	artifacts, total, err := h.service.List(c.Request.Context(), filter)
@@ -89,11 +188,28 @@ func (h *ArtifactHandler) GetByResponse(c *gin.Context) {
 		return
 	}
 
+	// Determine has_more and trim to limit
+	hasMore := len(artifacts) > filter.Limit
+	if hasMore {
+		artifacts = artifacts[:filter.Limit]
+	}
+
+	// Build response with cursor info
+	data := responses.MapArtifactsToResponse(artifacts)
+	firstID := ""
+	lastID := ""
+	if len(data) > 0 {
+		firstID = data[0].ID
+		lastID = data[len(data)-1].ID
+	}
+
 	c.JSON(http.StatusOK, responses.ArtifactListResponse{
-		Data:   responses.MapArtifactsToResponse(artifacts),
-		Total:  total,
-		Limit:  filter.Limit,
-		Offset: filter.Offset,
+		Object:  "list",
+		Data:    data,
+		FirstID: firstID,
+		LastID:  lastID,
+		HasMore: hasMore,
+		Total:   total,
 	})
 }
 
@@ -205,4 +321,22 @@ func (h *ArtifactHandler) Delete(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+// extractUserIDFromToken extracts the user ID (sub claim) from the JWT token
+func extractUserIDFromToken(c *gin.Context) string {
+	tokenValue, exists := c.Get("auth_token")
+	if !exists {
+		return ""
+	}
+	token, ok := tokenValue.(*jwt.Token)
+	if !ok {
+		return ""
+	}
+	if claims, ok := token.Claims.(jwt.MapClaims); ok {
+		if sub, ok := claims["sub"].(string); ok {
+			return sub
+		}
+	}
+	return ""
 }

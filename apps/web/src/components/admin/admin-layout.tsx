@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, Link, useLocation } from "@tanstack/react-router";
 import {
+  BarChart3,
   Box,
   ChevronRight,
   FileText,
@@ -36,6 +37,11 @@ const navItems: NavItem[] = [
     title: "Overview",
     href: "/admin",
     icon: LayoutDashboard,
+  },
+  {
+    title: "Usage Analytics",
+    href: "/admin/usage",
+    icon: BarChart3,
   },
   {
     title: "User Management",

@@ -22,6 +22,7 @@ import (
 	"jan-server/services/llm-api/internal/infrastructure/keycloak"
 	"jan-server/services/llm-api/internal/infrastructure/kong"
 	"jan-server/services/llm-api/internal/infrastructure/logger"
+	"jan-server/services/llm-api/internal/infrastructure/connector"
 	"jan-server/services/llm-api/internal/infrastructure/mediaclient"
 	memclient "jan-server/services/llm-api/internal/infrastructure/memory"
 )
@@ -231,4 +232,7 @@ var InfrastructureProvider = wire.NewSet(
 
 	// Analytics
 	ProvideAnalyticsTracker,
+
+	// Connectors (OAuth integrations)
+	connector.ProviderSet,
 )

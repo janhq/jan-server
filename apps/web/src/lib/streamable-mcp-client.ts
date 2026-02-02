@@ -48,8 +48,11 @@ export class StreamableHttpMCPClient implements ToolCallClient {
       }
 
       // Create transport with OAuth provider (handles token refresh automatically)
+      // Ensure proper URL construction with slash between base URL and endpoint
+      const baseUrl = this.apiUrl.endsWith('/') ? this.apiUrl.slice(0, -1) : this.apiUrl;
+      const endpoint = this.mcpEndpoint.startsWith('/') ? this.mcpEndpoint : `/${this.mcpEndpoint}`;
       const transport = new StreamableHTTPClientTransport(
-        new URL(`${this.apiUrl}${this.mcpEndpoint}`),
+        new URL(`${baseUrl}${endpoint}`),
         {
           authProvider: this.oauthProvider,
           // No sessionId needed - server will generate one automatically
@@ -211,8 +214,11 @@ export class StreamableHttpMCPClient implements ToolCallClient {
       );
 
       // Make fetch request with abort signal
+      // Ensure proper URL construction with slash between base URL and endpoint
+      const fetchBaseUrl = JAN_API_BASE_URL.endsWith('/') ? JAN_API_BASE_URL.slice(0, -1) : JAN_API_BASE_URL;
+      const fetchEndpoint = this.mcpEndpoint.startsWith('/') ? this.mcpEndpoint : `/${this.mcpEndpoint}`;
       const response = await fetchWithAuth(
-        `${JAN_API_BASE_URL}${this.mcpEndpoint}`,
+        `${fetchBaseUrl}${fetchEndpoint}`,
         {
           method: "POST",
           headers,

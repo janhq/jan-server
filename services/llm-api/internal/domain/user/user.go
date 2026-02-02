@@ -75,3 +75,8 @@ func (s *Service) EnsureUser(ctx context.Context, identity Identity) (*User, err
 
 	return s.repo.Upsert(ctx, user)
 }
+
+// GetByID retrieves a user by internal ID.
+func (s *Service) GetByID(ctx context.Context, id uint) (*User, error) {
+	return s.repo.FindByID(ctx, id)
+}

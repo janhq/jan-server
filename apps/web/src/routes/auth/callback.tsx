@@ -55,7 +55,22 @@ function OAuthCallbackPage() {
         loginWithOAuth(tokens);
         console.log("OAuth login successful");
         // Navigate to the original URL or home
-        const redirectUrl = "/";
+        const isAllowedExternalRedirect = (value: string) =>
+          /^http:\/\/localhost:\d+/.test(value);
+
+        if (oauthData.redirectUrl && isAllowedExternalRedirect(oauthData.redirectUrl)) {
+          const bearerToken = `Bearer ${tokens.access_token}`;
+          const encodedToken = btoa(bearerToken);
+          const target = new URL(oauthData.redirectUrl);
+          target.searchParams.set("token", encodedToken);
+          window.location.href = target.toString();
+          return;
+        }
+
+        const redirectUrl =
+          oauthData.redirectUrl && oauthData.redirectUrl.startsWith("/")
+            ? oauthData.redirectUrl
+            : "/";
 
         navigate({ to: redirectUrl });
       } catch (err) {
