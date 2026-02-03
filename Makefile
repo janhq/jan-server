@@ -2,7 +2,7 @@
 # JAN SERVER MAKEFILE
 # ============================================================================================================
 #
-# A comprehensive build system for Jan Server - a microservices-based LLM API 
+# A comprehensive build system for Jan Server - a microservices-based LLM API
 # with MCP (Model Context Protocol) tool integration.
 #
 # ============================================================================================================
@@ -49,14 +49,44 @@
 # VARIABLES
 # ============================================================================================================
 
-# Docker Compose
-COMPOSE = docker compose
-COMPOSE_DEV_FULL = docker compose -f docker-compose.yml -f docker-compose.dev-full.yml
-MONITOR_COMPOSE = docker compose -f infra/docker/observability.yml
+# Container Engine Detection (docker or podman)
+# Override with: make CONTAINER_ENGINE=podman <target>
+CONTAINER_ENGINE ?= auto
 
-# BuildKit is required for additional_contexts in compose builds.
-DOCKER_BUILDKIT ?= 1
-COMPOSE_DOCKER_CLI_BUILD ?= 1
+ifeq ($(CONTAINER_ENGINE),auto)
+  # Auto-detect: prefer docker, fallback to podman
+  ifneq ($(shell command -v docker 2>/dev/null),)
+    DETECTED_ENGINE := docker
+  else ifneq ($(shell command -v podman 2>/dev/null),)
+    DETECTED_ENGINE := podman
+  else
+    DETECTED_ENGINE := docker
+  endif
+else
+  DETECTED_ENGINE := $(CONTAINER_ENGINE)
+endif
+
+# Set compose command based on detected engine
+ifeq ($(DETECTED_ENGINE),podman)
+  # Podman: use podman-compose with flattened compose file
+  # Generate with: python3 scripts/gen-podman-compose.py
+  PODMAN_COMPOSE_FILE ?= docker-compose.podman.yml
+  COMPOSE = podman-compose -f $(PODMAN_COMPOSE_FILE)
+  COMPOSE_DEV_FULL = podman-compose -f $(PODMAN_COMPOSE_FILE)
+  MONITOR_COMPOSE = podman-compose -f infra/docker/observability.yml
+  # Podman doesn't use BuildKit
+  DOCKER_BUILDKIT ?= 0
+  COMPOSE_DOCKER_CLI_BUILD ?= 0
+else
+  # Docker: use docker compose v2
+  COMPOSE = docker compose
+  COMPOSE_DEV_FULL = docker compose -f docker-compose.yml -f docker-compose.dev-full.yml
+  MONITOR_COMPOSE = docker compose -f infra/docker/observability.yml
+  # BuildKit is required for additional_contexts in compose builds.
+  DOCKER_BUILDKIT ?= 1
+  COMPOSE_DOCKER_CLI_BUILD ?= 1
+endif
+
 export DOCKER_BUILDKIT COMPOSE_DOCKER_CLI_BUILD
 
 MEDIA_SERVICE_KEY ?= changeme-media-key
@@ -974,6 +1004,86 @@ else
 	@curl -sf http://localhost:3015/healthz >/dev/null && echo " Vector Store: healthy" || echo " Vector Store: unhealthy"
 	@curl -sf http://localhost:3010 >/dev/null && echo " SandboxFusion: healthy" || echo " SandboxFusion: unhealthy"
 endif
+
+# ============================================================================================================
+# SECTION 10: PODMAN SUPPORT
+# ============================================================================================================
+
+.PHONY: engine-info podman-setup podman-network podman-ps podman-clean
+
+## Show which container engine is being used
+engine-info:
+	@echo "Container Engine Configuration"
+	@echo "=============================="
+	@echo "CONTAINER_ENGINE: $(CONTAINER_ENGINE)"
+	@echo "DETECTED_ENGINE:  $(DETECTED_ENGINE)"
+	@echo "COMPOSE command:  $(COMPOSE)"
+	@echo ""
+ifeq ($(DETECTED_ENGINE),podman)
+	@podman --version
+	@podman-compose --version
+	@echo ""
+	@echo "Podman info:"
+	@podman info --format 'Rootless: {{.Host.Security.Rootless}}'
+else
+	@docker --version
+	@docker compose version
+endif
+
+## Setup Podman environment (create networks, generate compose file)
+podman-setup: podman-compose-generate podman-network
+ifeq ($(DETECTED_ENGINE),podman)
+	@echo ""
+	@echo "Podman setup complete!"
+	@echo ""
+	@echo "To start services:"
+	@echo "  make up-full"
+	@echo ""
+	@echo "Or explicitly use Podman:"
+	@echo "  make CONTAINER_ENGINE=podman up-full"
+else
+	@echo "Docker detected. For Podman, run:"
+	@echo "  make CONTAINER_ENGINE=podman podman-setup"
+endif
+
+## Generate flattened compose file for podman-compose
+podman-compose-generate:
+	@echo "Generating Podman-compatible compose file..."
+	@python3 scripts/gen-podman-compose.py
+	@echo ""
+
+## Create required Podman networks
+podman-network:
+	@echo "Creating container networks..."
+ifeq ($(DETECTED_ENGINE),podman)
+	@podman network exists jan-server_default 2>/dev/null || podman network create jan-server_default
+	@podman network exists jan-server_mcp-network 2>/dev/null || podman network create jan-server_mcp-network
+else
+	@docker network inspect jan-server_default >/dev/null 2>&1 || docker network create jan-server_default
+	@docker network inspect jan-server_mcp-network >/dev/null 2>&1 || docker network create jan-server_mcp-network
+endif
+	@echo "Networks ready"
+
+## List Jan Server containers (works with both Docker and Podman)
+podman-ps:
+ifeq ($(DETECTED_ENGINE),podman)
+	@podman ps --filter "label=com.docker.compose.project=server" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+else
+	@docker ps --filter "label=com.docker.compose.project=server" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+endif
+
+## Clean up container resources
+podman-clean:
+	@echo "Cleaning up Jan Server container resources..."
+	$(COMPOSE) down -v --remove-orphans 2>/dev/null || true
+ifeq ($(DETECTED_ENGINE),podman)
+	@podman volume prune -f
+	@podman network prune -f
+else
+	@docker volume prune -f
+	@docker network prune -f
+endif
+	@echo "Cleanup complete"
 
 # ============================================================================================================
 # END OF MAKEFILE

@@ -1,0 +1,127 @@
+# ============================================================================================================
+# JAN SERVER - PODMAN OVERRIDE MAKEFILE
+# ============================================================================================================
+#
+# This file provides Podman-specific overrides for Jan Server.
+# Include this in your main Makefile or use it directly.
+#
+# Usage:
+#   make -f Makefile.podman up-full     # Use Podman directly
+#   make CONTAINER_ENGINE=podman up-full # Override in main Makefile
+#
+# Requirements:
+#   - Podman 4.0+ (you have 5.7.1)
+#   - podman-compose 1.0.6+ (you have 1.5.0)
+#
+# ============================================================================================================
+
+# Container Engine Detection
+# Supports: docker, podman, auto (detect)
+CONTAINER_ENGINE ?= podman
+
+# Podman-specific compose command
+# podman-compose is more compatible than 'podman compose' for complex setups
+COMPOSE = podman-compose
+COMPOSE_DEV_FULL = podman-compose -f docker-compose.yml -f docker-compose.dev-full.yml
+MONITOR_COMPOSE = podman-compose -f infra/docker/observability.yml
+
+# Podman doesn't use BuildKit, but these are harmless
+DOCKER_BUILDKIT ?= 0
+COMPOSE_DOCKER_CLI_BUILD ?= 0
+
+# Podman rootless networking
+# For host.docker.internal equivalent in rootless Podman
+PODMAN_HOST_GATEWAY ?= host.containers.internal
+
+# ============================================================================================================
+# PODMAN-SPECIFIC TARGETS
+# ============================================================================================================
+
+.PHONY: podman-setup podman-check podman-socket podman-network
+
+## Setup Podman environment for Jan Server
+podman-setup: podman-check podman-network
+	@echo "Podman environment ready for Jan Server"
+	@echo ""
+	@echo "Quick start:"
+	@echo "  make -f Makefile.podman up-full"
+	@echo ""
+	@echo "Or set in your shell:"
+	@echo "  export CONTAINER_ENGINE=podman"
+	@echo "  make up-full"
+
+## Check Podman installation and version
+podman-check:
+	@echo "Checking Podman installation..."
+	@podman --version || (echo "ERROR: Podman not found" && exit 1)
+	@podman-compose --version || (echo "ERROR: podman-compose not found" && exit 1)
+	@echo ""
+	@echo "Podman info:"
+	@podman info --format '{{.Host.OS}} / {{.Host.Arch}} / cgroups {{.Host.CgroupsVersion}}'
+	@echo ""
+	@echo "Rootless mode: $$(podman info --format '{{.Host.Security.Rootless}}')"
+
+## Enable Podman socket for Docker API compatibility (optional)
+podman-socket:
+	@echo "Enabling Podman socket..."
+	systemctl --user enable --now podman.socket
+	@echo ""
+	@echo "Socket path: $${XDG_RUNTIME_DIR}/podman/podman.sock"
+	@echo ""
+	@echo "To use with Docker CLI:"
+	@echo "  export DOCKER_HOST=unix://$${XDG_RUNTIME_DIR}/podman/podman.sock"
+
+## Create required networks for Jan Server
+podman-network:
+	@echo "Creating Podman networks..."
+	@podman network exists jan-server_default 2>/dev/null || podman network create jan-server_default
+	@podman network exists jan-server_mcp-network 2>/dev/null || podman network create jan-server_mcp-network
+	@echo "Networks ready"
+
+## List Jan Server containers
+podman-ps:
+	@podman ps --filter "label=com.docker.compose.project=jan-server" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+## Show Podman resource usage
+podman-stats:
+	@podman stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}"
+
+## Clean up Podman resources
+podman-clean:
+	@echo "Cleaning up Jan Server Podman resources..."
+	$(COMPOSE) down -v --remove-orphans 2>/dev/null || true
+	@podman volume prune -f
+	@podman network prune -f
+	@echo "Cleanup complete"
+
+## Fix common Podman issues
+podman-fix:
+	@echo "Applying common Podman fixes..."
+	@echo ""
+	@echo "1. Resetting Podman storage (if corrupted)..."
+	@echo "   Run manually if needed: podman system reset"
+	@echo ""
+	@echo "2. Checking cgroup configuration..."
+	@if [ -f /sys/fs/cgroup/cgroup.controllers ]; then \
+		echo "   cgroups v2 detected (good)"; \
+	else \
+		echo "   cgroups v1 detected - consider upgrading"; \
+	fi
+	@echo ""
+	@echo "3. Checking user namespaces..."
+	@cat /proc/sys/user/max_user_namespaces 2>/dev/null || echo "   Cannot read max_user_namespaces"
+
+# ============================================================================================================
+# OVERRIDE MAIN MAKEFILE TARGETS
+# ============================================================================================================
+
+# Include the main Makefile targets but with Podman compose
+include Makefile
+
+# Override check-deps for Podman
+check-deps:
+	@echo "Checking Podman dependencies..."
+	@podman --version >/dev/null 2>&1 || echo "Podman not found"
+	@podman-compose --version >/dev/null 2>&1 || echo "podman-compose not found"
+	@go version >/dev/null 2>&1 || echo "Go not found (optional)"
+	@echo "Dependency check complete"
