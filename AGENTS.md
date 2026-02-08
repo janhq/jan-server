@@ -14,7 +14,7 @@
 | Language | Go 1.25+ |
 | Framework | Gin (HTTP), zerolog (logging), Wire (DI) |
 | ORM | GORM + goose migrations |
-| Database | PostgreSQL (ankane/pgvector:latest for API, postgres:18 for Keycloak) |
+| Database | PostgreSQL (postgres:18 for Keycloak) |
 | API Gateway | Kong 3.5 + Keycloak (OIDC) |
 | Inference | vLLM (OpenAI-compatible) or remote providers |
 | MCP Server | mark3labs/mcp-go v0.7.0 |
@@ -44,8 +44,6 @@ jan-server/
 │   ├── response-api/            # Multi-step tool orchestration (port 8082)
 │   ├── media-api/               # S3 storage, jan_* IDs (port 8285)
 │   ├── mcp-tools/               # MCP tool providers (port 8091)
-│   ├── memory-tools/            # Semantic memory with BGE-M3 (port 8090)
-│   ├── realtime-api/            # WebRTC via LiveKit (port 8186)
 │   └── template-api/            # Service scaffold template
 ├── tools/jan-cli/               # CLI tool sources
 ├── config/                      # Shared configuration (defaults.yaml, schemas)
@@ -292,8 +290,6 @@ make down-clean         # Remove containers AND volumes
 | Response API | 8082 | Multi-step tool orchestration |
 | Media API | 8285 | File upload, jan_* ID resolution |
 | MCP Tools | 8091 | MCP protocol tools (search, scrape, exec) |
-| Memory Tools | 8090 | Semantic memory service |
-| Realtime API | 8186 | WebRTC session management |
 | **Infrastructure** | | |
 | Keycloak | 8085 | Auth admin console |
 | PostgreSQL | 5432 | Database |

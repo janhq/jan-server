@@ -79,8 +79,6 @@ jan-server/
 │   ├── response-api/            # Multi-step tool orchestration (port 8082)
 │   ├── media-api/               # S3 storage, jan_* IDs (port 8285)
 │   ├── mcp-tools/               # MCP tool providers (port 8091)
-│   ├── memory-tools/            # Semantic memory with BGE-M3 (port 8090)
-│   ├── realtime-api/            # WebRTC via LiveKit (port 8186)
 │   └── template-api/            # Service scaffold template
 ├── tools/jan-cli/               # CLI tool for development & testing
 ├── config/                      # Environment templates and schemas
@@ -272,15 +270,12 @@ log.Error().
 |-----------------|-------|--------------------------------------|
 | **Frontend**    |       |                                      |
 | Web App         | 3001  | Chat UI (React + Vite)               |
-| Platform App    | 3000  | Admin panel & docs (Next.js)         |
 | **Backend**     |       |                                      |
 | Kong Gateway    | 8000  | API entry point (routes to services) |
 | LLM API         | 8080  | Chat completions, conversations      |
 | Response API    | 8082  | Multi-step tool orchestration        |
 | Media API       | 8285  | File upload, jan_* ID resolution     |
 | MCP Tools       | 8091  | Search, scrape, code exec tools      |
-| Memory Tools    | 8090  | Semantic memory service              |
-| Realtime API    | 8186  | WebRTC session management            |
 | **Infra**       |       |                                      |
 | Keycloak        | 8085  | Auth admin console                   |
 | PostgreSQL      | 5432  | Database                             |

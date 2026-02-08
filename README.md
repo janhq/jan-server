@@ -111,12 +111,11 @@ jan-server/
 |   |-- response-api/
 |   |-- media-api/
 |   |-- mcp-tools/
-|   |-- realtime-api/
 |   |-- template-api/
 |-- packages/              # Shared packages
 |   |-- interfaces/        # Shared UI components (@janhq/interfaces)
 |-- docs/                  # Documentation hub
-|-- infra/docker/          # Compose profiles (infra, api, mcp, realtime, inference)
+|-- infra/docker/          # Compose profiles (infra, api, mcp, inference)
 |-- monitoring/            # Grafana, Prometheus, OTEL configs
 |-- k8s/                   # Helm chart + setup guide
 |-- config/                # Environment templates and helpers
@@ -163,7 +162,6 @@ make up-web       # Start web app container
 | Response API | Multi-step orchestration using MCP tools                           | 8082                         | `services/response-api` | `docs/api/response-api/README.md` |
 | Media API    | jan\_\* IDs, S3 ingest, media resolution                           | 8285                         | `services/media-api`    | `docs/api/media-api/README.md`    |
 | MCP Tools    | Model Context Protocol tools (search, scrape, file search, python) | 8091                         | `services/mcp-tools`    | `docs/api/mcp-tools/README.md`    |
-| Realtime API | LiveKit-based real-time audio/video sessions (optional)            | 8186                         | `services/realtime-api` | `services/realtime-api/README.md` |
 
 See [docs/architecture/services.md](docs/architecture/services.md) for dependency graphs and integration notes.
 
@@ -196,7 +194,7 @@ Create new microservices quickly with the template system:
 
 ```bash
 # Start services
-make up-full              # Full stack (all 4 APIs + infrastructure)
+make up-full              # Full stack (all APIs + infrastructure)
 make up-gpu               # With GPU inference (vLLM)
 make up-cpu               # CPU-only inference
 make up                   # Infrastructure only (DB, Keycloak, Redis)
@@ -206,7 +204,6 @@ make build-llm-api        # Build LLM API
 make build-response-api   # Build Response API
 make build-media-api      # Build Media API
 make build-mcp            # Build MCP Tools
-make build-realtime-api   # Build Realtime API
 
 # Development
 make test-all             # Run all test suites
@@ -229,7 +226,6 @@ make logs-llm-api         # View LLM API logs
 make logs-response-api    # View Response API logs
 make logs-media-api       # View Media API logs
 make logs-mcp             # View MCP Tools logs
-make logs-realtime-api    # View Realtime API logs
 make health-check         # Check all services health
 
 # Database
@@ -453,8 +449,7 @@ make up-cpu               # CPU-only inference
 make monitor-up           # Add monitoring stack
 
 # Optional services (enabled via profiles)
-docker compose --profile realtime up -d  # Start Realtime API
-docker compose --profile memory up -d    # Start Memory Tools
+docker compose --profile sandbox up -d  # Start sandbox for code execution
 ```
 
 ### Environment Configuration

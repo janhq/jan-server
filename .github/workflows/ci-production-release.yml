@@ -67,47 +67,6 @@ jobs:
       build-contexts: |
         go-common=packages/go-common
 
-  build-memory-tools:
-    uses: ./.github/workflows/_reusable-docker.yml
-    secrets: inherit
-    with:
-      runs-on: ubuntu-24-04-docker
-      docker-file: services/memory-tools/Dockerfile
-      context: services/memory-tools
-      registry-url: registry.menlo.ai
-      tags: registry.menlo.ai/jan-server/memory-tools:prod-${{ github.ref_name }}
-      is_push: true
-      build-args: |
-        VERSION_TAG=${{ github.ref_name }}
-
-  build-vector-store:
-    uses: ./.github/workflows/_reusable-docker.yml
-    secrets: inherit
-    with:
-      runs-on: ubuntu-24-04-docker
-      docker-file: services/mcp-tools/tools/vector-store-service/Dockerfile
-      context: services/mcp-tools/tools/vector-store-service
-      registry-url: registry.menlo.ai
-      tags: registry.menlo.ai/jan-server/vector-store-service:prod-${{ github.ref_name }}
-      is_push: true
-      build-args: |
-        VERSION_TAG=${{ github.ref_name }}
-
-  build-realtime-api:
-    uses: ./.github/workflows/_reusable-docker.yml
-    secrets: inherit
-    with:
-      runs-on: ubuntu-24-04-docker
-      docker-file: services/realtime-api/Dockerfile
-      context: services/realtime-api
-      registry-url: registry.menlo.ai
-      tags: registry.menlo.ai/jan-server/realtime-api:prod-${{ github.ref_name }}
-      is_push: true
-      build-args: |
-        VERSION_TAG=${{ github.ref_name }}
-      build-contexts: |
-        go-common=packages/go-common
-
   build-web:
     runs-on: ubuntu-latest
     permissions:
