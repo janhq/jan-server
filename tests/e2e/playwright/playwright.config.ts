@@ -16,6 +16,13 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'api',
+      testMatch: /api\.spec\.ts/,
+      use: {
+        baseURL: process.env.KONG_URL || 'http://localhost:8000',
+      },
+    },
   ],
-  webServer: undefined, // Assume web server is already running
+  webServer: undefined, // Assume services are already running
 });
