@@ -206,7 +206,5 @@ Need to display image?
 
 ## See Also
 
-- [API Patterns](patterns.md) - Streaming, pagination, batching
-- [Error Codes](error-codes.md) - Complete error reference
-- [Performance Guide](performance.md) - Optimization tips
-- [Examples Index](examples/README.md) - Working code samples
+- [API Examples](examples/README.md) - Working code samples
+- [Rate Limiting](rate-limiting.md) - Rate limits and quotas

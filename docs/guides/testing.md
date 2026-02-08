@@ -1,94 +1,33 @@
 # Testing Guide
 
-**Last Updated**: January 2025
-
 How to test Jan Server on Windows, Linux, and macOS.
-
----
-
-## Quick Summary
-
-Jan Server works on all major platforms:
-
-- **Windows** - PowerShell scripts and build tools
-- **Linux** - Full Docker support
-- **macOS** - Full Docker support
-
-### What We Test
-
-- Command-line tools (jan-cli)
-- Build process (Makefile)
-- Docker containers
-- Authentication (tokens, API keys)
-- Cross-platform compatibility
 
 ---
 
 ## Quick Start
 
-### Manual Testing
-
-**Unix/Linux/macOS:**
+### Run All Tests
 
 ```bash
-# Basic jan-cli commands
-./jan-cli.sh --help
-./jan-cli.sh dev setup
-./jan-cli.sh config generate
-./jan-cli.sh config validate
-./jan-cli.sh config show
-./jan-cli.sh service list
-./jan-cli.sh swagger generate --service llm-api
-
-# Makefile targets
-make setup
-make build-llm-api
-make build-media-api
-make build-mcp
-make clean-build
+make test-all
 ```
 
-**Windows:**
+### Specific Test Suites
 
-```powershell
+```bash
+make test-auth           # Authentication tests
+make test-conversations  # Conversation tests
+make test-response       # Response API tests
+make test-media          # Media API tests
+make test-mcp            # MCP Tools tests
+```
 
-### Windows
+### Unit Tests
 
-**Supported:**
-- OK jan-cli commands (all)
-- OK Makefile build targets
-- OK Configuration management
-- OK Local Docker Desktop
-
-**Not Supported in CI:**
-- [X] Docker integration (GitHub Actions limitation)
-- Docker tests run on Ubuntu CI instead
-
-**Shell:** PowerShell 5.1+ or Git Bash
-
-### Linux (Ubuntu, Debian, etc.)
-
-**Supported:**
-- OK jan-cli commands (all)
-- OK Makefile targets (all)
-- OK Docker integration (native)
-- OK Full authentication testing
-
-**Shell:** Bash 4.0+
-
-### macOS
-
-**Supported:**
-- OK jan-cli commands (all)
-- OK Makefile targets (all)
-- OK Docker integration (via Docker Desktop or Colima)
-
-**Limitations in CI:**
-- Docker setup on GitHub Actions runners is optional (may fail)
-- Primary Docker testing happens on Ubuntu
-- macOS CI focuses on CLI/build verification
-
-**Shell:** Bash 3.2+ or Zsh
+```bash
+go test ./services/llm-api/...
+go test ./services/response-api/...
+```
 
 ---
 
@@ -96,270 +35,40 @@ make clean-build
 
 ### jan-cli api-test Collections
 
-**Authentication Tests:**
-# Basic jan-cli commands
-.\jan-cli.ps1 --help
-.\jan-cli.ps1 dev setup
-.\jan-cli.ps1 config generate
-.\jan-cli.ps1 config validate
-.\jan-cli.ps1 config show
-.\jan-cli.ps1 service list
-.\jan-cli.ps1 swagger generate --service llm-api
+Test collections are located in `tests/e2e/automation/collections/` and can be run via:
 
-# Makefile targets (requires Git Bash or WSL)
-make setup
-make build-llm-api
-make build-media-api
-make build-mcp
-make clean-build
+```bash
+make test-all            # Run all integration tests
+make test-auth           # Auth tests (guest-login, API keys, token refresh)
+make test-conversation  # Conversation CRUD, messages
+make test-response       # Tool orchestration
+make test-media          # File uploads
+make test-mcp            # MCP tool execution
 ```
 
 ---
 
-## Manual Testing
+## Platform-Specific Notes
 
-### Testing Checklist
+### Linux (Ubuntu/Debian)
 
-#### jan-cli Commands (All Platforms)
+Full Docker support. All tests pass.
 
-| Command                                      | Windows | Linux | macOS | Notes                               |
-| -------------------------------------------- | ------- | ----- | ----- | ----------------------------------- |
-| `jan-cli --help`                             | OK      | OK    | OK    | Shows all commands                  |
-| `jan-cli dev setup`                          | OK      | OK    | OK    | Creates directories, networks,.env  |
-| `jan-cli config generate`                    | OK      | OK    | OK    | Generates schemas and defaults.yaml |
-| `jan-cli config validate`                    | OK      | OK    | OK    | Validates YAML configuration        |
-| `jan-cli config show`                        | OK      | OK    | OK    | Displays merged configuration       |
-| `jan-cli config export --format env`         | OK      | OK    | OK    | Exports as environment variables    |
-| `jan-cli service list`                       | OK      | OK    | OK    | Lists all services with ports       |
-| `jan-cli swagger generate --service llm-api` | OK      | OK    | OK    | Generates OpenAPI docs              |
+### macOS
 
-#### Makefile Targets (All Platforms)
-
-| Target                 | Windows | Linux | macOS | Notes                          |
-| ---------------------- | ------- | ----- | ----- | ------------------------------ |
-| `make setup`           | OK      | OK    | OK    | Delegates to jan-cli dev setup |
-| `make config-generate` | OK      | OK    | OK    | Uses jan-cli config generate   |
-| `make build-llm-api`   | OK      | OK    | OK    | Cross-platform build           |
-| `make build-media-api` | OK      | OK    | OK    | Cross-platform build           |
-| `make build-mcp`       | OK      | OK    | OK    | Cross-platform build           |
-| `make clean-build`     | OK      | OK    | OK    | Platform-specific cleanup      |
-
----
-
-## Docker Testing
-
-### Full Stack Tests (Linux/macOS)
-
-**Authentication Tests:**
+Requires Docker Desktop or Colima:
 
 ```bash
-make test-auth
-```
-
-Tests:
-
-- JWT token generation and validation
-- API key authentication
-- OAuth/OIDC flows with Keycloak
-- Token refresh endpoint
-
-**Conversation Tests:**
-
-```bash
-make test-conversations
-```
-
-Tests:
-
-- Create, read, update, delete conversations
-- Message history
-- Conversation metadata
-
-**Response API Tests:**
-
-```bash
-make test-response
-```
-
-**Media API Tests:**
-
-```bash
-make test-media
-```
-
-**MCP Integration Tests:**
-
-```bash
-make test-mcp-integration
-```
-
-### Docker Setup by Platform
-
-#### Linux (Ubuntu/Debian)
-
-```bash
-# Install Docker Engine
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
-
-# Add user to docker group
-sudo usermod -aG docker $USER
-newgrp docker
-
-# Install Docker Compose
-sudo apt-get update
-sudo apt-get install docker-compose-plugin
-```
-
-#### macOS
-
-**Option 1: Docker Desktop (Recommended for local development)**
-
-- Download: https://www.docker.com/products/docker-desktop
-- Pros: Easy to use, integrated Kubernetes
-- Cons: Resource heavy, requires license for enterprise
-
-**Option 2: Colima (Lightweight alternative)**
-
-```bash
-# Install via Homebrew
+# Install Colima
 brew install docker colima
 
-# Start with appropriate resources
+# Start with resources
 colima start --cpu 4 --memory 8 --disk 100
-
-# For CI/CD (conservative settings)
-colima start \
- --cpu 2 \
- --memory 4 \
- --disk 20 \
- --vm-type=vz \
- --mount-type=virtiofs
-
-# Verify
-docker info
-docker compose version
 ```
 
-#### Windows
+### Windows
 
-**Local Development:**
-
-- Install Docker Desktop: https://www.docker.com/products/docker-desktop
-- Requires WSL2 for best performance
-
-**GitHub Actions CI:**
-
-- Docker not available on Windows runners
-- Full stack tests run on Ubuntu instead
-- Windows CI focuses on CLI and build tests
-
----
-
-## Platform-Specific Fixes
-
-### 1. Makefile Path Separators
-
-**Issue:** GitHub Actions Windows runners use Git bash, which doesn't support backslash paths.
-
-**Fix:** Use forward slashes universally (works in bash, PowerShell, and CMD):
-
-```makefile
-build-llm-api:
-	@echo "Building LLM API..."
-ifeq ($(OS),Windows_NT)
-	@cd services/llm-api && go build -o bin/llm-api.exe./cmd/server
-else
-	@cd services/llm-api && go build -o bin/llm-api./cmd/server
-endif
-```
-
-**Key Insight:** Forward slashes work on all platforms in modern shells.
-
-### 2. Clean Target Platform Commands
-
-**Issue:** `rm -rf` doesn't exist on Windows.
-
-**Fix:** Platform-specific directory removal:
-
-```makefile
-clean-build:
-	@echo "Cleaning build artifacts..."
-ifeq ($(OS),Windows_NT)
-	@if exist services\llm-api\bin rd /s /q services\llm-api\bin >nul 2>&1
-	@if exist services\media-api\bin rd /s /q services\media-api\bin >nul 2>&1
-	@if exist services\mcp-tools\bin rd /s /q services\mcp-tools\bin >nul 2>&1
-else
-	@rm -rf services/llm-api/bin
-	@rm -rf services/media-api/bin
-	@rm -rf services/mcp-tools/bin
-endif
-```
-
-### 3. Auto-Rebuild Detection
-
-**Issue:** Wrapper scripts only checked `main.go`, missing changes in other source files.
-
-**Fix:** Check all `*.go` files recursively:
-
-**Windows (jan-cli.ps1):**
-
-```powershell
-$needsRebuild = $false
-Get-ChildItem -Path $CLIDir -Filter "*.go" -Recurse | ForEach-Object {
- if ($_.LastWriteTime -gt $binaryTime) {
- $needsRebuild = $true
- }
-}
-```
-
-**Unix (jan-cli.sh):**
-
-```bash
-if find "$CLI_DIR" -name "*.go" -type f -newer "$BINARY" | grep -q.; then
- echo "Detected changes in source files. Rebuilding..."
-fi
-```
-
-### 4. Cross-Platform Sleep Commands
-
-**Issue:** Interactive setup needs platform-specific sleep commands.
-
-**Fix:** Platform detection in Go:
-
-```go
-func execCommandSilent(name string, args...string) error {
-	cmd:= exec.Command(name, args...)
-	return cmd.Run()
-}
-
-// Platform-specific sleep
-if isWindows() {
-	execCommandSilent("powershell", "-Command", "Start-Sleep -Seconds 2")
-} else {
-	execCommandSilent("sleep", "2")
-}
-```
-
-### 5. Optional Docker Dependency
-
-**Issue:** Docker not available on Windows CI and macOS CI may have Colima startup failures.
-
-**Fix:** Made Docker checks optional in `tools/jan-cli/cmd_dev.go`:
-
-```go
-dockerAvailable:= isDockerAvailable()
-if !dockerAvailable {
-	fmt.Println("WARNING WARNING: Docker is not available")
-	fmt.Println(" Some features will be skipped")
-	// Continue with CLI-only setup
-}
-
-// Conditionally create Docker network
-if dockerAvailable {
-	createDockerNetwork()
-}
-```
+Windows CI focuses on CLI and build verification. Full Docker tests run on Ubuntu.
 
 ---
 
@@ -379,155 +88,21 @@ docker ps
 
 # Linux: Add user to docker group
 sudo usermod -aG docker $USER
-# Then logout and login
-
-# macOS: Start Docker Desktop or Colima
-open -a Docker # Docker Desktop
-colima start # Colima
-```
-
-### Go Not Found
-
-```bash
-# Check Go installation
-which go
-go version
-
-# If not installed:
-# Linux: sudo apt install golang-go
-# macOS: brew install go
-# Windows: Download from https://go.dev/dl/
 ```
 
 ### Build Failures
 
 ```bash
-# Clean and rebuild
 make clean-build
 make build-llm-api
-
-# Check Go modules
 go mod download
 go mod verify
 ```
-
-### Makefile Not Found (Windows)
-
-Make requires Git Bash or WSL on Windows:
-
-- Install Git for Windows: https://git-scm.com/download/win
-- Or use WSL: https://docs.microsoft.com/en-us/windows/wsl/install
-
-### Path Issues on Windows
-
-GitHub Actions Windows runners use Git bash. Ensure:
-
-- Use forward slashes in Makefile paths
-- Use `ifeq ($(OS),Windows_NT)` branches for Windows-specific commands
-- Binary names include `.exe` extension for Windows
-
----
-
-## Best Practices
-
-### 1. Use jan-cli for Complex Operations
-
-Prefer `jan-cli` commands for:
-
-- File system operations (creating directories, copying files)
-- Interactive prompts
-- Complex conditional logic
-
-**Why:** Go code is inherently cross-platform, while Makefile requires platform-specific branches.
-
-### 2. Use Makefile for Docker Operations
-
-Prefer `Makefile` for:
-
-- Docker Compose commands (`up-infra`, `up-full`, `down`)
-- Service orchestration
-- Testing with jan-cli api-test
-- Health checks
-
-**Why:** These operations are already cross-platform via Docker CLI.
-
-### 3. Test Both Systems
-
-When adding new functionality:
-
-1. Test on Windows PowerShell first (most restrictive)
-2. Test on Linux/macOS
-3. Verify wrapper scripts auto-rebuild correctly
-4. Check that both `jan-cli` and `make` interfaces work
-
-### 4. Manual Testing Before Pushing
-
-**Unix/Linux/macOS:**
-
-```bash
-# Test basic commands
-./jan-cli.sh --help
-./jan-cli.sh config validate
-make build-llm-api
-```
-
-**Windows:**
-
-```powershell
-# Test basic commands
-.\jan-cli.ps1 --help
-.\jan-cli.ps1 config validate
-make build-llm-api
-```
-
----
-
-## Summary
-
-### OK What Works
-
-- All core `jan-cli` commands on Windows, Linux, macOS
-- Makefile build targets (cross-platform)
-- Docker integration on Linux/macOS (and Windows local)
-- Configuration management and validation
-- Service orchestration and health checks
-
-### WARNING Platform Limitations
-
-**Windows:**
-
-- Requires Git Bash or WSL for Makefile
-- Binary names need `.exe` extension
-
-**macOS:**
-
-- Requires Docker Desktop or Colima for Docker support
-
-**Linux:**
-
-- Full compatibility, no known limitations
-
-### Docs Testing Coverage
-
-- OK CLI commands: All platforms
-- OK Build targets: All platforms
-- OK Docker integration: Linux/macOS/Windows (with Docker Desktop)
-- OK Authentication: jan-cli api-test collections
-- OK API integration: jan-cli api-test collections
 
 ---
 
 ## Related Documentation
 
-- [Jan CLI Guide](jan-cli.md) - Complete jan-cli command reference
-- [Configuration System](../configuration/README.md) - Configuration management
-- [Development Guide](development.md) - Local development setup
-- [Architecture Overview](../architecture/README.md) - System design
-
----
-
-**Tested Platforms:**
-
-- OK Windows 11 PowerShell 5.1
-- OK Ubuntu 22.04+
-- OK macOS 14+
+- [Jan CLI Guide](jan-cli.md) - CLI command reference
+- [Configuration System](../configuration/README.md)
+- [Development Guide](development.md)

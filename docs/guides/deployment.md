@@ -1,154 +1,26 @@
 # Deployment Guide
 
-Comprehensive guide for deploying Jan Server to various environments.
+Deploy Jan Server to various environments using Docker Compose.
 
-## Table of Contents
+## Quick Start
 
-- [Overview](#overview)
-- [Prerequisites](#prerequisites)
-- [Deployment Options](#deployment-options)
-  - [Kubernetes (Recommended)](#kubernetes-recommended)
-  - [Docker Compose](#docker compose)
-  - [Hybrid Mode](#hybrid-mode)
-- [Environment Configuration](#environment-configuration)
-- [Security Considerations](#security-considerations)
-- [Monitoring and Observability](#monitoring-and-observability)
-
-## Overview
-
-Jan Server supports multiple deployment strategies to accommodate different use cases:
-
-| Environment        | Use Case             | Orchestrator    | Recommended For                 |
-| ------------------ | -------------------- | --------------- | ------------------------------- |
-| **Kubernetes**     | Production, Staging  | Kubernetes/Helm | Scalable production deployments |
-| **Docker Compose** | Development, Testing | Docker Compose  | Local development and testing   |
-| **Hybrid Mode**    | Development          | Native + Docker | Fast iteration and debugging    |
-
-## Prerequisites
-
-### All Deployments
-
-- Docker 24+ and Docker Compose V2
-- PostgreSQL 18+ (managed or in-cluster)
-- Redis 7+ (managed or in-cluster)
-- S3-compatible storage (for media-api)
-
-### Kubernetes Deployments
-
-- Kubernetes 1.27+
-- Helm 3.12+
-- kubectl configured
-- Sufficient cluster resources (see [Resource Requirements](#resource-requirements))
+```bash
+# Clone and setup
+git clone https://github.com/janhq/jan-server.git
+cd jan-server
+make quickstart
+```
 
 ## Deployment Options
 
-### Kubernetes (Recommended)
+| Environment | Use Case | Recommended For |
+|-------------|----------|-----------------|
+| Docker Compose | Development, Testing | Local development |
+| Hybrid Mode | Development | Fast iteration |
 
-Kubernetes deployment uses Helm charts for full orchestration and scalability.
+## Docker Compose Deployment
 
-#### 1. Development (Minikube)
-
-For local development and testing:
-
-```bash
-# Prerequisites
-minikube start --cpus=4 --memory=8192 --driver=docker
-
-# Build and load images
-cd services/llm-api && go mod tidy && cd ../..
-cd services/media-api && go mod tidy && cd ../..
-cd services/mcp-tools && go mod tidy && cd ../..
-
-docker build -t jan/llm-api:latest -f services/llm-api/Dockerfile .
-docker build -t jan/media-api:latest -f services/media-api/Dockerfile .
-docker build -t jan/mcp-tools:latest -f services/mcp-tools/Dockerfile .
-
-# Load images into minikube
-minikube image load jan/llm-api:latest jan/media-api:latest jan/mcp-tools:latest
-minikube image load quay.io/keycloak/keycloak:24.0.5
-minikube image load bitnami/postgresql:latest bitnami/redis:latest
-
-# Deploy
-cd k8s
-helm install jan-server ./jan-server \
-  --namespace jan-server \
-  --create-namespace
-
-# Create databases
-kubectl exec -n jan-server jan-server-postgresql-0 -- bash -c "PGPASSWORD=postgres psql -U postgres << 'EOF'
-CREATE USER media WITH PASSWORD 'media';
-CREATE DATABASE media_api OWNER media;
-CREATE USER keycloak WITH PASSWORD 'keycloak';
-CREATE DATABASE keycloak OWNER keycloak;
-EOF"
-
-# Verify deployment
-kubectl get pods -n jan-server
-
-# Access services
-kubectl port-forward -n jan-server svc/jan-server-llm-api 8080:8080
-curl http://localhost:8080/healthz
-```
-
-**Complete guide:** See [k8s/SETUP.md](../../k8s/SETUP.md)
-
-#### 2. Cloud Kubernetes (AKS/EKS/GKE)
-
-For production cloud deployments:
-
-```bash
-# Option A: With cloud-managed databases (recommended)
-helm install jan-server ./jan-server \
-  --namespace jan-server \
-  --create-namespace \
-  --set postgresql.enabled=false \
-  --set redis.enabled=false \
-  --set global.postgresql.host=your-managed-postgres.cloud \
-  --set global.redis.host=your-managed-redis.cloud \
-  --set ingress.enabled=true \
-  --set ingress.className=nginx \
-  --set ingress.hosts[0].host=jan.yourdomain.com \
-  --set llmApi.autoscaling.enabled=true \
-  --set llmApi.replicaCount=3 \
-  --set llmApi.image.pullPolicy=Always \
-  --set mediaApi.image.pullPolicy=Always \
-  --set mcpTools.image.pullPolicy=Always
-
-# Option B: With in-cluster databases
-helm install jan-server ./jan-server \
-  --namespace jan-server \
-  --create-namespace \
-  --set postgresql.persistence.enabled=true \
-  --set postgresql.persistence.size=50Gi \
-  --set postgresql.persistence.storageClass=gp3 \
-  --set redis.master.persistence.enabled=true \
-  --set ingress.enabled=true \
-  --set llmApi.autoscaling.enabled=true
-```
-
-**Configuration guide:** See [k8s/README.md](../../k8s/README.md)
-
-#### 3. On-Premises Kubernetes
-
-For on-premises production:
-
-```bash
-# Use production values with external databases
-helm install jan-server ./jan-server \
-  --namespace jan-server \
-  --create-namespace \
-  --values ./jan-server/values-production.yaml \
-  --set postgresql.enabled=false \
-  --set redis.enabled=false \
-  --set global.postgresql.host=postgres.internal \
-  --set global.redis.host=redis.internal
-```
-
-### Docker Compose
-
-For local development and integration testing.
-
-#### Development Mode
+### Development Mode
 
 ```bash
 # Start infrastructure only (PostgreSQL, Keycloak, Kong)
@@ -162,40 +34,30 @@ make up-mcp
 
 # Full stack with Kong + APIs + MCP
 make up-full
-
-# With GPU inference (local vLLM)
-make up-vllm-gpu
 ```
 
-**Complete guide:** See [Development Guide](development.md)
-
-#### Testing Environment
+### Stop Services
 
 ```bash
-cp .env.template .env                # ensure a clean env file
-# Edit .env and set: COMPOSE_PROFILES=infra,api,mcp
-
-make up-full                         # start stack under test
-make test-all                        # run jan-cli api-test suites
+make down           # Stop all (keeps volumes)
+make down-clean     # Stop and remove volumes
 ```
 
-### Hybrid Mode
+## Hybrid Mode
 
 For fast iteration during development:
 
 ```bash
-make dev-full                 # start stack with host routing
+make dev-full                 # Start stack with host routing
 
 # Replace a service with a host-native process
 ./jan-cli.sh dev run llm-api  # macOS/Linux
 .\jan-cli.ps1 dev run llm-api # Windows PowerShell
 
 # Stop dev-full when done
-make dev-full-stop            # keep containers
-make dev-full-down            # remove containers
+make dev-full-stop            # Keep containers
+make dev-full-down            # Remove containers
 ```
-
-**Complete guide:** See [Development Guide - Dev-Full Mode](development.md#dev-full-mode-hybrid-debugging)
 
 ## Environment Configuration
 
@@ -211,18 +73,11 @@ DB_POSTGRESQL_WRITE_DSN=postgres://jan_user:jan_password@localhost:5432/jan_llm_
 KEYCLOAK_BASE_URL=http://localhost:8085
 BACKEND_CLIENT_ID=llm-api
 BACKEND_CLIENT_SECRET=your-secret
-CLIENT=jan-client
 
-# Provider toggles
+# Provider
 VLLM_ENABLED=true
 VLLM_PROVIDER_URL=http://localhost:8101/v1
 REMOTE_LLM_ENABLED=false
-REMOTE_LLM_PROVIDER_URL=
-REMOTE_API_KEY=
-JAN_PROVIDER_CONFIGS=true
-JAN_PROVIDER_CONFIG_SET=default
-HTTP_PORT=8080
-LOG_LEVEL=debug
 ```
 
 #### Media API
@@ -231,17 +86,12 @@ LOG_LEVEL=debug
 # Database
 DB_POSTGRESQL_WRITE_DSN=postgres://media:media@localhost:5432/media_api?sslmode=disable
 
-# S3 Storage (Required - AWS Standard Naming)
+# S3 Storage
 MEDIA_S3_ENDPOINT=https://s3.amazonaws.com
 MEDIA_S3_REGION=us-east-1
 MEDIA_S3_BUCKET=your-bucket
-MEDIA_S3_ACCESS_KEY_ID=your-access-key-id
-MEDIA_S3_SECRET_ACCESS_KEY=your-secret-access-key
-MEDIA_S3_USE_PATH_STYLE=false
-
-# Server
-MEDIA_API_PORT=8285
-LOG_LEVEL=info
+MEDIA_S3_ACCESS_KEY_ID=your-access-key
+MEDIA_S3_SECRET_ACCESS_KEY=your-secret-key
 ```
 
 #### MCP Tools
@@ -249,483 +99,49 @@ LOG_LEVEL=info
 ```bash
 # Server
 HTTP_PORT=8091
-LOG_LEVEL=info
 
 # Optional providers
+SERPER_API_KEY=your-serper-key
 EXA_API_KEY=your-exa-key
-BRAVE_API_KEY=your-brave-key
-```
-
-### Configuration Files
-
-Environment-specific configuration files in `config/`:
-
-- `defaults.env` - Default values for all environments
-- `development.env` - Local development settings
-- `testing.env` - Test environment settings
-- `production.env.example` - Production template (copy and customize)
-- `secrets.env.example` - Secrets template (never commit actual secrets)
-
-## Multi-vLLM Instance Deployment (High Availability)
-
-For production deployments requiring high availability and load-balanced inference across multiple vLLM instances.
-
-### Overview
-
-Jan Server supports running multiple vLLM instances with **automatic round-robin load balancing**. This enables:
-
-- **High Availability**: Continue operating if one vLLM instance fails
-- **Scalability**: Distribute inference load across multiple GPUs/servers
-- **Flexible Resource Allocation**: Deploy vLLM instances independently
-
-### Architecture
-
-```
-LLM API (load balancer)
-  ├── vLLM Instance 1 (Port 8101)
-  ├── vLLM Instance 2 (Port 8102)
-  └── vLLM Instance 3 (Port 8103)
-```
-
-The LLM API uses round-robin scheduling to distribute requests across instances.
-
-### Deployment Steps
-
-#### 1. Configure Multiple vLLM Instances
-
-Add provider instances in `config/defaults.yaml`:
-
-```yaml
-providers:
-  - vendor: vllm
-    enabled: true
-    endpoints:
-      - name: vllm-instance-1
-        base_url: http://localhost:8101/v1
-        api_key: ""
-      - name: vllm-instance-2
-        base_url: http://localhost:8102/v1
-        api_key: ""
-      - name: vllm-instance-3
-        base_url: http://localhost:8103/v1
-        api_key: ""
-```
-
-#### 2. Start Multiple vLLM Instances via Docker
-
-Create a `docker-compose.vllm-multi.yml`:
-
-```yaml
-version: "3.8"
-
-services:
-  vllm-1:
-    image: vllm/vllm-openai:latest
-    container_name: vllm-instance-1
-    environment:
-      - VLLM_API_KEY=${VLLM_API_KEY:-}
-      - VLLM_SERVED_MODEL_NAME=meta-llama/Llama-2-7b-hf
-    ports:
-      - "8101:8000"
-    volumes:
-      - vllm-cache-1:/root/.cache
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    networks:
-      - jan-network
-    restart: unless-stopped
-
-  vllm-2:
-    image: vllm/vllm-openai:latest
-    container_name: vllm-instance-2
-    environment:
-      - VLLM_API_KEY=${VLLM_API_KEY:-}
-      - VLLM_SERVED_MODEL_NAME=meta-llama/Llama-2-7b-hf
-    ports:
-      - "8102:8000"
-    volumes:
-      - vllm-cache-2:/root/.cache
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    networks:
-      - jan-network
-    restart: unless-stopped
-
-  vllm-3:
-    image: vllm/vllm-openai:latest
-    container_name: vllm-instance-3
-    environment:
-      - VLLM_API_KEY=${VLLM_API_KEY:-}
-      - VLLM_SERVED_MODEL_NAME=meta-llama/Llama-2-7b-hf
-    ports:
-      - "8103:8000"
-    volumes:
-      - vllm-cache-3:/root/.cache
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    networks:
-      - jan-network
-    restart: unless-stopped
-
-volumes:
-  vllm-cache-1:
-  vllm-cache-2:
-  vllm-cache-3:
-
-networks:
-  jan-network:
-    external: true
-```
-
-Start the instances:
-
-```bash
-# Create shared network
-docker network create jan-network
-
-# Start multi-vLLM stack
-docker compose -f docker-compose.vllm-multi.yml up -d
-
-# Verify instances are healthy
-curl http://localhost:8101/health
-curl http://localhost:8102/health
-curl http://localhost:8103/health
-```
-
-#### 3. Start LLM API with Multi-vLLM Configuration
-
-```bash
-# Set environment to use multiple vLLM endpoints
-export VLLM_ENABLED=true
-export VLLM_PROVIDER_URL=http://localhost:8101/v1,http://localhost:8102/v1,http://localhost:8103/v1
-
-# Start LLM API
-docker compose -f docker-compose.yml -f infra/docker/services-api.yml up -d llm-api
-```
-
-Or in `docker-compose.yml`, set the environment variable:
-
-```yaml
-services:
-  llm-api:
-    environment:
-      VLLM_ENABLED: "true"
-      VLLM_PROVIDER_URL: "http://vllm-1:8000/v1,http://vllm-2:8000/v1,http://vllm-3:8000/v1"
-```
-
-#### 4. Kubernetes Deployment (Helm)
-
-For Kubernetes, deploy vLLM instances as separate StatefulSets:
-
-```bash
-# Create a values override file: k8s/values-multi-vllm.yaml
-cat > k8s/values-multi-vllm.yaml << 'EOF'
-vllmInstances:
-  enabled: true
-  instances: 3
-  resources:
-    requests:
-      memory: "24Gi"
-      nvidia.com/gpu: "1"
-    limits:
-      memory: "32Gi"
-      nvidia.com/gpu: "1"
-
-llmApi:
-  env:
-    VLLM_ENABLED: "true"
-    # Load balancer will handle round-robin
-    VLLM_PROVIDER_URL: "http://vllm-0:8000/v1,http://vllm-1:8000/v1,http://vllm-2:8000/v1"
-  replicaCount: 2
-EOF
-
-# Deploy with multi-vLLM configuration
-helm install jan-server ./jan-server \
-  --namespace jan-server \
-  --create-namespace \
-  --values k8s/values-multi-vllm.yaml
-```
-
-### Load Balancing Strategy
-
-The LLM API implements **round-robin load balancing** across configured vLLM endpoints:
-
-1. **Request Distribution**: Each request is routed to the next vLLM instance in sequence
-2. **Failover**: If a vLLM instance is unavailable, requests retry on the next instance
-3. **Health Checks**: Periodic health checks verify instance availability
-
-### Monitoring Multi-vLLM Setup
-
-Monitor the vLLM instances and load balancing:
-
-```bash
-# Check individual vLLM instance stats
-curl http://localhost:8101/stats
-curl http://localhost:8102/stats
-curl http://localhost:8103/stats
-
-# Monitor LLM API logs for load balancing
-docker logs -f llm-api | grep "vllm\|provider\|load"
-
-# Check request distribution across instances
-docker stats vllm-instance-1 vllm-instance-2 vllm-instance-3
-```
-
-### Troubleshooting Multi-vLLM
-
-#### Uneven Load Distribution
-
-If requests aren't evenly distributed:
-
-1. **Check instance health**: Verify all instances respond to health checks
-2. **Review logs**: Check for error-based failover patterns
-3. **Restart instances**: Clear any stuck states with rolling restarts
-
-```bash
-# Rolling restart (minimizes downtime)
-for i in 1 2 3; do
-  echo "Restarting vllm-instance-$i..."
-  docker restart vllm-instance-$i
-  sleep 30  # Wait for recovery
-done
-```
-
-#### Instance Connection Failures
-
-```bash
-# Test connectivity from LLM API container
-docker exec llm-api curl http://vllm-instance-1:8000/health
-docker exec llm-api curl http://vllm-instance-2:8000/health
-docker exec llm-api curl http://vllm-instance-3:8000/health
-
-# Check Docker network connectivity
-docker network inspect jan-network
-```
-
-#### Memory/GPU Issues
-
-If instances are running out of memory:
-
-1. **Reduce model size**: Use a smaller quantized model
-2. **Reduce batch size**: Set `--max-model-len` in vLLM
-3. **Add more instances**: Distribute load across more nodes
-4. **Scale vertically**: Upgrade to GPUs with more VRAM
-
-```bash
-# Update vLLM docker-compose to use smaller model
-docker compose -f docker-compose.vllm-multi.yml down
-# Edit docker-compose.vllm-multi.yml, change VLLM_SERVED_MODEL_NAME
-docker compose -f docker-compose.vllm-multi.yml up -d
-```
-
-### Performance Tuning
-
-For optimal multi-vLLM performance:
-
-| Setting                | Recommendation                    | Notes                              |
-| ---------------------- | --------------------------------- | ---------------------------------- |
-| **Instances**          | 2-4 per operator                  | Balance cost vs redundancy         |
-| **Batch Size**         | 1-4 per instance                  | Depends on VRAM available          |
-| **Model Size**         | 7B or smaller                     | For multi-instance on typical GPUs |
-| **Tensor Parallelism** | Enabled if multi-GPU per instance | Reduces latency                    |
-| **Quantization**       | 8-bit or GPTQ                     | Reduces VRAM usage                 |
-
-### Cost Optimization
-
-Multi-vLLM enables several cost optimizations:
-
-- **Spot Instances**: Use cheaper spot GPUs with fast failover
-- **Mixed Hardware**: Use different GPU types for different model sizes
-- **Autoscaling**: Add/remove instances based on load
-- **Batch Processing**: Queue requests to maximize GPU utilization
-
-## Security Considerations
-
-### Production Checklist
-
-- [ ] **Secrets Management**
-  - Use external secrets operator (e.g., AWS Secrets Manager, Azure Key Vault)
-  - Never commit secrets to version control
-  - Rotate credentials regularly
-
-- [ ] **Network Security**
-  - Enable network policies to restrict pod-to-pod communication
-  - Use TLS for all external endpoints
-  - Configure ingress with proper SSL certificates
-
-- [ ] **Authentication**
-  - Change default Keycloak admin password
-  - Configure proper realm settings
-  - Enable token exchange for client-to-client auth
-
-- [ ] **Database Security**
-  - Use managed database services when possible
-  - Enable SSL/TLS connections
-  - Implement backup and disaster recovery
-
-- [ ] **Pod Security**
-  - Apply pod security standards (restricted profile)
-  - Use non-root containers
-  - Enable security context constraints
-
-### Example: External Secrets
-
-```bash
-# Install external-secrets operator
-helm repo add external-secrets https://charts.external-secrets.io
-helm install external-secrets external-secrets/external-secrets \
-  --namespace external-secrets-system \
-  --create-namespace
-
-# Create SecretStore for AWS Secrets Manager
-kubectl apply -f - <<EOF
-apiVersion: external-secrets.io/v1beta1
-kind: SecretStore
-metadata:
-  name: aws-secretsmanager
-  namespace: jan-server
-spec:
-  provider:
-    aws:
-      service: SecretsManager
-      region: us-west-2
-EOF
 ```
 
 ## Resource Requirements
 
 ### Minimum (Development)
 
-| Component  | CPU          | Memory   |
-| ---------- | ------------ | -------- |
-| LLM API    | 250m         | 256Mi    |
-| Media API  | 250m         | 256Mi    |
-| MCP Tools  | 250m         | 256Mi    |
-| PostgreSQL | 250m         | 256Mi    |
-| Redis      | 100m         | 128Mi    |
-| Keycloak   | 500m         | 512Mi    |
-| **Total**  | **~1.5 CPU** | **~2Gi** |
+| Component | CPU | Memory |
+|-----------|-----|--------|
+| LLM API | 250m | 256Mi |
+| Media API | 250m | 256Mi |
+| MCP Tools | 250m | 256Mi |
+| PostgreSQL | 250m | 256Mi |
+| Redis | 100m | 128Mi |
+| Keycloak | 500m | 512Mi |
 
-### Recommended (Production)
+## Security Checklist
 
-| Component  | CPU   | Memory | Replicas       |
-| ---------- | ----- | ------ | -------------- |
-| LLM API    | 1000m | 1Gi    | 3              |
-| Media API  | 500m  | 512Mi  | 2              |
-| MCP Tools  | 500m  | 512Mi  | 2              |
-| PostgreSQL | 2000m | 4Gi    | 1 (or managed) |
-| Redis      | 500m  | 1Gi    | 3 (cluster)    |
-| Keycloak   | 1000m | 1Gi    | 2              |
+- [ ] Use strong database passwords
+- [ ] Configure proper API keys
+- [ ] Enable TLS/HTTPS in production
+- [ ] Set up monitoring
+- [ ] Configure backups
 
-### Storage Requirements
+## Monitoring
 
-- PostgreSQL: 50Gi minimum (100Gi+ for production)
-- Redis: 10Gi for persistence
-- PVCs for media uploads (if not using S3)
-
-## Monitoring and Observability
-
-### Enable Monitoring Stack
+Enable monitoring stack:
 
 ```bash
-# Start monitoring services
-docker compose --profile monitoring up -d
-
-# Access dashboards
-# Prometheus: http://localhost:9090
-# Grafana: http://localhost:3331
-# Jaeger: http://localhost:16686
+make monitor-up
 ```
 
-### Key Metrics to Monitor
-
-- **Service Health**: Endpoint availability, response times
-- **Database**: Connection pool usage, query performance
-- **Resource Usage**: CPU, memory, disk I/O
-- **Request Rates**: Throughput, error rates
-- **Authentication**: Token issuance, validation failures
-
-**Complete guide:** See [Monitoring Guide](monitoring.md)
-
-## Troubleshooting
-
-### Common Issues
-
-#### Pods Not Starting
-
-```bash
-# Check pod status
-kubectl get pods -n jan-server
-
-# View pod logs
-kubectl logs -n jan-server <pod-name>
-
-# Describe pod for events
-kubectl describe pod -n jan-server <pod-name>
-```
-
-#### Database Connection Failures
-
-```bash
-# Verify PostgreSQL is running
-kubectl exec -n jan-server jan-server-postgresql-0 -- psql -U postgres -c '\l'
-
-# Check database exists
-kubectl exec -n jan-server jan-server-postgresql-0 -- psql -U postgres -c '\l' | grep media_api
-
-# Test connection from service pod
-kubectl exec -n jan-server <service-pod> -- nc -zv jan-server-postgresql 5432
-```
-
-#### Image Pull Failures
-
-For minikube:
-
-```bash
-# Verify images are loaded
-minikube image ls | grep jan/
-
-# Reload if missing
-minikube image load jan/llm-api:latest
-```
-
-For production:
-
-```bash
-# Check image pull policy
-kubectl get deployment -n jan-server jan-server-llm-api -o yaml | grep pullPolicy
-
-# Should be "Always" or "IfNotPresent" for registry images
-```
+Access:
+- Grafana: http://localhost:3331
+- Prometheus: http://localhost:9090
+- Jaeger: http://localhost:16686
 
 ## Related Documentation
 
-- [Kubernetes Setup Guide](../../k8s/SETUP.md) - Complete k8s deployment steps
-- [Kubernetes Configuration](../../k8s/README.md) - Helm chart configuration reference
-- [Development Guide](development.md) - Local development setup
-- [Development Guide](development.md) - Native service execution and dev-full mode
-- [Monitoring Guide](monitoring.md) - Observability setup
-- [Architecture Overview](../architecture/README.md) - System architecture
-
-## Support
-
-For additional help:
-
-- Review [Getting Started](../quickstart.md)
-- Check [Troubleshooting Guide](troubleshooting.md)
-- See [Architecture Documentation](../architecture/README.md)
+- [Quickstart](../quickstart.md) - Getting started
+- [Development Guide](development.md) - Local development
+- [Monitoring Guide](monitoring.md) - Observability
+- [Architecture Overview](../architecture/README.md)
