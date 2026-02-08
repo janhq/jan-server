@@ -56,7 +56,6 @@ make down-clean              # Stop containers and remove volumes
 | Component        | Technology           | Version   |
 |------------------|----------------------|-----------|
 | Web App          | React + Vite         | 19.2.0    |
-| Platform App     | Next.js              | 16.0.7    |
 | Router           | TanStack Router      | v1.140.0  |
 | Styling          | Tailwind CSS         | 4.1.17    |
 | UI Components    | Radix UI + shadcn/ui | Latest    |
@@ -71,8 +70,7 @@ make down-clean              # Stop containers and remove volumes
 ```
 jan-server/
 ├── apps/                        # Frontend applications
-│   ├── web/                     # Chat UI (React + Vite, port 3001)
-│   └── platform/                # Admin & docs site (Next.js, port 3000)
+│   └── web/                     # Chat UI (React + Vite, port 3001)
 ├── packages/                    # Shared packages
 │   ├── interfaces/              # Shared UI components (@janhq/interfaces)
 │   └── go-common/               # Shared Go utilities (config, errors, observability)
@@ -340,13 +338,11 @@ go test ./services/<svc>/...  # Unit tests for specific service
 ### Frontend Development
 
 ```bash
-# Run frontend apps locally
+# Run frontend app locally
 cd apps/web && npm run dev       # http://localhost:3001
-cd apps/platform && npm run dev  # http://localhost:3000
 
 # Or via Docker
 make up-web                      # Start web app container
-make up-platform                 # Start platform app container
 
 # Build
 pnpm build                       # Build all packages/apps

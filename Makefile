@@ -12,14 +12,11 @@
 #   make quickstart              - Interactive setup and run (core: infra + API + MCP web search + web app)
 #   make setup                   - Initial project setup (dependencies, networks, .env)
 #   make cli-install             - Install jan-cli tool globally
-#   make build-all               - Build all Docker images (including platform & web)
+#   make build-all               - Build all Docker images (including web app)
 #   make up-full                 - Start services based on COMPOSE_PROFILES in .env
-#   make up-platform             - Start platform web app (http://localhost:3000)
 #   make up-web                  - Start web chat app (http://localhost:3001)
 #   make dev-full                - Start all services with host.docker.internal support (for testing)
-#   make swagger                 - Generate swagger docs and sync to platform
-#   make sync-docs               - Sync /docs to apps/platform/content/docs
-#   make sync-swagger            - Sync swagger files to apps/platform/api
+#   make swagger                 - Generate swagger docs
 #   make health-check            - Check if all services are healthy
 #   make test-all                - Run all integration tests
 #   make stop                    - Stop all services (keeps containers & volumes)
@@ -244,41 +241,16 @@ cli-clean:
 
 # --- Swagger Documentation ---
 
-.PHONY: swagger swagger-llm-api swagger-media-api swagger-mcp-tools swagger-response-api swagger-realtime-api swagger-combine swagger-install sync-docs sync-swagger
+.PHONY: swagger swagger-llm-api swagger-media-api swagger-mcp-tools swagger-response-api swagger-realtime-api swagger-combine swagger-install
 
-swagger: cli-build sync-swagger
+swagger: cli-build
 	@echo "Generating Swagger documentation for all services..."
 ifeq ($(OS),Windows_NT)
 	@powershell -ExecutionPolicy Bypass -File tools/jan-cli.ps1 swagger generate --combine
-	@echo "Syncing swagger to platform..."
-	@copy /Y "services\llm-api\docs\swagger\swagger-combined.json" "apps\platform\api\server.json" >nul 2>&1 || echo "swagger-combined.json not found"
-	@copy /Y "services\llm-api\docs\swagger\swagger.yaml" "apps\platform\api\server.yaml" >nul 2>&1 || echo "swagger.yaml not found"
 else
 	@bash tools/jan-cli.sh swagger generate --combine
-	@echo "Syncing swagger to platform..."
-	@cp -f services/llm-api/docs/swagger/swagger-combined.json apps/platform/api/server.json 2>/dev/null || echo "swagger-combined.json not found"
-	@cp -f services/llm-api/docs/swagger/swagger.yaml apps/platform/api/server.yaml 2>/dev/null || echo "swagger.yaml not found"
 endif
-	@echo " Swagger synced to apps/platform/api/"
-
-sync-swagger:
-	@echo "Syncing swagger files to platform..."
-ifeq ($(OS),Windows_NT)
-	@if exist "services\llm-api\docs\swagger\swagger-combined.json" copy /Y "services\llm-api\docs\swagger\swagger-combined.json" "apps\platform\api\server.json" >nul
-	@if exist "services\llm-api\docs\swagger\swagger.yaml" copy /Y "services\llm-api\docs\swagger\swagger.yaml" "apps\platform\api\server.yaml" >nul
-else
-	@cp -f services/llm-api/docs/swagger/swagger-combined.json apps/platform/api/server.json 2>/dev/null || true
-	@cp -f services/llm-api/docs/swagger/swagger.yaml apps/platform/api/server.yaml 2>/dev/null || true
-endif
-	@echo " Swagger synced to apps/platform/api/"
-
-sync-docs: cli-build
-	@echo "Syncing docs to platform content..."
-ifeq ($(OS),Windows_NT)
-	@cd tools/jan-cli && jan-cli.exe docs sync
-else
-	@cd tools/jan-cli && ./jan-cli docs sync
-endif
+	@echo " Swagger documentation generated"
 
 swagger-llm-api:
 	@echo "Generating Swagger for llm-api service..."

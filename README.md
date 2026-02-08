@@ -106,7 +106,6 @@ Governance and quality:
 jan-server/
 |-- apps/                  # Frontend applications
 |   |-- web/               # Chat UI (React + Vite, port 3001)
-|   |-- platform/          # Admin panel & docs (Next.js, port 3000)
 |-- services/              # Go microservices
 |   |-- llm-api/
 |   |-- response-api/
@@ -145,18 +144,15 @@ Key directories:
 | Application | Purpose                                      | Port | Source           | Tech Stack                          |
 | ----------- | -------------------------------------------- | ---- | ---------------- | ----------------------------------- |
 | Web App     | Chat UI for conversations                    | 3001 | `apps/web`       | React 19, Vite, TanStack Router     |
-| Platform    | Admin panel & documentation                  | 3000 | `apps/platform`  | Next.js 16, Fumadocs                |
 
-**Shared Package:** `packages/interfaces` - UI components (shadcn/ui), hooks, and utilities used by both apps.
+**Shared Package:** `packages/interfaces` - UI components (shadcn/ui), hooks, and utilities used by the web app.
 
 ```bash
-# Run frontend apps
+# Run frontend app
 cd apps/web && npm install && npm run dev       # http://localhost:3001
-cd apps/platform && npm install && npm run dev  # http://localhost:3000
 
 # Or via Docker
 make up-web       # Start web app container
-make up-platform  # Start platform app container
 ```
 
 ### Microservices Overview

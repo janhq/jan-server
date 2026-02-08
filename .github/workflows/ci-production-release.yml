@@ -108,19 +108,6 @@ jobs:
       build-contexts: |
         go-common=packages/go-common
 
-  build-platform:
-    uses: ./.github/workflows/_reusable-docker.yml
-    secrets: inherit
-    with:
-      runs-on: ubuntu-24-04-docker
-      docker-file: apps/platform/Dockerfile
-      context: .
-      registry-url: registry.menlo.ai
-      tags: registry.menlo.ai/menlo-platform/platform-web:prod-${{ github.ref_name }}
-      is_push: true
-      build-args: |
-        NEXT_PUBLIC_JAN_BASE_URL=https://api.jan.ai
-
   build-web:
     runs-on: ubuntu-latest
     permissions:
