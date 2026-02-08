@@ -19,9 +19,7 @@ Comprehensive how-to guides for working with Jan Server. For incident response a
 ### Special Topics
 
 - **[MCP Testing](mcp-testing.md)** - Testing MCP (Model Context Protocol) integration
-- **[Search Fallback Architecture](search-fallback.md)** - Cascading fallback chain for search and scrape operations
-- **[Exa Search Integration](exa-search.md)** - Configure Exa fallback provider for MCP Tools
-- **[Tavily Search Integration](tavily-search.md)** - Configure Tavily fallback provider for MCP Tools
+- **[MCP Tools Configuration](mcp-admin-interface.md)** - Configure search, scrape, and code execution tools
 
 ## Quick Links
 

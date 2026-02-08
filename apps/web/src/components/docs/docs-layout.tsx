@@ -30,7 +30,6 @@ const docsNavigation: NavItem[] = [
     children: [
       { title: "Introduction", href: "/docs" },
       { title: "Quickstart", href: "/docs/quickstart" },
-      { title: "Roadmap", href: "/docs/roadmap" },
     ],
   },
   {

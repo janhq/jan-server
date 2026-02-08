@@ -67,15 +67,10 @@ Use Docker Compose to run on your local computer:
 
 Use Kubernetes to run in the cloud or on servers:
 
-- **Local testing**: Minikube or kind (see `k8s/SETUP.md`)
 - **Production**: `k8s/jan-server` Helm chart + managed Postgres + managed Keycloak
 - **Hybrid**: Run inference locally while other services run in the cluster
 
-**Helpful references:**
-
-- [Kubernetes Setup Guide](../../k8s/SETUP.md) - minikube/bootstrap walkthrough
-- [Kubernetes README](../../k8s/README.md) - Helm values, ingress, TLS
-- [Deployment Guide](../guides/deployment.md) - Docker, hybrid, CI/CD instructions
+**Note:** Kubernetes documentation is available in the `k8s/` directory.
 
 ## References
 
