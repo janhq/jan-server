@@ -541,3 +541,80 @@ docs/update-readme
 test/add-integration-tests
 chore/update-deps
 ```
+
+---
+
+## Agent Documentation System
+
+This section describes the agent system for managing and searching AGENTS.md documentation files.
+
+### Overview
+
+This system provides agents with the capability to maintain, update, and search through AGENTS.md files across a project or codebase.
+
+### Agent Capabilities
+
+#### 1. Search AGENTS.md Files
+
+**Purpose:** Find specific information across all AGENTS.md files
+
+**Search Capabilities:**
+- Full-text search across all AGENTS.md files
+- Search by keywords, patterns, or specific terms
+- Find agent definitions, capabilities, or documentation
+
+**Search Methods:**
+- Text-based search
+- Pattern matching
+- Keyword lookup
+
+#### 2. Update AGENTS.md Files
+
+**Purpose:** Modify and maintain AGENTS.md documentation
+
+**Update Capabilities:**
+- Add new agent definitions
+- Update existing agent descriptions
+- Add new capabilities or modify existing ones
+- Maintain consistency across documentation
+
+### Usage
+
+#### Searching Documentation
+
+Search across all AGENTS.md files for:
+- Specific agent capabilities
+- Documentation patterns
+- Implementation details
+
+#### Updating Documentation
+
+Update AGENTS.md files to:
+- Add new agent definitions
+- Modify existing descriptions
+- Reflect changes in agent behavior
+- Maintain up-to-date documentation
+
+### Agent Structure
+
+Each agent in AGENTS.md should follow this structure:
+
+```markdown
+# Agent Name
+
+## Purpose
+Description of the agent's main purpose
+
+## Capabilities
+- Capability 1
+- Capability 2
+
+## Usage
+How to use this agent
+```
+
+### Maintenance
+
+- Regularly review and update AGENTS.md files
+- Ensure all agent changes are reflected in documentation
+- Search before adding new agents to avoid duplicates
