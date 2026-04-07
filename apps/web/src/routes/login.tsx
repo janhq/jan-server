@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useAuth } from "@/stores/auth-store";
+import { isAllowedExternalRedirect } from "@/lib/redirect-utils";
 import { URL_PARAM } from "@/constants";
 
 export const Route = createFileRoute("/login" as "/")({
@@ -12,11 +13,6 @@ function LoginRoute() {
   const isAuthenticated = useAuth((state) => state.isAuthenticated);
   const isGuest = useAuth((state) => state.isGuest);
   const accessToken = useAuth((state) => state.accessToken);
-
-  const isAllowedExternalRedirect = (value: string) => {
-    // Allow localhost with any port for development
-    return /^http:\/\/localhost:\d+/.test(value);
-  };
 
   useEffect(() => {
     if (!isAuthenticated || isGuest) {

@@ -12,6 +12,7 @@ import { SettingsDialog } from "@/components/settings/settings-dialog";
 import { CreateProject } from "@/components/projects/create-project";
 import { SearchDialog } from "@/components/search/search-dialog";
 import { useAuth } from "@/stores/auth-store";
+import { isAllowedExternalRedirect } from "@/lib/redirect-utils";
 import { useRightSidebarStore } from "@/stores/right-sidebar-store";
 import { ThemeProvider } from "@/components/themes/theme-provider";
 import { Toaster } from "@janhq/interfaces/sonner";
@@ -136,14 +137,10 @@ function RootLayout() {
   const searchSection = searchParams.get(URL_PARAM.SEARCH);
   const isSearchOpen = !!searchSection;
 
-  const isAllowedExternalRedirect = (value: string) => {
-    // Allow localhost with any port for development
-    return /^http:\/\/localhost:\d+/.test(value);
-  };
-
   const handleCloseModal = (redirectUrl?: string) => {
     // Case 1: External redirect (e.g., http://localhost:29999 from install script)
     if (redirectUrl && isAllowedExternalRedirect(redirectUrl)) {
+      if (!accessToken) return;
       const bearerToken = `Bearer ${accessToken}`;
       const encodedToken = btoa(bearerToken);
       const target = new URL(redirectUrl);

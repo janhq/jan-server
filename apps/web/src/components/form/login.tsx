@@ -8,6 +8,7 @@ import {
 import { Input } from "@janhq/interfaces/input";
 import { Google } from "@janhq/interfaces/svgs/google";
 import { buildGoogleAuthUrl } from "@/lib/oauth";
+import { isAllowedExternalRedirect } from "@/lib/redirect-utils";
 import { useState } from "react";
 import { useAuth } from "@/stores/auth-store";
 import { useRouter } from "@tanstack/react-router";
@@ -29,11 +30,6 @@ export function LoginForm({
   const [error, setError] = useState<string | null>(null);
   const { loginWithOAuth } = useAuth();
   const router = useRouter();
-
-  const isAllowedExternalRedirect = (value: string) => {
-    // Allow localhost with any port for development
-    return /^http:\/\/localhost:\d+/.test(value);
-  };
 
   const getRedirectUrl = () => {
     const url = new URL(window.location.href);
