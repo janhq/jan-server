@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/stores/auth-store";
 import { retrieveOAuthState, exchangeCodeForTokens } from "@/lib/oauth";
+import { isAllowedExternalRedirect } from "@/lib/redirect-utils";
 
 export const Route = createFileRoute("/auth/callback")({
   component: OAuthCallbackPage,
@@ -55,9 +56,6 @@ function OAuthCallbackPage() {
         loginWithOAuth(tokens);
         console.log("OAuth login successful");
         // Navigate to the original URL or home
-        const isAllowedExternalRedirect = (value: string) =>
-          /^http:\/\/localhost:\d+/.test(value);
-
         if (oauthData.redirectUrl && isAllowedExternalRedirect(oauthData.redirectUrl)) {
           const bearerToken = `Bearer ${tokens.access_token}`;
           const encodedToken = btoa(bearerToken);
