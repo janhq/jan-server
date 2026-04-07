@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/wire"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 
 	"jan-server/services/llm-api/internal/config"
@@ -23,7 +24,7 @@ var ProviderSet = wire.NewSet(
 // ProvideTokenEncryptor creates a token encryptor from config.
 func ProvideTokenEncryptor(cfg *config.Config) (*TokenEncryptor, error) {
 	if cfg.ConnectorTokenEncryptionKey == "" {
-		// Generate a default key for development (not for production!)
+		log.Warn().Msg("ConnectorTokenEncryptionKey is not set, using insecure default key. Do NOT use this in production.")
 		cfg.ConnectorTokenEncryptionKey = "0000000000000000000000000000000000000000000000000000000000000000"
 	}
 
@@ -64,7 +65,7 @@ func ProvideConnectorService(
 		}
 	}
 	if len(stateHMAC) == 0 {
-		// Use a default for development
+		logger.Warn().Msg("OAuthStateSecret is not set, using insecure default secret. Do NOT use this in production.")
 		stateHMAC = []byte("development-oauth-state-secret-key-32b")
 	}
 
