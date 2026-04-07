@@ -287,7 +287,7 @@ func (repo *ConversationGormRepository) GetItemByCallIDAndType(ctx context.Conte
 func (repo *ConversationGormRepository) UpdateItem(ctx context.Context, conversationID uint, item *conversation.Item) error {
 	q := repo.db.GetQuery(ctx)
 	entity := dbschema.NewSchemaConversationItem(item)
-	
+
 	_, err := q.ConversationItem.WithContext(ctx).
 		Where(q.ConversationItem.ID.Eq(item.ID)).
 		Where(q.ConversationItem.ConversationID.Eq(conversationID)).
@@ -317,7 +317,7 @@ func (repo *ConversationGormRepository) DeleteItem(ctx context.Context, conversa
 func (repo *ConversationGormRepository) CountItems(ctx context.Context, conversationID uint, branchName string) (int, error) {
 	q := repo.db.GetQuery(ctx)
 	sql := q.ConversationItem.WithContext(ctx)
-	
+
 	// Apply filter with branch name for proper per-branch counting
 	filter := conversation.ItemFilter{
 		ConversationID: &conversationID,
@@ -394,7 +394,7 @@ func (repo *ConversationGormRepository) DeleteBranch(ctx context.Context, conver
 	}
 
 	q := repo.db.GetQuery(ctx)
-	
+
 	// Delete all items in this branch first
 	_, err := q.ConversationItem.WithContext(ctx).
 		Where(q.ConversationItem.ConversationID.Eq(conversationID)).
@@ -447,7 +447,7 @@ func (repo *ConversationGormRepository) GetBranchItems(ctx context.Context, conv
 
 	q := repo.db.GetQuery(ctx)
 	sql := q.ConversationItem.WithContext(ctx)
-	
+
 	// Apply filter with branch name
 	filter := conversation.ItemFilter{
 		ConversationID: &conversationID,

@@ -549,8 +549,8 @@ type ImageContent struct {
 // File content for attachments
 type FileContent struct {
 	FileID   string `json:"file_id,omitempty"`
-	URL      string `json:"url,omitempty"`      // Direct URL to the file
-	Name     string `json:"name,omitempty"`     // Display name / filename
+	URL      string `json:"url,omitempty"`  // Direct URL to the file
+	Name     string `json:"name,omitempty"` // Display name / filename
 	MimeType string `json:"mime_type,omitempty"`
 	Size     int64  `json:"size,omitempty"`
 	Detail   string `json:"detail,omitempty"` // "auto", "low", "high" for processing detail level

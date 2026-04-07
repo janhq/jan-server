@@ -268,11 +268,11 @@ func (h *ConnectorHandler) Connect(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, ConnectResponse{
-		Connected:    true,
-		Username:     conn.ProviderUsername,
-		Email:        conn.ProviderEmail,
-		AvatarURL:    conn.ProviderAvatarURL,
-		ConnectedAt:  conn.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		Connected:   true,
+		Username:    conn.ProviderUsername,
+		Email:       conn.ProviderEmail,
+		AvatarURL:   conn.ProviderAvatarURL,
+		ConnectedAt: conn.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	})
 }
 
@@ -379,14 +379,14 @@ func (h *ConnectorHandler) GetStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, StatusResponse{
-		Connected:    conn.IsConnected,
-		Enabled:      h.service.IsEnabled(connectorType),
-		Status:       status,
-		Username:     conn.ProviderUsername,
-		Email:        conn.ProviderEmail,
-		LastError:    conn.LastError,
-		LastSyncAt:   formatTimePtr(conn.LastSyncAt),
-		ConnectedAt:  conn.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		Connected:   conn.IsConnected,
+		Enabled:     h.service.IsEnabled(connectorType),
+		Status:      status,
+		Username:    conn.ProviderUsername,
+		Email:       conn.ProviderEmail,
+		LastError:   conn.LastError,
+		LastSyncAt:  formatTimePtr(conn.LastSyncAt),
+		ConnectedAt: conn.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	})
 }
 

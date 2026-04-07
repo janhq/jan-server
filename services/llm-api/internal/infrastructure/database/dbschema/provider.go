@@ -17,20 +17,20 @@ func init() {
 
 type Provider struct {
 	BaseModel
-	PublicID        string         `gorm:"size:64;not null;uniqueIndex"`
-	DisplayName     string         `gorm:"size:255;not null"`
-	Kind            string         `gorm:"size:64;not null;index;index:idx_provider_active_kind,priority:2"`
-	Category        string         `gorm:"size:20;not null;default:'llm';index"` // "llm" or "image"
-	BaseURL         string         `gorm:"size:512"`
-	Endpoints       datatypes.JSON `gorm:"type:jsonb"`
-	EncryptedAPIKey string         `gorm:"type:text"`
-	APIKeyHint      *string        `gorm:"size:128"`
-	IsModerated     *bool          `gorm:"not null;default:false;index"`
-	Active          *bool          `gorm:"not null;default:true;index;index:idx_provider_active_kind,priority:1"`
-	DefaultImageGenerate *bool     `gorm:"column:default_provider_image_generate;not null;default:false"`
-	DefaultImageEdit     *bool     `gorm:"column:default_provider_image_edit;not null;default:false"`
-	Metadata        datatypes.JSON `gorm:"type:jsonb"`
-	LastSyncedAt    *time.Time     `gorm:"index"`
+	PublicID             string         `gorm:"size:64;not null;uniqueIndex"`
+	DisplayName          string         `gorm:"size:255;not null"`
+	Kind                 string         `gorm:"size:64;not null;index;index:idx_provider_active_kind,priority:2"`
+	Category             string         `gorm:"size:20;not null;default:'llm';index"` // "llm" or "image"
+	BaseURL              string         `gorm:"size:512"`
+	Endpoints            datatypes.JSON `gorm:"type:jsonb"`
+	EncryptedAPIKey      string         `gorm:"type:text"`
+	APIKeyHint           *string        `gorm:"size:128"`
+	IsModerated          *bool          `gorm:"not null;default:false;index"`
+	Active               *bool          `gorm:"not null;default:true;index;index:idx_provider_active_kind,priority:1"`
+	DefaultImageGenerate *bool          `gorm:"column:default_provider_image_generate;not null;default:false"`
+	DefaultImageEdit     *bool          `gorm:"column:default_provider_image_edit;not null;default:false"`
+	Metadata             datatypes.JSON `gorm:"type:jsonb"`
+	LastSyncedAt         *time.Time     `gorm:"index"`
 }
 
 func NewSchemaProvider(p *domainmodel.Provider) *Provider {
@@ -68,20 +68,20 @@ func NewSchemaProvider(p *domainmodel.Provider) *Provider {
 			CreatedAt: p.CreatedAt,
 			UpdatedAt: p.UpdatedAt,
 		},
-		PublicID:        p.PublicID,
-		DisplayName:     p.DisplayName,
-		Kind:            string(p.Kind),
-		Category:        category,
-		BaseURL:         p.BaseURL,
-		Endpoints:       endpointsJSON,
-		EncryptedAPIKey: p.EncryptedAPIKey,
-		APIKeyHint:      p.APIKeyHint,
-		IsModerated:     &isModerated,
-		Active:          &active,
+		PublicID:             p.PublicID,
+		DisplayName:          p.DisplayName,
+		Kind:                 string(p.Kind),
+		Category:             category,
+		BaseURL:              p.BaseURL,
+		Endpoints:            endpointsJSON,
+		EncryptedAPIKey:      p.EncryptedAPIKey,
+		APIKeyHint:           p.APIKeyHint,
+		IsModerated:          &isModerated,
+		Active:               &active,
 		DefaultImageGenerate: &defaultImageGenerate,
 		DefaultImageEdit:     &defaultImageEdit,
-		Metadata:        metadataJSON,
-		LastSyncedAt:    p.LastSyncedAt,
+		Metadata:             metadataJSON,
+		LastSyncedAt:         p.LastSyncedAt,
 	}
 }
 
@@ -131,22 +131,22 @@ func (p *Provider) EtoD() *domainmodel.Provider {
 	}
 
 	return &domainmodel.Provider{
-		ID:              p.ID,
-		PublicID:        p.PublicID,
-		DisplayName:     p.DisplayName,
-		Kind:            domainmodel.ProviderKind(p.Kind),
-		Category:        category,
-		BaseURL:         p.BaseURL,
-		Endpoints:       endpoints,
-		EncryptedAPIKey: p.EncryptedAPIKey,
-		APIKeyHint:      p.APIKeyHint,
-		IsModerated:     isModerated,
-		Active:          active,
+		ID:                   p.ID,
+		PublicID:             p.PublicID,
+		DisplayName:          p.DisplayName,
+		Kind:                 domainmodel.ProviderKind(p.Kind),
+		Category:             category,
+		BaseURL:              p.BaseURL,
+		Endpoints:            endpoints,
+		EncryptedAPIKey:      p.EncryptedAPIKey,
+		APIKeyHint:           p.APIKeyHint,
+		IsModerated:          isModerated,
+		Active:               active,
 		DefaultImageGenerate: defaultImageGenerate,
 		DefaultImageEdit:     defaultImageEdit,
-		Metadata:        metadata,
-		LastSyncedAt:    p.LastSyncedAt,
-		CreatedAt:       p.CreatedAt,
-		UpdatedAt:       p.UpdatedAt,
+		Metadata:             metadata,
+		LastSyncedAt:         p.LastSyncedAt,
+		CreatedAt:            p.CreatedAt,
+		UpdatedAt:            p.UpdatedAt,
 	}
 }

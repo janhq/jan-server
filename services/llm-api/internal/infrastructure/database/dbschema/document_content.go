@@ -14,21 +14,21 @@ func init() {
 
 // DocumentContent represents the database schema for document OCR content
 type DocumentContent struct {
-	ID               uint       `gorm:"primarykey"`
-	PublicID         string     `gorm:"uniqueIndex;size:64;not null"`
-	MediaObjectID    string     `gorm:"index;size:40;not null"`
-	UserID           uint       `gorm:"index;not null"`
-	Filename         *string    `gorm:"size:512"`
-	MimeType         *string    `gorm:"size:128"`
+	ID               uint    `gorm:"primarykey"`
+	PublicID         string  `gorm:"uniqueIndex;size:64;not null"`
+	MediaObjectID    string  `gorm:"index;size:40;not null"`
+	UserID           uint    `gorm:"index;not null"`
+	Filename         *string `gorm:"size:512"`
+	MimeType         *string `gorm:"size:128"`
 	FileSize         *int64
-	ProcessingStatus string     `gorm:"index;size:32;not null;default:'pending'"`
-	ExtractedText    *string    `gorm:"type:text"`
-	ExtractionModel  *string    `gorm:"size:128"`
+	ProcessingStatus string  `gorm:"index;size:32;not null;default:'pending'"`
+	ExtractedText    *string `gorm:"type:text"`
+	ExtractionModel  *string `gorm:"size:128"`
 	PageCount        *int
 	WordCount        *int
-	ErrorMessage     *string    `gorm:"type:text"`
-	CreatedAt        time.Time  `gorm:"not null"`
-	UpdatedAt        time.Time  `gorm:"not null"`
+	ErrorMessage     *string   `gorm:"type:text"`
+	CreatedAt        time.Time `gorm:"not null"`
+	UpdatedAt        time.Time `gorm:"not null"`
 }
 
 // TableName specifies the table name for DocumentContent

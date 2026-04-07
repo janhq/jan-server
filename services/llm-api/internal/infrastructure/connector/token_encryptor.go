@@ -12,9 +12,9 @@ import (
 
 // TokenEncryptor provides AES-256-GCM encryption for OAuth tokens.
 type TokenEncryptor struct {
-	currentKey   []byte
-	currentKeyID string
-	previousKey  []byte
+	currentKey    []byte
+	currentKeyID  string
+	previousKey   []byte
 	previousKeyID string
 }
 

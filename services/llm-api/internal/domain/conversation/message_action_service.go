@@ -22,18 +22,18 @@ func NewMessageActionService(convRepo ConversationRepository) *MessageActionServ
 
 // EditResult contains the result of an edit message operation
 type EditResult struct {
-	NewBranch        string `json:"new_branch"`         // Always "MAIN" after swap
-	OldMainBackup    string `json:"old_main_backup"`    // Backup name for old MAIN
-	UserItem         *Item  `json:"user_item"`
-	ConversationID   string `json:"conversation_id"`
+	NewBranch      string `json:"new_branch"`      // Always "MAIN" after swap
+	OldMainBackup  string `json:"old_main_backup"` // Backup name for old MAIN
+	UserItem       *Item  `json:"user_item"`
+	ConversationID string `json:"conversation_id"`
 }
 
 // RegenerateResult contains the result of a regenerate operation
 type RegenerateResult struct {
-	NewBranch      string `json:"new_branch"`       // Always "MAIN" after swap
-	OldMainBackup  string `json:"old_main_backup"`  // Backup name for old MAIN
-	ConvID         string `json:"conversation_id"`
-	UserItemID     string `json:"user_item_id"`     // The user message to regenerate from
+	NewBranch     string `json:"new_branch"`      // Always "MAIN" after swap
+	OldMainBackup string `json:"old_main_backup"` // Backup name for old MAIN
+	ConvID        string `json:"conversation_id"`
+	UserItemID    string `json:"user_item_id"` // The user message to regenerate from
 }
 
 // EditMessage creates a new branch from the edited message point
@@ -234,8 +234,8 @@ func (s *MessageActionService) RegenerateResponse(ctx context.Context, conv *Con
 
 // DeleteResult contains the result of a delete message operation
 type DeleteResult struct {
-	NewBranch     string `json:"new_branch"`       // Always "MAIN" after swap
-	OldMainBackup string `json:"old_main_backup"`  // Backup name for old MAIN
+	NewBranch     string `json:"new_branch"`      // Always "MAIN" after swap
+	OldMainBackup string `json:"old_main_backup"` // Backup name for old MAIN
 }
 
 // DeleteMessage deletes a message by creating a new branch without it

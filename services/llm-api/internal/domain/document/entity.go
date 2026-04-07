@@ -39,17 +39,17 @@ type DocumentContent struct {
 
 // ProjectFile represents a file attached to a project
 type ProjectFile struct {
-	ID                uint              `json:"-"`
-	PublicID          string            `json:"id"`
-	Object            string            `json:"object"` // Always "project_file"
-	ProjectID         uint              `json:"-"`
-	DocumentContentID *uint             `json:"-"`
-	DocumentContent   *DocumentContent  `json:"document_content,omitempty"`
-	DisplayOrder      int               `json:"display_order"`
-	CreatedBy         uint              `json:"-"`
-	DeletedAt         *time.Time        `json:"-"`
-	CreatedAt         time.Time         `json:"created_at"`
-	UpdatedAt         time.Time         `json:"updated_at"`
+	ID                uint             `json:"-"`
+	PublicID          string           `json:"id"`
+	Object            string           `json:"object"` // Always "project_file"
+	ProjectID         uint             `json:"-"`
+	DocumentContentID *uint            `json:"-"`
+	DocumentContent   *DocumentContent `json:"document_content,omitempty"`
+	DisplayOrder      int              `json:"display_order"`
+	CreatedBy         uint             `json:"-"`
+	DeletedAt         *time.Time       `json:"-"`
+	CreatedAt         time.Time        `json:"created_at"`
+	UpdatedAt         time.Time        `json:"updated_at"`
 }
 
 // DocumentContentFilter is used to filter document content queries

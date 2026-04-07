@@ -18,8 +18,8 @@ const (
 
 // DeepResearchModule injects the Deep Research system prompt when enabled
 type DeepResearchModule struct {
-	templateService      *prompttemplate.Service
-	modelPromptService   *modelprompttemplate.Service
+	templateService    *prompttemplate.Service
+	modelPromptService *modelprompttemplate.Service
 }
 
 // NewDeepResearchModule creates a new deep research module
@@ -112,7 +112,7 @@ func (m *DeepResearchModule) Apply(ctx context.Context, promptCtx *Context, mess
 		log.Debug().
 			Str("model_catalog_id", *promptCtx.ModelCatalogID).
 			Msg("DeepResearchModule: Attempting to load model-specific template")
-		
+
 		template, source, err := m.modelPromptService.GetTemplateForModelByKey(ctx, *promptCtx.ModelCatalogID, prompttemplate.TemplateKeyDeepResearch)
 		if err == nil && template != nil && template.IsActive {
 			promptContent = template.Content

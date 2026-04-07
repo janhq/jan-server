@@ -112,17 +112,17 @@ func (e *ValidationError) Error() string {
 
 // ProviderModelFilter defines optional conditions for querying provider models.
 type ProviderModelFilter struct {
-	IDs            *[]uint
-	PublicID       *string
-	ProviderIDs    *[]uint
-	ProviderID     *uint
-	ModelCatalogID *uint
-	ModelPublicID  *string
-	ModelPublicIDs *[]string
+	IDs                     *[]uint
+	PublicID                *string
+	ProviderIDs             *[]uint
+	ProviderID              *uint
+	ModelCatalogID          *uint
+	ModelPublicID           *string
+	ModelPublicIDs          *[]string
 	ProviderOriginalModelID *string
-	Active         *bool
-	SupportsImages *bool
-	SearchText     *string
+	Active                  *bool
+	SupportsImages          *bool
+	SearchText              *string
 }
 
 // ProviderModelRepository abstracts persistence for provider models.

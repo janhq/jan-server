@@ -70,12 +70,12 @@ type ServiceConfig struct {
 
 // Service provides connector domain operations.
 type Service struct {
-	repo       Repository
-	encryptor  TokenEncryptor
-	provider   OAuthProvider
-	config     ServiceConfig
-	stateHMAC  []byte
-	logger     zerolog.Logger
+	repo      Repository
+	encryptor TokenEncryptor
+	provider  OAuthProvider
+	config    ServiceConfig
+	stateHMAC []byte
+	logger    zerolog.Logger
 }
 
 // NewService creates a new connector service.

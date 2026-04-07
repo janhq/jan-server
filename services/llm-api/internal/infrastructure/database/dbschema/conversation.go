@@ -77,22 +77,22 @@ type ConversationItem struct {
 	RatingComment *string    `gorm:"type:text"`
 
 	// OpenAI-compatible fields (added in migration 000009)
-	CallID                   *string      `gorm:"type:varchar(50);index:idx_conversation_items_call_id"`
-	ServerLabel              *string      `gorm:"type:varchar(255);index:idx_conversation_items_server_label"`
-	ApprovalRequestID        *string      `gorm:"type:varchar(50);index:idx_conversation_items_approval_request_id"`
-	Arguments                *string      `gorm:"type:text"`
-	Output                   *string      `gorm:"type:text"`
-	Error                    *string      `gorm:"type:text"`
-	Action                   JSONAction   `gorm:"type:jsonb"`
-	Tools                    JSONMcpTools `gorm:"type:jsonb"`
+	CallID                   *string          `gorm:"type:varchar(50);index:idx_conversation_items_call_id"`
+	ServerLabel              *string          `gorm:"type:varchar(255);index:idx_conversation_items_server_label"`
+	ApprovalRequestID        *string          `gorm:"type:varchar(50);index:idx_conversation_items_approval_request_id"`
+	Arguments                *string          `gorm:"type:text"`
+	Output                   *string          `gorm:"type:text"`
+	Error                    *string          `gorm:"type:text"`
+	Action                   JSONAction       `gorm:"type:jsonb"`
+	Tools                    JSONMcpTools     `gorm:"type:jsonb"`
 	PendingSafetyChecks      JSONSafetyChecks `gorm:"type:jsonb"`
 	AcknowledgedSafetyChecks JSONSafetyChecks `gorm:"type:jsonb"`
-	Approve                  *bool        `gorm:"type:boolean"`
-	Reason                   *string      `gorm:"type:text"`
-	Commands                 JSONCommands `gorm:"type:jsonb"`
-	MaxOutputLength          *int64       `gorm:"type:bigint"`
+	Approve                  *bool            `gorm:"type:boolean"`
+	Reason                   *string          `gorm:"type:text"`
+	Commands                 JSONCommands     `gorm:"type:jsonb"`
+	MaxOutputLength          *int64           `gorm:"type:bigint"`
 	ShellOutputs             JSONShellOutputs `gorm:"type:jsonb"`
-	Operation                JSONOperation `gorm:"type:jsonb"`
+	Operation                JSONOperation    `gorm:"type:jsonb"`
 }
 
 // JSONMap is a custom type for map[string]string stored as JSON

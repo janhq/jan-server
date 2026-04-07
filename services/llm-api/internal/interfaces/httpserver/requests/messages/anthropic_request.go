@@ -124,15 +124,15 @@ func (c *AnthropicContent) GetText() string {
 // - Simple: "system": "You are a helpful assistant"
 // - Array: "system": [{"type": "text", "text": "You are...", "cache_control": {...}}]
 type AnthropicSystemPrompt struct {
-	Text   string                       `json:"-"` // For simple string system prompt
+	Text   string                        `json:"-"` // For simple string system prompt
 	Blocks []AnthropicSystemContentBlock `json:"-"` // For array of content blocks
 }
 
 // AnthropicSystemContentBlock represents a system content block (supports cache_control)
 type AnthropicSystemContentBlock struct {
-	Type         string                      `json:"type"`
-	Text         string                      `json:"text,omitempty"`
-	CacheControl *AnthropicCacheControl      `json:"cache_control,omitempty"`
+	Type         string                 `json:"type"`
+	Text         string                 `json:"text,omitempty"`
+	CacheControl *AnthropicCacheControl `json:"cache_control,omitempty"`
 }
 
 // AnthropicCacheControl for prompt caching

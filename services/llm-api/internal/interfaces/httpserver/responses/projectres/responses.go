@@ -19,13 +19,13 @@ type ProjectResponse struct {
 
 // ProjectListResponse represents a paginated list of projects
 type ProjectListResponse struct {
-	Object  string            `json:"object"`
-	Data    []ProjectResponse `json:"data"`
-	FirstID string            `json:"first_id,omitempty"`
-	LastID  string            `json:"last_id,omitempty"`
-	NextCursor *string        `json:"next_cursor,omitempty"`
-	HasMore bool              `json:"has_more"`
-	Total   int64             `json:"total"`
+	Object     string            `json:"object"`
+	Data       []ProjectResponse `json:"data"`
+	FirstID    string            `json:"first_id,omitempty"`
+	LastID     string            `json:"last_id,omitempty"`
+	NextCursor *string           `json:"next_cursor,omitempty"`
+	HasMore    bool              `json:"has_more"`
+	Total      int64             `json:"total"`
 }
 
 // ProjectDeletedResponse represents the delete confirmation response
@@ -64,10 +64,10 @@ func NewProjectListResponse(projects []*project.Project, hasMore bool, nextCurso
 	}
 
 	resp := &ProjectListResponse{
-		Object:  "list",
-		Data:    data,
-		HasMore: hasMore,
-		Total:   total,
+		Object:     "list",
+		Data:       data,
+		HasMore:    hasMore,
+		Total:      total,
 		NextCursor: nextCursor,
 	}
 

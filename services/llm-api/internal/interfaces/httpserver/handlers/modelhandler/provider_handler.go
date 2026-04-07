@@ -56,14 +56,14 @@ func (providerHandler *ProviderHandler) RegisterProvider(addProviderRequest requ
 	}
 
 	result, err := providerHandler.providerService.RegisterProvider(ctx, domainmodel.RegisterProviderInput{
-		Name:      addProviderRequest.Name,
-		Vendor:    addProviderRequest.Vendor,
-		BaseURL:   addProviderRequest.BaseURL,
-		Endpoints: endpoints,
-		APIKey:    addProviderRequest.APIKey,
-		Metadata:  addProviderRequest.Metadata,
-		Active:    active,
-		Category:  domainmodel.ProviderCategory(addProviderRequest.Category),
+		Name:                 addProviderRequest.Name,
+		Vendor:               addProviderRequest.Vendor,
+		BaseURL:              addProviderRequest.BaseURL,
+		Endpoints:            endpoints,
+		APIKey:               addProviderRequest.APIKey,
+		Metadata:             addProviderRequest.Metadata,
+		Active:               active,
+		Category:             domainmodel.ProviderCategory(addProviderRequest.Category),
 		DefaultImageGenerate: defaultImageGenerate,
 		DefaultImageEdit:     defaultImageEdit,
 	})
@@ -355,9 +355,9 @@ func (h *ProviderHandler) UpdateProvider(
 			}
 			return nil
 		}(),
-		APIKey:   req.APIKey,
-		Metadata: req.Metadata,
-		Active:   req.Active,
+		APIKey:               req.APIKey,
+		Metadata:             req.Metadata,
+		Active:               req.Active,
 		DefaultImageGenerate: req.DefaultProviderImageGenerate,
 		DefaultImageEdit:     req.DefaultProviderImageEdit,
 	}

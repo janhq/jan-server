@@ -14,6 +14,7 @@ import (
 	"jan-server/services/llm-api/internal/application/audit"
 	"jan-server/services/llm-api/internal/config"
 	"jan-server/services/llm-api/internal/infrastructure/auth"
+	"jan-server/services/llm-api/internal/infrastructure/connector"
 	"jan-server/services/llm-api/internal/infrastructure/crontab"
 	"jan-server/services/llm-api/internal/infrastructure/database"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository"
@@ -22,7 +23,6 @@ import (
 	"jan-server/services/llm-api/internal/infrastructure/keycloak"
 	"jan-server/services/llm-api/internal/infrastructure/kong"
 	"jan-server/services/llm-api/internal/infrastructure/logger"
-	"jan-server/services/llm-api/internal/infrastructure/connector"
 	"jan-server/services/llm-api/internal/infrastructure/mediaclient"
 	memclient "jan-server/services/llm-api/internal/infrastructure/memory"
 )

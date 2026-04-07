@@ -16,21 +16,21 @@ func init() {
 // ConversationShare represents the database schema for conversation shares
 type ConversationShare struct {
 	BaseModel
-	PublicID        string            `gorm:"type:varchar(64);uniqueIndex;not null"`
-	Slug            string            `gorm:"type:varchar(30);uniqueIndex;not null"`
-	ConversationID  uint              `gorm:"index:idx_conversation_shares_conversation_id;not null"`
-	Conversation    Conversation      `gorm:"foreignKey:ConversationID"`
-	OwnerUserID     uint              `gorm:"index:idx_conversation_shares_owner_user_id;not null"`
-	User            User              `gorm:"foreignKey:OwnerUserID"`
-	ItemPublicID    *string           `gorm:"type:varchar(64)"`
-	Title           *string           `gorm:"type:varchar(256)"`
-	Visibility      string            `gorm:"type:varchar(20);not null;default:'unlisted'"`
-	RevokedAt       *time.Time        `gorm:"type:timestamp"`
-	ViewCount       int               `gorm:"not null;default:0"`
-	LastViewedAt    *time.Time        `gorm:"type:timestamp"`
-	SnapshotVersion int               `gorm:"not null;default:1"`
-	Snapshot        JSONSnapshot      `gorm:"type:jsonb;not null"`
-	ShareOptions    JSONShareOptions  `gorm:"type:jsonb"`
+	PublicID        string           `gorm:"type:varchar(64);uniqueIndex;not null"`
+	Slug            string           `gorm:"type:varchar(30);uniqueIndex;not null"`
+	ConversationID  uint             `gorm:"index:idx_conversation_shares_conversation_id;not null"`
+	Conversation    Conversation     `gorm:"foreignKey:ConversationID"`
+	OwnerUserID     uint             `gorm:"index:idx_conversation_shares_owner_user_id;not null"`
+	User            User             `gorm:"foreignKey:OwnerUserID"`
+	ItemPublicID    *string          `gorm:"type:varchar(64)"`
+	Title           *string          `gorm:"type:varchar(256)"`
+	Visibility      string           `gorm:"type:varchar(20);not null;default:'unlisted'"`
+	RevokedAt       *time.Time       `gorm:"type:timestamp"`
+	ViewCount       int              `gorm:"not null;default:0"`
+	LastViewedAt    *time.Time       `gorm:"type:timestamp"`
+	SnapshotVersion int              `gorm:"not null;default:1"`
+	Snapshot        JSONSnapshot     `gorm:"type:jsonb;not null"`
+	ShareOptions    JSONShareOptions `gorm:"type:jsonb"`
 }
 
 // TableName returns the custom table name for conversation shares

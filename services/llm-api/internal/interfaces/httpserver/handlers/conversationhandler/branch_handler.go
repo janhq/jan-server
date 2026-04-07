@@ -242,7 +242,7 @@ func (h *BranchHandler) EditMessage(ctx context.Context, conv *conversation.Conv
 	}
 
 	response := &EditMessageResponse{
-		Branch:        result.NewBranch,       // Always "MAIN"
+		Branch:        result.NewBranch, // Always "MAIN"
 		OldMainBackup: result.OldMainBackup,
 		BranchCreated: true, // Edit always creates a new branch (which becomes MAIN)
 		UserItem:      result.UserItem,
@@ -265,7 +265,7 @@ func (h *BranchHandler) RegenerateMessage(ctx context.Context, conv *conversatio
 	}
 
 	response := &RegenerateMessageResponse{
-		Branch:        result.NewBranch,       // Always "MAIN"
+		Branch:        result.NewBranch, // Always "MAIN"
 		OldMainBackup: result.OldMainBackup,
 		BranchCreated: true, // Regenerate always creates a new branch (which becomes MAIN)
 		UserItemID:    result.UserItemID,
@@ -288,12 +288,13 @@ func (h *BranchHandler) DeleteMessage(ctx context.Context, conv *conversation.Co
 	}
 
 	return &DeleteMessageResponse{
-		Branch:        result.NewBranch,       // Always "MAIN"
+		Branch:        result.NewBranch, // Always "MAIN"
 		OldMainBackup: result.OldMainBackup,
 		BranchCreated: true,
 		Deleted:       true,
 	}, nil
 }
+
 // ===============================================
 // Helper Functions
 // ===============================================

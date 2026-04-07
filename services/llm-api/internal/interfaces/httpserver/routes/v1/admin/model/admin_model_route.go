@@ -18,9 +18,9 @@ const HeaderIncludeProviderData = "X-PROVIDER-DATA"
 const MaxExceptModelsLimit = 1000
 
 type AdminModelRoute struct {
-	modelHandler              *modelHandler.ModelHandler
-	modelCatalogHandler       *modelHandler.ModelCatalogHandler
-	providerModelHandler      *modelHandler.ProviderModelHandler
+	modelHandler               *modelHandler.ModelHandler
+	modelCatalogHandler        *modelHandler.ModelCatalogHandler
+	providerModelHandler       *modelHandler.ProviderModelHandler
 	modelPromptTemplateHandler *modelprompthandler.ModelPromptTemplateHandler
 }
 
@@ -31,9 +31,9 @@ func NewAdminModelRoute(
 	modelPromptTemplateHandler *modelprompthandler.ModelPromptTemplateHandler,
 ) *AdminModelRoute {
 	return &AdminModelRoute{
-		modelHandler:              modelHandler,
-		modelCatalogHandler:       modelCatalogHandler,
-		providerModelHandler:      providerModelHandler,
+		modelHandler:               modelHandler,
+		modelCatalogHandler:        modelCatalogHandler,
+		providerModelHandler:       providerModelHandler,
 		modelPromptTemplateHandler: modelPromptTemplateHandler,
 	}
 }
@@ -45,7 +45,7 @@ func (route *AdminModelRoute) RegisterRouter(router *gin.RouterGroup) {
 	catalogRoute := modelsRoute.Group("catalogs")
 	catalogRoute.GET("", route.ListModelCatalogs)
 	catalogRoute.POST("/bulk-toggle", route.BulkToggleModelCatalogs)
-	
+
 	// Model Prompt Template endpoints - using dedicated sub-routes with action prefix
 	// Format: /prompt-templates/list/*model_id, /prompt-templates/assign/*model_id, etc.
 	promptTemplatesRoute := modelsRoute.Group("prompt-templates")
@@ -54,7 +54,7 @@ func (route *AdminModelRoute) RegisterRouter(router *gin.RouterGroup) {
 	promptTemplatesRoute.GET("/effective/*model_id", route.modelPromptTemplateHandler.GetEffective)
 	promptTemplatesRoute.PATCH("/update/:template_key/*model_id", route.modelPromptTemplateHandler.Update)
 	promptTemplatesRoute.DELETE("/unassign/:template_key/*model_id", route.modelPromptTemplateHandler.Unassign)
-	
+
 	// Model Catalog detail endpoints (wildcard for IDs with slashes)
 	catalogRoute.GET("/*model_public_id", route.GetModelCatalog)
 	catalogRoute.PATCH("/*model_public_id", route.UpdateModelCatalog)

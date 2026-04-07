@@ -8,29 +8,29 @@ import (
 )
 
 type AddProviderRequest struct {
-	Name      string            `json:"name" binding:"required"`
-	Vendor    string            `json:"vendor" binding:"required"`
-	BaseURL   string            `json:"base_url"`
-	URL       string            `json:"url"`
-	Endpoints []EndpointDTO     `json:"endpoints"`
-	APIKey    string            `json:"api_key"`
-	Metadata  map[string]string `json:"metadata"`
-	Active    *bool             `json:"active"`
-	Category  string            `json:"category"` // "llm" or "image", defaults to "llm"
-	DefaultProviderImageGenerate *bool `json:"default_provider_image_generate"`
-	DefaultProviderImageEdit     *bool `json:"default_provider_image_edit"`
+	Name                         string            `json:"name" binding:"required"`
+	Vendor                       string            `json:"vendor" binding:"required"`
+	BaseURL                      string            `json:"base_url"`
+	URL                          string            `json:"url"`
+	Endpoints                    []EndpointDTO     `json:"endpoints"`
+	APIKey                       string            `json:"api_key"`
+	Metadata                     map[string]string `json:"metadata"`
+	Active                       *bool             `json:"active"`
+	Category                     string            `json:"category"` // "llm" or "image", defaults to "llm"
+	DefaultProviderImageGenerate *bool             `json:"default_provider_image_generate"`
+	DefaultProviderImageEdit     *bool             `json:"default_provider_image_edit"`
 }
 
 type UpdateProviderRequest struct {
-	Name      *string            `json:"name"`
-	BaseURL   *string            `json:"base_url"`
-	URL       *string            `json:"url"`
-	Endpoints []EndpointDTO      `json:"endpoints"`
-	APIKey    *string            `json:"api_key"`
-	Metadata  *map[string]string `json:"metadata"`
-	Active    *bool              `json:"active"`
-	DefaultProviderImageGenerate *bool `json:"default_provider_image_generate"`
-	DefaultProviderImageEdit     *bool `json:"default_provider_image_edit"`
+	Name                         *string            `json:"name"`
+	BaseURL                      *string            `json:"base_url"`
+	URL                          *string            `json:"url"`
+	Endpoints                    []EndpointDTO      `json:"endpoints"`
+	APIKey                       *string            `json:"api_key"`
+	Metadata                     *map[string]string `json:"metadata"`
+	Active                       *bool              `json:"active"`
+	DefaultProviderImageGenerate *bool              `json:"default_provider_image_generate"`
+	DefaultProviderImageEdit     *bool              `json:"default_provider_image_edit"`
 }
 
 type EndpointDTO struct {

@@ -105,7 +105,7 @@ func GenerateSharePublicID() (string, error) {
 		if idx < 10 {
 			result[i] = byte('0' + idx)
 		} else {
-			result[i] = byte('a' + (idx - 10) % 26)
+			result[i] = byte('a' + (idx-10)%26)
 		}
 	}
 

@@ -407,4 +407,3 @@ func (s *Service) EnsureDefaultTemplates(ctx context.Context) error {
 	}
 	return nil
 }
-

@@ -12,9 +12,9 @@ import (
 )
 
 type BranchRoute struct {
-	handler             *conversationhandler.ConversationHandler
-	branchHandler       *conversationhandler.BranchHandler
-	authHandler         *authhandler.AuthHandler
+	handler       *conversationhandler.ConversationHandler
+	branchHandler *conversationhandler.BranchHandler
+	authHandler   *authhandler.AuthHandler
 }
 
 func NewBranchRoute(
@@ -31,14 +31,14 @@ func NewBranchRoute(
 
 func (route *BranchRoute) RegisterRouter(router gin.IRouter) {
 	conversations := router.Group("/conversations")
-	
+
 	// Branch CRUD endpoints
 	conversations.GET("/:conv_public_id/branches", route.authHandler.WithAppUserAuthChain(route.handler.ConversationMiddleware(), route.listBranches)...)
 	conversations.POST("/:conv_public_id/branches", route.authHandler.WithAppUserAuthChain(route.handler.ConversationMiddleware(), route.createBranch)...)
 	conversations.GET("/:conv_public_id/branches/:branch_name", route.authHandler.WithAppUserAuthChain(route.handler.ConversationMiddleware(), route.getBranch)...)
 	conversations.DELETE("/:conv_public_id/branches/:branch_name", route.authHandler.WithAppUserAuthChain(route.handler.ConversationMiddleware(), route.deleteBranch)...)
 	conversations.POST("/:conv_public_id/branches/:branch_name/activate", route.authHandler.WithAppUserAuthChain(route.handler.ConversationMiddleware(), route.activateBranch)...)
-	
+
 	// Message action endpoints
 	conversations.POST("/:conv_public_id/items/:item_id/edit", route.authHandler.WithAppUserAuthChain(route.handler.ConversationMiddleware(), route.editMessage)...)
 	conversations.POST("/:conv_public_id/items/:item_id/regenerate", route.authHandler.WithAppUserAuthChain(route.handler.ConversationMiddleware(), route.regenerateMessage)...)
