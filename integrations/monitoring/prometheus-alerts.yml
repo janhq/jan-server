@@ -78,16 +78,6 @@ groups:
           summary: "MCP Tools error rate {{ $value | humanizePercentage }}"
           description: "Tool calls failing at {{ $value | humanizePercentage }} for 5+ minutes"
 
-      - alert: MemoryToolsVectorStoreError
-        expr: rate(memory_tools_vector_errors_total[5m]) > 0.1
-        for: 5m
-        labels:
-          severity: warning
-          service: memory-tools
-        annotations:
-          summary: "Memory tools vector store error rate {{ $value }}"
-          description: "Vector store operations failing at {{ $value }} errors/sec"
-
       - alert: OTELCollectorDown
         expr: up{job="otel-collector"} == 0
         for: 2m
@@ -175,7 +165,7 @@ groups:
           description: "Time to first token for LLM responses is slow"
 
       - alert: HighMemoryUsage
-        expr: container_memory_usage_bytes{container=~"llm-api|response-api|media-api|mcp-tools|memory-tools"} / container_spec_memory_limit_bytes > 0.9
+        expr: container_memory_usage_bytes{container=~"llm-api|response-api|media-api|mcp-tools"} / container_spec_memory_limit_bytes > 0.9
         for: 5m
         labels:
           severity: warning
@@ -207,7 +197,7 @@ groups:
           description: "Unusually high request rate detected. Monitor for capacity issues."
 
       - alert: ServiceDown
-        expr: up{job=~"llm-api|response-api|media-api|mcp-tools|memory-tools"} == 0
+        expr: up{job=~"llm-api|response-api|media-api|mcp-tools"} == 0
         for: 1m
         labels:
           severity: critical

@@ -11,9 +11,6 @@ jobs:
       mcp-tools: ${{ steps.filter.outputs.mcp-tools }}
       media-api: ${{ steps.filter.outputs.media-api }}
       response-api: ${{ steps.filter.outputs.response-api }}
-      memory-tools: ${{ steps.filter.outputs.memory-tools }}
-      vector-store: ${{ steps.filter.outputs.vector-store }}
-      realtime-api: ${{ steps.filter.outputs.realtime-api }}
       pkg: ${{ steps.filter.outputs.pkg }}
     steps:
       - uses: actions/checkout@v4
@@ -26,17 +23,10 @@ jobs:
               - 'services/llm-api/**'
             mcp-tools:
               - 'services/mcp-tools/**'
-              - '!services/mcp-tools/tools/vector-store-service/**'
             media-api:
               - 'services/media-api/**'
             response-api:
               - 'services/response-api/**'
-            memory-tools:
-              - 'services/memory-tools/**'
-            vector-store:
-              - 'services/mcp-tools/tools/vector-store-service/**'
-            realtime-api:
-              - 'services/realtime-api/**'
             pkg:
               - 'pkg/**'
 
@@ -96,51 +86,6 @@ jobs:
       context: services/response-api
       registry-url: registry.menlo.ai
       tags: registry.menlo.ai/jan-server/response-api:prod-${{ github.sha }}
-      is_push: ${{ github.event_name == 'push' }}
-      build-args: |
-        VERSION_TAG=prod-${{ github.sha }}
-
-  build-memory-tools:
-    needs: changes
-    if: needs.changes.outputs.memory-tools == 'true' || needs.changes.outputs.pkg == 'true'
-    uses: ./.github/workflows/_reusable-docker.yml
-    secrets: inherit
-    with:
-      runs-on: ubuntu-24-04-docker
-      docker-file: services/memory-tools/Dockerfile
-      context: services/memory-tools
-      registry-url: registry.menlo.ai
-      tags: registry.menlo.ai/jan-server/memory-tools:prod-${{ github.sha }}
-      is_push: ${{ github.event_name == 'push' }}
-      build-args: |
-        VERSION_TAG=prod-${{ github.sha }}
-
-  build-vector-store:
-    needs: changes
-    if: needs.changes.outputs.vector-store == 'true' || needs.changes.outputs.pkg == 'true'
-    uses: ./.github/workflows/_reusable-docker.yml
-    secrets: inherit
-    with:
-      runs-on: ubuntu-24-04-docker
-      docker-file: services/mcp-tools/tools/vector-store-service/Dockerfile
-      context: services/mcp-tools/tools/vector-store-service
-      registry-url: registry.menlo.ai
-      tags: registry.menlo.ai/jan-server/vector-store-service:prod-${{ github.sha }}
-      is_push: ${{ github.event_name == 'push' }}
-      build-args: |
-        VERSION_TAG=prod-${{ github.sha }}
-
-  build-realtime-api:
-    needs: changes
-    if: needs.changes.outputs.realtime-api == 'true' || needs.changes.outputs.pkg == 'true'
-    uses: ./.github/workflows/_reusable-docker.yml
-    secrets: inherit
-    with:
-      runs-on: ubuntu-24-04-docker
-      docker-file: services/realtime-api/Dockerfile
-      context: services/realtime-api
-      registry-url: registry.menlo.ai
-      tags: registry.menlo.ai/jan-server/realtime-api:prod-${{ github.sha }}
       is_push: ${{ github.event_name == 'push' }}
       build-args: |
         VERSION_TAG=prod-${{ github.sha }}

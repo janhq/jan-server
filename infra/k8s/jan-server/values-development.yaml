@@ -138,40 +138,6 @@ responseApi:
     AUTO_MIGRATE: "true"
     MAX_TOOL_EXECUTION_DEPTH: "8"
 
-## Realtime API - Development Configuration
-realtimeApi:
-  enabled: true
-  replicaCount: 1
-  image:
-    tag: "latest"
-    pullPolicy: Always
-  resources:
-    requests:
-      memory: 64Mi
-      cpu: 50m
-    limits:
-      memory: 128Mi
-      cpu: 100m
-  autoscaling:
-    enabled: false
-  env:
-    REALTIME_API_PORT: "8186"
-    SERVICE_NAME: "realtime-api"
-    ENVIRONMENT: "development"
-    LOG_LEVEL: "debug"
-    SHUTDOWN_TIMEOUT: "10s"
-    AUTH_ENABLED: "true"
-    LIVEKIT_TOKEN_TTL: "24h"
-    SESSION_STALE_TTL: "10m"
-    SESSION_CLEANUP_INTERVAL: "15s"
-    OTEL_ENABLED: "false"
-    OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
-  secrets:
-    # Override with your LiveKit credentials
-    livekitWsUrl: "wss://livekit.example.com"
-    livekitApiKey: ""
-    livekitApiSecret: ""
-
 ## MCP Tools - Development Configuration
 mcpTools:
   enabled: true

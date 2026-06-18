@@ -322,53 +322,6 @@ data:
                   credentials: true
                   max_age: 3600
 
-      - name: realtime-api-svc
-        url: http://{{ include "jan-server.fullname" . }}-realtime-api:{{ .Values.realtimeApi.service.port }}
-        connect_timeout: 60000
-        write_timeout: 60000
-        read_timeout: 60000
-        retries: 3
-        tags: [realtime, api]
-        routes:
-          - name: realtime-api-proxy
-            paths: [/v1/realtime]
-            strip_path: false
-            path_handling: v0
-            tags: [realtime, protected]
-            plugins:
-              - name: jwt
-                tags: [realtime, jwt]
-                config:
-                  key_claim_name: iss
-                  claims_to_verify: ["exp", "nbf"]
-                  maximum_expiration: 3600
-                  secret_is_base64: false
-                  run_on_preflight: false
-                  anonymous: kong-anon-jwt
-              - name: keycloak-apikey
-                tags: [realtime, apikey]
-                config:
-                  validation_url: "http://{{ include "jan-server.fullname" . }}-llm-api:{{ .Values.llmApi.service.port }}/auth/validate-api-key"
-                  validation_timeout: 5000
-                  hide_credentials: true
-                  run_on_preflight: false
-              - name: rate-limiting
-                tags: [realtime, rate]
-                config:
-                  minute: 60
-                  policy: local
-                  limit_by: ip
-                  fault_tolerant: true
-              - name: cors
-                tags: [realtime, cors]
-                config:
-                  origins: {{ .Values.kong.cors.origins | toJson }}
-                  methods: ["GET", "POST", "DELETE", "OPTIONS"]
-                  headers: ["Authorization", "Content-Type", "X-API-Key", "X-Request-Id"]
-                  exposed_headers: ["X-Request-Id", "X-Gateway-Auth"]
-                  credentials: true
-                  max_age: 3600
-
       - name: mcp-tools-rpc-svc
         url: http://{{ include "jan-server.fullname" . }}-mcp-tools:{{ .Values.mcpTools.service.port }}/v1/mcp
         connect_timeout: 60000

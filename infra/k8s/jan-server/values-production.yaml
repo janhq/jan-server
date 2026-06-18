@@ -223,44 +223,6 @@ responseApi:
           - path: /
             pathType: Prefix
 
-## Realtime API - Production Configuration
-realtimeApi:
-  enabled: true
-  replicaCount: 2
-  image:
-    registry: your-registry.io
-    repository: jan/realtime-api
-    tag: "v2.0.0"
-    pullPolicy: IfNotPresent
-  resources:
-    requests:
-      memory: 256Mi
-      cpu: 200m
-    limits:
-      memory: 512Mi
-      cpu: 500m
-  autoscaling:
-    enabled: true
-    minReplicas: 2
-    maxReplicas: 5
-    targetCPUUtilizationPercentage: 70
-  env:
-    REALTIME_API_PORT: "8186"
-    SERVICE_NAME: "realtime-api"
-    ENVIRONMENT: "production"
-    LOG_LEVEL: "info"
-    SHUTDOWN_TIMEOUT: "10s"
-    AUTH_ENABLED: "true"
-    LIVEKIT_TOKEN_TTL: "24h"
-    SESSION_STALE_TTL: "10m"
-    SESSION_CLEANUP_INTERVAL: "15s"
-    OTEL_ENABLED: "true"
-    OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
-  secrets:
-    livekitWsUrl: "wss://livekit.yourdomain.com"
-    livekitApiKey: "YOUR_LIVEKIT_API_KEY"
-    livekitApiSecret: "YOUR_LIVEKIT_API_SECRET"
-
 ## MCP Tools - Production Configuration
 mcpTools:
   enabled: true
