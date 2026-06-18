@@ -337,11 +337,6 @@
           "expr": "sum(rate(jan_media_api_requests_total{status=~\"5..\"}[5m]))",
           "legendFormat": "media-api",
           "refId": "D"
-        },
-        {
-          "expr": "sum(rate(jan_memory_requests_total{status=~\"5..\"}[5m]))",
-          "legendFormat": "memory-tools",
-          "refId": "E"
         }
       ],
       "title": "5xx Errors by Service",
@@ -411,11 +406,6 @@
           "expr": "sum(rate(jan_media_api_requests_total{status=~\"4..\"}[5m]))",
           "legendFormat": "media-api",
           "refId": "D"
-        },
-        {
-          "expr": "sum(rate(jan_memory_requests_total{status=~\"4..\"}[5m]))",
-          "legendFormat": "memory-tools",
-          "refId": "E"
         }
       ],
       "title": "4xx Errors by Service",

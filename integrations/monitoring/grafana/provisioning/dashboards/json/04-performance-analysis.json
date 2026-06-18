@@ -238,11 +238,6 @@
           "expr": "histogram_quantile(0.95, sum(rate(jan_media_api_request_duration_seconds_bucket[5m])) by (le))",
           "legendFormat": "media-api",
           "refId": "D"
-        },
-        {
-          "expr": "histogram_quantile(0.95, sum(rate(jan_memory_embedding_duration_seconds_bucket[5m])) by (le))",
-          "legendFormat": "memory-tools",
-          "refId": "E"
         }
       ],
       "title": "P95 Latency by Service",

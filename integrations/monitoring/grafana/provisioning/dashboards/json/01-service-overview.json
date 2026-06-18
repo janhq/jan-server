@@ -333,78 +333,6 @@
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [
-            {
-              "options": {
-                "0": {
-                  "color": "red",
-                  "index": 1,
-                  "text": "DOWN"
-                },
-                "1": {
-                  "color": "green",
-                  "index": 0,
-                  "text": "UP"
-                }
-              },
-              "type": "value"
-            }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 16,
-        "y": 1
-      },
-      "id": 5,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": ["lastNotNull"],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "expr": "up{job=\"memory-tools\"}",
-          "legendFormat": "memory-tools",
-          "refId": "A"
-        }
-      ],
-      "title": "Memory Tools",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -790,11 +718,6 @@
           "expr": "sum(rate(jan_media_api_requests_total[1m])) or vector(0)",
           "legendFormat": "media-api",
           "refId": "D"
-        },
-        {
-          "expr": "sum(rate(jan_memory_requests_total[1m])) or vector(0)",
-          "legendFormat": "memory-tools",
-          "refId": "E"
         }
       ],
       "title": "Request Rate by Service",
@@ -976,11 +899,6 @@
           "expr": "histogram_quantile(0.95, sum(rate(jan_media_api_request_duration_seconds_bucket[5m])) by (le)) or vector(0)",
           "legendFormat": "media-api",
           "refId": "D"
-        },
-        {
-          "expr": "histogram_quantile(0.95, sum(rate(jan_memory_embedding_duration_seconds_bucket[5m])) by (le)) or vector(0)",
-          "legendFormat": "memory-tools",
-          "refId": "E"
         }
       ],
       "title": "P95 Latency by Service",

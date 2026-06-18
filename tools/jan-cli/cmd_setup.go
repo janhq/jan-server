@@ -18,23 +18,15 @@ var setupAndRunCmd = &cobra.Command{
 
 func init() {
 	setupAndRunCmd.Flags().Bool("skip-prompts", false, "Skip interactive prompts and use existing .env")
-	setupAndRunCmd.Flags().Bool("with-memory-tools", false, "Enable memory tools profile and defaults during setup")
-	setupAndRunCmd.Flags().Bool("with-realtime-api", false, "Enable realtime API profile during setup")
 	setupAndRunCmd.Flags().Bool("with-aio", false, "Enable AIO Sandbox provider during setup")
 	setupAndRunCmd.Flags().Bool("with-e2b", false, "Enable E2B Sandbox provider during setup")
-	setupAndRunCmd.Flags().Bool("skip-realtime", false, "Skip realtime API setup (disable realtime profile)")
-	setupAndRunCmd.Flags().Bool("skip-memory", false, "Skip memory tools setup (disable memory profile)")
 	setupAndRunCmd.Flags().Bool("skip-aio", false, "Skip sandbox provider setup (disable aio/e2b profile)")
 }
 
 func runSetupAndRun(cmd *cobra.Command, args []string) error {
 	skipPrompts, _ := cmd.Flags().GetBool("skip-prompts")
-	enableMemory, _ := cmd.Flags().GetBool("with-memory-tools")
-	enableRealtime, _ := cmd.Flags().GetBool("with-realtime-api")
 	enableAIO, _ := cmd.Flags().GetBool("with-aio")
 	enableE2B, _ := cmd.Flags().GetBool("with-e2b")
-	skipRealtime, _ := cmd.Flags().GetBool("skip-realtime")
-	skipMemory, _ := cmd.Flags().GetBool("skip-memory")
 	skipAIO, _ := cmd.Flags().GetBool("skip-aio")
 
 	fmt.Println("🚀 Jan Server Setup and Run")
@@ -65,7 +57,7 @@ func runSetupAndRun(cmd *cobra.Command, args []string) error {
 			if response != "y" && response != "yes" {
 				fmt.Println("Using existing .env file...")
 			} else {
-				if err := promptForEnvVars(envPath, enableMemory, enableAIO, enableE2B, skipRealtime, skipMemory, skipAIO); err != nil {
+				if err := promptForEnvVars(envPath, enableAIO, enableE2B, skipAIO); err != nil {
 					return fmt.Errorf("failed to update .env: %w", err)
 				}
 			}
@@ -76,7 +68,7 @@ func runSetupAndRun(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("failed to copy .env template: %w", err)
 			}
 
-			if err := promptForEnvVars(envPath, enableMemory, enableAIO, enableE2B, skipRealtime, skipMemory, skipAIO); err != nil {
+			if err := promptForEnvVars(envPath, enableAIO, enableE2B, skipAIO); err != nil {
 				return fmt.Errorf("failed to configure .env: %w", err)
 			}
 		}
@@ -85,18 +77,6 @@ func runSetupAndRun(cmd *cobra.Command, args []string) error {
 		fmt.Println("📝 Creating .env from template...")
 		if err := copyEnvTemplate(envPath); err != nil {
 			return fmt.Errorf("failed to copy .env template: %w", err)
-		}
-	}
-
-	if skipPrompts && enableMemory {
-		if err := applyMemoryDefaults(envPath); err != nil {
-			return fmt.Errorf("failed to enable memory tools defaults: %w", err)
-		}
-	}
-
-	if skipPrompts && enableRealtime {
-		if err := applyRealtimeDefaults(envPath); err != nil {
-			return fmt.Errorf("failed to enable realtime API defaults: %w", err)
 		}
 	}
 
@@ -114,12 +94,6 @@ func runSetupAndRun(cmd *cobra.Command, args []string) error {
 			if err := applyE2BDefaults(envPath); err != nil {
 				return fmt.Errorf("failed to enable E2B Sandbox defaults: %w", err)
 			}
-		}
-	}
-
-	if skipRealtime {
-		if err := disableRealtime(envPath); err != nil {
-			return fmt.Errorf("failed to disable realtime API: %w", err)
 		}
 	}
 
@@ -255,11 +229,6 @@ func runSetupAndRun(cmd *cobra.Command, args []string) error {
 		fmt.Println("  • vLLM (Local):     http://localhost:8101")
 	}
 
-	// Show Realtime API if enabled
-	if os.Getenv("REALTIME_API_ENABLED") == "true" {
-		fmt.Println("  • Realtime API:     http://localhost:8186")
-	}
-
 	// Show AIO Sandbox if enabled
 	if os.Getenv("AIO_ENABLED") == "true" {
 		fmt.Println("  • AIO Sandbox:      http://localhost:8180")
@@ -302,7 +271,7 @@ func copyEnvTemplate(destPath string) error {
 	return nil
 }
 
-func promptForEnvVars(envPath string, defaultEnableMemory bool, enableAIO bool, enableE2B bool, skipRealtime bool, skipMemory bool, skipAIO bool) error {
+func promptForEnvVars(envPath string, enableAIO bool, enableE2B bool, skipAIO bool) error {
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Println()
@@ -423,42 +392,7 @@ func promptForEnvVars(envPath string, defaultEnableMemory bool, enableAIO bool, 
 		fmt.Println("✓ MCP search disabled (Vector Store still available)")
 	}
 
-	// 3. Memory Tools Configuration
-	var enableMemory bool
-	var externalEmbedding bool
-	var useRedis bool
-
-	if skipMemory {
-		// Skip memory prompt - disable memory tools
-		enableMemory = false
-		fmt.Println()
-		fmt.Println("⏭️  Skipping memory tools setup (disabled by default)")
-	} else {
-		fmt.Println()
-		fmt.Println("🧠 Memory Tools Setup")
-		fmt.Println("Enable memory tools for long-term context and retrieval.")
-		memoryPromptDefault := "Y/n"
-		if !defaultEnableMemory {
-			memoryPromptDefault = "y/N"
-		}
-		fmt.Printf("Enable memory tools? (%s): ", memoryPromptDefault)
-
-		memoryChoice, _ := reader.ReadString('\n')
-		memoryChoice = strings.TrimSpace(strings.ToLower(memoryChoice))
-
-		// Default based on defaultEnableMemory flag (Y/n or y/N)
-		enableMemory = defaultEnableMemory
-		if memoryChoice != "" {
-			enableMemory = memoryChoice != "n" && memoryChoice != "no"
-		}
-
-		if enableMemory {
-			externalEmbedding, useRedis = configureMemoryOptions(reader, updates)
-		}
-	}
-	applyMemorySettings(updates, &profiles, enableMemory, externalEmbedding, useRedis)
-
-	// 4. Media API Configuration
+	// 3. Media API Configuration
 	fmt.Println()
 	fmt.Println("🖼️  Media API Setup")
 
@@ -621,58 +555,7 @@ func promptForEnvVars(envPath string, defaultEnableMemory bool, enableAIO bool, 
 		}
 	}
 
-	// 5. Realtime API Configuration
-	if !skipRealtime {
-		fmt.Println()
-		fmt.Println("🎙️  Realtime API Setup")
-		fmt.Println("Enable realtime API for real-time audio/video communication via LiveKit.")
-		fmt.Print("Enable Realtime API? (y/N): ")
-
-		realtimeChoice, _ := reader.ReadString('\n')
-		realtimeChoice = strings.TrimSpace(strings.ToLower(realtimeChoice))
-
-		// Default is No for Realtime API (requires LiveKit credentials)
-		if realtimeChoice == "y" || realtimeChoice == "yes" {
-			updates["REALTIME_API_ENABLED"] = "true"
-			profiles = append(profiles, "realtime")
-
-			fmt.Println()
-			fmt.Println("LiveKit Configuration (required for Realtime API):")
-			fmt.Println("Get credentials from https://cloud.livekit.io or your self-hosted LiveKit server")
-			fmt.Println()
-
-			fmt.Print("LIVEKIT_WS_URL (e.g., wss://your-app.livekit.cloud): ")
-			livekitURL, _ := reader.ReadString('\n')
-			livekitURL = strings.TrimSpace(livekitURL)
-			if livekitURL != "" {
-				updates["LIVEKIT_WS_URL"] = livekitURL
-			}
-
-			fmt.Print("LIVEKIT_API_KEY: ")
-			livekitKey, _ := reader.ReadString('\n')
-			livekitKey = strings.TrimSpace(livekitKey)
-			if livekitKey != "" {
-				updates["LIVEKIT_API_KEY"] = livekitKey
-			}
-
-			fmt.Print("LIVEKIT_API_SECRET: ")
-			livekitSecret, _ := reader.ReadString('\n')
-			livekitSecret = strings.TrimSpace(livekitSecret)
-			if livekitSecret != "" {
-				updates["LIVEKIT_API_SECRET"] = livekitSecret
-			}
-
-			fmt.Println("✓ Realtime API enabled (profile: realtime)")
-		} else {
-			updates["REALTIME_API_ENABLED"] = "false"
-			fmt.Println("✓ Realtime API disabled (enable later by editing .env)")
-		}
-	} else {
-		updates["REALTIME_API_ENABLED"] = "false"
-		fmt.Println("✓ Realtime API disabled (skipped via --skip-realtime flag)")
-	}
-
-	// 6. Sandbox Provider Configuration (AIO or E2B)
+	// 4. Sandbox Provider Configuration (AIO or E2B)
 	if skipAIO {
 		fmt.Println()
 		fmt.Println("⏭️  Skipping sandbox provider setup (disabled via --skip-aio flag)")
@@ -823,78 +706,6 @@ func applyEnvUpdates(envPath string, updates map[string]string) error {
 	return nil
 }
 
-func applyMemoryDefaults(envPath string) error {
-	data, err := os.ReadFile(envPath)
-	if err != nil {
-		return fmt.Errorf("read .env: %w", err)
-	}
-
-	profiles := parseProfiles(strings.Split(string(data), "\n"))
-	updates := make(map[string]string)
-	setMemoryDefaults(updates, &profiles, false, false)
-	updates["MCP_ENABLE_MEMORY_RETRIEVE"] = "true"
-	if len(profiles) > 0 {
-		updates["COMPOSE_PROFILES"] = strings.Join(profiles, ",")
-	}
-
-	return applyEnvUpdates(envPath, updates)
-}
-
-func applyRealtimeDefaults(envPath string) error {
-	data, err := os.ReadFile(envPath)
-	if err != nil {
-		return fmt.Errorf("read .env: %w", err)
-	}
-
-	profiles := parseProfiles(strings.Split(string(data), "\n"))
-	updates := make(map[string]string)
-
-	// Add realtime profile if not present
-	hasRealtime := false
-	for _, profile := range profiles {
-		if profile == "realtime" {
-			hasRealtime = true
-			break
-		}
-	}
-	if !hasRealtime {
-		profiles = append(profiles, "realtime")
-	}
-
-	updates["REALTIME_API_ENABLED"] = "true"
-	if len(profiles) > 0 {
-		updates["COMPOSE_PROFILES"] = strings.Join(profiles, ",")
-	}
-
-	return applyEnvUpdates(envPath, updates)
-}
-
-func disableRealtime(envPath string) error {
-	data, err := os.ReadFile(envPath)
-	if err != nil {
-		return fmt.Errorf("read .env: %w", err)
-	}
-
-	profiles := parseProfiles(strings.Split(string(data), "\n"))
-	updates := make(map[string]string)
-
-	// Remove realtime profile if present
-	newProfiles := []string{}
-	for _, profile := range profiles {
-		if profile != "realtime" {
-			newProfiles = append(newProfiles, profile)
-		}
-	}
-
-	updates["REALTIME_API_ENABLED"] = "false"
-	if len(newProfiles) > 0 {
-		updates["COMPOSE_PROFILES"] = strings.Join(newProfiles, ",")
-	}
-
-	fmt.Println("✓ Realtime API disabled (profile removed)")
-	return applyEnvUpdates(envPath, updates)
-}
-
 func applyAIODefaults(envPath string) error {
 	data, err := os.ReadFile(envPath)
 	if err != nil {
@@ -946,99 +757,6 @@ func disableSandbox(envPath string) error {
 
 	fmt.Println("✓ Sandbox provider disabled")
 	return applyEnvUpdates(envPath, updates)
-}
-
-func applyMemorySettings(updates map[string]string, profiles *[]string, enable bool, externalEmbedding bool, useRedis bool) {
-	if enable {
-		setMemoryDefaults(updates, profiles, externalEmbedding, useRedis)
-		updates["MCP_ENABLE_MEMORY_RETRIEVE"] = "true"
-		fmt.Println("Memory tools enabled (profile: memory)")
-	} else {
-		updates["MEMORY_TOOLS_ENABLED"] = "false"
-		updates["MCP_ENABLE_MEMORY_RETRIEVE"] = "false"
-		updates["PROMPT_ORCHESTRATION_MEMORY"] = "false"
-		fmt.Println("Memory tools disabled (enable later by editing .env)")
-	}
-}
-
-func setMemoryDefaults(updates map[string]string, profiles *[]string, externalEmbedding bool, useRedis bool) {
-	if profiles != nil {
-		hasMemory := false
-		hasMock := false
-		hasRedis := false
-		for _, profile := range *profiles {
-			if profile == "memory" {
-				hasMemory = true
-			}
-			if profile == "memory-mock" {
-				hasMock = true
-			}
-			if profile == "memory-redis" {
-				hasRedis = true
-			}
-		}
-		if !hasMemory {
-			*profiles = append(*profiles, "memory")
-		}
-		if !externalEmbedding && !hasMock {
-			*profiles = append(*profiles, "memory-mock")
-		}
-		if useRedis && !hasRedis {
-			*profiles = append(*profiles, "memory-redis")
-		}
-	}
-
-	if _, exists := updates["MEMORY_TOOLS_PORT"]; !exists {
-		updates["MEMORY_TOOLS_PORT"] = "8090"
-	}
-
-	if !externalEmbedding && updates["EMBEDDING_SERVICE_URL"] == "" {
-		updates["EMBEDDING_SERVICE_URL"] = "http://bge-m3:8091"
-	}
-
-	updates["MEMORY_TOOLS_ENABLED"] = "true"
-	updates["EMBEDDING_CACHE_TYPE"] = "memory"
-	updates["PROMPT_ORCHESTRATION_MEMORY"] = "true"
-}
-
-func configureMemoryOptions(reader *bufio.Reader, updates map[string]string) (bool, bool) {
-	fmt.Println()
-	fmt.Println("Memory Embedding Service")
-	fmt.Println("Use the built-in BGE-M3 mock (default) or point to your own embedding endpoint.")
-	fmt.Print("Custom embedding service URL (leave blank for http://bge-m3:8091): ")
-	customURL, _ := reader.ReadString('\n')
-	customURL = strings.TrimSpace(customURL)
-	external := false
-	if customURL != "" {
-		updates["EMBEDDING_SERVICE_URL"] = customURL
-		external = true
-	} else if _, exists := updates["EMBEDDING_SERVICE_URL"]; !exists {
-		updates["EMBEDDING_SERVICE_URL"] = "http://bge-m3:8091"
-	}
-
-	fmt.Println()
-	fmt.Println("Embedding Cache")
-	fmt.Println("Choose Redis for shared cache or in-memory for simplicity.")
-	fmt.Print("Use Redis cache? (y/N): ")
-	cacheChoice, _ := reader.ReadString('\n')
-	cacheChoice = strings.TrimSpace(strings.ToLower(cacheChoice))
-	// Default is No for Redis (in-memory is simpler for getting started)
-	useRedis := false
-	if cacheChoice == "y" || cacheChoice == "yes" {
-		updates["EMBEDDING_CACHE_TYPE"] = "redis"
-		fmt.Print("Redis URL (default: redis://redis-memory:6379/3): ")
-		redisURL, _ := reader.ReadString('\n')
-		redisURL = strings.TrimSpace(redisURL)
-		if redisURL == "" {
-			redisURL = "redis://redis-memory:6379/3"
-		}
-		updates["EMBEDDING_CACHE_REDIS_URL"] = redisURL
-		useRedis = true
-	} else {
-		updates["EMBEDDING_CACHE_TYPE"] = "memory"
-	}
-
-	return external, useRedis
 }
 
 func promptForPublicS3URL(reader *bufio.Reader, updates map[string]string, s3Endpoint string, s3Bucket string) {

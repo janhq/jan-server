@@ -134,9 +134,9 @@ endif
 build-mcp:
 	@echo "Building MCP Tools..."
 ifeq ($(OS),Windows_NT)
-	@cd services/mcp-tools && go build -o bin/mcp-tools.exe .
+	@cd services/mcp-tools && go build -o bin/mcp-tools.exe ./cmd/server
 else
-	@cd services/mcp-tools && go build -o bin/mcp-tools .
+	@cd services/mcp-tools && go build -o bin/mcp-tools ./cmd/server
 endif
 	@echo " MCP Tools built: services/mcp-tools/bin/mcp-tools"
 

@@ -16,93 +16,6 @@
       },
       "type": "object"
     },
-    "Realtime_responses.ErrorDetail": {
-      "properties": {
-        "code": {
-          "type": "string"
-        },
-        "message": {
-          "type": "string"
-        },
-        "type": {
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
-    "Realtime_responses.ErrorResponse": {
-      "properties": {
-        "error": {
-          "$ref": "#/definitions/Realtime_responses.ErrorDetail"
-        }
-      },
-      "type": "object"
-    },
-    "Realtime_sessionres.ClientSecretDetail": {
-      "properties": {
-        "expires_at": {
-          "type": "integer"
-        },
-        "value": {
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
-    "Realtime_sessionres.DeleteSessionResponse": {
-      "properties": {
-        "deleted": {
-          "type": "boolean"
-        },
-        "id": {
-          "type": "string"
-        },
-        "object": {
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
-    "Realtime_sessionres.ListSessionsResponse": {
-      "properties": {
-        "data": {
-          "items": {
-            "$ref": "#/definitions/Realtime_sessionres.SessionResponse"
-          },
-          "type": "array"
-        },
-        "object": {
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
-    "Realtime_sessionres.SessionResponse": {
-      "properties": {
-        "client_secret": {
-          "$ref": "#/definitions/Realtime_sessionres.ClientSecretDetail"
-        },
-        "id": {
-          "type": "string"
-        },
-        "object": {
-          "type": "string"
-        },
-        "room_id": {
-          "type": "string"
-        },
-        "status": {
-          "type": "string"
-        },
-        "user_id": {
-          "type": "string"
-        },
-        "ws_url": {
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
     "authhandler.AccessTokenResponse": {
       "properties": {
         "access_token": {
@@ -4523,8 +4436,8 @@
       "name": "Jan Server Team",
       "url": "https://github.com/janhq/jan-server"
     },
-    "description": "Unified API documentation for Jan Server including LLM API (OpenAI-compatible), MCP Tools, and Realtime API",
-    "title": "Jan Server API (LLM API + MCP Tools + Realtime API)",
+    "description": "Unified API documentation for Jan Server including LLM API (OpenAI-compatible) and MCP Tools",
+    "title": "Jan Server API (LLM API + MCP Tools)",
     "version": "2.0"
   },
   "paths": {
@@ -5298,7 +5211,7 @@
         "consumes": [
           "application/json"
         ],
-        "description": "Handles Model Context Protocol (MCP) requests over HTTP. Supports MCP methods: initialize, ping, tools/list, tools/call, prompts/list, prompts/call, resources/list, resources/read.\n\n**Available Tools:**\n- `google_search`: Web search via pluggable engines (Serper/SearXNG) with params: q, gl, hl, location, num, tbs, page, autocorrect, domain_allow_list, location_hint, offline_mode. Returns structured citations.\n- `scrape`: Web page scraping (params: url, includeMarkdown) returning text, preview, cache_status, and metadata.\n- `file_search_index` / `file_search_query`: Index arbitrary text and run similarity queries against the lightweight vector store.\n- `python_exec`: Execute trusted code through SandboxFusion (params: code, language, session_id, approved) to retrieve stdout/stderr/artifacts.\n- `memory_retrieve`: Retrieve relevant user preferences, project context, or conversation history (params: query, user_id, project_id, max_user_items, max_project_items, min_similarity). Returns personalized context.\n- `generate_image`: Generate images from a text prompt via LLM API /v1/images/generations (params: prompt, size, n, num_inference_steps, cfg_scale).\n- `edit_image`: Edit images with a prompt + input image via LLM API /v1/images/edits (params: prompt, image, mask, size, strength, steps, seed, cfg_scale).\n\n**MCP Protocol:**\n- Request format: JSON-RPC 2.0 with method and params\n- Response format: Server-Sent Events (SSE) stream\n- Stateless mode (no session management)",
+        "description": "Handles Model Context Protocol (MCP) requests over HTTP. Supports MCP methods: initialize, ping, tools/list, tools/call, prompts/list, prompts/call, resources/list, resources/read.\n\n**Available Tools:**\n- `google_search`: Web search via pluggable engines (Serper/SearXNG) with params: q, gl, hl, location, num, tbs, page, autocorrect, domain_allow_list, location_hint, offline_mode. Returns structured citations.\n- `scrape`: Web page scraping (params: url, includeMarkdown) returning text, preview, cache_status, and metadata.\n- `file_search_index` / `file_search_query`: Index arbitrary text and run similarity queries against the lightweight vector store.\n- `python_exec`: Execute trusted code through SandboxFusion (params: code, language, session_id, approved) to retrieve stdout/stderr/artifacts.\n- `generate_image`: Generate images from a text prompt via LLM API /v1/images/generations (params: prompt, size, n, num_inference_steps, cfg_scale).\n- `edit_image`: Edit images with a prompt + input image via LLM API /v1/images/edits (params: prompt, image, mask, size, strength, steps, seed, cfg_scale).\n\n**MCP Protocol:**\n- Request format: JSON-RPC 2.0 with method and params\n- Response format: Server-Sent Events (SSE) stream\n- Stateless mode (no session management)",
         "parameters": [
           {
             "description": "MCP JSON-RPC request payload (e.g., {\\",
@@ -9367,183 +9280,6 @@
         ]
       }
     },
-    "/v1/realtime/sessions": {
-      "get": {
-        "description": "Lists all active sessions for the current user",
-        "produces": [
-          "application/json"
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "$ref": "#/definitions/Realtime_sessionres.ListSessionsResponse"
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "schema": {
-              "$ref": "#/definitions/Realtime_responses.ErrorResponse"
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "$ref": "#/definitions/Realtime_responses.ErrorResponse"
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "summary": "List realtime sessions",
-        "tags": [
-          "Realtime API"
-        ]
-      },
-      "post": {
-        "consumes": [
-          "application/json"
-        ],
-        "description": "Creates a new realtime session with LiveKit token. No request body required.",
-        "produces": [
-          "application/json"
-        ],
-        "responses": {
-          "201": {
-            "description": "Created",
-            "schema": {
-              "$ref": "#/definitions/Realtime_sessionres.SessionResponse"
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "schema": {
-              "$ref": "#/definitions/Realtime_responses.ErrorResponse"
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "$ref": "#/definitions/Realtime_responses.ErrorResponse"
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "summary": "Create a realtime session",
-        "tags": [
-          "Realtime API"
-        ]
-      }
-    },
-    "/v1/realtime/sessions/{id}": {
-      "delete": {
-        "description": "Ends a session and invalidates its token. Users can only delete their own sessions.",
-        "parameters": [
-          {
-            "description": "Session ID",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "type": "string"
-          }
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "$ref": "#/definitions/Realtime_sessionres.DeleteSessionResponse"
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "schema": {
-              "$ref": "#/definitions/Realtime_responses.ErrorResponse"
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "schema": {
-              "$ref": "#/definitions/Realtime_responses.ErrorResponse"
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "$ref": "#/definitions/Realtime_responses.ErrorResponse"
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "summary": "Delete a realtime session",
-        "tags": [
-          "Realtime API"
-        ]
-      },
-      "get": {
-        "description": "Retrieves a specific session by ID. Users can only access their own sessions.",
-        "parameters": [
-          {
-            "description": "Session ID",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "type": "string"
-          }
-        ],
-        "produces": [
-          "application/json"
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "$ref": "#/definitions/Realtime_sessionres.SessionResponse"
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "schema": {
-              "$ref": "#/definitions/Realtime_responses.ErrorResponse"
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "schema": {
-              "$ref": "#/definitions/Realtime_responses.ErrorResponse"
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "$ref": "#/definitions/Realtime_responses.ErrorResponse"
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "summary": "Get a realtime session",
-        "tags": [
-          "Realtime API"
-        ]
-      }
-    },
     "/v1/shares": {
       "get": {
         "description": "Lists all shares (active and revoked) for the authenticated user across all conversations",
@@ -10080,10 +9816,6 @@
     {
       "description": "Model Context Protocol tools",
       "name": "MCP Tools"
-    },
-    {
-      "description": "Realtime API for audio/video communication via LiveKit",
-      "name": "Realtime API"
     }
   ]
 }
