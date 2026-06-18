@@ -99,11 +99,6 @@ type Config struct {
 	PromptOrchestrationEnableTemplates bool `env:"PROMPT_ORCHESTRATION_TEMPLATES" envDefault:"false"`
 	PromptOrchestrationEnableTools     bool `env:"PROMPT_ORCHESTRATION_TOOLS" envDefault:"false"`
 
-	// Memory integration
-	MemoryEnabled bool          `env:"MEMORY_ENABLED" envDefault:"false"`
-	MemoryBaseURL string        `env:"MEMORY_BASE_URL" envDefault:"http://memory-tools:8090"`
-	MemoryTimeout time.Duration `env:"MEMORY_TIMEOUT" envDefault:"5s"`
-
 	// Conversation Sharing
 	ConversationSharingEnabled bool `env:"CONVERSATION_SHARING_ENABLED" envDefault:"false"`
 

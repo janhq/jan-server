@@ -125,18 +125,6 @@ func main() {
 		EnableFileSearch:      cfg.EnableFileSearch,
 	})
 
-	// Initialize memory MCP
-	var memoryMCP *mcp.MemoryMCP
-	switch {
-	case !cfg.EnableMemoryRetrieve:
-		log.Warn().Msg("memory_retrieve MCP tool disabled via config")
-	case cfg.MemoryToolsURL != "":
-		memoryMCP = mcp.NewMemoryMCP(cfg.MemoryToolsURL, cfg.EnableMemoryRetrieve)
-		log.Info().Str("url", cfg.MemoryToolsURL).Msg("Memory tools integration enabled")
-	default:
-		log.Warn().Msg("Memory tools URL not configured, memory_retrieve tool will not be available")
-	}
-
 	// Initialize image generation MCP
 	var imageMCP *mcp.ImageGenerateMCP
 	switch {
@@ -279,7 +267,6 @@ func main() {
 		searchMCP,
 		providerMCP,
 		sandboxMCP, // SandboxFusionMCP for python_exec
-		memoryMCP,
 		imageMCP,
 		imageEditMCP,
 		unifiedSandboxMCP, // Unified sandbox provider (AIO or E2B)

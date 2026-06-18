@@ -44,10 +44,6 @@ const (
 	EventPlanCompleted    EventName = "plan_completed"
 	EventPlanStepExecuted EventName = "plan_step_executed"
 
-	// Session Events (realtime-api)
-	EventRealtimeSessionCreated EventName = "realtime_session_created"
-	EventRealtimeSessionDeleted EventName = "realtime_session_deleted"
-
 	// Media Events
 	EventMediaUploaded   EventName = "media_uploaded"
 	EventMediaDownloaded EventName = "media_downloaded"

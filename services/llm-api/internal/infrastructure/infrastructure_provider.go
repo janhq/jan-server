@@ -14,6 +14,7 @@ import (
 	"jan-server/services/llm-api/internal/application/audit"
 	"jan-server/services/llm-api/internal/config"
 	"jan-server/services/llm-api/internal/infrastructure/auth"
+	"jan-server/services/llm-api/internal/infrastructure/connector"
 	"jan-server/services/llm-api/internal/infrastructure/crontab"
 	"jan-server/services/llm-api/internal/infrastructure/database"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository"
@@ -22,9 +23,7 @@ import (
 	"jan-server/services/llm-api/internal/infrastructure/keycloak"
 	"jan-server/services/llm-api/internal/infrastructure/kong"
 	"jan-server/services/llm-api/internal/infrastructure/logger"
-	"jan-server/services/llm-api/internal/infrastructure/connector"
 	"jan-server/services/llm-api/internal/infrastructure/mediaclient"
-	memclient "jan-server/services/llm-api/internal/infrastructure/memory"
 )
 
 // ProvideConfig loads and provides the application configuration
@@ -70,21 +69,6 @@ func ProvideKeycloakValidator(cfg *config.Config, log zerolog.Logger) (*auth.Key
 		cfg.AuthClockSkew,
 		log,
 	)
-}
-
-// ProvideMemoryClient creates a memory-tools client with health check.
-func ProvideMemoryClient(cfg *config.Config, log zerolog.Logger) *memclient.Client {
-	if !cfg.MemoryEnabled {
-		return nil
-	}
-	client := memclient.NewClient(cfg.MemoryBaseURL, cfg.MemoryTimeout)
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.MemoryTimeout)
-	defer cancel()
-	if err := client.Health(ctx); err != nil {
-		log.Warn().Err(err).Msg("memory-tools health check failed, disabling memory integration")
-		return nil
-	}
-	return client
 }
 
 // ProvideDatabase provides a database connection
@@ -217,9 +201,6 @@ var InfrastructureProvider = wire.NewSet(
 	// Keycloak
 	ProvideKeycloakClient,
 	ProvideKeycloakValidator,
-
-	// Memory
-	ProvideMemoryClient,
 
 	// Crontab for model sync
 	crontab.NewCrontab,

@@ -4,7 +4,6 @@ import (
 	"github.com/google/wire"
 
 	"jan-server/services/llm-api/internal/domain/usersettings"
-	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers"
 	adminhandler "jan-server/services/llm-api/internal/interfaces/httpserver/handlers/admin"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/apikeyhandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/authhandler"
@@ -50,7 +49,6 @@ var RouteProvider = wire.NewSet(
 	authhandler.ProvideKeycloakOAuthHandler,
 	authhandler.NewRegisterHandler,
 	apikeyhandler.NewHandler,
-	handlers.ProvideMemoryHandler,
 	chathandler.NewChatHandler,
 	conversationhandler.NewConversationHandler,
 	conversationhandler.NewBranchHandler,

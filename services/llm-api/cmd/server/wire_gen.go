@@ -21,6 +21,7 @@ import (
 	"jan-server/services/llm-api/internal/domain/user"
 	"jan-server/services/llm-api/internal/domain/usersettings"
 	"jan-server/services/llm-api/internal/infrastructure"
+	"jan-server/services/llm-api/internal/infrastructure/connector"
 	"jan-server/services/llm-api/internal/infrastructure/crontab"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/apikeyrepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/conversationrepo"
@@ -34,11 +35,9 @@ import (
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/tokenusagerepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/userrepo"
 	"jan-server/services/llm-api/internal/infrastructure/database/repository/usersettingsrepo"
-	"jan-server/services/llm-api/internal/infrastructure/connector"
 	"jan-server/services/llm-api/internal/infrastructure/inference"
 	"jan-server/services/llm-api/internal/infrastructure/logger"
 	"jan-server/services/llm-api/internal/interfaces/httpserver"
-	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/admin"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/apikeyhandler"
 	"jan-server/services/llm-api/internal/interfaces/httpserver/handlers/authhandler"
@@ -127,15 +126,13 @@ func CreateApplication() (*Application, error) {
 	modelPromptTemplateRepository := modelprompttemplaterepo.NewModelPromptTemplateGormRepository(database)
 	modelprompttemplateService := modelprompttemplate.NewService(modelPromptTemplateRepository, promptTemplateRepository)
 	processorImpl := domain.ProvidePromptProcessor(processorConfig, zerologLogger, prompttemplateService, modelprompttemplateService, projectFileService)
-	memoryClient := infrastructure.ProvideMemoryClient(config, zerologLogger)
 	usersettingsRepository := usersettingsrepo.NewUserSettingsGormRepository(db)
 	usersettingsService := usersettings.NewService(usersettingsRepository, modelHandler, config)
-	memoryHandler := handlers.ProvideMemoryHandler(memoryClient, config, usersettingsService)
 	tokenUsageRepository := tokenusagerepo.NewTokenUsageGormRepository(db)
 	tokenusageService := tokenusage.NewService(tokenUsageRepository)
 	// Document service for file content injection in chat
 	documentService := document.NewDocumentService(documentContentRepository, projectFileRepository, config)
-	chatHandler := chathandler.NewChatHandler(inferenceProvider, providerHandler, conversationHandler, conversationService, projectService, processorImpl, memoryHandler, usersettingsService, tokenusageService, documentService)
+	chatHandler := chathandler.NewChatHandler(inferenceProvider, providerHandler, conversationHandler, conversationService, projectService, processorImpl, usersettingsService, tokenusageService, documentService)
 	chatCompletionRoute := chat.NewChatCompletionRoute(chatHandler, authHandler)
 	chatRoute := chat.NewChatRoute(chatCompletionRoute)
 	zImageService := inference.NewZImageService(config)

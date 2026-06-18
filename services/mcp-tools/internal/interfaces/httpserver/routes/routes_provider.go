@@ -19,7 +19,6 @@ var RoutesProvider = wire.NewSet(
 	mcp.NewSearchMCP,
 	mcp.NewProviderMCP,
 	ProvideSandboxFusionMCP,
-	ProvideMemoryMCP,
 	ProvideImageGenerateMCP,
 	ProvideImageEditMCP,
 	ProvideE2BClient, // Shared E2B client (used by both Provider and Manager)
@@ -56,18 +55,6 @@ func ProvideSandboxFusionMCP(
 		return nil
 	}
 	return mcp.NewSandboxFusionMCP(client, cfg.SandboxFusionRequireApproval, cfg.EnablePythonExec)
-}
-
-// ProvideMemoryMCP creates a MemoryMCP if configured
-func ProvideMemoryMCP(cfg *config.Config) *mcp.MemoryMCP {
-	if !cfg.EnableMemoryRetrieve {
-		log.Warn().Msg("memory_retrieve MCP tool disabled via config")
-		return nil
-	}
-	if cfg.MemoryToolsURL == "" {
-		return nil
-	}
-	return mcp.NewMemoryMCP(cfg.MemoryToolsURL, cfg.EnableMemoryRetrieve)
 }
 
 // ProvideImageGenerateMCP creates an ImageGenerateMCP if configured
@@ -283,7 +270,6 @@ func ProvideMCPRoute(
 	searchMCP *mcp.SearchMCP,
 	providerMCP *mcp.ProviderMCP,
 	sandboxFusionMCP *mcp.SandboxFusionMCP,
-	memoryMCP *mcp.MemoryMCP,
 	imageMCP *mcp.ImageGenerateMCP,
 	imageEditMCP *mcp.ImageEditMCP,
 	sandboxMCP *mcp.SandboxMCP,
@@ -305,15 +291,14 @@ func ProvideMCPRoute(
 		searchMCP,
 		providerMCP,
 		sandboxFusionMCP,
-		memoryMCP,
 		imageMCP,
 		imageEditMCP,
 		sandboxMCP,
 		sandboxManagement,
 		agentProxyMCP,
-		githubMCP, 
-		gmailMCP, 
-		driveMCP, 
+		githubMCP,
+		gmailMCP,
+		driveMCP,
 		calendarMCP,
 		llmClient,
 		toolConfigCache,

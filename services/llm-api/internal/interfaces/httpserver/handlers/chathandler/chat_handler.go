@@ -23,7 +23,6 @@ import (
 	"jan-server/services/llm-api/internal/domain/tokenusage"
 	"jan-server/services/llm-api/internal/domain/usersettings"
 	"jan-server/services/llm-api/internal/infrastructure/inference"
-	memclient "jan-server/services/llm-api/internal/infrastructure/memory"
 	"jan-server/services/llm-api/internal/infrastructure/metrics"
 	"jan-server/services/llm-api/internal/infrastructure/observability"
 	conversationHandler "jan-server/services/llm-api/internal/interfaces/httpserver/handlers/conversationhandler"
@@ -55,7 +54,6 @@ type ChatHandler struct {
 	conversationService *conversation.ConversationService
 	projectService      *project.ProjectService
 	promptProcessor     *prompt.ProcessorImpl
-	memoryHandler       *MemoryHandler
 	userSettingsService *usersettings.Service
 	tokenUsageService   *tokenusage.Service
 	documentService     *document.DocumentService
@@ -69,7 +67,6 @@ func NewChatHandler(
 	conversationService *conversation.ConversationService,
 	projectService *project.ProjectService,
 	promptProcessor *prompt.ProcessorImpl,
-	memoryHandler *MemoryHandler,
 	userSettingsService *usersettings.Service,
 	tokenUsageService *tokenusage.Service,
 	documentService *document.DocumentService,
@@ -81,7 +78,6 @@ func NewChatHandler(
 		conversationService: conversationService,
 		projectService:      projectService,
 		promptProcessor:     promptProcessor,
-		memoryHandler:       memoryHandler,
 		userSettingsService: userSettingsService,
 		tokenUsageService:   tokenUsageService,
 		documentService:     documentService,
@@ -172,20 +168,11 @@ func (h *ChatHandler) CreateChatCompletion(
 	if !skipPromptCustomization {
 		loadedMemory = h.collectPromptMemory(conv, reqCtx)
 
-		// Load user settings once for prompt orchestration and memory (best-effort)
+		// Load user settings once for prompt orchestration (best-effort)
 		if h.userSettingsService != nil {
 			userSettings, err = h.userSettingsService.GetOrCreateSettings(ctx, userID)
 			if err != nil {
 				userSettings = nil
-			}
-		}
-
-		// Load memory using memory_handler (respects MEMORY_ENABLED and user settings)
-		// Memory injection is controlled by PROMPT_ORCHESTRATION_MEMORY in the prompt processor
-		if h.memoryHandler != nil && conversationID != "" {
-			memoryContext, memErr := h.memoryHandler.LoadMemoryContext(ctx, userID, conversationID, conv, newMessages, userSettings)
-			if memErr == nil && len(memoryContext) > 0 {
-				loadedMemory = append(loadedMemory, memoryContext...)
 			}
 		}
 	}
@@ -530,15 +517,6 @@ func (h *ChatHandler) CreateChatCompletion(
 			observability.AddSpanAttributes(ctx,
 				attribute.Bool("completion.stored", true),
 			)
-
-			// Observe conversation for memory extraction using memory_handler
-			if h.memoryHandler != nil && response != nil && len(response.Choices) > 0 {
-				finishReason := response.Choices[0].FinishReason
-				observability.AddSpanEvent(ctx, "observing_for_memory",
-					attribute.String("finish_reason", string(finishReason)),
-				)
-				go h.memoryHandler.ObserveConversation(conv, userID, newMessages, response, finishReason)
-			}
 		}
 	}
 
@@ -790,75 +768,6 @@ func (h *ChatHandler) recentConversationMemory(conv *conversation.Conversation) 
 	}
 
 	return memories
-}
-
-func formatMemoryForPromptCtx(resp *memclient.LoadResponse) []string {
-	if resp == nil {
-		return nil
-	}
-	memory := make([]string, 0, len(resp.CoreMemory)+len(resp.SemanticMemory)+len(resp.EpisodicMemory))
-	for _, item := range resp.CoreMemory {
-		if strings.TrimSpace(item.Text) != "" {
-			memory = append(memory, fmt.Sprintf("User memory: %s", item.Text))
-		}
-	}
-	for _, fact := range resp.SemanticMemory {
-		if strings.TrimSpace(fact.Text) != "" {
-			if strings.TrimSpace(fact.Title) != "" {
-				memory = append(memory, fmt.Sprintf("Project fact - %s: %s", fact.Title, fact.Text))
-			} else {
-				memory = append(memory, fmt.Sprintf("Project fact: %s", fact.Text))
-			}
-		}
-	}
-	for _, event := range resp.EpisodicMemory {
-		if strings.TrimSpace(event.Text) != "" {
-			memory = append(memory, fmt.Sprintf("Recent event: %s", event.Text))
-		}
-	}
-	return memory
-}
-
-// formatAndFilterMemory formats memory response and filters based on user settings
-func (h *ChatHandler) formatAndFilterMemory(resp *memclient.LoadResponse, settings *usersettings.UserSettings) []string {
-	if resp == nil {
-		return nil
-	}
-
-	memory := make([]string, 0)
-
-	// Add core memory (user preferences) if enabled
-	if settings.MemoryConfig.InjectUserCore {
-		for _, item := range resp.CoreMemory {
-			if strings.TrimSpace(item.Text) != "" {
-				memory = append(memory, fmt.Sprintf("User memory: %s", item.Text))
-			}
-		}
-	}
-
-	// Add semantic memory (project facts) if enabled
-	if settings.MemoryConfig.InjectSemantic {
-		for _, fact := range resp.SemanticMemory {
-			if strings.TrimSpace(fact.Text) != "" {
-				if strings.TrimSpace(fact.Title) != "" {
-					memory = append(memory, fmt.Sprintf("Project fact - %s: %s", fact.Title, fact.Text))
-				} else {
-					memory = append(memory, fmt.Sprintf("Project fact: %s", fact.Text))
-				}
-			}
-		}
-	}
-
-	// Add episodic memory (conversation history) if enabled
-	if settings.MemoryConfig.InjectEpisodic {
-		for _, event := range resp.EpisodicMemory {
-			if strings.TrimSpace(event.Text) != "" {
-				memory = append(memory, fmt.Sprintf("Recent event: %s", event.Text))
-			}
-		}
-	}
-
-	return memory
 }
 
 func firstTextFromItem(item conversation.Item) string {
