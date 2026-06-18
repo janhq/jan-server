@@ -188,7 +188,7 @@ export const formatFileSize = (bytes: number): string => {
 };
 
 export const getArtifactIcon = (contentType: string, mimeType: string) => {
-  if (contentType === "slides" || mimeType.includes("presentation")) {
+  if (mimeType.includes("presentation")) {
     return PresentationIcon;
   }
   if (contentType === "document" || mimeType.includes("document") || mimeType.includes("pdf")) {

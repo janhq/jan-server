@@ -3,20 +3,14 @@ import { persist, createJSONStorage } from "zustand/middleware";
 
 type SidebarVariant = "sidebar" | "floating";
 
-export type SlideImage = {
-  id: string;
-  thumb: string;
-};
-
 export type ArtifactItem = {
   id: string;
   filename: string;
-  contentType: string; // e.g., "slides", "document", "research"
-  mimeType: string; // e.g., "application/vnd.openxmlformats-officedocument.presentationml.presentation", "text/markdown"
+  contentType: string; // e.g., "document", "research"
+  mimeType: string; // e.g., "text/markdown", "application/octet-stream"
   size: number;
   downloadUrl: string;
   createdAt?: string;
-  slidesImages?: SlideImage[];
   content?: string; // markdown content for research artifacts
 };
 

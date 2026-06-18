@@ -1,10 +1,9 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useArtifactGalleryStore } from "@/stores/artifact-gallery-store";
 import { artifactService } from "@/services/artifact-service";
 import { ArtifactCard } from "./artifact-card";
 import { ArtifactFilterTabs } from "./artifact-filter-tabs";
 import { ArtifactCategoryPicker } from "./artifact-category-picker";
-import { SlideViewer } from "@/components/misc/slide-viewer";
 import { MdViewer } from "@/components/misc/md-viewer";
 import { HtmlViewer } from "@/components/misc/html-viewer";
 import { ImageViewer } from "@/components/misc/image-viewer";
@@ -47,17 +46,6 @@ export function ArtifactGallery() {
       fetchArtifacts();
     }
   }, [debouncedSearch, searchQuery, setSearchQuery, fetchArtifacts]);
-
-  // Parse slide images from artifact metadata if available
-  const getSlideImages = useCallback(() => {
-    if (!selectedArtifact?.metadata) return [];
-    const metadata = selectedArtifact.metadata as Record<string, unknown>;
-    const slidesImages = metadata.slides_images as Array<{ id: string; url: string; thumb: string }> | undefined;
-    return slidesImages?.map((img) => ({
-      id: img.id,
-      thumb: img.thumb || img.url,
-    })) || [];
-  }, [selectedArtifact]);
 
   return (
     <div className="h-full flex flex-col">
@@ -106,7 +94,7 @@ export function ArtifactGallery() {
             </div>
             <h3 className="text-lg font-medium mb-2">No artifacts yet</h3>
             <p className="text-muted-foreground mb-4 max-w-sm">
-              Create your first artifact by starting a new conversation and asking for slides, documents, or other content.
+              Create your first artifact by starting a new conversation and asking for documents or other content.
             </p>
             <Button onClick={openCategoryPicker} className="gap-1.5">
               <Plus className="size-4" />
@@ -140,16 +128,6 @@ export function ArtifactGallery() {
       />
 
       {/* Viewer Modals */}
-      {isViewerOpen && selectedArtifact && selectedArtifact.content_type === "slides" && (
-        <SlideViewer
-          slides={getSlideImages()}
-          title={selectedArtifact.title}
-          onDownload={() => artifactService.download(selectedArtifact.id, selectedArtifact.title)}
-          conversationId={selectedArtifact.conversation_id}
-          onClose={closeViewer}
-        />
-      )}
-
       {isViewerOpen && selectedArtifact && (
         selectedArtifact.content_type === "research" ||
         selectedArtifact.content_type === "markdown" ||

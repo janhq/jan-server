@@ -36,12 +36,10 @@ type Config struct {
 	AuthJWKSURL string `env:"AUTH_JWKS_URL"`
 
 	// External Services
-	LLMAPIURL            string `env:"RESPONSE_LLM_API_URL" envDefault:"http://localhost:8080"`
-	MCPToolsURL          string `env:"RESPONSE_MCP_TOOLS_URL" envDefault:"http://localhost:8091"`
-	MediaAPIURL          string `env:"RESPONSE_MEDIA_API_URL" envDefault:"http://media-api:8285"`
-	AIOURL               string `env:"AIO_URL" envDefault:""`
-	SlideRendererScript  string `env:"SLIDE_RENDERER_SCRIPT" envDefault:""`
-	SlideRendererEnabled bool   `env:"SLIDE_RENDERER_ENABLED" envDefault:"true"`
+	LLMAPIURL   string `env:"RESPONSE_LLM_API_URL" envDefault:"http://localhost:8080"`
+	MCPToolsURL string `env:"RESPONSE_MCP_TOOLS_URL" envDefault:"http://localhost:8091"`
+	MediaAPIURL string `env:"RESPONSE_MEDIA_API_URL" envDefault:"http://media-api:8285"`
+	AIOURL      string `env:"AIO_URL" envDefault:""`
 
 	// Tool Execution
 	MaxToolDepth  int           `env:"RESPONSE_MAX_TOOL_DEPTH" envDefault:"50"`
@@ -58,7 +56,6 @@ type Config struct {
 	SkillMaxFileSize         int64         `env:"SKILL_MAX_FILE_SIZE" envDefault:"52428800"` // 50MB
 	SkillMaxCodeFixRetries   int           `env:"SKILL_MAX_CODE_FIX_RETRIES" envDefault:"3"`
 	SkillMaxInstallRetries   int           `env:"SKILL_MAX_INSTALL_RETRIES" envDefault:"3"`
-	SkillSlidesEnabled       bool          `env:"SKILL_SLIDES_ENABLED" envDefault:"true"`
 	SkillDocsEnabled         bool          `env:"SKILL_DOCS_ENABLED" envDefault:"true"`
 	SkillPDFsEnabled         bool          `env:"SKILL_PDFS_ENABLED" envDefault:"true"`
 	SkillSpreadsheetsEnabled bool          `env:"SKILL_SPREADSHEETS_ENABLED" envDefault:"true"`

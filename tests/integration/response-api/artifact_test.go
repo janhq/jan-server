@@ -108,7 +108,7 @@ func TestArtifactAPI_Versioning(t *testing.T) {
 func TestArtifactAPI_ContentTypes(t *testing.T) {
 	skipIfNoAPI(t)
 
-	contentTypes := []string{"slides", "document", "image", "code", "data"}
+	contentTypes := []string{"document", "image", "code", "data"}
 
 	for _, contentType := range contentTypes {
 		t.Run(contentType, func(t *testing.T) {

@@ -87,7 +87,7 @@ function AgentModeHero({ phrase }: { phrase: string }) {
         transition={{ duration: 0.5, delay: 0.2 }}
         className="text-sm text-muted-foreground mt-2"
       >
-        I can browse, search, code, and create slides for you
+        I can browse, search, and code for you
       </motion.p>
     </div>
   );

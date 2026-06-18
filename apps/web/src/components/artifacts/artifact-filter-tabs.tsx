@@ -3,7 +3,6 @@ import { cn } from "@/lib/utils";
 
 const CONTENT_TYPE_FILTERS: Array<{ value: ContentTypeFilter; label: string }> = [
   { value: "all", label: "All" },
-  { value: "slides", label: "Presentations" },
   { value: "document", label: "Documents" },
   { value: "research", label: "Research" },
   { value: "code", label: "Code" },

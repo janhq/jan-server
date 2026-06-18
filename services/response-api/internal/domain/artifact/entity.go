@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Artifact represents a generated content item (slides, documents, code, etc.).
+// Artifact represents a generated content item (documents, code, etc.).
 type Artifact struct {
 	ID              string          `json:"id"`
 	ResponseID      string          `json:"response_id"`
@@ -32,7 +32,6 @@ type Artifact struct {
 type ContentType string
 
 const (
-	ContentTypeSlides   ContentType = "slides"   // Slide deck (PPTX, Google Slides, etc.)
 	ContentTypeDocument ContentType = "document" // Document (DOCX, PDF, Markdown)
 	ContentTypeCode     ContentType = "code"     // Source code
 	ContentTypeImage    ContentType = "image"    // Generated image
@@ -52,8 +51,6 @@ func (c ContentType) String() string {
 // MimeTypeFor returns the default MIME type for the content type.
 func (c ContentType) MimeTypeFor() string {
 	switch c {
-	case ContentTypeSlides:
-		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 	case ContentTypeDocument:
 		return "application/pdf"
 	case ContentTypeCode:
@@ -106,15 +103,6 @@ type ArtifactMetadata struct {
 	ToolUsed    *string  `json:"tool_used,omitempty"`
 	ModelUsed   *string  `json:"model_used,omitempty"`
 	Checksum    *string  `json:"checksum,omitempty"` // SHA256
-}
-
-// SlidesMetadata contains metadata specific to slide artifacts.
-type SlidesMetadata struct {
-	ArtifactMetadata
-	SlideCount      int     `json:"slide_count"`
-	Theme           *string `json:"theme,omitempty"`
-	AspectRatio     *string `json:"aspect_ratio,omitempty"` // "16:9", "4:3"
-	HasSpeakerNotes bool    `json:"has_speaker_notes"`
 }
 
 // ResearchMetadata contains metadata specific to research artifacts.

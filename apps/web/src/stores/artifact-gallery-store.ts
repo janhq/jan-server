@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { artifactService, type ArtifactResponse } from "@/services/artifact-service";
 
-export type ContentTypeFilter = "all" | "slides" | "document" | "research" | "code" | "image" | "markdown" | "html";
+export type ContentTypeFilter = "all" | "document" | "research" | "code" | "image" | "markdown" | "html";
 
 interface ArtifactGalleryState {
   // Data
@@ -148,7 +148,7 @@ export const useArtifactGalleryStore = create<ArtifactGalleryState>((set, get) =
       // Fetch full artifact with content
       const fullArtifact = await artifactService.getById(artifact.id);
 
-      // Only fetch content as text for text-based types (not images/slides/PDFs)
+      // Only fetch content as text for text-based types (not images/PDFs)
       const isTextType = ["research", "markdown", "html", "code"].includes(fullArtifact.content_type) ||
         (fullArtifact.content_type === "document" && fullArtifact.mime_type?.startsWith("text/"));
 

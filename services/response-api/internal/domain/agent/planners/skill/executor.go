@@ -513,7 +513,7 @@ func (e *Executor) extractContentFromPreviousOutput(output json.RawMessage) inte
 }
 
 // findContentInAccumulatedOutputs searches through accumulated outputs from previous tasks
-// to find content suitable for skill execution (e.g., JSON slides data from LLM generation)
+// to find content suitable for skill execution (e.g., JSON structured data from LLM generation)
 func (e *Executor) findContentInAccumulatedOutputs(outputs []json.RawMessage, skillType domainskill.SkillType) interface{} {
 	// Search backwards through accumulated outputs to find the most recent valid content
 	for i := len(outputs) - 1; i >= 0; i-- {
@@ -586,22 +586,15 @@ func (e *Executor) extractAndValidateContent(content interface{}, skillType doma
 
 // isValidSkillContentValue checks if the already-parsed content is valid for the given skill type.
 func (e *Executor) isValidSkillContentValue(content interface{}, skillType domainskill.SkillType) bool {
-	// Handle array content (slides are typically an array)
+	// Handle array content
 	if arr, ok := content.([]interface{}); ok {
 		if len(arr) > 0 {
-			// Check if first element looks like a slide
-			if slide, ok := arr[0].(map[string]interface{}); ok {
-				if _, hasTitle := slide["slide_title"]; hasTitle {
-					return true
-				}
-				if _, hasContent := slide["content"]; hasContent {
+			// Check if first element looks like a structured item
+			if item, ok := arr[0].(map[string]interface{}); ok {
+				if _, hasContent := item["content"]; hasContent {
 					return true
 				}
 			}
-		}
-		// For slides, an array is valid
-		if skillType == domainskill.SkillTypeSlides && len(arr) > 0 {
-			return true
 		}
 	}
 
@@ -612,14 +605,6 @@ func (e *Executor) isValidSkillContentValue(content interface{}, skillType domai
 	}
 
 	switch skillType {
-	case domainskill.SkillTypeSlides:
-		// For slides, look for "slides" array or presentation structure
-		if _, hasSlides := contentMap["slides"]; hasSlides {
-			return true
-		}
-		if _, hasSlideTitle := contentMap["slide_title"]; hasSlideTitle {
-			return true
-		}
 	case domainskill.SkillTypeDocs:
 		if _, hasSections := contentMap["sections"]; hasSections {
 			return true
@@ -658,8 +643,6 @@ func (e *Executor) resolveOutputPath(params executeParams) string {
 
 func (e *Executor) getFileExtension(skillType domainskill.SkillType) string {
 	switch skillType {
-	case domainskill.SkillTypeSlides:
-		return ".pptx"
 	case domainskill.SkillTypeDocs:
 		return ".docx"
 	case domainskill.SkillTypePDFs:
@@ -679,8 +662,6 @@ func (e *Executor) getFileName(params executeParams) string {
 
 func (e *Executor) getMimeType(skillType domainskill.SkillType) string {
 	switch skillType {
-	case domainskill.SkillTypeSlides:
-		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 	case domainskill.SkillTypeDocs:
 		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 	case domainskill.SkillTypePDFs:
