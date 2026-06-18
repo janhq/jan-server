@@ -41,7 +41,6 @@ This directory contains configuration system implementation details:
 | [precedence.md](precedence.md)               | Configuration precedence rules and loading order |
 | [env-var-mapping.md](env-var-mapping.md)     | Environment variable to config mapping           |
 | [docker-compose.md](docker-compose.md)       | Docker Compose integration                       |
-| [kubernetes.md](kubernetes.md)               | Kubernetes Helm values generation                |
 | [service-migration.md](service-migration.md) | Migrating services to new config system          |
 
 **For user-facing documentation:**

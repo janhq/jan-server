@@ -12,14 +12,11 @@
 #   make quickstart              - Interactive setup and run (core: infra + API + MCP web search + web app)
 #   make setup                   - Initial project setup (dependencies, networks, .env)
 #   make cli-install             - Install jan-cli tool globally
-#   make build-all               - Build all Docker images (including platform & web)
+#   make build-all               - Build all Docker images (including web app)
 #   make up-full                 - Start services based on COMPOSE_PROFILES in .env
-#   make up-platform             - Start platform web app (http://localhost:3000)
 #   make up-web                  - Start web chat app (http://localhost:3001)
 #   make dev-full                - Start all services with host.docker.internal support (for testing)
-#   make swagger                 - Generate swagger docs and sync to platform
-#   make sync-docs               - Sync /docs to apps/platform/content/docs
-#   make sync-swagger            - Sync swagger files to apps/platform/api
+#   make swagger                 - Generate swagger docs
 #   make health-check            - Check if all services are healthy
 #   make test-all                - Run all integration tests
 #   make stop                    - Stop all services (keeps containers & volumes)
@@ -62,14 +59,6 @@ export DOCKER_BUILDKIT COMPOSE_DOCKER_CLI_BUILD
 MEDIA_SERVICE_KEY ?= changeme-media-key
 MEDIA_API_KEY ?= changeme-media-key
 
-EMBED_TEST_URL = $(if $(strip $(EMBEDDING_SERVICE_URL)),$(strip $(EMBEDDING_SERVICE_URL)),http://localhost:8091)
-EMBED_TEST_PROFILES = --profile infra --profile memory
-EMBED_TEST_SERVICES = api-db memory-tools
-ifeq ($(strip $(EMBEDDING_SERVICE_URL)),)
-EMBED_TEST_PROFILES += --profile memory-mock
-EMBED_TEST_SERVICES += bge-m3
-endif
-
 # ============================================================================================================
 # SECTION 1: SETUP & ENVIRONMENT
 # ============================================================================================================
@@ -79,9 +68,9 @@ endif
 setup-and-run quickstart:
 	@echo "Starting interactive setup and run..."
 ifeq ($(OS),Windows_NT)
-	@powershell -ExecutionPolicy Bypass -File tools/jan-cli.ps1 setup-and-run --skip-realtime --skip-memory
+	@powershell -ExecutionPolicy Bypass -File tools/jan-cli.ps1 setup-and-run
 else
-	@bash tools/jan-cli.sh setup-and-run --skip-realtime --skip-memory
+	@bash tools/jan-cli.sh setup-and-run
 endif
 
 setup:
@@ -109,15 +98,11 @@ install-deps:
 # SECTION 3: BUILD TARGETS
 # ============================================================================================================
 
-.PHONY: build build-api build-mcp build-memory build-realtime build-all clean-build build-llm-api build-media-api build-response-api build-realtime-api build-memory-tools build-platform-docker build-web-docker
+.PHONY: build build-api build-mcp build-all clean-build build-llm-api build-media-api build-response-api build-web-docker
 
-build: build-api build-mcp build-memory
+build: build-api build-mcp
 
 build-api: build-llm-api build-media-api build-response-api
-
-build-realtime: build-realtime-api
-
-build-memory: build-memory-tools
 
 build-llm-api:
 	@echo "Building LLM API..."
@@ -146,42 +131,19 @@ else
 endif
 	@echo " Response API built: services/response-api/bin/response-api"
 
-build-realtime-api:
-	@echo "Building Realtime API..."
-ifeq ($(OS),Windows_NT)
-	@cd services/realtime-api && go build -o bin/realtime-api.exe ./cmd/server
-else
-	@cd services/realtime-api && go build -o bin/realtime-api ./cmd/server
-endif
-	@echo " Realtime API built: services/realtime-api/bin/realtime-api"
-
 build-mcp:
 	@echo "Building MCP Tools..."
 ifeq ($(OS),Windows_NT)
-	@cd services/mcp-tools && go build -o bin/mcp-tools.exe .
+	@cd services/mcp-tools && go build -o bin/mcp-tools.exe ./cmd/server
 else
-	@cd services/mcp-tools && go build -o bin/mcp-tools .
+	@cd services/mcp-tools && go build -o bin/mcp-tools ./cmd/server
 endif
 	@echo " MCP Tools built: services/mcp-tools/bin/mcp-tools"
 
-build-memory-tools:
-	@echo "Building Memory Tools..."
-ifeq ($(OS),Windows_NT)
-	@cd services/memory-tools && go build -o bin/memory-tools.exe ./cmd/server
-else
-	@cd services/memory-tools && go build -o bin/memory-tools ./cmd/server
-endif
-	@echo " Memory Tools built: services/memory-tools/bin/memory-tools"
-
 build-all:
 	@echo "Building all Docker images..."
-	$(COMPOSE) --profile full --profile platform --profile web build
+	$(COMPOSE) --profile full --profile web build
 	@echo " All services built"
-
-build-platform-docker:
-	@echo "Building Platform Docker image..."
-	$(COMPOSE) --profile platform build platform
-	@echo " Platform image built"
 
 build-web-docker:
 	@echo "Building Web Docker image..."
@@ -244,41 +206,16 @@ cli-clean:
 
 # --- Swagger Documentation ---
 
-.PHONY: swagger swagger-llm-api swagger-media-api swagger-mcp-tools swagger-response-api swagger-realtime-api swagger-combine swagger-install sync-docs sync-swagger
+.PHONY: swagger swagger-llm-api swagger-media-api swagger-mcp-tools swagger-response-api swagger-combine swagger-install
 
-swagger: cli-build sync-swagger
+swagger: cli-build
 	@echo "Generating Swagger documentation for all services..."
 ifeq ($(OS),Windows_NT)
 	@powershell -ExecutionPolicy Bypass -File tools/jan-cli.ps1 swagger generate --combine
-	@echo "Syncing swagger to platform..."
-	@copy /Y "services\llm-api\docs\swagger\swagger-combined.json" "apps\platform\api\server.json" >nul 2>&1 || echo "swagger-combined.json not found"
-	@copy /Y "services\llm-api\docs\swagger\swagger.yaml" "apps\platform\api\server.yaml" >nul 2>&1 || echo "swagger.yaml not found"
 else
 	@bash tools/jan-cli.sh swagger generate --combine
-	@echo "Syncing swagger to platform..."
-	@cp -f services/llm-api/docs/swagger/swagger-combined.json apps/platform/api/server.json 2>/dev/null || echo "swagger-combined.json not found"
-	@cp -f services/llm-api/docs/swagger/swagger.yaml apps/platform/api/server.yaml 2>/dev/null || echo "swagger.yaml not found"
 endif
-	@echo " Swagger synced to apps/platform/api/"
-
-sync-swagger:
-	@echo "Syncing swagger files to platform..."
-ifeq ($(OS),Windows_NT)
-	@if exist "services\llm-api\docs\swagger\swagger-combined.json" copy /Y "services\llm-api\docs\swagger\swagger-combined.json" "apps\platform\api\server.json" >nul
-	@if exist "services\llm-api\docs\swagger\swagger.yaml" copy /Y "services\llm-api\docs\swagger\swagger.yaml" "apps\platform\api\server.yaml" >nul
-else
-	@cp -f services/llm-api/docs/swagger/swagger-combined.json apps/platform/api/server.json 2>/dev/null || true
-	@cp -f services/llm-api/docs/swagger/swagger.yaml apps/platform/api/server.yaml 2>/dev/null || true
-endif
-	@echo " Swagger synced to apps/platform/api/"
-
-sync-docs: cli-build
-	@echo "Syncing docs to platform content..."
-ifeq ($(OS),Windows_NT)
-	@cd tools/jan-cli && jan-cli.exe docs sync
-else
-	@cd tools/jan-cli && ./jan-cli docs sync
-endif
+	@echo " Swagger documentation generated"
 
 swagger-llm-api:
 	@echo "Generating Swagger for llm-api service..."
@@ -316,17 +253,8 @@ else
 endif
 	@echo " response-api swagger generated at services/response-api/docs/swagger"
 
-swagger-realtime-api: cli-build
-	@echo "Generating Swagger for realtime-api service..."
-ifeq ($(OS),Windows_NT)
-	@powershell -ExecutionPolicy Bypass -File tools/jan-cli.ps1 swagger generate -s realtime-api
-else
-	@bash tools/jan-cli.sh swagger generate -s realtime-api
-endif
-	@echo " realtime-api swagger generated at services/realtime-api/docs/swagger"
-
 swagger-combine: cli-build
-	@echo \"Merging LLM API, MCP Tools, and Realtime API swagger specs...\"
+	@echo \"Merging LLM API and MCP Tools swagger specs...\"
 ifeq ($(OS),Windows_NT)
 	@powershell -ExecutionPolicy Bypass -File tools/jan-cli.ps1 swagger combine
 else
@@ -420,7 +348,6 @@ up-mcp:
 	@echo "Services:"
 	@echo "  - MCP Tools:      http://localhost:8091"
 	@echo "  - SearXNG:        http://localhost:8086"
-	@echo "  - Vector Store:   http://localhost:3015"
 	@echo "  - SandboxFusion:  http://localhost:3010"
 	@echo ""
 	@echo "Test MCP tools:"
@@ -503,36 +430,6 @@ down-vllm:
 logs-vllm:
 	$(COMPOSE) --profile gpu --profile cpu logs -f
 
-# --- Platform Web Application ---
-
-.PHONY: up-platform down-platform restart-platform logs-platform build-platform
-
-up-platform:
-	@echo "Starting Platform web application..."
-	@echo "Note: Platform requires infra services (Kong, Keycloak) to be running."
-	@echo "Starting infra + platform..."
-	$(COMPOSE) --profile infra --profile platform up -d
-	@echo " Platform started"
-	@echo ""
-	@echo "Services:"
-	@echo "  - Platform:  http://localhost:3000"
-	@echo "  - Kong:      http://localhost:8000"
-	@echo "  - Keycloak:  http://localhost:8085"
-
-down-platform:
-	$(COMPOSE) --profile platform down
-
-restart-platform:
-	$(COMPOSE) --profile platform restart
-
-logs-platform:
-	$(COMPOSE) --profile platform logs -f platform
-
-build-platform:
-	@echo "Building Platform Docker image..."
-	$(COMPOSE) --profile platform build platform
-	@echo " Platform image built"
-
 # --- Web Application ---
 
 .PHONY: up-web down-web restart-web logs-web build-web
@@ -583,12 +480,8 @@ up-full: ## Start full stack (all services in Docker)
 	@echo "  - MCP Tools:  http://localhost:8091 (web search)"
 	@echo ""
 	@echo "Optional Services (add to COMPOSE_PROFILES in .env):"
-	@echo "  - Platform:       http://localhost:3000 (profile: platform)"
 	@echo "  - Web App:        http://localhost:3001 (profile: web)"
 	@echo "  - Code Sandbox:   (profile: sandbox - for code execution)"
-	@echo "  - Vector Store:   http://localhost:3015 (profile: vector)"
-	@echo "  - Memory Tools:   http://localhost:8090 (profile: memory)"
-	@echo "  - Realtime API:   http://localhost:8186 (profile: realtime)"
 	@echo "  - vLLM:           http://localhost:8101 (profile: full)"
 	@echo ""
 	@echo "To enable optional services, edit COMPOSE_PROFILES in .env"
@@ -737,9 +630,9 @@ GATEWAY_URL ?= http://localhost:8000
 TIMEOUT_MS ?= 30000
 COLLECTIONS_DIR := tests/e2e/automation/collections
 AUTH_MODE ?= guest
-# Exclude memory.postman.json (no memory service), model-prompt-templates.postman.json (API not implemented),
+# Exclude model-prompt-templates.postman.json (API not implemented),
 # and user-management.postman.json (requires manual admin token setup)
-COLLECTION_FILES := $(filter-out $(COLLECTIONS_DIR)/memory.postman.json $(COLLECTIONS_DIR)/model-prompt-templates.postman.json $(COLLECTIONS_DIR)/user-management.postman.json,$(wildcard $(COLLECTIONS_DIR)/*.postman.json))
+COLLECTION_FILES := $(filter-out $(COLLECTIONS_DIR)/model-prompt-templates.postman.json $(COLLECTIONS_DIR)/user-management.postman.json,$(wildcard $(COLLECTIONS_DIR)/*.postman.json))
 
 # Base flags without auth (for targets that need custom auth)
 API_TEST_BASE_FLAGS := --env-file tests/e2e/.env \
@@ -804,9 +697,6 @@ test-image:
 test-messages:
 	$(API_TEST) $(COLLECTIONS_DIR)/messages.postman.json $(API_TEST_FLAGS) --timeout-request 120000
 
-test-memory:
-	$(API_TEST) $(COLLECTIONS_DIR)/memory.postman.json $(API_TEST_FLAGS)
-
 test-dev:
 	$(API_TEST) $(COLLECTION_FILES) $(API_TEST_FLAGS) --bail
 
@@ -842,7 +732,6 @@ dev-full: ## Start development full stack with host.docker.internal support
 	@echo "  - Response API:   http://localhost:8082"
 	@echo "  - MCP Tools:      http://localhost:8091"
 	@echo "  - SearXNG:        http://localhost:8086"
-	@echo "  - Vector Store:   http://localhost:3015"
 	@echo "  - SandboxFusion:  http://localhost:3010"
 	@echo ""
 	@echo "To run a service manually on host:"
@@ -899,11 +788,9 @@ ifeq ($(OS),Windows_NT)
 	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:8080/healthz -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '  LLM API:      healthy' } catch { Write-Host '  LLM API:      unhealthy' }"
 	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:8285/healthz -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '  Media API:    healthy' } catch { try { if ($$PSItem.Exception.Response.StatusCode.Value__ -eq 401) { Write-Host '  Media API:    healthy' } else { Write-Host '  Media API:    unhealthy' } } catch { Write-Host '  Media API:    unhealthy' } }"
 	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:8082/healthz -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '  Response API: healthy' } catch { Write-Host '  Response API: not running' }"
-	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:8186/healthz -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '  Realtime API: healthy' } catch { Write-Host '  Realtime API: not running' }"
 	@echo.
 	@echo [MCP Services]
 	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:8091/healthz -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '  MCP Tools:      healthy' } catch { Write-Host '  MCP Tools:      unhealthy' }"
-	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:3015/healthz -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '  Vector Store:   healthy' } catch { Write-Host '  Vector Store:   unhealthy' }"
 	@echo.
 	@echo [Optional Services - may show unhealthy if disabled]
 	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:8086 -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '  SearXNG:        healthy' } catch { Write-Host '  SearXNG:        not running' }"
@@ -924,11 +811,9 @@ else
 	@curl -sf http://localhost:8080/healthz >/dev/null && echo "  LLM API:      healthy" || echo "  LLM API:      unhealthy"
 	@curl -s http://localhost:8285/healthz >/dev/null && echo "  Media API:    healthy" || (curl -s -w "%{http_code}" -o /dev/null http://localhost:8285/healthz | grep -q "401" && echo "  Media API:    healthy" || echo "  Media API:    unhealthy")
 	@curl -sf http://localhost:8082/healthz >/dev/null && echo "  Response API: healthy" || echo "  Response API: not running"
-	@curl -sf http://localhost:8186/healthz >/dev/null && echo "  Realtime API: healthy" || echo "  Realtime API: not running"
 	@echo ""
 	@echo "[MCP Services]"
 	@curl -sf http://localhost:8091/healthz >/dev/null && echo "  MCP Tools:      healthy" || echo "  MCP Tools:      unhealthy"
-	@curl -sf http://localhost:3015/healthz >/dev/null && echo "  Vector Store:   healthy" || echo "  Vector Store:   unhealthy"
 	@echo ""
 	@echo "[Optional Services - may show 'not running' if disabled]"
 	@curl -sf http://localhost:8086 >/dev/null && echo "  SearXNG:        healthy" || echo "  SearXNG:        not running"
@@ -966,12 +851,10 @@ ifeq ($(OS),Windows_NT)
 	@echo Checking MCP services...
 	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:8091/healthz -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host 'OK MCP Tools: healthy' } catch { Write-Host 'ERROR MCP Tools: unhealthy' }"
 	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:8086 -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host 'OK SearXNG: healthy' } catch { Write-Host 'ERROR SearXNG: unhealthy' }"
-	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:3015/healthz -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host 'OK Vector Store: healthy' } catch { Write-Host 'ERROR Vector Store: unhealthy' }"
 	@powershell -Command "try { $$null = Invoke-WebRequest -Uri http://localhost:3010 -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host 'OK SandboxFusion: healthy' } catch { Write-Host 'ERROR SandboxFusion: unhealthy' }"
 else
 	@curl -sf http://localhost:8091/healthz >/dev/null && echo " MCP Tools: healthy" || echo " MCP Tools: unhealthy"
 	@curl -sf http://localhost:8086 >/dev/null && echo " SearXNG: healthy" || echo " SearXNG: unhealthy"
-	@curl -sf http://localhost:3015/healthz >/dev/null && echo " Vector Store: healthy" || echo " Vector Store: unhealthy"
 	@curl -sf http://localhost:3010 >/dev/null && echo " SandboxFusion: healthy" || echo " SandboxFusion: unhealthy"
 endif
 

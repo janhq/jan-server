@@ -47,11 +47,3 @@ scrape_configs:
         labels:
           service: 'media-api'
     metrics_path: '/metrics'
-
-  - job_name: 'memory-tools'
-    scrape_interval: 10s
-    static_configs:
-      - targets: ['memory-tools:8090']
-        labels:
-          service: 'memory-tools'
-    metrics_path: '/metrics'

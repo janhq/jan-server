@@ -1,15 +1,12 @@
 # API Examples
 
-Complete working examples across all APIs in Python, JavaScript, and cURL.
-
-**New to Jan Server?** Check out the [Decision Guides](../decision-guides.md) to understand when to use each API and how to choose the right approach.
+A collection of ready-to-use API examples for Jan Server.
 
 ## Quick Navigation
 
-- [LLM API Examples](#llm-api) - Chat, conversations, models, user settings
-- [Image Generation Examples](#image-generation) - Generate images from text prompts
+- [LLM API Examples](#llm-api) - Chat, conversations, models
 - [Response API Examples](#response-api) - Multi-step tool orchestration
-- [Media API Examples](#media-api) - Image uploads and jan\_\* IDs
+- [Media API Examples](#media-api) - Image uploads and jan\_* IDs
 - [MCP Tools Examples](#mcp-tools) - Search, scrape, vector store, code execution
 - [Cross-Service Examples](#cross-service-examples) - Integration patterns
 
@@ -20,18 +17,7 @@ Complete working examples across all APIs in Python, JavaScript, and cURL.
   - Chat completions (basic, streaming, with context)
   - Conversations (CRUD, pagination, search)
   - Messages (add, list, delete)
-  - Projects (creation, updates, organization)
   - Models and catalogs (listing, admin operations)
-  - User settings (preferences, API keys)
-
-## Image Generation
-
-- **[Image Generation Guide](../../guides/image-generation.md)** - Generate images from text prompts:
-  - Basic image generation
-  - Size and quality options
-  - Conversation integration
-  - Python and JavaScript examples
-  - Error handling
 
 ## Response API
 
@@ -56,55 +42,12 @@ Complete working examples across all APIs in Python, JavaScript, and cURL.
 - **[Comprehensive Examples](../mcp-tools/comprehensive-examples.md)** - Tool execution including:
   - Tool discovery (list tools, get schemas)
   - Google search (with filters, location)
-  - Web scraping (HTML → Markdown)
+  - Web scraping (HTML -> Markdown)
   - Vector search (indexing + querying)
   - Python code execution (sandboxed)
   - Real-world scenarios (research, analysis)
 
 ## Cross-Service Examples
-
-### Image Generation + Conversation (LLM + Media)
-
-```bash
-# 1. Create a conversation
-CONV_RESP=$(curl -s -X POST http://localhost:8000/v1/conversations \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"title": "Image Generation Session"}')
-
-CONV_ID=$(echo $CONV_RESP | jq -r '.id')
-
-# 2. Generate image linked to conversation
-IMAGE_RESP=$(curl -s -X POST http://localhost:8000/v1/images/generations \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "A futuristic cityscape at sunset",
-    "model": "z-image",
-    "size": "1024x1024",
-    "conversation_id": "'$CONV_ID'",
-    "store": true
-  }')
-
-JAN_ID=$(echo $IMAGE_RESP | jq -r '.data[0].id')
-echo "Generated image: $JAN_ID"
-
-# 3. Use generated image in follow-up chat
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "jan-v2-30b",
-    "messages": [{
-      "role": "user",
-      "content": [
-        {"type": "text", "text": "Describe what you see in this image I generated"},
-        {"type": "image_url", "image_url": {"url": "'$JAN_ID'"}}
-      ]
-    }],
-    "conversation": {"id": "'$CONV_ID'"}
-  }'
-```
 
 ### Vision + Chat (Media + LLM)
 
@@ -150,14 +93,6 @@ curl -X POST http://localhost:8000/response/v1/responses \
   }'
 ```
 
-## SDK Examples
-
-For SDK-specific examples (Python, JavaScript, Go), see:
-
-- Python SDK: `../sdks/python.md` (when available)
-- JavaScript SDK: `../sdks/javascript.md` (when available)
-- Go SDK: `../sdks/go.md` (when available)
-
 ## Testing Examples
 
 All examples assume:
@@ -169,29 +104,26 @@ All examples assume:
 **Get an access token:**
 
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:8000/llm/auth/guest-login | jq -r '.access_token')
-export TOKEN
+curl -X POST http://localhost:8000/llm/auth/guest-login
 ```
-
-## Quick Start
 
 **Try a basic chat:**
 
 ```bash
 curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "jan-v1-4b",
     "messages": [{"role": "user", "content": "Hello!"}]
-  }' | jq
+  }'
 ```
 
 **Try a web search:**
 
 ```bash
 curl -X POST http://localhost:8000/v1/mcp \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
@@ -201,7 +133,7 @@ curl -X POST http://localhost:8000/v1/mcp \
       "name": "google_search",
       "arguments": {"q": "AI news"}
     }
-  }' | jq
+  }'
 ```
 
 ---

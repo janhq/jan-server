@@ -14,7 +14,7 @@
 | Language | Go 1.25+ |
 | Framework | Gin (HTTP), zerolog (logging), Wire (DI) |
 | ORM | GORM + goose migrations |
-| Database | PostgreSQL (ankane/pgvector:latest for API, postgres:18 for Keycloak) |
+| Database | PostgreSQL (postgres:18 for Keycloak) |
 | API Gateway | Kong 3.5 + Keycloak (OIDC) |
 | Inference | vLLM (OpenAI-compatible) or remote providers |
 | MCP Server | mark3labs/mcp-go v0.7.0 |
@@ -22,7 +22,6 @@
 | Container | Docker Compose (dev), Kubernetes/Helm (prod) |
 | **Frontend** | |
 | Web App | React 19 + Vite + TanStack Router + Tailwind CSS 4 |
-| Platform App | Next.js 16 + Fumadocs (docs) + Tailwind CSS 4 |
 | UI Components | Radix UI + shadcn/ui patterns |
 | State | Zustand |
 | AI SDK | Vercel AI SDK (@ai-sdk/react) |
@@ -45,8 +44,6 @@ jan-server/
 │   ├── response-api/            # Multi-step tool orchestration (port 8082)
 │   ├── media-api/               # S3 storage, jan_* IDs (port 8285)
 │   ├── mcp-tools/               # MCP tool providers (port 8091)
-│   ├── memory-tools/            # Semantic memory with BGE-M3 (port 8090)
-│   ├── realtime-api/            # WebRTC via LiveKit (port 8186)
 │   └── template-api/            # Service scaffold template
 ├── tools/jan-cli/               # CLI tool sources
 ├── config/                      # Shared configuration (defaults.yaml, schemas)
@@ -150,56 +147,9 @@ npm run build    # Production build
 npm run lint     # ESLint
 ```
 
-### Platform App (`apps/platform/`)
-
-Admin panel and documentation site built with Next.js 16.
-
-```
-apps/platform/
-├── src/
-│   ├── app/                 # Next.js App Router
-│   │   ├── admin/           # Admin pages (users, models, MCP tools)
-│   │   ├── docs/            # Fumadocs documentation
-│   │   ├── auth/            # Authentication pages
-│   │   └── api/             # API routes
-│   ├── components/          # Shared components
-│   ├── lib/                 # Utilities
-│   └── store/               # Zustand stores
-├── content/                 # MDX documentation content
-├── api/                     # OpenAPI specs for docs
-├── package.json
-└── next.config.mjs
-```
-
-**Key Technologies:**
-- **Framework:** Next.js 16 with App Router + Turbopack
-- **Docs:** Fumadocs (MDX-based documentation)
-- **State:** Zustand
-- **UI:** Radix UI + Tailwind CSS 4 + Lucide icons
-
-**Admin Features:**
-- User management
-- Model/Provider configuration
-- MCP Tools management (descriptions, active status, keyword filters)
-- Prompt templates
-
-**Environment Variables:**
-```env
-NEXT_PUBLIC_JAN_BASE_URL=http://localhost:8000  # Kong gateway URL
-```
-
-**Commands:**
-```bash
-cd apps/platform
-npm install
-npm run dev      # Start dev server on port 3000
-npm run build    # Production build
-npm run generate-openapi  # Generate API docs from OpenAPI specs
-```
-
 ### Shared Package (`packages/interfaces/`)
 
-Shared UI components library used by both apps.
+Shared UI components library used by the web app.
 
 ```
 packages/interfaces/
@@ -225,15 +175,12 @@ import { cn } from "@janhq/interfaces/lib"
 # Start full stack (backend + frontend)
 make up-full
 make up-web          # Start web app container
-make up-platform     # Start platform app container
 
-# Or run frontends locally
+# Or run frontend locally
 cd apps/web && npm run dev       # http://localhost:3001
-cd apps/platform && npm run dev  # http://localhost:3000
 
 # Build for production
 cd apps/web && npm run build
-cd apps/platform && npm run build
 ```
 
 ---
@@ -343,8 +290,6 @@ make down-clean         # Remove containers AND volumes
 | Response API | 8082 | Multi-step tool orchestration |
 | Media API | 8285 | File upload, jan_* ID resolution |
 | MCP Tools | 8091 | MCP protocol tools (search, scrape, exec) |
-| Memory Tools | 8090 | Semantic memory service |
-| Realtime API | 8186 | WebRTC session management |
 | **Infrastructure** | | |
 | Keycloak | 8085 | Auth admin console |
 | PostgreSQL | 5432 | Database |

@@ -51,16 +51,15 @@ type MCPRoute struct {
 	searchMCP         *SearchMCP
 	providerMCP       *ProviderMCP
 	sandboxFusionMCP  *SandboxFusionMCP
-	memoryMCP         *MemoryMCP
 	imageMCP          *ImageGenerateMCP
 	imageEditMCP      *ImageEditMCP
 	sandboxMCP        *SandboxMCP        // Unified sandbox provider (AIO or E2B)
 	sandboxManagement *SandboxManagement // Sandbox lifecycle management (E2B only)
 	agentProxyMCP     *AgentProxyMCP
-	githubMCP       *GitHubMCP
-	gmailMCP        *GmailMCP
-	driveMCP        *DriveMCP
-	calendarMCP     *CalendarMCP
+	githubMCP         *GitHubMCP
+	gmailMCP          *GmailMCP
+	driveMCP          *DriveMCP
+	calendarMCP       *CalendarMCP
 	llmClient         *llmapi.Client        // LLM-API client for tool call tracking
 	toolConfigCache   *toolconfig.Cache     // Cache for dynamic tool descriptions
 	sandboxManager    sandboxdomain.Manager // For E2B sandbox state checks
@@ -79,7 +78,6 @@ func NewMCPRoute(
 	searchMCP *SearchMCP,
 	providerMCP *ProviderMCP,
 	sandboxFusionMCP *SandboxFusionMCP,
-	memoryMCP *MemoryMCP,
 	imageMCP *ImageGenerateMCP,
 	imageEditMCP *ImageEditMCP,
 	sandboxMCP *SandboxMCP,
@@ -107,11 +105,6 @@ func NewMCPRoute(
 		sandboxFusionMCP.SetLLMClient(llmClient)
 	}
 
-	// Register memory tools
-	if memoryMCP != nil {
-		memoryMCP.SetLLMClient(llmClient)
-	}
-
 	searchMCP.RegisterTools(server)
 	if imageMCP != nil {
 		imageMCP.RegisterTools(server)
@@ -122,11 +115,6 @@ func NewMCPRoute(
 
 	if sandboxFusionMCP != nil {
 		sandboxFusionMCP.RegisterTools(server)
-	}
-
-	// Register memory tools
-	if memoryMCP != nil {
-		memoryMCP.RegisterTools(server)
 	}
 
 	// Register unified sandbox tools (AIO or E2B provider)
@@ -172,16 +160,15 @@ func NewMCPRoute(
 		searchMCP:         searchMCP,
 		providerMCP:       providerMCP,
 		sandboxFusionMCP:  sandboxFusionMCP,
-		memoryMCP:         memoryMCP,
 		imageMCP:          imageMCP,
 		imageEditMCP:      imageEditMCP,
 		sandboxMCP:        sandboxMCP,
 		sandboxManagement: sandboxManagement,
 		agentProxyMCP:     agentProxyMCP,
-		githubMCP:       githubMCP,
-		gmailMCP:        gmailMCP,
-		driveMCP:        driveMCP,
-		calendarMCP:     calendarMCP,
+		githubMCP:         githubMCP,
+		gmailMCP:          gmailMCP,
+		driveMCP:          driveMCP,
+		calendarMCP:       calendarMCP,
 		llmClient:         llmClient,
 		toolConfigCache:   toolConfigCache,
 		sandboxManager:    sandboxManager,
@@ -214,7 +201,6 @@ func (route *MCPRoute) RegisterRouter(router *gin.RouterGroup) {
 // @Description - `scrape`: Web page scraping (params: url, includeMarkdown) returning text, preview, cache_status, and metadata.
 // @Description - `file_search_index` / `file_search_query`: Index arbitrary text and run similarity queries against the lightweight vector store.
 // @Description - `python_exec`: Execute trusted code through SandboxFusion (params: code, language, session_id, approved) to retrieve stdout/stderr/artifacts.
-// @Description - `memory_retrieve`: Retrieve relevant user preferences, project context, or conversation history (params: query, user_id, project_id, max_user_items, max_project_items, min_similarity). Returns personalized context.
 // @Description - `generate_image`: Generate images from a text prompt via LLM API /v1/images/generations (params: prompt, size, n, num_inference_steps, cfg_scale).
 // @Description - `edit_image`: Edit images with a prompt + input image via LLM API /v1/images/edits (params: prompt, image, mask, size, strength, steps, seed, cfg_scale).
 // @Description

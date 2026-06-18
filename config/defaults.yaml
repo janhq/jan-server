@@ -89,7 +89,6 @@ services:
     tavily_timeout: 15s
     searxng_url: http://searxng:8080
     searxng_enabled: false
-    vector_store_url: http://vector-store:3015
     sandbox_fusion_url: http://sandboxfusion:8080
     sandbox_require_approval: true
     mcp_config_file: configs/mcp-providers.yml
@@ -114,39 +113,6 @@ services:
     mcp_tools_url: http://mcp-tools:8091
     max_tool_depth: 8
     tool_timeout: 45s
-  memory_tools:
-    enabled: false
-    http_port: 0
-    embedding:
-      base_url: ""
-      timeout: 0s
-      validate_on_startup: false
-      expected_model: ""
-      expected_dimension: 0
-      retry:
-        enabled: false
-        max_attempts: 0
-        initial_backoff: 0s
-        max_backoff: 0s
-      cache:
-        enabled: false
-        type: ""
-        redis:
-          url: ""
-          key_prefix: ""
-          ttl: 0s
-        memory:
-          max_size: 0
-          ttl: 0s
-      batch:
-        enabled: false
-        max_size: 0
-        timeout: 0s
-      circuit_breaker:
-        enabled: false
-        threshold: 0
-        timeout: 0s
-        max_concurrent: 0
 inference:
   vllm:
     enabled: true

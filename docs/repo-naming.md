@@ -37,7 +37,6 @@ Frontend apps in `apps/` use kebab-case:
 apps/
 ├── web/               # Main web application
 ├── admin/             # Admin dashboard
-├── platform/          # Platform interface
 ├── mobile/            # Mobile app (future)
 └── chrome-extension/  # Browser extension (example)
 ```

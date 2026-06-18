@@ -35,7 +35,6 @@ func CreateApplication(ctx context.Context) (*Application, error) {
 	providerMCP := mcp.NewProviderMCP(mcpproviderConfig)
 	sandboxfusionClient := infrastructure.ProvideSandboxFusionClient(config)
 	sandboxFusionMCP := routes.ProvideSandboxFusionMCP(sandboxfusionClient, config)
-	memoryMCP := routes.ProvideMemoryMCP(config)
 	imageGenerateMCP := routes.ProvideImageGenerateMCP(config)
 	imageEditMCP := routes.ProvideImageEditMCP(config)
 	e2bClient := routes.ProvideE2BClient(config)
@@ -49,7 +48,7 @@ func CreateApplication(ctx context.Context) (*Application, error) {
 	calendarMCP := routes.ProvideCalendarMCP(config)
 	llmapiClient := infrastructure.ProvideLLMAPIClient(config)
 	cache := routes.ProvideToolConfigCache(config, llmapiClient)
-	mcpRoute := routes.ProvideMCPRoute(config, searchMCP, providerMCP, sandboxFusionMCP, memoryMCP, imageGenerateMCP, imageEditMCP, sandboxMCP, sandboxManagement, agentProxyMCP, githubMCP, gmailMCP, driveMCP, calendarMCP, llmapiClient, cache, manager)
+	mcpRoute := routes.ProvideMCPRoute(config, searchMCP, providerMCP, sandboxFusionMCP, imageGenerateMCP, imageEditMCP, sandboxMCP, sandboxManagement, agentProxyMCP, githubMCP, gmailMCP, driveMCP, calendarMCP, llmapiClient, cache, manager)
 	validator, err := infrastructure.ProvideAuthValidator(ctx, config)
 	if err != nil {
 		return nil, err

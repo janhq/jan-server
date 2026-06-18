@@ -6,11 +6,9 @@
   "scripts": {
     "dev": "pnpm run --parallel dev",
     "dev:web": "pnpm --filter @janhq/interfaces build && pnpm --filter @janhq/web dev",
-    "dev:platform": "pnpm --filter @janhq/platform dev",
     "build": "pnpm --filter @janhq/interfaces build && pnpm -r build",
     "build:interfaces": "pnpm --filter @janhq/interfaces build",
     "build:web": "pnpm --filter @janhq/web build",
-    "build:platform": "pnpm --filter @janhq/platform build",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\"",

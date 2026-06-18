@@ -64,7 +64,6 @@ type Config struct {
 	// External Services
 	VectorStoreURL   string `env:"VECTOR_STORE_URL" envDefault:"http://vector-store-mcp:3015"`
 	SandboxFusionURL string `env:"SANDBOXFUSION_URL" envDefault:"http://sandbox-fusion:8080"`
-	MemoryToolsURL   string `env:"MEMORY_TOOLS_URL" envDefault:"http://memory-tools:8090"`
 
 	// LLM-API configuration for tool call tracking
 	LLMAPIBaseURL      string `env:"LLM_API_BASE_URL" envDefault:"http://llm-api:8080"`
@@ -77,7 +76,6 @@ type Config struct {
 	// Sandbox Configuration
 	SandboxFusionRequireApproval bool `env:"MCP_SANDBOX_REQUIRE_APPROVAL" envDefault:"false"`
 	EnablePythonExec             bool `env:"MCP_ENABLE_PYTHON_EXEC" envDefault:"true"`
-	EnableMemoryRetrieve         bool `env:"MCP_ENABLE_MEMORY_RETRIEVE" envDefault:"true"`
 	EnableFileSearch             bool `env:"MCP_ENABLE_FILE_SEARCH" envDefault:"false"`
 	EnableImageGenerate          bool `env:"MCP_ENABLE_IMAGE_GENERATE" envDefault:"true"`
 	EnableImageEdit              bool `env:"MCP_ENABLE_IMAGE_EDIT" envDefault:"true"`

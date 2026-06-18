@@ -1,75 +1,7 @@
 # MCP Tools and Infrastructure Services
-# SearXNG, Vector Store, SandboxFusion, MCP Tools API
+# MCP Tools API
 
 services:
-  # Redis for SearXNG caching and rate limiting
-  # redis-searxng:
-  #   image: redis:7-alpine
-  #   restart: unless-stopped
-  #   command: ["redis-server", "--appendonly", "no"]
-  #   networks:
-  #     - mcp-network
-  #   healthcheck:
-  #     test: ["CMD", "redis-cli", "ping"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-  #   profiles: ["mcp", "full"]
-
-  # # SearXNG - Meta Search Engine (HTTP on 8080 inside container)
-  # searxng:
-  #   image: searxng/searxng:latest
-  #   restart: unless-stopped
-  #   environment:
-  #     SEARXNG_BASE_URL: http://localhost:${SEARXNG_PORT:-8086}/
-  #     SEARXNG_REDIS_URL: redis://redis-searxng:6379/0
-  #   depends_on:
-  #     redis-searxng:
-  #       condition: service_healthy
-  #   ports:
-  #     - "${SEARXNG_PORT:-8086}:8080"
-  #   networks:
-  #     - mcp-network
-  #   healthcheck:
-  #     test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-  #   profiles: ["mcp", "full"]
-
-  # Lightweight vector store for MCP file search
-  vector-store:
-    build: ../../services/mcp-tools/tools/vector-store-service
-    restart: unless-stopped
-    environment:
-      VECTOR_STORE_PORT: ${VECTOR_STORE_PORT:-3015}
-    ports:
-      - "${VECTOR_STORE_PORT:-3015}:3015"
-    networks:
-      - mcp-network
-    # Distroless image - no healthcheck tools available
-    # healthcheck:
-    #   test: ["CMD", "wget", "--spider", "-q", "http://localhost:3015/health"]
-    #   interval: 10s
-    #   timeout: 5s
-    #   retries: 5
-    profiles: ["vector", "full"]
-
-  # SandboxFusion code interpreter
-  # sandboxfusion:
-  #   image: volcengine/sandbox-fusion:server-20250609
-  #   restart: unless-stopped
-  #   ports:
-  #     - "${SANDBOXFUSION_PORT:-3010}:8080"
-  #   networks:
-  #     - mcp-network
-  #   healthcheck:
-  #     test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-  #   profiles: ["mcp", "full"]
-
   # MCP Tools API - Unified MCP interface
   mcp-tools:
     build:
@@ -82,38 +14,33 @@ services:
     environment:
       # HTTP Server (service-specific port)
       MCP_TOOLS_HTTP_PORT: ${MCP_TOOLS_HTTP_PORT:-8091}
-      
+
       # Search Configuration
       MCP_SEARCH_ENGINE: ${MCP_SEARCH_ENGINE:-serper}
       SERPER_API_KEY: ${SERPER_API_KEY:-}
-      
+
       # Circuit Breaker Configuration
       SERPER_CB_FAILURE_THRESHOLD: ${SERPER_CB_FAILURE_THRESHOLD:-10}
       SERPER_CB_SUCCESS_THRESHOLD: ${SERPER_CB_SUCCESS_THRESHOLD:-3}
       SERPER_CB_TIMEOUT: ${SERPER_CB_TIMEOUT:-60}
       SERPER_CB_MAX_HALF_OPEN: ${SERPER_CB_MAX_HALF_OPEN:-3}
-      
+
       # Logging
       MCP_TOOLS_LOG_LEVEL: ${MCP_TOOLS_LOG_LEVEL:-info}
       MCP_TOOLS_LOG_FORMAT: ${MCP_TOOLS_LOG_FORMAT:-json}
-      
+
       # MCP Provider endpoints (internal Docker network)
       SEARXNG_URL: ${SEARXNG_URL:-http://searxng:8080}
-      VECTOR_STORE_URL: ${VECTOR_STORE_URL:-http://vector-store:3015}
       SANDBOXFUSION_URL: ${SANDBOXFUSION_URL:-http://sandboxfusion:8080}
-      MEMORY_TOOLS_URL: ${MEMORY_TOOLS_URL:-http://memory-tools:8090}
 
       # LLM-API for tool tracking and dynamic descriptions
       LLM_API_BASE_URL: ${LLM_API_BASE_URL:-http://llm-api:8080}
       MCP_TRACKING_ENABLED: ${MCP_TRACKING_ENABLED:-true}
 
-      # Optional tool toggles
-      MCP_ENABLE_MEMORY_RETRIEVE: ${MCP_ENABLE_MEMORY_RETRIEVE:-true}
-      
       # MCP Configuration
       MCP_CONFIG_FILE: ${MCP_CONFIG_FILE:-configs/mcp-providers.yml}
       MCP_SANDBOX_REQUIRE_APPROVAL: ${MCP_SANDBOX_REQUIRE_APPROVAL:-true}
-      
+
       # Sandbox Provider Configuration (mutually exclusive: "aio", "e2b", or empty)
       SANDBOX_PROVIDER: ${SANDBOX_PROVIDER:-}
 
@@ -130,17 +57,6 @@ services:
       AUTH_ENABLED: ${AUTH_ENABLED:-false}
     ports:
       - "${MCP_TOOLS_HTTP_PORT:-8091}:${MCP_TOOLS_HTTP_PORT:-8091}"
-    # depends_on:
-    #   # searxng:
-    #   #   condition: service_healthy
-    #   # Vector store is optional (profile: vector)
-    #   # vector-store:
-    #   #   condition: service_started
-    #   # memory-tools is optional - only needed when memory profile is enabled
-    #   # memory-tools:
-    #   #   condition: service_started
-    #   # sandboxfusion:
-    #   #   condition: service_started
     volumes:
       - ../../services/mcp-tools/configs:/app/configs:ro
     healthcheck:

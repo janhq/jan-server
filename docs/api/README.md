@@ -23,7 +23,6 @@ OpenAI-compatible API for chat completions, conversations, and models.
 - **[Complete Documentation](llm-api/)** - Full API reference, endpoints, examples
 - **[Authentication](llm-api/#authentication)** - Auth methods, API keys, and token management
 - **[Chat Completions](llm-api/#chat-completions)** - Main completion endpoint
-- **[Image Generation](../guides/image-generation.md)** - Generate images from text prompts
 - **[Conversations](llm-api/#conversations)** - Conversation CRUD operations
 - **[Projects](llm-api/#projects)** - Project management for organizing conversations
 - **[Admin Endpoints](llm-api/#admin-endpoints)** - Provider and model catalog management
@@ -86,19 +85,15 @@ Provides Model Context Protocol tools for search, scraping, lightweight vector s
 - **[Call Tool](mcp-tools/#call-tool)** - Execute any tool
 - **[List Tools](mcp-tools/#list-tools)** - Discover available tools
 - **[Tool Details](mcp-tools/#available-tools)** - Specific tool parameters
-- **[Providers](../services/mcp-tools/mcp-providers.md)** - MCP provider configuration
-- **[Integration](../services/mcp-tools/integration.md)** - Integration guide
+- **[Providers](mcp-tools/#providers)** - MCP provider configuration
+- **[Integration](mcp-tools/)** - Integration guide
 
 ## API Guides
 
 - **[Decision Guides](decision-guides.md)** - When to use which API, choosing upload methods, memory configuration
-- [Endpoint Matrix](endpoint-matrix.md) - Full endpoint inventory.
-- [Error Codes](error-codes.md) - HTTP status codes and handling patterns.
-- [Rate Limiting](rate-limiting.md) - Token buckets, quotas, examples.
-- [Performance](performance.md) - SLAs, latency, scaling, cost levers.
-- [API Versioning](api-versioning.md) - Policy and compatibility.
-- [Patterns](patterns.md) - Streaming, pagination, batching, uploads.
-- [Examples Index](examples/README.md) - cURL/SDK samples across services.
+- [Endpoint Matrix](endpoint-matrix.md) - Full endpoint inventory
+- [Rate Limiting](rate-limiting.md) - Rate limits and quotas
+- [Examples Index](examples/README.md) - cURL/SDK samples across services
 
 ## Quick Reference
 
