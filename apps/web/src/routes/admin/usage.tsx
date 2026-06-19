@@ -13,6 +13,6 @@ function AdminUsageRoute() {
   );
 }
 
-export const Route = createFileRoute("/admin/usage" as "/")({
+export const Route = createFileRoute("/admin/usage")({
   component: AdminUsageRoute,
 });
