@@ -102,7 +102,7 @@
         "*"
       ],
       "webOrigins": [
-        "+"
+        "*"
       ],
       "attributes": {
         "oauth2.device.authorization.grant.enabled": "true",
