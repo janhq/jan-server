@@ -281,7 +281,7 @@
                   "const data = pm.response.json();",
                   "pm.test('Artifact payload valid', function () {",
                   "  pm.response.to.have.status(200);",
-                  "  pm.expect(data).to.have.property('content_type', 'slides');",
+                  "  pm.expect(data).to.have.property('content_type', 'document');",
                   "  pm.expect(data).to.have.property('mime_type', 'application/json');",
                   "  pm.expect(data).to.have.property('version', 2);",
                   "});"
@@ -341,7 +341,7 @@
                   "const body = pm.response.text();",
                   "pm.test('Download returns content', function () {",
                   "  pm.response.to.have.status(200);",
-                  "  pm.expect(body).to.include('Seed Slide v2');",
+                  "  pm.expect(body).to.include('Seed Doc v2');",
                   "});"
                 ]
               }

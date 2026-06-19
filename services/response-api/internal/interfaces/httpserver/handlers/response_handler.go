@@ -148,30 +148,6 @@ func (h *ResponseHandler) Create(c *gin.Context) {
 		if metadata == nil {
 			metadata = map[string]interface{}{}
 		}
-		toolName := req.ToolChoice.Function.Name
-		if toolName == "" {
-			toolName = req.ToolChoice.Tool
-		}
-		if _, ok := metadata["agent_type"]; !ok && toolName == "generate_slide" {
-			metadata["agent_type"] = "slide_creator"
-		}
-		if metadata["agent_type"] == "slide_creator" {
-			if _, ok := metadata["research_depth"]; !ok {
-				metadata["research_depth"] = "standard"
-			}
-			if _, ok := metadata["num_slides"]; !ok {
-				metadata["num_slides"] = 10
-			}
-			if _, ok := metadata["theme"]; !ok {
-				metadata["theme"] = "modern"
-			}
-			if _, ok := metadata["format"]; !ok {
-				metadata["format"] = "pptx"
-			}
-			if _, ok := metadata["body_mode"]; !ok {
-				metadata["body_mode"] = "template"
-			}
-		}
 		if req.ToolChoice.Options != nil {
 			if _, ok := metadata["options"]; !ok {
 				metadata["options"] = req.ToolChoice.Options

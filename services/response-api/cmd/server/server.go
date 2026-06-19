@@ -13,12 +13,11 @@ import (
 
 	"jan-server/services/response-api/internal/config"
 	"jan-server/services/response-api/internal/domain/agent"
-	"jan-server/services/response-api/internal/domain/agent/planners"
+	artifactexec "jan-server/services/response-api/internal/domain/agent/planners/artifactexec"
 	deepresearch "jan-server/services/response-api/internal/domain/agent/planners/deep_research"
 	docplanner "jan-server/services/response-api/internal/domain/agent/planners/doc"
 	pdfplanner "jan-server/services/response-api/internal/domain/agent/planners/pdf"
 	skillexec "jan-server/services/response-api/internal/domain/agent/planners/skill"
-	slide_creator "jan-server/services/response-api/internal/domain/agent/planners/slide_creator"
 	spreadsheetplanner "jan-server/services/response-api/internal/domain/agent/planners/spreadsheet"
 	"jan-server/services/response-api/internal/domain/artifact"
 	"jan-server/services/response-api/internal/domain/llm"
@@ -147,12 +146,6 @@ func main() {
 		log.Warn().Err(err).Msg("failed to register deep research planner")
 	}
 
-	// Register slide creator planner
-	slideCreatorPlanner := slide_creator.NewSlideCreatorPlanner(planService, artifactService)
-	if err := agentRegistry.RegisterPlanner(slideCreatorPlanner); err != nil {
-		log.Warn().Err(err).Msg("failed to register slide creator planner")
-	}
-
 	docGeneratorPlanner := docplanner.NewPlanner(planService, artifactService)
 	if err := agentRegistry.RegisterPlanner(docGeneratorPlanner); err != nil {
 		log.Warn().Err(err).Msg("failed to register doc generator planner")
@@ -186,26 +179,20 @@ func main() {
 		cfg.SkillMaxFileSize,
 		cfg.SkillExecutionTimeout,
 		map[skill.SkillType]bool{
-			skill.SkillTypeSlides:       cfg.SkillSlidesEnabled,
 			skill.SkillTypeDocs:         cfg.SkillDocsEnabled,
 			skill.SkillTypePDFs:         cfg.SkillPDFsEnabled,
 			skill.SkillTypeSpreadsheets: cfg.SkillSpreadsheetsEnabled,
 		},
 	)
-	slideCreatorExecutor := slide_creator.NewSlideCreatorExecutor(mcpClient, codeFixer, artifactService, mediaClient, cfg)
-	routingExecutor := planners.NewRoutingExecutor(deepResearchExecutor, slideCreatorExecutor)
-	artifactRoutingExecutor := planners.NewRoutingExecutor(slideCreatorExecutor, slideCreatorExecutor)
-	if err := agentRegistry.RegisterExecutor(plan.ActionTypeToolCall, routingExecutor); err != nil {
+	genericArtifactExecutor := artifactexec.NewGenericArtifactExecutor(mcpClient, artifactService, mediaClient, cfg)
+	if err := agentRegistry.RegisterExecutor(plan.ActionTypeToolCall, deepResearchExecutor); err != nil {
 		log.Warn().Err(err).Msg("failed to register tool call executor")
 	}
-	if err := agentRegistry.RegisterExecutor(plan.ActionTypeLLMCall, routingExecutor); err != nil {
+	if err := agentRegistry.RegisterExecutor(plan.ActionTypeLLMCall, deepResearchExecutor); err != nil {
 		log.Warn().Err(err).Msg("failed to register llm call executor")
 	}
-	if err := agentRegistry.RegisterExecutor(plan.ActionTypeArtifactCreate, artifactRoutingExecutor); err != nil {
+	if err := agentRegistry.RegisterExecutor(plan.ActionTypeArtifactCreate, genericArtifactExecutor); err != nil {
 		log.Warn().Err(err).Msg("failed to register artifact create executor")
-	}
-	if err := agentRegistry.RegisterExecutor(plan.ActionTypeTransform, slideCreatorExecutor); err != nil {
-		log.Warn().Err(err).Msg("failed to register transform executor")
 	}
 	if err := agentRegistry.RegisterExecutor(plan.ActionTypeSkillExecute, skillExecutor); err != nil {
 		log.Warn().Err(err).Msg("failed to register skill execute executor")

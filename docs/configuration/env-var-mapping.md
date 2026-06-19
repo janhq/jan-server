@@ -209,8 +209,6 @@ This document maps centralized configuration (`pkg/config/types.go`) environment
 | `RESPONSE_TOOL_TIMEOUT`   | duration | `45s`                   | `TOOL_TIMEOUT`   | TODO Need prefix |
 | `RESPONSE_LLM_DISABLE_CUSTOM_TEMPERATURE` | bool | `false` | `RESPONSE_LLM_DISABLE_CUSTOM_TEMPERATURE` | New |
 | `RESPONSE_LLM_STREAM_MODE` | string | `auto` | `RESPONSE_LLM_STREAM_MODE` | New |
-| `SLIDE_RENDERER_SCRIPT`   | string   | (empty)                 | `SLIDE_RENDERER_SCRIPT` | New |
-| `SLIDE_RENDERER_ENABLED`  | bool     | `true`                  | `SLIDE_RENDERER_ENABLED` | New |
 
 ## Monitoring
 

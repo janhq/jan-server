@@ -32,7 +32,7 @@ func NewArtifactHandler(service artifact.Service, log zerolog.Logger) *ArtifactH
 // @Description Retrieves all artifacts belonging to the authenticated user with cursor-based pagination
 // @Tags Artifacts
 // @Produce json
-// @Param content_type query string false "Filter by content type (slides, document, research, code, image, etc.)"
+// @Param content_type query string false "Filter by content type (document, research, code, image, etc.)"
 // @Param search query string false "Search by title (case-insensitive)"
 // @Param latest query bool false "Only return latest versions" default(true)
 // @Param limit query int false "Maximum number of results" default(20)

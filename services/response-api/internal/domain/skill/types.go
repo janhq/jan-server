@@ -6,7 +6,6 @@ import "context"
 type SkillType string
 
 const (
-	SkillTypeSlides       SkillType = "slides"
 	SkillTypeDocs         SkillType = "docs"
 	SkillTypePDFs         SkillType = "pdfs"
 	SkillTypeSpreadsheets SkillType = "spreadsheets"

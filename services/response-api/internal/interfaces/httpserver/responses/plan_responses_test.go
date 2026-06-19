@@ -8,9 +8,9 @@ import (
 func TestSanitizePlannedParams_RemovesSchema(t *testing.T) {
 	// Sample input with schema field
 	input := json.RawMessage(`{
-		"action": "generate_single_slide",
-		"description": "Generate slide 1 content",
-		"slide_index": 1,
+		"action": "generate_section",
+		"description": "Generate section 1 content",
+		"section_index": 1,
 		"schema": {
 			"type": "object",
 			"properties": {
@@ -33,14 +33,14 @@ func TestSanitizePlannedParams_RemovesSchema(t *testing.T) {
 	}
 
 	// Verify other fields are preserved
-	if resultMap["action"] != "generate_single_slide" {
+	if resultMap["action"] != "generate_section" {
 		t.Error("Expected action field to be preserved")
 	}
-	if resultMap["description"] != "Generate slide 1 content" {
+	if resultMap["description"] != "Generate section 1 content" {
 		t.Error("Expected description field to be preserved")
 	}
-	if resultMap["slide_index"] != float64(1) {
-		t.Error("Expected slide_index field to be preserved")
+	if resultMap["section_index"] != float64(1) {
+		t.Error("Expected section_index field to be preserved")
 	}
 }
 

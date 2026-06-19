@@ -23,7 +23,6 @@ type Service struct {
 func NewService() (*Service, error) {
 	templates := make(map[domain.SkillType]*template.Template)
 	mapping := map[domain.SkillType]string{
-		domain.SkillTypeSlides:       "templates/slides.py.tmpl",
 		domain.SkillTypeDocs:         "templates/docs.py.tmpl",
 		domain.SkillTypePDFs:         "templates/pdfs.py.tmpl",
 		domain.SkillTypeSpreadsheets: "templates/spreadsheets.py.tmpl",
@@ -106,7 +105,7 @@ func normalizeContent(content interface{}) interface{} {
 }
 
 // unwrapNestedContent extracts the inner content from common wrapper keys.
-// For example, {"presentation": {"slides": [...]}} -> {"slides": [...]}
+// For example, {"document": {"sections": [...]}} -> {"sections": [...]}
 func unwrapNestedContent(content interface{}) interface{} {
 	m, ok := content.(map[string]interface{})
 	if !ok {
@@ -114,14 +113,11 @@ func unwrapNestedContent(content interface{}) interface{} {
 	}
 
 	// Common wrapper keys to unwrap
-	wrapperKeys := []string{"presentation", "document", "spreadsheet", "data"}
+	wrapperKeys := []string{"document", "spreadsheet", "data"}
 	for _, key := range wrapperKeys {
 		if inner, exists := m[key]; exists {
 			if innerMap, ok := inner.(map[string]interface{}); ok {
-				// Check if the inner content has the expected structure (slides, sheets, etc.)
-				if _, hasSlides := innerMap["slides"]; hasSlides {
-					return innerMap
-				}
+				// Check if the inner content has the expected structure (sheets, sections, etc.)
 				if _, hasSheets := innerMap["sheets"]; hasSheets {
 					return innerMap
 				}

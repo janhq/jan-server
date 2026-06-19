@@ -32,9 +32,8 @@ func (r *Routes) Register(router gin.IRouter) {
 	group.GET("/files/:id", r.handlers.Media.Proxy)
 	group.GET("/files/:id/metadata", r.handlers.Media.GetMetadata)
 
-	// Serve static files from local storage if configured
-	if r.cfg.IsLocalStorage() && r.cfg.LocalStoragePath != "" {
-		// Strip /v1 prefix and serve files from /v1/files/*
-		group.Static("/files", r.cfg.LocalStoragePath)
-	}
+	// NOTE: Local files are served by ID through the Proxy handler above
+	// (GET /v1/files/:id -> service.Download). A path-based gin Static mount at
+	// "/files" registers "/v1/files/*filepath", which conflicts with the
+	// "/v1/files/:id" route and panics at startup, so it is intentionally omitted.
 }

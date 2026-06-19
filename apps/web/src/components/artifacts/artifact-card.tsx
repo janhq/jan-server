@@ -14,7 +14,6 @@ import {
   MoreVertical,
   Download,
   Eye,
-  Presentation,
   FileText,
   FileSearch,
   Code,
@@ -71,8 +70,6 @@ interface ArtifactCardProps {
 
 function getArtifactIcon(contentType: string) {
   switch (contentType) {
-    case "slides":
-      return Presentation;
     case "document":
       return FileText;
     case "research":
@@ -95,8 +92,6 @@ function getArtifactIcon(contentType: string) {
 
 function getContentTypeLabel(contentType: string): string {
   switch (contentType) {
-    case "slides":
-      return "Presentation";
     case "document":
       return "Document";
     case "research":
@@ -173,11 +168,6 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
 
   const relativeDate = formatRelativeTime(artifact.updated_at);
 
-  // Get thumbnail from metadata if available (for slides)
-  const metadata = artifact.metadata as Record<string, unknown> | undefined;
-  const slidesImages = metadata?.slides_images as Array<{ thumb: string }> | undefined;
-  const thumbnailUrl = slidesImages?.[0]?.thumb;
-
   // Check if this artifact should show a markdown preview
   const isMarkdown = artifact.content_type === "markdown" ||
     artifact.content_type === "research" ||
@@ -186,7 +176,7 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
   // Check if this artifact has a supported viewer
   // Documents only have viewer if they're text-based (not PDF/DOCX)
   const hasViewer = (() => {
-    if (["slides", "research", "markdown", "html", "code", "image"].includes(artifact.content_type)) {
+    if (["research", "markdown", "html", "code", "image"].includes(artifact.content_type)) {
       return true;
     }
     if (artifact.content_type === "document" && artifact.mime_type?.startsWith("text/")) {
@@ -222,13 +212,7 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
     >
       {/* Thumbnail/Preview Area */}
       <div className="h-32 bg-muted/30 rounded-t-xl flex items-center justify-center overflow-hidden relative">
-        {thumbnailUrl ? (
-          <img
-            src={thumbnailUrl}
-            alt={artifact.title}
-            className="w-full h-full object-cover"
-          />
-        ) : markdownPreview ? (
+        {markdownPreview ? (
           <div className="w-full h-full p-3 overflow-hidden">
             <div className="prose prose-sm dark:prose-invert max-w-none
               [&>*]:!my-1 [&>*]:!leading-snug
@@ -247,7 +231,7 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
           <Icon className="size-10 text-muted-foreground/50" />
         )}
         {/* Gradient overlay for markdown preview */}
-        {markdownPreview && !thumbnailUrl && (
+        {markdownPreview && (
           <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-muted/80 to-transparent" />
         )}
       </div>

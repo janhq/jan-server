@@ -4,7 +4,6 @@ import {
   useRightSidebarStore,
   type SearchResultItem,
   type ArtifactItem,
-  type SlideImage,
 } from "@/stores/right-sidebar-store";
 import { Button } from "@janhq/interfaces/button";
 import { MessageResponse } from "@janhq/interfaces/ai-elements/message";
@@ -15,13 +14,11 @@ import {
   ExternalLinkIcon,
   LinkIcon,
   DownloadIcon,
-  MaximizeIcon,
   Loader2Icon,
   EyeIcon,
 } from "lucide-react";
 import { cn, getArtifactIcon, formatFileSize } from "@/lib/utils";
 import { Favicon } from "@/components/misc/favicon";
-import { SlideViewer } from "@/components/misc/slide-viewer";
 import { MdViewer } from "@/components/misc/md-viewer";
 
 
@@ -63,40 +60,6 @@ const ArtifactCard = ({ artifact }: { artifact: ArtifactItem }) => {
     </div>
   );
 };
-
-// Hard-coded slide images for preview fallback
-const HARD_CODED_SLIDE_IMAGES = [
-  { id: "1", thumb: "/slides/slide-1.svg" },
-  { id: "2", thumb: "/slides/slide-2.svg" },
-  { id: "3", thumb: "/slides/slide-3.svg" },
-  { id: "4", thumb: "/slides/slide-4.svg" },
-  { id: "5", thumb: "/slides/slide-5.svg" },
-  { id: "6", thumb: "/slides/slide-6.svg" },
-];
-const USE_HARD_CODED_SLIDES = false;
-
-const needsSlidesFallback = (artifact: ArtifactItem, slidesFallback?: SlideImage[]) => {
-  if (!slidesFallback || slidesFallback.length === 0) return false;
-  if (artifact.slidesImages && artifact.slidesImages.length > 0) return false;
-  const filename = (artifact.filename || "").toLowerCase();
-  return filename.includes("slide-images");
-};
-
-const withSlidesFallback = (
-  artifact: ArtifactItem,
-  slidesFallback?: SlideImage[],
-  fallbackDownloadUrl?: string,
-  fallbackTitle?: string,
-) => {
-  if (!needsSlidesFallback(artifact, slidesFallback)) return artifact;
-  return {
-    ...artifact,
-    slidesImages: slidesFallback,
-    downloadUrl: fallbackDownloadUrl || artifact.downloadUrl,
-    filename: fallbackTitle || artifact.filename,
-  };
-};
-
 
 // Preview component for bottom Panel content section
 const ArtifactPreview = ({ artifact }: { artifact: ArtifactItem }) => {
@@ -172,65 +135,15 @@ const ArtifactPreview = ({ artifact }: { artifact: ArtifactItem }) => {
     );
   }
 
-  // Handle slides content type
-  if (artifact.contentType === "slides" || (artifact.slidesImages && artifact.slidesImages.length > 0)) {
-    const slides = USE_HARD_CODED_SLIDES
-      ? HARD_CODED_SLIDE_IMAGES
-      : (artifact.slidesImages?.length ? artifact.slidesImages : []);
-    if (slides.length === 0) {
-      return null;
-    }
-    const currentSlide = slides[0];
-    return (
-      <>
-        <div className="h-full flex flex-col">
-          {/* Slide image - clickable to open full viewer */}
-          <div className="flex-1 flex items-center justify-center p-3">
-            <div
-              className="relative w-full rounded-lg border overflow-hidden bg-muted/50 cursor-pointer group"
-              onClick={() => setIsViewerOpen(true)}
-            >
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center pointer-events-none">
-                <MaximizeIcon className="size-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-              </div>
-              <img
-                src={currentSlide.thumb}
-                alt={`Slide ${currentSlide.id}`}
-                className="w-full h-auto object-contain"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Full slide viewer modal */}
-        {isViewerOpen && (
-          <SlideViewer
-            slides={slides}
-            initialIndex={0}
-            title={artifact.filename}
-            onDownload={artifact.downloadUrl ? () => window.open(artifact.downloadUrl, "_blank") : undefined}
-            onClose={() => setIsViewerOpen(false)}
-          />
-        )}
-      </>
-    );
-  }
-
   return null;
 };
 
 const SearchResult = ({
   result,
   isLast,
-  slidesFallback,
-  slidesFallbackDownloadUrl,
-  slidesFallbackTitle,
 }: {
   result: SearchResultItem;
   isLast?: boolean;
-  slidesFallback?: SlideImage[];
-  slidesFallbackDownloadUrl?: string;
-  slidesFallbackTitle?: string;
 }) => {
 
 
@@ -324,14 +237,8 @@ const SearchResult = ({
   }
 
   if (result.type === "artifact" && result.artifact) {
-    const previewArtifact = withSlidesFallback(
-      result.artifact,
-      slidesFallback,
-      slidesFallbackDownloadUrl,
-      slidesFallbackTitle,
-    );
     return (
-      <ArtifactPreview artifact={previewArtifact} />
+      <ArtifactPreview artifact={result.artifact} />
     );
   }
 
@@ -361,10 +268,6 @@ export const AppSidebarRight = memo(function AppSidebarRight() {
   const hasArtifacts = artifacts.length > 0;
   const currentStep = allSteps[currentStepIndex];
   const currentResults = currentStep?.results || [];
-  const slidesArtifact = [...artifacts].reverse().find((artifact) => (artifact.slidesImages?.length ?? 0) > 0);
-  const slidesFallback = slidesArtifact?.slidesImages;
-  const slidesFallbackDownloadUrl = slidesArtifact?.downloadUrl;
-  const slidesFallbackTitle = slidesArtifact?.filename;
 
   return (
     <div
@@ -447,9 +350,6 @@ export const AppSidebarRight = memo(function AppSidebarRight() {
                       key={index}
                       result={result}
                       isLast={index === currentResults.length - 1}
-                      slidesFallback={slidesFallback}
-                      slidesFallbackDownloadUrl={slidesFallbackDownloadUrl}
-                      slidesFallbackTitle={slidesFallbackTitle}
                     />
                   ))}
                 </div>

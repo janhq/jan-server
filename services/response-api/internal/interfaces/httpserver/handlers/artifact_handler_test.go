@@ -29,6 +29,14 @@ type MockArtifactService struct {
 	DeleteFunc                func(ctx context.Context, id string) error
 	CleanupExpiredFunc        func(ctx context.Context) (int64, error)
 	ListFunc                  func(ctx context.Context, filter *artifact.Filter) ([]*artifact.Artifact, int64, error)
+	ResolveInternalIDFunc     func(ctx context.Context, publicID string) (*uint, error)
+}
+
+func (m *MockArtifactService) ResolveInternalID(ctx context.Context, publicID string) (*uint, error) {
+	if m.ResolveInternalIDFunc != nil {
+		return m.ResolveInternalIDFunc(ctx, publicID)
+	}
+	return nil, nil
 }
 
 func (m *MockArtifactService) Create(ctx context.Context, params artifact.CreateParams) (*artifact.Artifact, error) {
@@ -137,8 +145,8 @@ func TestArtifactHandler_Get(t *testing.T) {
 			return &artifact.Artifact{
 				ID:          id,
 				ResponseID:  "resp-123",
-				ContentType: artifact.ContentTypeSlides,
-				Title:       "Test Presentation",
+				ContentType: artifact.ContentTypeDocument,
+				Title:       "Test Document",
 				Version:     1,
 				CreatedAt:   time.Now(),
 			}, nil
@@ -165,8 +173,8 @@ func TestArtifactHandler_Get(t *testing.T) {
 		t.Errorf("Expected artifact id 'art-123', got %v", response["id"])
 	}
 
-	if response["title"] != "Test Presentation" {
-		t.Errorf("Expected title 'Test Presentation', got %v", response["title"])
+	if response["title"] != "Test Document" {
+		t.Errorf("Expected title 'Test Document', got %v", response["title"])
 	}
 }
 
@@ -177,8 +185,8 @@ func TestArtifactHandler_GetByResponse(t *testing.T) {
 				{
 					ID:          "art-1",
 					ResponseID:  "resp-123",
-					ContentType: artifact.ContentTypeSlides,
-					Title:       "Presentation 1",
+					ContentType: artifact.ContentTypeDocument,
+					Title:       "Report 1",
 					Version:     1,
 				},
 				{
@@ -224,7 +232,7 @@ func TestArtifactHandler_GetLatestByResponse(t *testing.T) {
 			return &artifact.Artifact{
 				ID:          "art-latest",
 				ResponseID:  responseID,
-				ContentType: artifact.ContentTypeSlides,
+				ContentType: artifact.ContentTypeDocument,
 				Title:       "Latest Artifact",
 				Version:     3,
 			}, nil
@@ -326,13 +334,13 @@ func TestArtifactHandler_Delete(t *testing.T) {
 }
 
 func TestArtifactHandler_Download(t *testing.T) {
-	content := `{"slides": [{"title": "Slide 1"}]}`
+	content := `{"sections": [{"title": "Section 1"}]}`
 	mockService := &MockArtifactService{
 		GetByIDFunc: func(ctx context.Context, id string) (*artifact.Artifact, error) {
 			return &artifact.Artifact{
 				ID:          id,
-				ContentType: artifact.ContentTypeSlides,
-				Title:       "Test Presentation",
+				ContentType: artifact.ContentTypeDocument,
+				Title:       "Test Document",
 				Content:     &content,
 				MimeType:    "application/json",
 			}, nil

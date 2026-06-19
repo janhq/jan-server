@@ -15,11 +15,11 @@ import (
 	"jan-server/services/response-api/internal/config"
 	"jan-server/services/response-api/internal/domain/agent"
 	"jan-server/services/response-api/internal/domain/agent/planners"
+	artifactexec "jan-server/services/response-api/internal/domain/agent/planners/artifactexec"
 	deepresearch "jan-server/services/response-api/internal/domain/agent/planners/deep_research"
 	docplanner "jan-server/services/response-api/internal/domain/agent/planners/doc"
 	pdfplanner "jan-server/services/response-api/internal/domain/agent/planners/pdf"
 	skillexec "jan-server/services/response-api/internal/domain/agent/planners/skill"
-	"jan-server/services/response-api/internal/domain/agent/planners/slide_creator"
 	spreadsheetplanner "jan-server/services/response-api/internal/domain/agent/planners/spreadsheet"
 	artifact2 "jan-server/services/response-api/internal/domain/artifact"
 	conversation2 "jan-server/services/response-api/internal/domain/conversation"
@@ -162,11 +162,6 @@ func newAgentRegistry(planService plan2.Service, mcpClient tool.MCPClient, llmPr
 		_ = err
 	}
 
-	slideCreatorPlanner := slide_creator.NewSlideCreatorPlanner(planService, artifactService)
-	if err := registry.RegisterPlanner(slideCreatorPlanner); err != nil {
-		_ = err
-	}
-
 	docGeneratorPlanner := docplanner.NewPlanner(planService, artifactService)
 	if err := registry.RegisterPlanner(docGeneratorPlanner); err != nil {
 		_ = err
@@ -196,15 +191,12 @@ func newAgentRegistry(planService plan2.Service, mcpClient tool.MCPClient, llmPr
 		cfg.SkillMaxCodeFixRetries,
 		cfg.SkillMaxFileSize,
 		cfg.SkillExecutionTimeout,
-		map[skill.SkillType]bool{skill.SkillTypeSlides: cfg.SkillSlidesEnabled, skill.SkillTypeDocs: cfg.SkillDocsEnabled, skill.SkillTypePDFs: cfg.SkillPDFsEnabled, skill.SkillTypeSpreadsheets: cfg.SkillSpreadsheetsEnabled},
+		map[skill.SkillType]bool{skill.SkillTypeDocs: cfg.SkillDocsEnabled, skill.SkillTypePDFs: cfg.SkillPDFsEnabled, skill.SkillTypeSpreadsheets: cfg.SkillSpreadsheetsEnabled},
 	)
-	slideCreatorExecutor := slide_creator.NewSlideCreatorExecutor(mcpClient, codeFixer, artifactService, mediaClient, cfg)
-	routingExecutor := planners.NewRoutingExecutor(deepResearchExecutor, slideCreatorExecutor)
-	artifactRoutingExecutor := planners.NewRoutingExecutor(slideCreatorExecutor, slideCreatorExecutor)
-	_ = registry.RegisterExecutor(plan2.ActionTypeToolCall, routingExecutor)
-	_ = registry.RegisterExecutor(plan2.ActionTypeLLMCall, routingExecutor)
-	_ = registry.RegisterExecutor(plan2.ActionTypeArtifactCreate, artifactRoutingExecutor)
-	_ = registry.RegisterExecutor(plan2.ActionTypeTransform, slideCreatorExecutor)
+	genericArtifactExecutor := artifactexec.NewGenericArtifactExecutor(mcpClient, artifactService, mediaClient, cfg)
+	_ = registry.RegisterExecutor(plan2.ActionTypeToolCall, deepResearchExecutor)
+	_ = registry.RegisterExecutor(plan2.ActionTypeLLMCall, deepResearchExecutor)
+	_ = registry.RegisterExecutor(plan2.ActionTypeArtifactCreate, genericArtifactExecutor)
 	_ = registry.RegisterExecutor(plan2.ActionTypeSkillExecute, skillExecutor)
 
 	return registry

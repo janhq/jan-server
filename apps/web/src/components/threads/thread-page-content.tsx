@@ -266,15 +266,6 @@ export function ThreadPageContent({
         prompt: prompt || originalPrompt,
       };
 
-      if (agentType === "slide_creator") {
-        const options =
-          (normalized.options as Record<string, unknown> | undefined) ?? {};
-        if (!("user_input" in options)) {
-          options.user_input = prompt || originalPrompt;
-        }
-        normalized.options = options;
-      }
-
       return normalized;
     },
     [getLatestUserPrompt],

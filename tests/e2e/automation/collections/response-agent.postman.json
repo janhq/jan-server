@@ -96,10 +96,10 @@
       ]
     },
     {
-      "name": "3. Agent Response - Slide Generation",
+      "name": "3. Agent Response - Generation",
       "item": [
         {
-          "name": "Create Agent Response (Generate Slide)",
+          "name": "Create Agent Response (Generate)",
           "request": {
             "method": "POST",
             "header": [
@@ -585,7 +585,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Create a presentation about AI in healthcare with multiple theme options.\",\n  \"background\": false,\n  \"store\": true,\n  \"tools\": [\n    { \"type\": \"mcp\", \"server\": \"agents\" }\n  ],\n  \"tool_choice\": {\n    \"type\": \"tool\",\n    \"tool\": \"generate_slide\",\n    \"options\": {\n      \"options_count\": 3,\n      \"research_depth\": \"deep\",\n      \"format\": \"pptx\",\n      \"num_slides\": 5\n    }\n  }\n}"
+              "raw": "{\n  \"model\": \"{{default_model_id}}\",\n  \"input\": \"Summarize recent AI advances in healthcare.\",\n  \"background\": false,\n  \"store\": true,\n  \"tools\": [\n    { \"type\": \"mcp\", \"server\": \"agents\" }\n  ],\n  \"metadata\": {\n    \"agent_type\": \"deep_research\",\n    \"research_depth\": \"deep\"\n  }\n}"
             },
             "url": "{{kong_url}}/responses/v1/responses"
           },
@@ -596,7 +596,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const response = pm.response.json();",
-                  "pm.test('Slide generation response accepted', function () {",
+                  "pm.test('Agent response accepted', function () {",
                   "  pm.response.to.have.status(200);",
                   "  pm.expect(response).to.have.property('id');",
                   "  pm.expect(response.status).to.be.oneOf(['wait_for_user', 'in_progress', 'completed']);",

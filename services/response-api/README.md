@@ -480,11 +480,11 @@ jobs:
 
 ## Agent Response System
 
-The Response API includes an advanced agent response system for orchestrating multi-step AI workflows like deep research and slide generation.
+The Response API includes an advanced agent response system for orchestrating multi-step AI workflows like deep research and document generation.
 
 ### Plans and Tasks
 
-When processing complex requests that require multiple steps (e.g., researching a topic, generating slides), the service creates an execution **Plan** consisting of:
+When processing complex requests that require multiple steps (e.g., researching a topic, generating a document), the service creates an execution **Plan** consisting of:
 
 - **Tasks**: High-level work units (search, analyze, generate, etc.)
 - **Steps**: Individual operations within each task
@@ -514,7 +514,7 @@ When processing complex requests that require multiple steps (e.g., researching 
 
 ### Artifacts
 
-Plans can produce **Artifacts** - structured output files like slide decks, research documents, or code files.
+Plans can produce **Artifacts** - structured output files like research documents, spreadsheets, or code files.
 
 | Endpoint                                      | Method | Description                        |
 | --------------------------------------------- | ------ | ---------------------------------- |
@@ -527,7 +527,6 @@ Plans can produce **Artifacts** - structured output files like slide decks, rese
 
 ### Artifact Content Types
 
-- `slides`: Presentation slides (JSON structure)
 - `document`: Research documents, reports
 - `image`: Generated images
 - `code`: Code files

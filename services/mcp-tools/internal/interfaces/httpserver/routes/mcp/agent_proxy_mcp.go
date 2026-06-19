@@ -128,21 +128,6 @@ func (a *AgentProxyMCP) handleRunAgent(ctx context.Context, req *mcpsdk.CallTool
 		input.AgentType = input.Type
 	}
 
-	if input.AgentType == "slide_creator" {
-		if input.Options == nil {
-			input.Options = map[string]interface{}{}
-		}
-		if _, ok := input.Options["num_slides"]; !ok {
-			input.Options["num_slides"] = 5
-		}
-		if _, ok := input.Options["user_input"]; !ok {
-			input.Options["user_input"] = input.Prompt
-		}
-		if _, ok := input.Options["topic"]; !ok {
-			input.Options["topic"] = input.Prompt
-		}
-	}
-
 	log.Info().
 		Str("tool", "run_agent").
 		Str("agent_type", input.AgentType).
@@ -448,15 +433,7 @@ func (a *AgentProxyMCP) buildRunAgentDescription(agents []AgentMetadataCache) st
 	sb.WriteString("- type (required): The type of agent to run (alias: agent_type)\n")
 	sb.WriteString("- prompt (required): The task description for the agent\n")
 	sb.WriteString("- model (optional): The model to use. If not provided, uses the first available model\n")
-	sb.WriteString("- options (optional): Agent-specific options (e.g., research_depth, num_slides, format)\n")
-	sb.WriteString("\nIf type is slide_creator, require and provide in options:\n")
-	sb.WriteString("- topic: summarized topic for the deck\n")
-	sb.WriteString("- tone: template tone (must be one of the predefined tones)\n")
-	sb.WriteString("- num_slides: target number of slides (default: 5)\n")
-	sb.WriteString("- user_input: original user prompt (must match user request)\n")
-	sb.WriteString("Available slide_creator tones:\n- ")
-	sb.WriteString(strings.Join(slideCreatorTones, "\n- "))
-	sb.WriteString("\n")
+	sb.WriteString("- options (optional): Agent-specific options (e.g., research_depth, format)\n")
 	sb.WriteString("Available agents:\n")
 
 	for _, agent := range agents {
@@ -466,38 +443,6 @@ func (a *AgentProxyMCP) buildRunAgentDescription(agents []AgentMetadataCache) st
 	}
 
 	return sb.String()
-}
-
-var slideCreatorTones = []string{
-	"Corporate Consulting",
-	"Creative Studio",
-	"Data Analyst",
-	"Editorial Serif",
-	"Education Friendly",
-	"Finance Professional",
-	"Government/Public Sector",
-	"Gradient Modern",
-	"Healthcare Calm",
-	"Luxury Elegant",
-	"Marketing Vibrant",
-	"Minimal Clean",
-	"Monochrome",
-	"Neon Cyberpunk",
-	"Playful Pastel",
-	"Retro",
-	"Sports/Energy",
-	"Startup Bold",
-	"Sustainability Earthy",
-	"Tech Dark",
-}
-
-func isSlideCreatorTone(tone string) bool {
-	for _, candidate := range slideCreatorTones {
-		if tone == candidate {
-			return true
-		}
-	}
-	return false
 }
 
 func isAgentDisabled(agentType string) bool {
@@ -542,17 +487,6 @@ func (a *AgentProxyMCP) getDefaultAgents() []AgentMetadataCache {
 			OutputFormats:     []string{"markdown", "pdf", "json"},
 			EstimatedDuration: "2-10 minutes",
 			UseWhen:           "User wants to research, investigate, analyze, or learn about a topic in depth",
-			Enabled:           true,
-		},
-		{
-			Type:              "slide_creator",
-			Name:              "Slide Creator Agent",
-			Description:       "Builds HTML-based slide decks and exports them to editable PPTX with research-backed content",
-			Keywords:          []string{"slides", "presentation", "powerpoint", "deck", "pitch"},
-			Capabilities:      []string{"research", "outline", "html_slide_generation", "template_selection", "pptx_export"},
-			OutputFormats:     []string{"pptx", "html"},
-			EstimatedDuration: "3-15 minutes",
-			UseWhen:           "User wants an editable PPTX generated from HTML slide layouts with template control",
 			Enabled:           true,
 		},
 	}
