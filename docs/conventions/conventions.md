@@ -25,7 +25,7 @@
 ### Architecture
 
 - Each service lives under `services/<name>/` and follows the same structure (`cmd/`, `internal/`, `migrations/`, etc.).
-- Clean architecture still applies: Interfaces (HTTP) ? Domain ? Infrastructure. Domain packages never import database or HTTP packages.
+- Clean architecture still applies: Interfaces (HTTP) -> Domain -> Infrastructure. Domain packages never import database or HTTP packages.
 
 ### Database
 
@@ -61,10 +61,10 @@
 
 ```bash
 # Setup & environments
-make setup              # Copy .env.template -> .env and docker/.env
+make setup              # Copy .env.template -> .env (single root .env)
 make up-full            # Start infra + APIs + MCP in Docker
 make dev-full           # Start Docker stack with host routing for native services
-./jan-cli.sh dev run llm-api   # Run a service on host (macOS/Linux)
+tools/jan-cli.sh dev run llm-api   # Run a service on host (macOS/Linux)
 .\jan-cli.ps1 dev run llm-api  # Same on Windows
 
 # Monitoring & tooling

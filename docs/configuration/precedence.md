@@ -4,21 +4,29 @@ How Jan Server loads configuration values and decides which source wins.
 
 ## Quick Summary
 
-| Priority | Source                       | Notes                                       |
-| -------- | ---------------------------- | ------------------------------------------- |
-| **600**  | CLI flags (future)           | Planned for jan-cli integrations            |
-| **500**  | Environment variables        | Secrets, overrides, CI/CD                   |
-| **300**  | `config/environments/*.yaml` | Per-environment overrides                   |
-| **200**  | `config/defaults.yaml`       | Generated defaults (`make config-generate`) |
-| **100**  | Struct tags (`envDefault`)   | Absolute fallback values                    |
+| Priority | Source                       | Notes                                         |
+| -------- | ---------------------------- | --------------------------------------------- |
+| **600**  | CLI flags (future)           | Planned for jan-cli integrations              |
+| **500**  | Shell / OS environment vars  | Highest effective source today; secrets, CI/CD |
+| **450**  | Root `.env`                  | Loaded into the process environment by Docker Compose |
+| **300**  | `config/environments/*.yaml` | Per-environment overrides (opt-in; dir may be absent) |
+| **200**  | `config/defaults.yaml`       | Generated defaults (`make config-generate`)   |
+| **100**  | Struct tags (`envDefault`)   | Absolute fallback values                      |
 
 **Rule**: the highest priority number wins every time. Example: `POSTGRES_PORT=5433` (priority 500) beats `port: 5432` in `defaults.yaml` (priority 200).
+
+> **About the `.env` layer:** Jan Server ships a single root `.env` (created from
+> `.env.template` by `make setup` / `make quickstart`). Docker Compose injects it
+> into each container via `env_file: ${ENV_FILE:-../../.env}`, so by the time a
+> service starts, `.env` values appear as ordinary OS environment variables.
+> Anything you export in your shell still wins over the `.env` file. There is no
+> `docker/.env` and no per-environment `config/<env>.env` files.
 
 ## Configuration Sources
 
 ### 1. StructDefaultSource (Priority 100)
 
-**Lowest priority**. These are the hardcoded defaults embedded in Go struct tags in `pkg/config/types.go`.
+**Lowest priority**. These are the hardcoded defaults embedded in Go struct tags in `packages/go-common/config/types.go`.
 
 ```go
 type PostgresConfig struct {
@@ -65,7 +73,7 @@ make config-generate
 
 ### 3. YAMLEnvSource (Priority 300)
 
-**Third priority**. Environment-specific configuration files in `config/environments/*.yaml`.
+**Third priority**. Environment-specific configuration files in `config/environments/*.yaml`. This directory is **opt-in and not created by default**---add it only when you need per-environment overrides.
 
 ```yaml
 # config/environments/production.yaml
@@ -83,7 +91,7 @@ infrastructure:
 - Infrastructure endpoints that differ per environment
 - Feature flags per environment
 
-**File naming:**
+**File naming** (create only the ones you need):
 
 - `config/environments/development.yaml`
 - `config/environments/staging.yaml`
@@ -93,14 +101,15 @@ infrastructure:
 
 ```bash
 # Load development environment
-loader:= config.NewConfigLoader("development", "config/defaults.yaml")
-cfg, err:= loader.Load(context.Background())
+loader := config.NewConfigLoader("development", "config/defaults.yaml")
+cfg, err := loader.Load(context.Background())
 
 # Loads in order:
 # 1. Struct defaults (100)
 # 2. config/defaults.yaml (200)
-# 3. config/environments/development.yaml (300) <- Environment-specific
-# 4. Environment variables (500)
+# 3. config/environments/development.yaml (300) <- Environment-specific (if present)
+# 4. Root .env (450, injected as env vars by Docker Compose)
+# 5. Shell/OS environment variables (500)
 ```
 
 ### 4. EnvVarSource (Priority 500)
@@ -142,7 +151,7 @@ export POSTGRES_PORT=5433
 
 ### 5. CLI Flags (Priority 600) - Planned
 
-**Highest priority**. Command-line flags (not yet implemented, planned for Sprint 7+).
+**Highest priority**. Command-line flags (not yet implemented; planned).
 
 ```bash
 # Planned for future
@@ -162,7 +171,7 @@ export POSTGRES_PORT=5433
 The configuration loader uses a **non-zero override** strategy:
 
 1. Start with an empty `Config` struct
-2. Load sources in ascending priority order (100 -> 200 -> 300 -> 500)
+2. Load sources in ascending priority order (100 -> 200 -> 300 -> 450 -> 500)
 3. For each source:
 
 - Load configuration values
@@ -194,8 +203,8 @@ Port: 5434 // POSTGRES_PORT env var wins
 The loader tracks which source provided each final value:
 
 ```go
-loader:= config.NewConfigLoader("production", "config/defaults.yaml")
-cfg, _:= loader.Load(ctx)
+loader := config.NewConfigLoader("production", "config/defaults.yaml")
+cfg, _ := loader.Load(ctx)
 
 // Print configuration sources
 fmt.Println(loader.Provenance())
@@ -215,7 +224,7 @@ fmt.Println(loader.Provenance())
 To debug where a specific value came from:
 
 ```go
-info, err:= loader.Provenance("infrastructure.database.postgres.port")
+info, err := loader.Provenance("infrastructure.database.postgres.port")
 if err == nil {
  fmt.Printf("Port came from: %s (priority %d)\n", info.Source, info.Priority)
  // Output: Port came from: env-vars (priority 500)
@@ -378,7 +387,7 @@ host: "prod-db.company.com"
 vim config/defaults.yaml
 
 # OK CORRECT: Edit types.go and regenerate
-vim pkg/config/types.go
+vim packages/go-common/config/types.go
 make config-generate
 ```
 
@@ -437,7 +446,7 @@ func TestConfigPrecedence(t *testing.T) {
  defer os.Clearenv()
 
  // Create YAML file (priority 200)
- yaml:= `
+ yaml := `
 infrastructure:
  database:
  postgres:
@@ -446,14 +455,14 @@ infrastructure:
  os.WriteFile("config/defaults.yaml", []byte(yaml), 0644)
 
  // Load configuration
- loader:= config.NewConfigLoader("development", "config/defaults.yaml")
- cfg, err:= loader.Load(context.Background())
+ loader := config.NewConfigLoader("development", "config/defaults.yaml")
+ cfg, err := loader.Load(context.Background())
 
  // Environment variable should win
  assert.Equal(t, 9999, cfg.Infrastructure.Database.Postgres.Port)
 
  // Check provenance
- prov:= loader.Provenance()
+ prov := loader.Provenance()
  assert.Contains(t, prov, "env-vars") // Confirm env vars were loaded
 }
 ```
@@ -481,7 +490,7 @@ printenv | grep POSTGRES_PORT
 3. Check provenance to see what overrode it:
 
 ```go
-info, _:= loader.Provenance("infrastructure.database.postgres.port")
+info, _ := loader.Provenance("infrastructure.database.postgres.port")
 fmt.Printf("Source: %s (priority %d)\n", info.Source, info.Priority)
 ```
 
@@ -500,7 +509,7 @@ ls config/environments/production.yaml # Must exist
 2. Verify you're loading correct environment:
 
 ```go
-loader:= config.NewConfigLoader("production", "config/defaults.yaml")
+loader := config.NewConfigLoader("production", "config/defaults.yaml")
 // ^^^^^^^^^^^ Must match filename
 ```
 
@@ -521,12 +530,12 @@ unset POSTGRES_HOST # Remove higher-priority override
 make config-generate
 
 # Verify CI drift detection passes
-go test -v./pkg/config -run TestConfigDrift
+make config-drift-check
 ```
 
 ## See Also
 
-- [Configuration README](../../pkg/config/README.md) - Implementation details
-- [Config Types Reference](../../pkg/config/types.go) - All configuration fields
-- [Code Generation](../../pkg/config/codegen/) - Schema and YAML generators
-- [Loader Tests](../../pkg/config/loader_test.go) - Precedence test examples
+- [Configuration Package README](../../packages/go-common/config/README.md) - Implementation details
+- [Config Types Reference](../../packages/go-common/config/types.go) - All configuration fields
+- [Code Generation](../../packages/go-common/config/codegen/) - Schema and YAML generators
+- [Configuration README](README.md) - Overview and common tasks

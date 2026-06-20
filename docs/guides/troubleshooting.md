@@ -9,8 +9,7 @@ Common problems and how to fix them.
 3. [API not responding](#api-issues)
 4. [Login problems](#authentication-issues)
 5. [Docker problems](#docker-issues)
-6. [Kubernetes problems](#kubernetes-issues)
-7. [Slow performance](#performance-issues)
+6. [Slow performance](#performance-issues)
 
 ## Service Startup Issues
 
@@ -22,16 +21,16 @@ Common problems and how to fix them.
 
 ```bash
 # Find what's using the port (Linux/macOS)
-lsof -i:8080
-lsof -i:8082
-lsof -i:8285
-lsof -i:8091
+lsof -i :8080
+lsof -i :8082
+lsof -i :8285
+lsof -i :8091
 
 # Find what's using the port (Windows)
-netstat -ano | findstr:8080
+netstat -ano | findstr :8080
 taskkill /PID <PID> /F
 
-# Or change ports in.env
+# Or change ports in .env
 HTTP_PORT=8081
 RESPONSE_API_PORT=8083
 MEDIA_API_PORT=8286
@@ -104,8 +103,8 @@ docker exec llm-api nslookup media-api
 # Check if PostgreSQL is running
 docker ps | grep postgres
 
-# Check database credentials in.env
-cat.env | grep DATABASE
+# Check database credentials in .env
+cat .env | grep DATABASE
 
 # Test connection
 docker exec api-db psql -U jan_user -d jan_llm_api -c "SELECT 1"
@@ -340,60 +339,7 @@ docker network rm jan-server_default
 docker network create jan-server_default
 ```
 
-## Kubernetes Issues
-
-### Pod Stuck in Pending
-
-**Error**: Pod stays in Pending state
-
-**Debug**:
-
-```bash
-# Check events
-kubectl describe pod -n jan-server <pod-name>
-
-# Check node resources
-kubectl top nodes
-
-# Check available storage
-kubectl get pvc -n jan-server
-```
-
-### ImagePullBackOff
-
-**Error**: Can't pull image
-
-**Solutions**:
-
-```bash
-# Verify image exists
-minikube image ls | grep jan
-
-# Rebuild image
-cd services/llm-api
-docker build -t jan/llm-api:latest.
-minikube image load jan/llm-api:latest
-
-# Or update imagePullPolicy in values.yaml
-imagePullPolicy: Never # For minikube
-```
-
-### Service Not Accessible
-
-**Error**: Service endpoints not working
-
-**Debug**:
-
-```bash
-# Check service exists
-kubectl get svc -n jan-server
-
-# Port forward for access
-kubectl port-forward -n jan-server svc/jan-server-llm-api 8080:8080
-
-# Check service endpoints
-kubectl get endpoints -n jan-server
-```
+> **Kubernetes is not a supported deployment path.** Helm charts and K8s manifests in the repo are manual and incomplete, and nothing in CI deploys to a cluster (see the [Deployment Guide](deployment.md)). The issues below cover the supported local Docker Compose workflow.
 
 ## Performance Issues
 
@@ -443,7 +389,7 @@ docker exec api-db psql -U jan_user -d jan_llm_api \
  -c "SELECT query, calls, total_time FROM pg_stat_statements ORDER BY total_time DESC LIMIT 10"
 
 # Enable query logging
-# Set LOG_LEVEL=debug in.env
+# Set LOG_LEVEL=debug in .env
 
 # Use monitoring stack for traces
 make monitor-up
@@ -459,9 +405,8 @@ Before asking for help, collect this information:
 ```bash
 # System info
 docker version
-docker-compose version
+docker compose version
 go version
-kubectl version
 
 # Service status
 make health-check
@@ -470,7 +415,7 @@ make health-check
 make logs > debug-logs.txt
 
 # Configuration (without secrets)
-cat.env | grep -v _KEY | grep -v _PASSWORD > config.txt
+cat .env | grep -v _KEY | grep -v _PASSWORD > config.txt
 
 # Docker system status
 docker system df

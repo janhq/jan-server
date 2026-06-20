@@ -1,7 +1,5 @@
 # Test Flows Architecture & Diagrams
 
-**Generated**: December 2025
-
 This document provides visual representations of test flows, dependencies, and service interactions across the jan-server test suite. See [System Design](system-design.md) for the complete system architecture.
 
 ---
@@ -218,9 +216,9 @@ User Operations
 
 ---
 
-### 6. Full Regression (`test-all.postman.json`)
+### 10. Full Regression (`make test-all`)
 
-**Focus**: Executes all other collections sequentially for CI/regression.
+**Focus**: Runs all collections in `tests/e2e/automation/collections/` sequentially for CI/regression. There is no single `test-all` collection file; the `make test-all` target chains the individual collections.
 
 ```
 Bootstrap (Health + Auth)
@@ -240,7 +238,7 @@ Cleanup + Report
 
 **1 Flow, 100+ Assertions**
 
-Use this collection when running `make test-all` or in CI pipelines-it reuses the shared environment file and preserves the dependency order shown above.
+Use `make test-all` when running the full suite or in CI pipelines; it reuses the shared environment file and preserves the dependency order shown above.
 
 ---
 
@@ -465,7 +463,7 @@ Level 5: Cleanup
  | |
  | +--------+
  | v
- +-> Media API:8081
+ +-> Media API:8285
  |
  +-> Response API:8082
  |
@@ -626,7 +624,7 @@ Total: ~15-25 seconds (depends on service latency)
 | Media Upload    | 3        | URL, DataURL, Dedup                             |
 | Media Download  | 2        | Streaming, Error Cases                          |
 | Error Handling  | 5        | Invalid Input, Missing Auth                     |
-| **TOTAL**       | **100+** | **Comprehensive (see `test-all.postman.json`)** |
+| **TOTAL**       | **100+** | **Comprehensive (run via `make test-all`)**     |
 
 ---
 
@@ -671,11 +669,4 @@ See [Data Flow](data-flow.md) for:
 
 ## Related Documentation
 
-- **Main Architecture Index**: See `/docs/architecture/README.md`
-
----
-
-**Last Updated**: November 11, 2025
-**Document Type**: Architecture Reference - Testing
-**Target Audience**: QA Engineers, Developers, DevOps
-**Maintainer**: Jan-Server Team
+- **Main Architecture Index**: See [README.md](README.md)

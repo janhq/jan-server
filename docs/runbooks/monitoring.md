@@ -1,5 +1,13 @@
 # Jan Server Monitoring Runbook
 
+> **Status: TEMPLATE / DRAFT.** The alert names below match
+> `integrations/monitoring/prometheus-alerts.yml`, but the remediation steps are
+> written for a Kubernetes deployment (`kubectl`, PagerDuty escalation, etc.)
+> that is **not** wired up in this repository---the local stack runs via Docker
+> Compose. Treat the `kubectl`/cloud-specific commands as illustrative until a
+> Kubernetes deployment exists; adapt them (e.g., `docker compose`, `make`
+> targets) for the environment you are operating.
+
 ## Quick Reference
 
 | Alert              | Severity | MTTR Target | On-Call Action                          |
@@ -101,7 +109,7 @@ psql jan_server -c "SELECT query, mean_exec_time FROM pg_stat_statements ORDER B
 ### Root Causes
 
 - Background worker pool exhausted
-- Template API latency spike
+- LLM API latency spike
 - Media API unavailable
 - Database connection pool exhausted
 
@@ -109,8 +117,8 @@ psql jan_server -c "SELECT query, mean_exec_time FROM pg_stat_statements ORDER B
 
 ```bash
 # Check worker status
-curl http://response-api:8081/metrics | grep workers_active
-curl http://response-api:8081/metrics | grep workers_idle
+curl http://response-api:8082/metrics | grep workers_active
+curl http://response-api:8082/metrics | grep workers_idle
 
 # View queue contents
 psql jan_server -c "SELECT COUNT(*), status, error_message FROM background_jobs GROUP BY status, error_message ORDER BY COUNT(*) DESC;"
@@ -314,7 +322,7 @@ kubectl logs -l app=otel-collector | grep -i error
 
 ```bash
 # View classifier metrics
-curl http://response-api:8081/metrics | grep classifier_errors
+curl http://response-api:8082/metrics | grep classifier_errors
 
 # Review error logs
 kubectl logs -l app=response-api | grep classifier
@@ -412,7 +420,7 @@ curl 'http://localhost:16686/api/traces?service=SERVICE&minDuration=2s'
 
 ## Appendix C: Useful Links
 
-- **Grafana:** http://localhost:3000
+- **Grafana:** http://localhost:3331
 - **Jaeger:** http://localhost:16686
 - **Prometheus:** http://localhost:9090
 - **Monitoring Guide:** [docs/guides/monitoring.md](../guides/monitoring.md)

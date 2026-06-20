@@ -1,8 +1,6 @@
 # Response API Comprehensive Examples
 
-> **Status:** v0.0.14 | **Last Updated:** December 23, 2025
-
-Complete working examples for Response API multi-step tool orchestration with Python, JavaScript, and cURL.
+Complete working examples for Response API multi-step tool orchestration, with JavaScript and cURL.
 
 ## Table of Contents
 
@@ -58,7 +56,7 @@ const response = await fetch("http://localhost:8000/responses/v1/responses", {
     "Content-Type": "application/json",
   },
   body: JSON.stringify({
-    model: "jan-v2-30b",
+    model: "jan-v1-4b",
     input: "What's the weather in San Francisco?",
     temperature: 0.7,
     stream: false,
@@ -78,7 +76,7 @@ curl -X POST http://localhost:8000/responses/v1/responses \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "jan-v2-30b",
+    "model": "jan-v1-4b",
     "input": "What is the weather in San Francisco?",
     "temperature": 0.7,
     "stream": false
@@ -90,7 +88,7 @@ curl -X POST http://localhost:8000/responses/v1/responses \
 ```json
 {
   "id": "resp_01hqr8v9k2x3f4g5h6j7k8m9n0",
-  "model": "jan-v2-30b",
+  "model": "jan-v1-4b",
   "input": "What's the weather in San Francisco?",
   "output": "The current weather in San Francisco is partly cloudy with a temperature of 62°F...",
   "status": "completed",
@@ -132,7 +130,7 @@ const response = await fetch("http://localhost:8000/responses/v1/responses", {
     "Content-Type": "application/json",
   },
   body: JSON.stringify({
-    model: "jan-v2-30b",
+    model: "jan-v1-4b",
     input:
       "Find the top 3 AI research papers from this week and summarize their key contributions",
     system_prompt: "Use search and scraping tools efficiently",
@@ -155,7 +153,7 @@ curl -X POST http://localhost:8000/responses/v1/responses \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "jan-v2-30b",
+    "model": "jan-v1-4b",
     "input": "Search for recent AI breakthroughs, scrape the top result, and analyze the key innovations",
     "system_prompt": "Be thorough and cite sources",
     "temperature": 0.3,
@@ -167,7 +165,8 @@ curl -X POST http://localhost:8000/responses/v1/responses \
 
 Limit the depth of tool chaining:
 
-> **Note:** Server-wide depth limit is controlled by `RESPONSE_MAX_TOOL_DEPTH` environment variable (default: 8). Client requests are bounded by this limit.
+> **Note:** The tool-chaining depth limit is controlled by the `RESPONSE_MAX_TOOL_DEPTH`
+> environment variable (default: 50). Client requests are bounded by this limit.
 
 ---
 
@@ -188,7 +187,7 @@ const response = await fetch("http://localhost:8000/responses/v1/responses", {
     "Content-Type": "application/json",
   },
   body: JSON.stringify({
-    model: "jan-v2-30b",
+    model: "jan-v1-4b",
     input: "Generate detailed market research report on AI tools",
     background: true,
     store: true,
@@ -211,7 +210,7 @@ TASK_ID=$(curl -s -X POST http://localhost:8000/responses/v1/responses \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "jan-v2-30b",
+    "model": "jan-v1-4b",
     "input": "Create detailed technical documentation for a REST API",
     "background": true,
     "store": true,
@@ -287,7 +286,7 @@ When a background task completes, the Response API sends a POST request to the w
 {
   "id": "resp_abc123",
   "status": "completed",
-  "model": "jan-v2-30b",
+  "model": "jan-v1-4b",
   "input": "...",
   "output": "The comprehensive analysis...",
   "usage": {
@@ -306,7 +305,6 @@ When a background task completes, the Response API sends a POST request to the w
 }
 ```
 
-**Webhook Handler (Python/Flask):**
 **Webhook Handler (Node.js/Express):**
 
 ```javascript
@@ -364,7 +362,7 @@ const response = await fetch("http://localhost:8000/responses/v1/responses", {
     "Content-Type": "application/json",
   },
   body: JSON.stringify({
-    model: "jan-v2-30b",
+    model: "jan-v1-4b",
     input: "Analyze current tech trends",
     stream: true,
   }),
@@ -410,7 +408,7 @@ curl -N -X POST http://localhost:8000/responses/v1/responses \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "jan-v2-30b",
+    "model": "jan-v1-4b",
     "input": "What are the latest developments in AI?",
     "stream": true
   }'
@@ -495,39 +493,56 @@ curl -X DELETE -H "Authorization: Bearer $TOKEN" \
 
 ### Common Error Scenarios
 
-**Request Validation Error (400):**
-**Tool Execution Timeout (408):**
-**Max Depth Exceeded:**
+All errors follow the shared error envelope (`{ "error": { "message", "type", "code" } }`).
+
+**Request Validation Error (400):** missing or malformed fields (for example, no `model`).
 
 ```json
 {
   "error": {
-    "message": "Tool execution exceeded maximum depth of 8",
+    "message": "model is required",
+    "type": "invalid_request_error",
+    "code": "invalid_request"
+  }
+}
+```
+
+**Response Not Found (404):** the `response_id` does not exist or is not owned by the caller.
+
+**Tool Execution Timeout (408):** a tool call exceeded `TOOL_EXECUTION_TIMEOUT`.
+
+**Max Depth Exceeded:** the chain hit `RESPONSE_MAX_TOOL_DEPTH` (default 50).
+
+```json
+{
+  "error": {
+    "message": "Tool execution exceeded maximum depth of 50",
     "type": "execution_error",
     "code": "max_depth_exceeded"
   }
 }
 ```
 
-## **Response Not Found (404):**
-
 ## Real-World Examples
 
-### Example 1: Research Assistant
+### Example: Research Assistant
 
-Comprehensive research with multiple tool calls:
+Let the orchestrator search, scrape, and synthesize in one request:
 
-### Example 2: Competitive Analysis
+```bash
+curl -s -X POST http://localhost:8000/responses/v1/responses \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{
+    "model": "jan-v1-4b",
+    "input": "Research the current state of small language models and summarize the top findings with sources.",
+    "system_prompt": "Use search and scrape tools; cite every claim.",
+    "temperature": 0.3
+  }' | jq '{output, tools: [.tool_executions[].tool_name]}'
+```
 
-Multi-step analysis with data gathering:
-
-### Example 3: Content Generation with Research
-
-Generate blog post with cited sources:
-
-### Example 4: Data Extraction Pipeline
-
-Extract structured data from web sources:
+For a long report, submit the same request with `"background": true`, `"store": true`, and a
+`metadata.webhook_url`, then poll `GET /responses/v1/responses/{id}` (see
+[Background Mode](#background-mode)).
 
 ---
 
@@ -539,27 +554,13 @@ Key configuration options for Response API behavior:
 
 | Variable                   | Default | Description                     |
 | -------------------------- | ------- | ------------------------------- |
-| `RESPONSE_MAX_TOOL_DEPTH`  | 8       | Maximum depth for tool chaining |
-| `TOOL_EXECUTION_TIMEOUT`   | 45s     | Per-tool execution timeout      |
+| `RESPONSE_MAX_TOOL_DEPTH`  | 50      | Maximum depth for tool chaining |
+| `TOOL_EXECUTION_TIMEOUT`   | 300s    | Per-tool execution timeout      |
 | `BACKGROUND_WORKER_COUNT`  | 4       | Number of background workers    |
 | `BACKGROUND_POLL_INTERVAL` | 2s      | Worker polling frequency        |
 | `BACKGROUND_TASK_TIMEOUT`  | 600s    | Max time for background tasks   |
 | `WEBHOOK_MAX_RETRIES`      | 3       | Webhook delivery retry attempts |
 | `WEBHOOK_TIMEOUT`          | 10s     | Webhook HTTP timeout            |
-
-### Response Object Schema
-
-Complete response object structure:
-
----
-
-## Related Documentation
-
-- [Response API Reference](README.md) - Full endpoint documentation
-- [MCP Tools API](../mcp-tools/) - Available tools and capabilities
-- [LLM API](../llm-api/) - Model management and chat completions
-- [Background Mode Guide](../../guides/background-mode.md) - Detailed background processing
-- [Examples Index](../examples/README.md) - Cross-service examples
 
 ---
 
@@ -568,11 +569,7 @@ Complete response object structure:
 - [Response API Reference](README.md) - Full endpoint documentation
 - [Decision Guide: When to Use Response API](../decision-guides.md#llm-api-vs-response-api) - Choose between LLM API and Response API
 - [Decision Guide: Background vs Synchronous](../decision-guides.md#synchronous-vs-background-mode) - Choose execution mode
-- [Decision Guide: Tool Depth](../decision-guides.md#tool-execution-depth) - Understand depth parameter
+- [Decision Guide: Tool Depth](../decision-guides.md#tool-execution-depth) - Understand the depth limit
 - [MCP Tools API](../mcp-tools/) - Available tools
 - [LLM API](../llm-api/) - Direct chat completions
 - [Examples Index](../examples/README.md) - Cross-service examples
-
----
-
-**Last Updated:** December 23, 2025 | **API Version:** v1 | **Status:** v0.0.14

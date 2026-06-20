@@ -35,7 +35,7 @@ Gin Handler (llm-api/internal/interfaces/httpserver/handlers/chathandler)
     ↓
 2. Memory Loading
    - Collect prompt memory from headers/metadata
-   - Load memory context via memory-tools service
+   - Memory is handled in-process by the LLM API (gated by PROMPT_ORCHESTRATION_MEMORY)
     ↓
 3. Provider Selection
    - Select provider model based on request
@@ -546,8 +546,7 @@ Modules execute in priority order (-20, -15, -10, 5, 10, 20, 30, 40). Deep Resea
 
 1. Is memory provided via `X-Prompt-Memory` header or conversation metadata?
 2. Is `promptCtx.Memory` populated with items?
-3. Is `PROMPT_ORCHESTRATION_MEMORY=true`?
-4. Is `MEMORY_ENABLED=true` for the memory-tools integration?
+3. Is `PROMPT_ORCHESTRATION_MEMORY=true`? (Memory is composed in-process; there is no separate memory service.)
 
 ### User Profile Not Applying
 

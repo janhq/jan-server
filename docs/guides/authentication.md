@@ -42,7 +42,7 @@ Client
 
 ## 4. API Key Lifecycle
 
-- **Format**: Keys use the `sk_` prefix plus 32 random characters. The shared secret is shown only once (on creation). Services store only the SHA-256 hash inside Keycloak user attributes and PostgreSQL (`api_keys` table from `000001_init_schema.up.sql`).
+- **Format**: Keys use the `sk_live` prefix plus 32 random characters. The shared secret is shown only once (on creation). Services store only the SHA-256 hash inside Keycloak user attributes and PostgreSQL (`api_keys` table from `000001_init_schema.up.sql`).
 - **Endpoints** (require JWT auth):
 - `POST /auth/api-keys` - Create a new API key tied to the authenticated user.
 - `GET /auth/api-keys` - List active keys for the calling user.

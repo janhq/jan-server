@@ -26,13 +26,15 @@ curl http://localhost:3015/healthz || true   # returns 404 because the vector st
 Run everything through the Makefile target:
 
 ```bash
-make test-mcp-integration
+make test-mcp
 ```
 
 The target executes:
 
 ```bash
-jan-cli api-test run tests/automation/mcp-postman-scripts.json \
+jan-cli api-test run \
+  tests/e2e/automation/collections/mcp-runtime.postman.json \
+  tests/e2e/automation/collections/mcp-admin.postman.json \
   --env-var "kong_url=http://localhost:8000" \
   --env-var "mcp_tools_url=http://localhost:8000/mcp" \
   --verbose --reporters cli
@@ -110,7 +112,7 @@ curl -s http://localhost:3010/run_code -H "Content-Type: application/json" -d '{
 | ------------- | ------------------------------------------------ | ----------------------------------------------------------- |
 | Kong          | `make logs` or `docker compose logs kong`        | Confirms `/mcp` route, auth headers, upstream failures      |
 | MCP Tools     | `make logs-mcp`                                  | Watch tool dispatch, vector store responses, sandbox output |
-| Vector Store  | `docker compose logs vector-store`               | Service name is `vector-store` in `docker/services-mcp.yml` |
+| Vector Store  | `docker compose logs vector-store`               | Service name is `vector-store` in `infra/docker/services-mcp.yml` |
 | SandboxFusion | `docker compose logs sandboxfusion` (if enabled) | Verify HTTP 200s and stdout capturing                       |
 
 Common fixes:
@@ -122,7 +124,7 @@ Common fixes:
 ## 5. Summary Checklist
 
 - [ ] `make up-full` (or `make up-mcp` + `make up-api`) running
-- [ ] `make test-mcp-integration` passes locally
+- [ ] `make test-mcp` passes locally
 - [ ] Manual curl checks through Kong and direct service succeed
 - [ ] Logs show healthy MCP tool executions
 

@@ -6,20 +6,27 @@ Comprehensive how-to guides for working with Jan Server. For incident response a
 
 ### Development
 
-- **[Development Guide](development.md)** - Complete development workflow, setup, and best practices
 - **[Development Guide](development.md)** - Full Docker, dev-full (hybrid), and native execution modes
+- **[Jan CLI Guide](jan-cli.md)** - Install and use the `jan-cli` developer tool
 - **[Testing Guide](testing.md)** - Unit tests, integration tests, and testing best practices
+- **[Service Template](services-template.md)** - Scaffold a new microservice
 
 ### Operations (how-to)
 
 - **[Monitoring](monitoring.md)** - Observability, metrics, traces, and dashboards
-- **[Deployment](deployment.md)** - Kubernetes, Docker Compose, and hybrid deployment strategies
+- **[Deployment](deployment.md)** - CI image build/push, Cloudflare Pages, and local Docker Compose
 - **[Troubleshooting](troubleshooting.md)** - Common issues and solutions (links out to runbooks where applicable)
+- **[Kong Plugins](kong-plugins.md)** - Build and load custom Kong gateway plugins
 
 ### Special Topics
 
+- **[Authentication](authentication.md)** - Kong + Keycloak JWT / API-key gateway flow
+- **[Connectors](connectors.md)** - OAuth connectors for GitHub and Google services
+- **[Conversation Management](conversation-management.md)** - Conversations, messages, projects, sharing
+- **[Background Mode](background-mode.md)** - Async response generation, polling, and webhooks
+- **[Prompt Orchestration](prompt-orchestration.md)** - Runtime prompt composition modules
 - **[MCP Testing](mcp-testing.md)** - Testing MCP (Model Context Protocol) integration
-- **[MCP Tools Configuration](mcp-admin-interface.md)** - Configure search, scrape, and code execution tools
+- **[MCP Admin Interface](mcp-admin-interface.md)** - Configure search, scrape, and code execution tools
 
 ## Quick Links
 
@@ -52,7 +59,7 @@ Comprehensive how-to guides for working with Jan Server. For incident response a
 ### Development Workflow
 
 ```bash
-# 1. Setup development environment (.env + infra/docker/.env)
+# 1. Setup development environment (creates the root .env + Docker networks)
 make setup
 
 # 2. Start everything in Docker
@@ -60,8 +67,8 @@ make up-full
 
 # 3. Switch a service to native mode (optional)
 docker compose stop llm-api
-./jan-cli.sh dev run llm-api   # macOS/Linux
-.\jan-cli.ps1 dev run llm-api  # Windows
+./tools/jan-cli.sh dev run llm-api   # macOS/Linux
+.\tools\jan-cli.ps1 dev run llm-api  # Windows
 
 # 4. Run automated tests
 make test-all                  # jan-cli api-test integration suites
@@ -78,7 +85,7 @@ make test-all
 
 # Specific test suites
 make test-auth
-make test-conversations
+make test-conversation
 make test-mcp
 
 # Unit tests from source

@@ -18,5 +18,3 @@ The `services/template-api` directory contains a production-ready skeleton for n
 5. Register your handlers inside `internal/interfaces/httpserver`.
 6. Add domain packages and migrations as needed.
 7. Update root `.env.template`, README, and deployment manifests to include your service.
-
-This guide provides a detailed checklist covering both greenfield and migration workflows for creating new services.

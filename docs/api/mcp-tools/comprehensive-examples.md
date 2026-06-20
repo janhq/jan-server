@@ -1,8 +1,6 @@
 # MCP Tools API Comprehensive Examples
 
-> **Status:** v0.0.14 | **Last Updated:** December 23, 2025
-
-Complete working examples for MCP Tools API using JSON-RPC 2.0 protocol with Python, JavaScript, and cURL.
+Complete working examples for the MCP Tools API using the JSON-RPC 2.0 protocol, with JavaScript and cURL.
 
 ## Table of Contents
 
@@ -473,13 +471,36 @@ curl -X POST http://localhost:8000/v1/mcp \
   }' | jq '.result.content'
 ```
 
-### Data Processing Example
-
 ---
 
 ## Error Handling
 
 ### Handle Tool Errors
+
+Inspect the JSON-RPC envelope: a top-level `error` object signals a protocol/transport failure,
+while a successful `result` may still report a tool-level failure via `is_error`.
+
+```javascript
+const res = await fetch("http://localhost:8000/v1/mcp", {
+  method: "POST",
+  headers: { ...headers, "Content-Type": "application/json" },
+  body: JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/call",
+    params: { name: "google_search", arguments: { q: "test" } },
+  }),
+});
+
+const body = await res.json();
+if (body.error) {
+  console.error(`RPC error ${body.error.code}: ${body.error.message}`);
+} else if (body.result?.is_error) {
+  console.error("Tool reported an error:", body.result.content);
+} else {
+  console.log(body.result.content);
+}
+```
 
 ### Common Error Codes
 
@@ -543,11 +564,28 @@ curl -X POST http://localhost:8000/v1/mcp \
 
 ### Example 1: Research Pipeline
 
-Search, scrape, and analyze content:
+Chain `google_search` then `scrape` on the top hit, then summarize client-side:
 
-### Example 2: Data Analysis Workflow
+```bash
+# 1. Search
+HITS=$(curl -s -X POST http://localhost:8000/v1/mcp \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call",
+       "params":{"name":"google_search","arguments":{"q":"vector databases overview","num":3}}}')
 
-### Example 3: Content Aggregation
+# 2. Pick a URL from the results and scrape it
+URL=$(echo "$HITS" | jq -r '.result.content' | grep -oE 'https?://[^ "]+' | head -n1)
+curl -s -X POST http://localhost:8000/v1/mcp \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",
+       \"params\":{\"name\":\"scrape\",\"arguments\":{\"url\":\"$URL\",\"includeMarkdown\":true}}}" \
+  | jq -r '.result.content'
+```
+
+> For a fully automated search -> scrape -> analyze -> answer loop, send the same query to the
+> [Response API](../response-api/) instead, which orchestrates the tools for you.
+
+### Example 2: Content Aggregation
 
 **JavaScript:**
 
@@ -601,16 +639,21 @@ console.log("Aggregated news from", news.length, "sources");
 
 ### Tool-Specific Environment Variables
 
-| Tool           | Variable                       | Description                             |
-| -------------- | ------------------------------ | --------------------------------------- |
-| google_search  | `SERPER_API_KEY`               | Serper API key for search               |
-| google_search  | `MCP_SEARCH_ENGINE`            | Search engine: serper, searxng, offline |
-| google_search  | `SEARXNG_URL`                  | SearXNG instance URL                    |
-| scrape         | N/A                            | No specific configuration               |
-| file*search*\* | `VECTOR_STORE_URL`             | Vector store service URL                |
-| python_exec    | `SANDBOXFUSION_URL`            | SandboxFusion service URL               |
-| python_exec    | `SANDBOXFUSION_TIMEOUT`        | Execution timeout                       |
-| python_exec    | `MCP_SANDBOX_REQUIRE_APPROVAL` | Require approval flag                   |
+Search uses a provider fallback chain: **Serper -> Exa -> Tavily -> SearXNG**. Each provider
+participates only when its `*_ENABLED` flag is true and its credentials are set.
+
+| Tool           | Variable                                            | Description                              |
+| -------------- | --------------------------------------------------- | ---------------------------------------- |
+| google_search  | `SERPER_API_KEY`, `SERPER_ENABLED`                  | Serper (default, first in chain)         |
+| google_search  | `EXA_API_KEY`, `EXA_ENABLED`                        | Exa (second in chain)                    |
+| google_search  | `TAVILY_API_KEY`, `TAVILY_ENABLED`                  | Tavily (third in chain)                  |
+| google_search  | `SEARXNG_URL`, `SEARXNG_ENABLED`                    | SearXNG instance (last in chain)         |
+| google_search  | `MCP_SEARCH_ENGINE`                                 | Preferred engine: `serper` \| `searxng` \| `offline` |
+| scrape         | N/A                                                 | No specific configuration                |
+| file_search_*  | `VECTOR_STORE_URL`, `MCP_ENABLE_FILE_SEARCH`        | Vector store service URL / feature flag  |
+| python_exec    | `SANDBOXFUSION_URL`                                 | SandboxFusion service URL                |
+| python_exec    | `SANDBOXFUSION_TIMEOUT`                             | Execution timeout                        |
+| python_exec    | `MCP_SANDBOX_REQUIRE_APPROVAL`                      | Require `approved: true` in the call     |
 
 ### JSON-RPC Error Codes
 
@@ -627,12 +670,7 @@ console.log("Aggregated news from", news.length, "sources");
 
 ## Related Documentation
 
-- [MCP Tools API Reference](README.md) - Full endpoint documentation
-- [Decision Guide: MCP Protocol](../decision-guides.md#mcp-tools-protocol) - JSON-RPC format and error handling
+- [MCP Tools API Reference](README.md) - Full endpoint documentation, JSON-RPC format
 - [MCP Providers](../../services/mcp-tools/mcp-providers.md) - External tool configuration
 - [Response API](../response-api/) - Tool orchestration
 - [Examples Index](../examples/README.md) - Cross-service examples
-
----
-
-**Last Updated:** December 23, 2025 | **API Version:** v1 | **Status:** v0.0.14

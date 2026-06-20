@@ -33,7 +33,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ## Available Tools
 
-- **google_search** - Serper/SearXNG-backed web search with optional filters and location hints
+- **google_search** - Web search with optional filters and location hints. Backed by a provider fallback chain: **Serper -> Exa -> Tavily -> SearXNG** (the first enabled provider with valid credentials handles the query).
 - **scrape** - Fetch and parse a web page, optionally returning Markdown
 - **file_search_index** / **file_search_query** - Lightweight vector store to index custom text and run similarity queries
 - **python_exec** - Execute trusted code through SandboxFusion (optional approval flag)
@@ -41,26 +41,31 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ## How It Works
 
-All tools use JSON-RPC 2.0 protocol. You send a request with tool name and parameters, get back results.
-
-**Need help with the protocol?** See [MCP Tools Protocol Guide](../decision-guides.md#mcp-tools-protocol) for request format and error handling patterns.
+All tools use the JSON-RPC 2.0 protocol over the single `POST /v1/mcp` endpoint. You send a
+request naming the tool and its arguments, and get back the result. See
+[JSON-RPC 2.0 Protocol](#json-rpc-20-protocol) below for the request/response format.
 
 ## Service Ports & Configuration
 
-| Component            | Port | Key Environment Variables                            |
-| -------------------- | ---- | ---------------------------------------------------- |
-| **HTTP Server**      | 8091 | `MCP_TOOLS_HTTP_PORT`                                |
-| **Search Providers** | 443  | `SERPER_API_KEY`, `MCP_SEARCH_ENGINE`, `SEARXNG_URL` |
-| **Vector Store**     | 3015 | `VECTOR_STORE_URL`                                   |
-| **SandboxFusion**    | 8080 | `SANDBOXFUSION_URL`, `MCP_SANDBOX_REQUIRE_APPROVAL`  |
+| Component            | Port | Key Environment Variables                                                          |
+| -------------------- | ---- | ---------------------------------------------------------------------------------- |
+| **HTTP Server**      | 8091 | `MCP_TOOLS_HTTP_PORT`                                                               |
+| **Search Providers** | 443  | `SERPER_API_KEY`, `EXA_API_KEY`, `TAVILY_API_KEY`, `SEARXNG_URL` (+ each `*_ENABLED`) |
+| **Vector Store**     | 3015 | `VECTOR_STORE_URL`                                                                  |
+| **SandboxFusion**    | 8080 | `SANDBOXFUSION_URL`, `MCP_SANDBOX_REQUIRE_APPROVAL`                                 |
 
 ### Required Environment Variables
 
 ```bash
 MCP_TOOLS_HTTP_PORT=8091
-SERPER_API_KEY=your_serper_api_key
-MCP_SEARCH_ENGINE=serper             # serper | searxng | offline
-SEARXNG_URL=http://searxng:8080      # used when MCP_SEARCH_ENGINE=searxng
+
+# Search provider fallback chain: Serper -> Exa -> Tavily -> SearXNG.
+# Each provider needs *_ENABLED=true AND valid credentials to participate.
+SERPER_API_KEY=your_serper_api_key   SERPER_ENABLED=true
+EXA_API_KEY=your_exa_api_key         EXA_ENABLED=true
+TAVILY_API_KEY=your_tavily_api_key   TAVILY_ENABLED=true
+SEARXNG_URL=http://searxng:8080      SEARXNG_ENABLED=true
+
 VECTOR_STORE_URL=http://vector-store-mcp:3015
 SANDBOXFUSION_URL=http://sandbox-fusion:8080
 OTEL_ENABLED=false
@@ -147,7 +152,9 @@ curl -N http://localhost:8000/v1/mcp \
  }'
 ```
 
-Because the service uses `mcp-go`'s streaming HTTP server, responses are sent as Server-Sent Events (SSE). For simple calls you can omit `-N`, but streaming keeps the connection open for multi-part results (tool deltas, long-running sandbox jobs, etc.).
+The service runs the MCP streamable HTTP handler in **stateless, JSON-response mode**, so a
+normal `tools/call` returns a single JSON body (you do not need `-N`). The handler still accepts
+`Accept: application/json, text/event-stream`, which is set automatically if you omit it.
 
 **Response:**
 
@@ -219,11 +226,12 @@ The Response API uses MCP Tools for multi-step orchestration:
 
 ```bash
 # Response API automatically calls MCP tools
+# Kong route /responses uses strip_path, so /responses/v1/responses -> service /v1/responses
 curl -X POST http://localhost:8000/responses/v1/responses \
  -H "Authorization: Bearer <token>" \
  -H "Content-Type: application/json" \
  -d '{
- "model": "jan-v2-30b",
+ "model": "jan-v1-4b",
  "input": "Search for Python async programming and summarize top 3 results",
  "stream": true
  }'
@@ -248,8 +256,8 @@ python_exec (if needed for analysis)
 LLM API (final generation)
 ```
 
-**Max Depth**: 8 tool calls
-**Timeout per Tool**: 45 seconds
+**Max tool depth**: capped by `RESPONSE_MAX_TOOL_DEPTH` (default 50)
+**Timeout per tool**: `TOOL_EXECUTION_TIMEOUT` (default 300s)
 
 ## Error Codes
 
@@ -268,18 +276,10 @@ LLM API (final generation)
 - **LLM API** (Port 8080) - Final generation
 - **Kong Gateway** (Port 8000) - API routing
 - **SandboxFusion** - Code execution sandbox
-- **Serper / SearXNG** - Web search providers
+- **Search providers** - Serper, Exa, Tavily, SearXNG (fallback chain)
 - **Provider Configuration**: [services/mcp-tools/mcp-providers.md](../../services/mcp-tools/mcp-providers.md)
 
-## See Also
-
-- [Response API Documentation](../response-api/)
-- [LLM API Documentation](../llm-api/)
-- [Architecture Overview](../../architecture/)
-- [Response API Documentation](../response-api/)
-- [LLM API Documentation](../llm-api/)
-- [Architecture Overview](../../architecture/)
-- [Provider Configuration](../../services/mcp-tools/mcp-providers.md)
+## Examples
 
 ### Example: List Available Tools
 
@@ -358,7 +358,11 @@ curl -s http://localhost:8000/v1/mcp \
  "id": 5,
  "method": "tools/call",
  "params": {
- "name": "file_search_query",
+   "name": "file_search_query",
+   "arguments": {
+     "query": "Where do the Menlo Platform docs live?",
+     "top_k": 3
+   }
  }
  }'
 ```

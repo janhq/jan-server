@@ -3,7 +3,7 @@
 > A microservices LLM API platform with MCP tool integration
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://go.dev/)
+[![Go](https://img.shields.io/badge/Go-1.24.0-00ADD8?logo=go)](https://go.dev/)
 [![Docker](https://img.shields.io/badge/Docker-required-2496ED?logo=docker)](https://www.docker.com/)
 
 ## Prerequisites
@@ -32,7 +32,6 @@ The `quickstart` target wraps `jan-cli` and guides you through:
 - Selecting the LLM provider (local vLLM vs remote OpenAI-compatible endpoint)
 - Choosing the MCP search provider (Serper, SearXNG, or disabled)
 - Enabling or disabling the Media API
-- Enabling or disabling the Realtime API (LiveKit-based real-time communication)
 
 Need to rerun the wizard? Execute `make quickstart` again and accept the prompt to update your `.env`.
 
@@ -91,7 +90,6 @@ Primary entry points:
 - [docs/README.md](docs/README.md) - Documentation hub overview and navigation map grouped by audience
 - [docs/architecture/services.md](docs/architecture/services.md) - Service responsibilities and ports
 - [docs/api/README.md](docs/api/README.md) - API reference hub
-- [docs/getting-started/README.md](docs/getting-started/README.md) - Five minute setup
 - [docs/quickstart.md](docs/quickstart.md) - Interactive setup walkthrough and commands
 
 Governance and quality:
@@ -111,32 +109,30 @@ jan-server/
 |   |-- response-api/
 |   |-- media-api/
 |   |-- mcp-tools/
-|   |-- template-api/
+|   |-- template-api/      # Service scaffold template
 |-- packages/              # Shared packages
 |   |-- interfaces/        # Shared UI components (@janhq/interfaces)
+|   |-- go-common/         # Shared Go utilities
+|-- tools/jan-cli/         # Unified CLI for setup, ops, and development
 |-- docs/                  # Documentation hub
-|-- infra/docker/          # Compose profiles (infra, api, mcp, inference)
-|-- monitoring/            # Grafana, Prometheus, OTEL configs
-|-- k8s/                   # Helm chart + setup guide
-|-- config/                # Environment templates and helpers
-|-- kong/                  # Gateway declarative config
-|-- keycloak/              # Realm + theme customisation
-|-- scripts/               # Utility scripts (new service template, etc.)
+|-- infra/docker/          # Compose fragments (infra, api, mcp, inference)
+|-- integrations/          # Kong plugins, Keycloak realm/config
+|-- config/                # Environment templates and schemas
 |-- Makefile               # Build, test, deploy targets
+|-- docker-compose.yml     # Root compose file
+|-- .env.template          # Environment template
 ```
 
 Key directories:
 
-- `apps/` - frontend applications (React chat UI, Next.js admin/docs).
+- `apps/` - frontend application (React + Vite chat UI).
 - `services/` - source for each microservice plus local docs.
-- `packages/` - shared packages (UI components, utilities).
+- `packages/` - shared packages (`interfaces` UI components, `go-common` Go utilities).
+- `tools/jan-cli/` - unified CLI (`tools/jan-cli.sh` / `tools/jan-cli.ps1` wrappers).
 - `docs/` - user, operator, and developer documentation (see [docs/README.md](docs/README.md)).
 - `infra/docker/` - compose files included via `docker-compose.yml`.
-- `monitoring/` - observability stack definitions (Grafana dashboards live here).
-- `k8s/` - Helm chart (`k8s/jan-server`) and cluster setup notes.
-- `config/` - `.env` templates and environment overlays.
-- `kong/` / `keycloak/` - edge and auth configuration.
-- `scripts/` - automation (service scaffolding, utility scripts).
+- `integrations/` - Kong gateway and Keycloak configuration.
+- `config/` - environment templates and schemas.
 
 ### Frontend Applications
 
@@ -171,7 +167,7 @@ Create new microservices quickly with the template system:
 
 ```bash
 # Generate new service from template
-./scripts/new-service-from-template.ps1 -Name my-new-service
+jan-cli dev scaffold my-new-service
 
 # Template includes:
 # - Go service skeleton with Gin HTTP server
@@ -193,51 +189,17 @@ Create new microservices quickly with the template system:
 ### Quick Commands
 
 ```bash
-# Start services
-make up-full              # Full stack (all APIs + infrastructure)
-make up-gpu               # With GPU inference (vLLM)
-make up-cpu               # CPU-only inference
-make up                   # Infrastructure only (DB, Keycloak, Redis)
-
-# Build services
-make build-llm-api        # Build LLM API
-make build-response-api   # Build Response API
-make build-media-api      # Build Media API
-make build-mcp            # Build MCP Tools
-
-# Development
-make test-all             # Run all test suites
-make swag                 # Generate API docs
-
-# Testing
-make test-auth            # Authentication tests
-make test-conversations   # Conversation tests
-make test-response        # Response API tests
-make test-media           # Media API tests
-make test-mcp             # MCP tools tests
-make test-e2e             # Gateway E2E tests
-
-# Monitoring
-make monitor-up           # Start monitoring stack
-make monitor-logs         # View monitoring logs
-
-# Logs & Status
-make logs-llm-api         # View LLM API logs
-make logs-response-api    # View Response API logs
-make logs-media-api       # View Media API logs
-make logs-mcp             # View MCP Tools logs
-make health-check         # Check all services health
-
-# Database
-make db-migrate           # Run migrations
-make db-reset             # Reset database
-make db-seed              # Seed test data
-
-# Cleanup
-make down                 # Stop services
-make clean                # Clean artifacts
-make clean-all            # Clean everything (including volumes)
+make up-full              # Start the full stack (all APIs + infrastructure)
+make health-check         # Verify all services are healthy
+make swagger              # Regenerate OpenAPI docs
+make logs                 # Tail container logs
+make down                 # Stop containers (keep volumes)
+make down-clean           # Stop containers and remove volumes
 ```
+
+The Makefile exposes 100+ targets for building, running profiles, monitoring,
+and database operations. See [docs/quickstart.md](docs/quickstart.md) for the
+full command reference.
 
 ### Development Mode
 
@@ -249,8 +211,7 @@ make dev-full
 
 # Stop any service and run it on your host
 docker compose stop llm-api
-.\scripts\dev-full-run.ps1 llm-api  # Windows
-./scripts/dev-full-run.sh llm-api   # Linux/Mac
+jan-cli dev run llm-api
 ```
 
 See [Development Guide](docs/guides/development.md) for details on full Docker, dev-full (hybrid), and native execution modes.
@@ -273,18 +234,18 @@ jan-cli service list
 
 ### Quick Usage (Without Installation)
 
-Use the wrapper scripts from the project root:
+Use the wrapper scripts under `tools/`:
 
 ```bash
 # Linux/macOS/WSL
-./jan-cli.sh config validate
-./jan-cli.sh service list
-./jan-cli.sh dev setup
+tools/jan-cli.sh config validate
+tools/jan-cli.sh service list
+tools/jan-cli.sh dev setup
 
 # Windows PowerShell
-.\jan-cli.ps1 config validate
-.\jan-cli.ps1 service list
-.\jan-cli.ps1 dev setup
+tools\jan-cli.ps1 config validate
+tools\jan-cli.ps1 service list
+tools\jan-cli.ps1 dev setup
 ```
 
 The wrapper scripts automatically build the CLI if needed.
@@ -454,58 +415,37 @@ docker compose --profile sandbox up -d  # Start sandbox for code execution
 
 ### Environment Configuration
 
+Jan Server uses a single `.env` file at the repository root, generated from
+`.env.template`:
+
 ```bash
-# Quick setup with defaults
+# Create or update the root .env (idempotent)
 make setup
 
-# Or manually configure
-cp config/secrets.env.example config/secrets.env
-# Edit config/secrets.env with your API keys:
-# - HF_TOKEN (HuggingFace token for model downloads)
-# - SERPER_API_KEY (for Google Search tool)
-# - POSTGRES_PASSWORD (database password)
-# - KEYCLOAK_ADMIN_PASSWORD (Keycloak admin password)
-
-# Available environment configs:
-# - config/defaults.env       - Base configuration
-# - config/development.env    - Docker development
-# - config/testing.env        - Testing configuration
-# - config/production.env.example - Production template
+# Then edit .env and choose which services run via COMPOSE_PROFILES
 ```
 
-**Required secrets:**
+**Common secrets to set in `.env`:**
 
-- `HF_TOKEN` - HuggingFace token (get from https://huggingface.co/settings/tokens)
-- `SERPER_API_KEY` - Serper API key (get from https://serper.dev)
+- `HF_TOKEN` - HuggingFace token for model downloads (https://huggingface.co/settings/tokens)
+- `SERPER_API_KEY` - Serper API key for the Google Search tool (https://serper.dev)
+- `POSTGRES_PASSWORD` - application database password
+- `KEYCLOAK_ADMIN_PASSWORD` - Keycloak admin password
 
 See [Deployment Guide](docs/guides/deployment.md) for production setup.
 
 ## Testing
 
-```bash
-# Run all tests (6 jan-cli api-test collections)
-make test-all
+Integration tests run through jan-cli api-test collections:
 
-# Specific test suites
+```bash
+make test-all             # Run all collections
 make test-auth            # Authentication flows (guest + user)
-make test-conversations   # Conversation management
+make test-conversation    # Conversation management
 make test-response        # Response API orchestration
 make test-media           # Media API operations
 make test-mcp             # MCP tools integration
-make test-e2e             # Gateway end-to-end tests
-
-# Test reports
-# - CLI output: Detailed results with assertions
 ```
-
-**Test Collections:**
-
-- `tests/automation/auth-postman-scripts.json` - Auth flows
-- `tests/automation/conversations-postman-scripts.json` - Conversations
-- `tests/automation/responses-postman-scripts.json` - Response API
-- `tests/automation/media-postman-scripts.json` - Media API
-- `tests/automation/mcp-postman-scripts.json` - MCP tools
-- `tests/automation/test-all.postman.json` - Complete E2E suite
 
 Testing guide: [docs/guides/testing.md](docs/guides/testing.md)
 
@@ -524,10 +464,10 @@ See [Monitoring Guide](docs/guides/monitoring.md) for configuration.
 | Layer              | Technology         | Version |
 | ------------------ | ------------------ | ------- |
 | **API Gateway**    | Kong               | 3.5     |
-| **Services**       | Go (Gin framework) | 1.21+   |
+| **Services**       | Go (Gin framework) | 1.24.0  |
 | **Database**       | PostgreSQL         | 18      |
 | **Cache**          | Redis              | Latest  |
-| **Auth**           | Keycloak (OIDC)    | Latest  |
+| **Auth**           | Keycloak (OIDC)    | 24.0.5  |
 | **Inference**      | vLLM               | Latest  |
 | **Search**         | SearXNG            | Latest  |
 | **Code Execution** | SandboxFusion      | Latest  |
@@ -541,11 +481,10 @@ See [Monitoring Guide](docs/guides/monitoring.md) for configuration.
 
 **Microservices:**
 
-- LLM API: Go 1.21+ with Gin, GORM, Wire DI
-- Response API: Go 1.21+ with Gin, GORM, Wire DI
-- Media API: Go 1.21+ with Gin, GORM, S3 SDK
-- MCP Tools: Go 1.21+ with JSON-RPC 2.0
-- Realtime API: Go 1.21+ with Gin, LiveKit SDK
+- LLM API: Go 1.24.0 with Gin, GORM, Wire DI
+- Response API: Go 1.24.0 with Gin, GORM, Wire DI
+- Media API: Go 1.24.0 with Gin, GORM, S3 SDK
+- MCP Tools: Go 1.24.0 with JSON-RPC 2.0
 
 ## Contributing
 

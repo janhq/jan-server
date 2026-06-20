@@ -1,8 +1,6 @@
 # LLM API Comprehensive Examples
 
-> **Status:** v0.0.14 | **Last Updated:** December 23, 2025
-
-Complete working examples for all LLM API endpoints with Python, JavaScript, and cURL.
+Complete working examples for LLM API endpoints with JavaScript and cURL.
 
 ## Table of Contents
 
@@ -56,22 +54,23 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/v1/conversations
 
 ```javascript
 // Refresh expired token
-const refreshResponse = await fetch("http://localhost:8000/llm/auth/refresh", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ refresh_token: refreshToken }),
-});
+const refreshResponse = await fetch(
+  "http://localhost:8000/llm/auth/refresh-token",
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  },
+);
 
 const newTokens = await refreshResponse.json();
-const accessToken = newTokens.access_token;
-const refreshToken = newTokens.refresh_token;
 console.log(`Token refreshed, expires in: ${newTokens.expires_in}s`);
 ```
 
 **cURL:**
 
 ```bash
-curl -X POST http://localhost:8000/llm/auth/refresh \
+curl -X POST http://localhost:8000/llm/auth/refresh-token \
   -H "Content-Type: application/json" \
   -d '{"refresh_token": "'"$REFRESH_TOKEN"'"}'
 ```
@@ -281,22 +280,36 @@ curl -X POST http://localhost:8000/v1/conversations \
 
 **JavaScript:**
 
+Pagination is cursor-based: pass `after` with the `next_after` value from the previous page.
+
 ```javascript
 const response = await fetch(
-  "http://localhost:8000/v1/conversations?limit=20&offset=0",
+  "http://localhost:8000/v1/conversations?limit=20",
   { headers },
 );
-const { data: conversations } = await response.json();
+const { data: conversations, next_after } = await response.json();
 
 conversations.forEach((conv) => {
   console.log(`- ${conv.title} (${conv.id})`);
 });
+
+// Fetch the next page (if any)
+if (next_after) {
+  await fetch(
+    `http://localhost:8000/v1/conversations?limit=20&after=${next_after}`,
+    { headers },
+  );
+}
 ```
 
 **cURL:**
 
 ```bash
-curl "http://localhost:8000/v1/conversations?limit=20&offset=0" \
+curl "http://localhost:8000/v1/conversations?limit=20" \
+  -H "Authorization: Bearer $TOKEN" | jq '.data[] | {id, title}'
+
+# Next page
+curl "http://localhost:8000/v1/conversations?limit=20&after=conv_456" \
   -H "Authorization: Bearer $TOKEN" | jq '.data[] | {id, title}'
 ```
 
@@ -321,11 +334,13 @@ console.log(`Messages: ${conversation.items.length}`);
 
 **JavaScript:**
 
+Conversation updates use `POST` (not PATCH) on the conversation resource.
+
 ```javascript
 const response = await fetch(
   `http://localhost:8000/v1/conversations/${conversationId}`,
   {
-    method: "PATCH",
+    method: "POST",
     headers: {
       ...headers,
       "Content-Type": "application/json",
@@ -358,27 +373,22 @@ if (response.status === 204) {
 }
 ```
 
-### Bulk Delete Conversations
+### Delete All Conversations
+
+There is no per-ID bulk-delete endpoint. A `DELETE` on the collection removes **all** of the
+authenticated user's conversations.
 
 **JavaScript:**
 
 ```javascript
-const response = await fetch(
-  "http://localhost:8000/v1/conversations/bulk-delete",
-  {
-    method: "POST",
-    headers: {
-      ...headers,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      conversation_ids: ["conv_old1", "conv_old2", "conv_old3"],
-    }),
-  },
-);
+const response = await fetch("http://localhost:8000/v1/conversations", {
+  method: "DELETE",
+  headers,
+});
 
-const { data: result } = await response.json();
-console.log(`Deleted: ${result.deleted_count} conversations`);
+if (response.ok) {
+  console.log("All conversations deleted");
+}
 ```
 
 ### Share Conversation
@@ -410,7 +420,9 @@ console.log(`Share link: ${shareData.share_link}`);
 
 ## Messages
 
-### Send Message
+### Add Message(s)
+
+Items are added as an `items` array. Each message carries a typed `content` array.
 
 **JavaScript:**
 
@@ -424,15 +436,19 @@ const response = await fetch(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      role: "user",
-      content: "Hello! How are you?",
-      content_type: "text",
+      items: [
+        {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "Hello! How are you?" }],
+        },
+      ],
     }),
   },
 );
 
-const { data: message } = await response.json();
-console.log(`Message ID: ${message.id}`);
+const { data: items } = await response.json();
+console.log(`Added ${items.length} item(s)`);
 ```
 
 ### Get Messages
@@ -441,62 +457,14 @@ console.log(`Message ID: ${message.id}`);
 
 ```javascript
 const response = await fetch(
-  `http://localhost:8000/v1/conversations/${conversationId}/items?limit=50&offset=0`,
+  `http://localhost:8000/v1/conversations/${conversationId}/items?limit=50`,
   { headers },
 );
 
-const { data: messages } = await response.json();
+const { data: messages, next_after } = await response.json();
 messages.forEach((msg) => {
-  console.log(`${msg.role.toUpperCase()}: ${msg.content}`);
+  console.log(`${msg.role.toUpperCase()}: ${JSON.stringify(msg.content)}`);
 });
-```
-
-### Edit Message
-
-**JavaScript:**
-
-```javascript
-const response = await fetch(
-  `http://localhost:8000/v1/conversations/${conversationId}/items/${messageId}`,
-  {
-    method: "PATCH",
-    headers: {
-      ...headers,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      content: "Updated message content",
-    }),
-  },
-);
-
-const { data: updated } = await response.json();
-console.log(`Updated at: ${updated.updated_at}`);
-```
-
-### Regenerate Message
-
-**JavaScript:**
-
-```javascript
-const response = await fetch(
-  `http://localhost:8000/v1/conversations/${conversationId}/items/${messageId}/regenerate`,
-  {
-    method: "POST",
-    headers: {
-      ...headers,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "jan-v2-30b",
-      temperature: 0.8,
-      max_tokens: 500,
-    }),
-  },
-);
-
-const { data: regenerated } = await response.json();
-console.log(`New content: ${regenerated.content}`);
 ```
 
 ### Delete Message
@@ -533,7 +501,7 @@ const response = await fetch("http://localhost:8000/v1/chat/completions", {
     "Content-Type": "application/json",
   },
   body: JSON.stringify({
-    model: "jan-v2-30b",
+    model: "jan-v1-4b",
     messages: [
       { role: "system", content: "You are a helpful assistant." },
       { role: "user", content: "Write a short poem about AI." },
@@ -576,7 +544,7 @@ const response = await fetch("http://localhost:8000/v1/chat/completions", {
     "Content-Type": "application/json",
   },
   body: JSON.stringify({
-    model: "jan-v2-30b",
+    model: "jan-v1-4b",
     messages: [{ role: "user", content: "Explain quantum computing briefly." }],
     temperature: 0.7,
     max_tokens: 150,
@@ -596,34 +564,34 @@ console.log(`Tokens: ${result.usage.total_tokens}`);
 
 ### List Available Models
 
+`GET /v1/models` returns the models available to the caller (OpenAI-compatible shape).
+
 **JavaScript:**
 
 ```javascript
-const response = await fetch("http://localhost:8000/v1/models/catalogs", {
-  headers,
-});
+const response = await fetch("http://localhost:8000/v1/models", { headers });
 
 const { data: models } = await response.json();
 models.forEach((model) => {
-  console.log(`- ${model.name} (${model.id})`);
-  console.log(`  Provider: ${model.provider}`);
+  console.log(`- ${model.id}`);
 });
 ```
 
-### Get Models by Capability
+### Get a Model Catalog Entry
+
+`GET /v1/models/catalogs/{model_public_id}` returns catalog detail (supported parameters) for
+one model.
 
 **JavaScript:**
 
 ```javascript
 const response = await fetch(
-  "http://localhost:8000/v1/models/catalogs?capability=browser",
+  "http://localhost:8000/v1/models/catalogs/jan-v1-4b",
   { headers },
 );
 
-const { data: browserModels } = await response.json();
-browserModels.forEach((model) => {
-  console.log(`Browser-capable: ${model.name}`);
-});
+const catalog = await response.json();
+console.log(catalog);
 ```
 
 ---
@@ -663,18 +631,23 @@ const response = await fetch("http://localhost:8000/v1/users/me/settings", {
     },
     memory_config: {
       min_similarity: 0.85,
-      max_items: 10,
+      max_user_items: 5,
+      max_project_items: 10,
     },
     advanced_settings: {
-      web_search_enabled: true,
-      code_execution_enabled: false,
+      web_search: true,
+      code_enabled: false,
     },
   }),
 });
 
-const { data: updated } = await response.json();
+const updated = await response.json();
 console.log("Settings updated successfully");
 ```
+
+> Field names must match the [settings schema in the README](README.md#user-settings):
+> `memory_config` uses `max_user_items` / `max_project_items` / `max_episodic_items`
+> (not `max_items`), and `advanced_settings` uses `web_search` / `code_enabled`.
 
 ---
 
@@ -860,25 +833,62 @@ curl -X POST http://localhost:8000/v1/admin/models/catalogs/bulk-toggle \
 
 ### MCP Tools (Admin)
 
-### List MCP Tools (Admin)
+MCP tool admin configuration is served by the LLM API under `/v1/admin/mcp-tools`.
 
-### Disable MCP Tool (Admin)
+#### List MCP Tools (Admin)
 
-### Update Tool Content Filter (Admin)
+```bash
+curl -H "Authorization: Bearer $ADMIN_TOKEN" \
+  http://localhost:8000/v1/admin/mcp-tools | jq
+```
+
+#### Enable / Disable an MCP Tool (Admin)
+
+```bash
+# Toggle a tool's enabled state by its id
+curl -X PATCH "http://localhost:8000/v1/admin/mcp-tools/$TOOL_ID" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+```
 
 ---
 
 ## Complete Example: Multi-Turn Conversation
 
+```bash
+# 1. Authenticate
+TOKEN=$(curl -s -X POST http://localhost:8000/llm/auth/guest-login | jq -r '.access_token')
+
+# 2. Create a conversation
+CONV_ID=$(curl -s -X POST http://localhost:8000/v1/conversations \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"title": "Trip planning"}' | jq -r '.data.id')
+
+# 3. Add a user message
+curl -s -X POST "http://localhost:8000/v1/conversations/$CONV_ID/items" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"items":[{"type":"message","role":"user",
+        "content":[{"type":"input_text","text":"Suggest a 3-day itinerary for Kyoto."}]}]}'
+
+# 4. Get a completion
+curl -s -X POST http://localhost:8000/v1/chat/completions \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"model":"jan-v1-4b","messages":[{"role":"user","content":"Suggest a 3-day itinerary for Kyoto."}]}' \
+  | jq -r '.choices[0].message.content'
+
+# 5. List the stored items
+curl -s "http://localhost:8000/v1/conversations/$CONV_ID/items?limit=50" \
+  -H "Authorization: Bearer $TOKEN" | jq '.data'
+```
+
 ## Related Documentation
 
 - [LLM API Reference](README.md) - Full endpoint documentation
 - [Decision Guide: LLM vs Response API](../decision-guides.md#llm-api-vs-response-api) - Choose the right API
-- [Decision Guide: Memory Configuration](../decision-guides.md#memory-architecture-user-settings) - Understanding user settings
 - [Decision Guide: Authentication Methods](../decision-guides.md#authentication-method-selection) - Choose auth approach
+- [Endpoint Matrix](../endpoint-matrix.md) - Full endpoint inventory
 - [Response API](../response-api/) - Multi-step tool orchestration
 - [Media API](../media-api/) - Image uploads and jan\_\* IDs
 - [MCP Tools](../mcp-tools/) - Available tools
-- [Error Codes Guide](../error-codes.md) - Error handling
-- [Rate Limiting Guide](../rate-limiting.md) - Quota management
 - [Examples Index](../examples/README.md) - Cross-service examples

@@ -36,9 +36,9 @@ Install these before running any commands:
 
 - **Docker Desktop 24+** with Docker Compose V2
 - **GNU Make** (built in on macOS/Linux, install via Chocolatey/Brew on Windows)
-- **Go 1.21+** (only required for native/hybrid execution or when editing Go code)
+- **Go 1.24+** (only required for native/hybrid execution or when editing Go code; see `go.mod` for the exact version)
 
-> Tip: `make setup` uses `jan-cli dev setup` to verify Docker, copy `.env.template` to `.env`, and create `docker/.env` automatically.
+> Tip: `make setup` uses `jan-cli dev setup` to verify Docker, copy `.env.template` to `.env`.
 
 ## Quick Start
 
@@ -47,7 +47,7 @@ Install these before running any commands:
 git clone https://github.com/janhq/jan-server.git
 cd jan-server
 
-# 2. Create .env, docker/.env, and Docker networks
+# 2. Create .env and Docker networks
 make setup
 
 # 3. Start the full stack (infra + APIs + MCP + optional vLLM)
@@ -74,8 +74,6 @@ docker compose ps  # status
 | Response API | http://localhost:8082  | Multi-step orchestration                        |
 | Media API    | http://localhost:8285  | File upload/management service                  |
 | MCP Tools    | http://localhost:8091  | Native MCP tool bridge                          |
-| Memory Tools | http://localhost:8090  | Semantic memory service                         |
-| Realtime API | http://localhost:8186  | WebRTC session management                       |
 | Keycloak     | http://localhost:8085  | Admin/Admin in development                      |
 | PostgreSQL   | localhost:5432         | Database user `jan_user` / password from `.env` |
 | Grafana      | http://localhost:3331  | Start with `make monitor-up`                    |
@@ -87,12 +85,12 @@ docker compose ps  # status
 ```
 jan-server/
 +-- services/              # llm-api, media-api, response-api, mcp-tools, template-api
-+-- tools/jan-cli/         # jan-cli sources (`./jan-cli.sh`, `.\jan-cli.ps1` wrappers)
-+-- pkg/config/            # Single source of truth for config defaults and schema
++-- tools/jan-cli/         # jan-cli sources (run via `./tools/jan-cli.sh`, `.\tools\jan-cli.ps1` wrappers)
++-- packages/go-common/config/ # Single source of truth for config defaults and schema
 +-- infra/docker/          # Compose fragments (infrastructure, services, dev-full, observability)
-+-- docker compose.yml     # Root compose file (includes infra/docker/*.yml via profiles)
-+-- docker compose.dev-full.yml # Extra compose overrides for dev-full
-+-- kong/                  # Gateway configuration (kong.yml + kong-dev-full.yml)
++-- docker-compose.yml     # Root compose file (includes infra/docker/*.yml via profiles)
++-- docker-compose.dev-full.yml # Extra compose overrides for dev-full
++-- integrations/kong/     # Gateway configuration (kong.yml + kong-dev-full.yml)
 +-- docs/                  # Documentation (guides, architecture, configuration)
 +-- Makefile               # Canonical automation entry point
 +-- .env.template          # Copy to .env and edit per environment
@@ -139,8 +137,8 @@ make dev-full      # start infra + APIs + MCP with host routing
 After the stack is up you can replace a service:
 
 ```bash
-./jan-cli.sh dev run llm-api   # macOS/Linux
-.\jan-cli.ps1 dev run llm-api  # Windows PowerShell
+./tools/jan-cli.sh dev run llm-api   # macOS/Linux
+.\tools\jan-cli.ps1 dev run llm-api  # Windows PowerShell
 ```
 
 `jan-cli dev run` stops the matching container, loads environment variables from `.env` (override with `--env`), and runs `go run ./cmd/server` inside `services/<name>`.
@@ -149,12 +147,11 @@ After the stack is up you can replace a service:
 
 `make dev-full`:
 
-- Loads `.env` and copies it to `infra/docker/.env` via `ensure-docker-env`
 - Runs `docker compose -f docker-compose.yml -f docker-compose.dev-full.yml --profile full up -d`
 - Prints URLs for PostgreSQL, Keycloak, Kong, and every API/MCP service
 - Keeps the `jan-network`/`jan-monitoring` networks around for fast restarts
 
-Kong's dual-target upstreams (from `kong/kong-dev-full.yml`):
+Kong's dual-target upstreams (from `integrations/kong/kong-dev-full.yml`):
 
 ```yaml
 upstreams:
@@ -177,13 +174,11 @@ When you stop the Docker container, Kong automatically fails over to the host ta
 | Media API    | 8285 | `jan-cli dev run media-api`    |
 | Response API | 8082 | `jan-cli dev run response-api` |
 | MCP Tools    | 8091 | `jan-cli dev run mcp-tools`    |
-| Memory Tools | 8090 | `jan-cli dev run memory-tools` |
-| Realtime API | 8186 | `jan-cli dev run realtime-api` |
 
 **Options:**
 
 - Use `--build` to compile before running (`jan-cli dev run llm-api --build`)
-- Pass `--env config/hybrid.env` if you keep a dedicated env file for host processes
+- Pass `--env <file>` if you keep a dedicated env file for host processes (defaults to `.env`)
 - To hand control back to Docker, stop the host process and run `docker compose start <service>`
 
 #### Workflow
@@ -197,8 +192,8 @@ When you stop the Docker container, Kong automatically fails over to the host ta
 2. **Replace a service with native execution**
 
    ```bash
-   ./jan-cli.sh dev run llm-api        # macOS/Linux
-   .\jan-cli.ps1 dev run llm-api       # Windows PowerShell
+   ./tools/jan-cli.sh dev run llm-api        # macOS/Linux
+   .\tools\jan-cli.ps1 dev run llm-api       # Windows PowerShell
    ```
 
 3. **Iterate and debug**
@@ -227,7 +222,7 @@ When you stop the Docker container, Kong automatically fails over to the host ta
 | `MCP_*` / `SEARXNG_URL` / `VECTOR_STORE_URL` | Tool integrations for mcp-tools                                    |
 | `OTEL_*`                                     | Telemetry export (set `OTEL_ENABLED=true` to emit traces)          |
 
-Need a dedicated hybrid env file? Create `config/hybrid.env`, copy values from `.env`, then run `jan-cli dev run llm-api --env config/hybrid.env`.
+Need a dedicated hybrid env file? Copy `.env` to a separate file, edit the host-specific values, then run `jan-cli dev run llm-api --env <file>`.
 
 #### Monitoring in Dev-Full Mode
 
@@ -258,13 +253,13 @@ export LOG_LEVEL=debug
 go run ./cmd/server
 ```
 
-> Windows users can run `.\jan-cli.ps1 dev run llm-api --env .env` to load variables automatically.
+> Windows users can run `.\tools\jan-cli.ps1 dev run llm-api --env .env` to load variables automatically.
 
 ## Configuration
 
 - Copy `.env.template` to `.env` (or run `make setup`) and edit secrets like `HF_TOKEN`, `SERPER_API_KEY`, and `POSTGRES_PASSWORD`
-- `make setup` also writes `docker/.env`, so Compose and jan-cli use the same values
-- `pkg/config/defaults.yaml` is the canonical configuration, generated from Go structs in `pkg/config/types.go`
+- Compose loads the root `.env` directly via `env_file`, so all services use the same values
+- `packages/go-common/config/defaults.yaml` is the canonical configuration, generated from Go structs in `packages/go-common/config/types.go`
 - Helpful jan-cli commands:
 
 ```bash
@@ -290,7 +285,7 @@ For backups and restores use `make db-backup` / `make db-restore`. The Makefile 
 ## Testing
 
 - **Full integration suite**: `make test-all` (runs every Postman collection listed in the Makefile)
-- **Focused suites**: `make test-auth`, `make test-conversations`, `make test-response`, `make test-media`, `make test-mcp-integration`, `make test-e2e`
+- **Focused suites**: `make test-auth`, `make test-conversation`, `make test-response`, `make test-media`, `make test-mcp`, `make test-mcp-agents`
 - **Unit tests**: run them from each service directory (`go test ./...`)
 
 See [Testing Guide](testing.md) for platform details, CI coverage, and troubleshooting tips.

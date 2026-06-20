@@ -1,9 +1,5 @@
 # Jan CLI - Complete Guide
 
-**Last Updated**: January 2025
-**Status**: Production Ready OK
-**Version**: 1.0.0
-
 Complete documentation for the Jan CLI tool - installation, usage, commands, and technical details.
 
 ---
@@ -36,12 +32,12 @@ Built with [Cobra framework](https://github.com/spf13/cobra), the industry stand
 
 ### Key Features
 
-- OK **Unified Interface** - Single command for all Jan Server operations
-- OK **Professional Structure** - Industry-standard Cobra framework
-- OK **Extensible** - Easy to add new commands
-- OK **Well-Documented** - Comprehensive help and examples
-- OK **Cross-Platform** - Works on Windows, Linux, macOS
-- OK **Shell Completion** - Bash, Zsh, Fish, PowerShell support
+- **Unified Interface** - Single command for all Jan Server operations
+- **Professional Structure** - Industry-standard Cobra framework
+- **Extensible** - Easy to add new commands
+- **Well-Documented** - Comprehensive help and examples
+- **Cross-Platform** - Works on Windows, Linux, macOS
+- **Shell Completion** - Bash, Zsh, Fish, PowerShell support
 
 ---
 
@@ -93,7 +89,7 @@ source ~/.bashrc # or source ~/.zshrc
 
 ```bash
 jan-cli --version
-# Output: jan-cli version 1.0.0
+# Output: jan-cli version <version>
 
 jan-cli --help
 # Output: Full help text with all commands
@@ -146,16 +142,16 @@ jan-cli service list
 
 ### Method 2: Wrapper Scripts (No Installation)
 
-Run directly from project root using wrapper scripts:
+Run from the project root using the wrapper scripts in `tools/`:
 
 ```bash
 # Linux/macOS
-./jan-cli.sh config validate
-./jan-cli.sh service list
+./tools/jan-cli.sh config validate
+./tools/jan-cli.sh service list
 
 # Windows PowerShell
-.\jan-cli.ps1 config validate
-.\jan-cli.ps1 service list
+.\tools\jan-cli.ps1 config validate
+.\tools\jan-cli.ps1 service list
 ```
 
 **Advantages:**
@@ -167,14 +163,14 @@ Run directly from project root using wrapper scripts:
 
 **Disadvantages:**
 
-- Must be run from project root
-- Requires file extension (.sh or.ps1)
+- Run from the project root
+- Requires the file extension (`.sh` or `.ps1`)
 
 ### Method 3: Manual Build
 
 ```bash
 # Navigate to CLI directory
-cd cmd/jan-cli
+cd tools/jan-cli
 
 # Build
 go build
@@ -226,6 +222,7 @@ jan-cli (root)
 | +-- export - Export configuration
 | +-- show - Display configuration values
 | +-- generate - Generate schemas and defaults
+| +-- k8s-values - Generate Kubernetes Helm values from config
 +-- service (service operations)
 | +-- list - List all services
 | +-- logs - Show service logs
@@ -233,8 +230,17 @@ jan-cli (root)
 +-- dev (development tools)
 | +-- setup - Initialize development environment
 | +-- scaffold - Generate new service from template
+| +-- run - Run a service natively (dev-full / hybrid mode)
 +-- swagger (API documentation)
 | +-- generate - Generate OpenAPI documentation
++-- api-test (integration testing)
+| +-- run - Run one or more Postman collections
++-- request (lightweight API requests)
+| +-- run - Run a request defined in a JSON file
++-- monitor (observability stack)
+| +-- up / dev / down - Start/stop the monitoring stack
+| +-- test / status / query - Validate, inspect, and query
++-- install - Install the jan-cli binary to your PATH
 +-- completion (shell completions)
  +-- bash
  +-- zsh
@@ -275,8 +281,8 @@ jan-cli config validate --verbose
 
 **Output:**
 
-- OK Configuration valid
-- [x] Validation errors with details
+- Configuration valid, or
+- Validation errors with details
 
 ### config export
 
@@ -433,9 +439,9 @@ jan-cli dev setup
 
 **Features:**
 
-- OK Cross-platform (Windows, Linux, macOS)
-- OK Docker optional (warns if not available)
-- OK Idempotent (safe to run multiple times)
+- Cross-platform (Windows, Linux, macOS)
+- Docker optional (warns if not available)
+- Idempotent (safe to run multiple times)
 
 ### dev scaffold
 
@@ -481,6 +487,78 @@ jan-cli swagger generate --service media-api
 
 - Service must have Swagger annotations in code
 - `swag` CLI tool must be installed (`go install github.com/swaggo/swag/cmd/swag@latest`)
+
+---
+
+## API Testing
+
+The `api-test` subcommand runs Postman-style collections (this is what the `make test-*` targets call under the hood).
+
+### api-test run
+
+```bash
+# Run a single collection
+jan-cli api-test run tests/e2e/automation/collections/auth.postman.json
+
+# Run multiple collections with environment variables
+jan-cli api-test run \
+  tests/e2e/automation/collections/mcp-runtime.postman.json \
+  tests/e2e/automation/collections/mcp-admin.postman.json \
+  --env-var "kong_url=http://localhost:8000" \
+  --verbose
+```
+
+**Common flags:**
+
+- `--env-var "key=value"` - Set a collection variable (repeatable)
+- `--env-file <file>` - Load variables from a file
+- `--auto-auth <role>` - Acquire a token automatically (e.g. `admin`)
+- `--timeout-request <ms>` - Per-request timeout
+- `--reporters cli` - Reporter selection
+- `--verbose`, `--debug`, `--bail` - Output and failure controls
+
+## Lightweight Requests
+
+The `request` subcommand runs a single API call described in a small JSON file - a simpler alternative to full collections for quick checks.
+
+### request run
+
+```bash
+jan-cli request run tests/requests/response-api-test.json
+jan-cli request run tests/requests/response-api-test.json --base-url http://localhost:8000
+jan-cli request run tests/requests/response-api-test.json --debug
+```
+
+## Monitoring Stack
+
+The `monitor` subcommand manages the observability stack (Prometheus, Grafana, Jaeger, OTEL Collector).
+
+```bash
+jan-cli monitor up        # Start the monitoring stack
+jan-cli monitor dev       # Start with full trace sampling for development
+jan-cli monitor test      # Validate that all monitoring services are healthy
+jan-cli monitor status    # Show status and resource usage
+jan-cli monitor query     # Interactive Prometheus/Jaeger queries
+jan-cli monitor down      # Stop the monitoring stack
+```
+
+## Install
+
+The `install` subcommand copies the built `jan-cli` binary to a directory on your PATH.
+
+```bash
+jan-cli install                 # Install to your user bin directory
+jan-cli install --global        # System-wide install (requires admin)
+jan-cli install --path /custom/bin
+```
+
+## Kubernetes Helm Values
+
+`config k8s-values` renders a Helm values file from the canonical configuration.
+
+```bash
+jan-cli config k8s-values
+```
 
 ---
 
@@ -587,13 +665,14 @@ pwd # Should show jan-server directory
 3. Check script is executable (Linux/macOS):
 
 ```bash
-chmod +x jan-cli.sh
+chmod +x tools/jan-cli.sh
 ```
 
 4. Try manual build:
 
-````bash
+```bash
 cd tools/jan-cli && go build
+```
 
 ---
 
@@ -616,7 +695,7 @@ jan-cli completion fish > ~/.config/fish/completions/jan-cli.fish
 # PowerShell
 jan-cli completion powershell > jan-cli.ps1
 # Then source it in your profile
-````
+```
 
 ### Enable Completion
 
@@ -788,7 +867,7 @@ jan-cli swagger generate --service llm-api
 
 ### For Development
 
-1. Use wrapper scripts (`./jan-cli.sh` or `.\jan-cli.ps1`)
+1. Use wrapper scripts (`./tools/jan-cli.sh` or `.\tools\jan-cli.ps1`)
 2. Always uses latest code
 3. Auto-builds if needed
 4. Good for testing changes
@@ -837,6 +916,4 @@ jan-cli swagger generate --service llm-api
 
 ---
 
-**Status:** Production Ready OK
-**Version:** 1.0.0
 **Cross-Platform:** Windows, Linux, macOS

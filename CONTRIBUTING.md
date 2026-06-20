@@ -22,45 +22,42 @@ Thanks for taking the time to improve Jan Server! This guide explains how to pro
    ```
 3. **Bootstrap tooling**
    ```bash
-   make env-create           # copies .env.template -> .env (idempotent)
-   make setup                # dependency check + docker network
+   make setup                # copies .env.template -> root .env (idempotent) + checks deps
    ```
 4. **Pick a target service**
    - Run everything in Docker: `make up-full`
-   - Hybrid mode for local debugging: `make hybrid-dev-api` / `make hybrid-dev-mcp`
+   - Hybrid mode for local debugging: `make dev-full`, then run a service natively
+     with `jan-cli dev run <svc>` (for example `jan-cli dev run llm-api`)
 
 ## Coding Standards
 
-- **Language**: Go 1.21+ across services. Use `go fmt ./...` or `make fmt` before committing.
+- **Language**: Go 1.24.0 across services. Use `go fmt ./...` or `make fmt` before committing.
 - **Static analysis**: run `make lint` to execute vet, golangci-lint, and other configured linters.
 - **Swagger/OpenAPI**: update specs with `make swagger` after changing HTTP handlers.
-- **Configuration**: add new env vars to `.env.template`, `config/defaults.env`, and mention them in `config/README.md`.
+- **Configuration**: add new env vars to the root `.env.template` and document them in `docs/configuration/README.md`.
 - **Documentation**: update relevant guides plus `docs/README.md` when adding or moving features.
 
 ## Required Test Matrix
 
 Run the smallest set that covers your change:
 
-| Change Type                    | Minimum Commands                                                             |
-| ------------------------------ | ---------------------------------------------------------------------------- |
-| Library or helper updates      | `make test`                                                                  |
-| API surface changes            | `make test` + targeted Postman suite (for example `make test-conversations`) |
-| Cross-service or infra updates | `make test-all`                                                              |
-| Docker/Kubernetes manifests    | `make up-full` (smoke) + `make health-check`                                 |
-| Documentation-only             | `make lint-docs` _(if available)_ or spell/markdown checker of your choice   |
+| Change Type                    | Minimum Commands                                                          |
+| ------------------------------ | ------------------------------------------------------------------------- |
+| Library or helper updates      | `go test ./services/<svc>/...`                                            |
+| API surface changes            | targeted suite (for example `make test-conversation` or `make test-auth`) |
+| Cross-service or infra updates | `make test-all`                                                           |
+| Docker/Kubernetes manifests    | `make up-full` (smoke) + `make health-check`                              |
 
-For MCP tooling, also run:
-
-```bash
-make test-mcp-integration
-```
+The integration suites run through jan-cli api-test collections. Available
+targets include `make test-all`, `make test-auth`, `make test-conversation`,
+`make test-response`, `make test-media`, and `make test-mcp`.
 
 Before pushing, ensure the tree is clean:
 
 ```bash
 go fmt ./...
 make lint
-make test
+go test ./services/<svc>/...
 git status -sb         # no unexpected files
 ```
 
@@ -75,16 +72,25 @@ git status -sb         # no unexpected files
 ## Documentation Expectations
 
 - `README.md` must stay aligned with the default Docker Compose workflow.
-- `docs/getting-started/README.md` is the canonical setup guide; keep it in sync with the Makefile targets.
+- `docs/quickstart.md` is the canonical setup guide; keep it in sync with the Makefile targets.
 - `docs/README.md` acts as the sitemap; add or move entries there whenever you add documentation elsewhere.
 - If you introduce a new service or API, create or update:
-  - `docs/services.md`
+  - `docs/architecture/services.md`
   - `docs/api/<service>/README.md`
   - Per-service `services/<name>/README.md`
 
+## Documentation standards
+
+- Keep documentation in sync with the code; update docs in the same PR as the
+  change that affects them.
+- Single-source the service/port table in `docs/architecture/README.md` and link
+  to it rather than duplicating ports across files.
+- Single-source authentication details in `docs/guides/authentication.md`.
+- Do not add per-file version or date stamps; let Git history track changes.
+
 ## Testing Secrets
 
-Do **not** commit real keys or tokens. Place new variables in `.env.template` and document how to obtain them. For CI-only secrets, describe the expectation inside `config/secrets.env.example`.
+Do **not** commit real keys or tokens. Place new variables in the root `.env.template` (with placeholder values) and document how to obtain them. The real `.env` is git-ignored; configure CI secrets through the pipeline's secret store.
 
 ## Opening the Pull Request
 

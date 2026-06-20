@@ -29,7 +29,7 @@
 ## Dashboards
 
 - **Grafana** (http://localhost:3331, admin/admin by default).
-- Import dashboards from `monitoring/grafana/provisioning/dashboards/`.
+- Dashboards are provisioned from `integrations/monitoring/grafana/provisioning/dashboards/`.
 - Suggested panels:
 - Request/response duration per service.
 - Database connection pool usage.
@@ -38,7 +38,7 @@
 
 ## Alerts
 
-- Configure Alertmanager rules by creating `monitoring/alerting-rules.yml` based on `monitoring/prometheus-alerts.yml` as a reference.
+- Configure Alertmanager rules based on `integrations/monitoring/prometheus-alerts.yml` as a reference.
 - Recommended alerts:
 - High error rate (>5% for 5 minutes)
 - Slow LLM responses (>5s p95)
@@ -47,9 +47,9 @@
 
 ## Developer Workflow
 
-1. Start the monitoring stack: `make monitor-up`.
+1. Start the monitoring stack: `make monitor-up` (brings up `infra/docker/observability.yml`: OpenTelemetry Collector, Prometheus, Grafana, Jaeger).
 2. Hit the APIs (curl/Postman/jan-cli api-test).
-3. Inspect metrics/traces/logs using the URLs above.
-4. Tear down with `make monitor-down` (if defined) or `docker compose down` for the monitoring profile.
+3. Inspect metrics/traces/logs using the URLs above (`make monitor-logs` tails the stack).
+4. Tear down with `make monitor-down`.
 
-Update this file if ports or dashboards change.
+Configuration lives in `integrations/monitoring/` (Prometheus config, alert rules, OTel collector config, Grafana provisioning). Update this file if ports or dashboards change.

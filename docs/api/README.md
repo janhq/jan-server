@@ -35,7 +35,7 @@ Executes tools and generates AI responses for complex tasks.
 
 **What it does:**
 
-- Run multiple tools in sequence (up to 8 steps)
+- Run multiple tools in sequence (tool depth capped by `RESPONSE_MAX_TOOL_DEPTH`, default 50)
 - Chain tool outputs together
 - Generate final answers using LLM
 - Track execution time and status
@@ -62,10 +62,8 @@ Handles image uploads and storage.
 **Documentation:**
 
 - **[Complete Documentation](media-api/)** - Full API reference, storage flow, examples
-- **[Upload Media](media-api/#upload-media)** - Upload from remote URL or data URL
-- **[Presigned URL](media-api/#prepare-upload-presigned-url)** - Client-side S3 upload
+- **[Upload Media](media-api/#endpoints)** - Ingest from remote URL / data URL, or multipart upload
 - **[Jan ID System](media-api/#jan-id-system)** - Understanding `jan_*` identifiers
-- **[Resolution](media-api/#resolve-media-ids)** - Convert IDs to presigned URLs
 
 ### 4. MCP Tools API (Port 8091)
 
@@ -73,27 +71,27 @@ Provides Model Context Protocol tools for search, scraping, lightweight vector s
 
 **Available Tools:**
 
-- **google_search** - Serper/SearXNG-backed web search with filters and location hints
+- **google_search** - Web search with a provider fallback chain (Serper -> Exa -> Tavily -> SearXNG), filters, and location hints
 - **scrape** - Fetch and parse a web page (optional Markdown output)
 - **file_search_index / file_search_query** - Index custom text into the bundled vector store and run similarity queries
 - **python_exec** - Run trusted code via SandboxFusion, returning stdout/stderr/artifacts
+
+All tools are invoked through a single JSON-RPC 2.0 endpoint, `POST /v1/mcp`, using the `tools/list` and `tools/call` methods.
 
 **Documentation:**
 
 - **[Complete Documentation](mcp-tools/)** - Full API reference, tool descriptions, examples
 - **[JSON-RPC Protocol](mcp-tools/#json-rpc-20-protocol)** - Standard protocol format
-- **[Call Tool](mcp-tools/#call-tool)** - Execute any tool
-- **[List Tools](mcp-tools/#list-tools)** - Discover available tools
-- **[Tool Details](mcp-tools/#available-tools)** - Specific tool parameters
+- **[Available Tools](mcp-tools/#available-tools)** - Tool names and parameters
 - **[Providers](mcp-tools/#providers)** - MCP provider configuration
-- **[Integration](mcp-tools/)** - Integration guide
 
 ## API Guides
 
 - **[Decision Guides](decision-guides.md)** - When to use which API, choosing upload methods, memory configuration
 - [Endpoint Matrix](endpoint-matrix.md) - Full endpoint inventory
-- [Rate Limiting](rate-limiting.md) - Rate limits and quotas
 - [Examples Index](examples/README.md) - cURL/SDK samples across services
+
+Rate limits are enforced by the Kong gateway; see [integrations/kong/kong.yml](../../integrations/kong/kong.yml).
 
 ## Quick Reference
 
@@ -147,7 +145,7 @@ curl -H "X-API-Key: sk_your_api_key_here" \
 **Refresh Tokens:**
 
 ```bash
-curl -X POST http://localhost:8000/llm/auth/refresh \
+curl -X POST http://localhost:8000/llm/auth/refresh-token \
  -H "Content-Type: application/json" \
  -d '{"refresh_token": "eyJhbGci..."}'
 ```
@@ -359,9 +357,24 @@ console.log(response.choices[0].message.content);
 
 ## Rate Limits
 
-Currently, Jan Server does not enforce rate limits in development mode.
+Rate limiting is enforced by the Kong gateway (port 8000) in all environments, using Kong's
+`rate-limiting` plugin with `policy: local`. There is a global limit plus tighter per-route
+overrides. Current values (see [integrations/kong/kong.yml](../../integrations/kong/kong.yml)):
 
-Production deployments should configure rate limiting via Kong Gateway.
+| Scope                         | Limit               | Counted by |
+| ----------------------------- | ------------------- | ---------- |
+| Global (all routes)           | 600/min, 10000/hour | IP         |
+| `/llm` proxy                  | 120/min             | consumer   |
+| `/v1` (LLM API)               | 120/min             | IP         |
+| `/responses` (Response API)   | 100/min             | IP         |
+| `/v1/artifacts`               | 100/min             | IP         |
+| `/v1/agents`                  | 200/min             | IP         |
+| `/mcp` (MCP Tools)            | 200/min             | IP         |
+| `/media` (protected)          | 60/min              | IP         |
+| `/api/media` (public serving) | 300/min             | IP         |
+| `/v1/public/shares`           | 100/min, 1000/hour  | IP         |
+
+When a limit is exceeded, Kong returns `429 Too Many Requests`. Tune these in `kong.yml`.
 
 ## API Versioning
 
