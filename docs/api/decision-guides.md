@@ -19,46 +19,42 @@ Quick reference guides to help you choose the right API and approach for your us
 
 - You need multi-step tool orchestration (search → scrape → analyze)
 - Automatic tool selection and chaining
-- Complex workflows with up to 8 tool calls
-- Background processing with webhooks
+- Complex workflows with several chained tool calls (depth capped by `RESPONSE_MAX_TOOL_DEPTH`, default 50)
+- Background processing with a completion callback (`metadata.webhook_url`)
 - Want AI to decide which tools to use
 - Need execution tracking and monitoring
 
-**Example comparison:**
-
 ### Media Upload Methods
 
-**Use POST /v1/media (remote_url) when:**
+The Media API has exactly two ingest endpoints. There is no presigned/client-side S3 upload.
+
+**Use POST /v1/media with a `url` (remote URL) when:**
 
 - Image is already hosted publicly
-- You want to avoid client-side uploads
-- Working with URLs from external sources
-- Content deduplication is important
+- You want the server to fetch and store it
+- Content deduplication is important (identical bytes return the same `jan_*` ID)
 
-**Use POST /v1/media/prepare-upload (presigned URL) when:**
+**Use POST /v1/media with a `data:` URL (base64) when:**
 
-- Large file uploads (>10MB)
-- Need client-side direct S3 upload
-- Want to minimize server load
-- Building mobile/web apps with file pickers
+- Image was generated client-side (canvas, screenshots)
+- Base64 data is already available
 
-**Use POST /v1/media (data_url) when:**
+**Use POST /v1/media/upload (multipart) when:**
 
-- Small images (<5MB)
-- Image generated client-side (canvas, screenshots)
-- Base64 data already available
-- Simple quick uploads
+- You have a raw file from a file picker or form
+- You would rather stream the bytes than base64-encode them
+
+All three return a `jan_*` ID plus a direct URL. Limits are governed by `MEDIA_MAX_BYTES`
+(default 50 MB).
 
 **Decision flowchart:**
 
 ```
 Do you have a public URL?
-├─ Yes → Use remote_url method
-└─ No → Is file >10MB?
-    ├─ Yes → Use prepare-upload (presigned)
-    └─ No → Is it base64?
-        ├─ Yes → Use data_url
-        └─ No → Use prepare-upload
+├─ Yes → POST /v1/media   with { "url": "https://..." }
+└─ No → Do you have the file as base64?
+    ├─ Yes → POST /v1/media        with { "url": "data:image/png;base64,..." }
+    └─ No  → POST /v1/media/upload  (multipart/form-data, field: file)
 ```
 
 ### Authentication Method Selection
@@ -104,21 +100,20 @@ Do you have a public URL?
 
 - Long-running operations (>30 seconds)
 - Multiple tool chains (3+ tools)
-- Client can poll or use webhooks
+- Client can poll `GET /v1/responses/{id}` or receive a `metadata.webhook_url` callback
 - Want to prevent timeouts
 - Building async workflows
 - Need to queue multiple requests
 
-**Pattern comparison:**
-
 ### Tool Execution Depth
 
-**Understanding depth parameter:**
+The orchestrator caps how many sequential tool calls a single response may make. This ceiling
+is set by `RESPONSE_MAX_TOOL_DEPTH` (default **50**); the per-call timeout is
+`TOOL_EXECUTION_TIMEOUT` (default **300s**).
 
 ```
-depth=1: User input → Tool call → Response
-depth=3: User input → Tool 1 → Tool 2 → Tool 3 → Response
-depth=8: Maximum chain length
+1 hop:  User input → Tool call → Response
+3 hops: User input → Tool 1 → Tool 2 → Tool 3 → Response
 ```
 
 **Visual example:**
@@ -126,23 +121,14 @@ depth=8: Maximum chain length
 ```
 Query: "Find the latest news on quantum computing and analyze sentiment"
 
-Depth 2:
-┌─────────┐    ┌───────────────┐    ┌─────────────┐    ┌──────────┐
-│  Input  │───▶│ google_search │───▶│ LLM Analyze │───▶│ Response │
-└─────────┘    └───────────────┘    └─────────────┘    └──────────┘
-
-Depth 4:
 ┌─────────┐    ┌───────────────┐    ┌────────┐    ┌─────────────┐    ┌──────────┐
 │  Input  │───▶│ google_search │───▶│ scrape │───▶│ LLM Analyze │───▶│ Response │
 └─────────┘    └───────────────┘    └────────┘    └─────────────┘    └──────────┘
 ```
 
-**Choosing depth:**
-
-- `depth=1`: Single tool call, simple operations
-- `depth=2-3`: Standard workflows, most use cases (recommended)
-- `depth=4-6`: Complex research, multi-stage analysis
-- `depth=7-8`: Advanced pipelines, use sparingly (cost/latency)
+Most workflows finish in a handful of hops; the high default ceiling exists so complex
+research chains are not cut off prematurely. Keep chains short where you can — each hop adds
+latency and cost.
 
 ## Media API Patterns
 
@@ -150,61 +136,54 @@ Depth 4:
 
 **What are jan\_\* IDs?**
 
-- Unique identifiers for uploaded media: `jan_01hqr8v9k2x3f4g5h6j7k8m9n0`
-- Content-addressed: Same image = same ID (deduplication)
-- Portable: Use across conversations and requests
-- Resolvable: Convert to presigned URLs on demand
+- Unique identifiers for stored media, formatted as `jan_` + a lowercase ULID
+  (for example `jan_01hqr8v9k2x3f4g5h6j7k8m9n0`)
+- Content-addressed: identical bytes deduplicate to the same ID
+- Portable: reference the same media across conversations and requests
 
-**When to resolve IDs:**
+**How to use an ID:**
+
+- Fetch the bytes: `GET /v1/media/{id}` (streams the content, or returns a direct URL when
+  `MEDIA_PROXY_DOWNLOAD=false`)
+- Inspect metadata: `GET /v1/media/{id}/metadata`
+- Embed publicly in HTML: use the Kong public route `GET /api/media/{id}`
 
 **Best practices:**
 
-1. Store `jan_*` IDs in your database, not presigned URLs (URLs expire)
-2. Resolve only when needed (presigned URLs valid 7 days)
-3. Use batch resolution for multiple images
-4. Let LLM API handle resolution when possible
-
-### Presigned URL Workflow
-
-**Decision flow:**
-
-```
-Need to display image?
-├─ Stored as jan_* ID?
-│  └─ Call /v1/media/resolve → Get presigned URL → Display
-└─ Already have presigned URL?
-   ├─ Check expiry (valid 7 days)
-   │  ├─ Expired? → Call /v1/media/{id}/presign → Get new URL
-   │  └─ Valid? → Use directly
-   └─ Unknown? → Resolve to be safe
-```
-
-**Error handling:**
+1. Store the `jan_*` ID, not a rendered URL — IDs are stable, URLs may change
+2. For `<img>` tags, use the public `/api/media/{id}` path
+3. Let the LLM API resolve `jan_*` references in chat content for you
 
 ## Rate Limiting Strategy
 
 **Understanding limits:**
 
-- Kong gateway: 100 req/min per IP (development)
-- Headers: `X-RateLimit-Limit-minute`, `X-RateLimit-Remaining-minute`
-- HTTP 429 when exceeded
+- Rate limiting is enforced by the Kong gateway in **all** environments — there is no
+  "no limits in development" mode.
+- A global limit (600/min, 10000/hour by IP) applies, with tighter per-route overrides
+  (e.g. `/v1` 120/min, `/responses` 100/min, `/mcp` 200/min, `/media` 60/min).
+- Exceeding a limit returns HTTP 429. See
+  [integrations/kong/kong.yml](../../integrations/kong/kong.yml) for exact values.
 
 **Strategies:**
 
-1. **Exponential Backoff**
-2. **Check Headers**
-3. **Batch Operations**
+1. **Exponential backoff** on 429, honoring any `Retry-After` header
+2. **Batch operations** to reduce request count
+3. **Cache** responses that do not change often
 
 ## Error Handling Patterns
 
 ### Common Error Scenarios
 
-**401 Unauthorized:**
-**404 Not Found:**
-**429 Rate Limited:**
-**500 Server Error:**
+- **401 Unauthorized** — Missing/expired token or invalid API key. Refresh the token
+  (`POST /auth/refresh-token`) or re-authenticate.
+- **404 Not Found** — The resource ID does not exist or is not owned by the caller.
+- **429 Too Many Requests** — A Kong rate limit was hit; back off and retry.
+- **500 Internal Server Error** — Upstream failure; retry with backoff and capture the
+  `request_id` from the response for support.
 
 ## See Also
 
 - [API Examples](examples/README.md) - Working code samples
-- [Rate Limiting](rate-limiting.md) - Rate limits and quotas
+- [Endpoint Matrix](endpoint-matrix.md) - Full endpoint inventory
+- Rate limits: [integrations/kong/kong.yml](../../integrations/kong/kong.yml)

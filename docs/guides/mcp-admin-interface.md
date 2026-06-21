@@ -15,9 +15,9 @@ The MCP Admin Interface allows administrators to dynamically configure MCP tools
 ## Architecture
 
 ```
-Platform Web (Admin UI)
+Admin client (authenticated with an admin JWT)
     ↓
-LLM API
+LLM API  (/v1/admin/mcp-tools, RequireAdmin)
     ↓
 Database (admin_mcp_tools table)
     ↓
@@ -28,13 +28,13 @@ MCP Tools Service (Tool Registration)
 
 ### List Available MCP Tools
 
-**GET** `/v1/admin/mcp/tools`
+**GET** `/v1/admin/mcp-tools`
 
 View all MCP tools available in your system.
 
 ```bash
 curl -H "Authorization: Bearer <admin-token>" \
-  http://localhost:8000/v1/admin/mcp/tools
+  http://localhost:8000/v1/admin/mcp-tools
 ```
 
 Response:
@@ -66,12 +66,12 @@ Response:
 
 ### Enable/Disable a Tool
 
-**PATCH** `/v1/admin/mcp/tools/{tool_id}`
+**PATCH** `/v1/admin/mcp-tools/{tool_id}`
 
 Enable or disable a tool for all users.
 
 ```bash
-curl -X PATCH http://localhost:8000/v1/admin/mcp/tools/tool_1 \
+curl -X PATCH http://localhost:8000/v1/admin/mcp-tools/tool_1 \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -83,13 +83,13 @@ curl -X PATCH http://localhost:8000/v1/admin/mcp/tools/tool_1 \
 
 ### Get Tool Details
 
-**GET** `/v1/admin/mcp/tools/{tool_id}`
+**GET** `/v1/admin/mcp-tools/{tool_id}`
 
 View complete configuration for a specific tool.
 
 ```bash
 curl -H "Authorization: Bearer <admin-token>" \
-  http://localhost:8000/v1/admin/mcp/tools/tool_2
+  http://localhost:8000/v1/admin/mcp-tools/tool_2
 ```
 
 Response:
@@ -110,12 +110,12 @@ Response:
 
 ### Update Tool Configuration
 
-**PATCH** `/v1/admin/mcp/tools/{tool_id}`
+**PATCH** `/v1/admin/mcp-tools/{tool_id}`
 
 Modify tool name, description, or enable/disable status.
 
 ```bash
-curl -X PATCH http://localhost:8000/v1/admin/mcp/tools/tool_2 \
+curl -X PATCH http://localhost:8000/v1/admin/mcp-tools/tool_2 \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -127,12 +127,12 @@ curl -X PATCH http://localhost:8000/v1/admin/mcp/tools/tool_2 \
 
 ### Set Content Filtering Rules
 
-**PUT** `/v1/admin/mcp/tools/{tool_id}/filters`
+Content filters are part of the tool configuration - set them with the same **PATCH** `/v1/admin/mcp-tools/{tool_id}` endpoint by sending `disallowed_keywords`. There is no separate `/filters` endpoint.
 
-Configure regex patterns to block certain keywords/patterns in tool arguments.
+Configure regex patterns to block certain keywords/patterns in tool arguments:
 
 ```bash
-curl -X PUT http://localhost:8000/v1/admin/mcp/tools/tool_2/filters \
+curl -X PATCH http://localhost:8000/v1/admin/mcp-tools/tool_2 \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -216,8 +216,6 @@ Block adult/NSFW searches:
 }
 ```
 
-## Python Examples
-
 ## JavaScript Examples
 
 ### Bulk Tool Status Update
@@ -230,7 +228,7 @@ const headers = {
 };
 
 // Fetch all tools
-const listResponse = await fetch("http://localhost:8000/v1/admin/mcp/tools", {
+const listResponse = await fetch("http://localhost:8000/v1/admin/mcp-tools", {
   headers,
 });
 
@@ -239,7 +237,7 @@ const tools = await listResponse.json();
 // Disable all code execution tools
 for (const tool of tools.data) {
   if (tool.category === "code") {
-    await fetch(`http://localhost:8000/v1/admin/mcp/tools/${tool.id}`, {
+    await fetch(`http://localhost:8000/v1/admin/mcp-tools/${tool.id}`, {
       method: "PATCH",
       headers,
       body: JSON.stringify({ enabled: false }),
@@ -253,33 +251,24 @@ for (const tool of tools.data) {
 
 ### Admin Authentication
 
-The MCP Admin endpoints require admin-level authentication. Ensure your token has appropriate permissions:
+The MCP Admin endpoints require an admin JWT. Authentication is a Keycloak OAuth2 redirect, not an email/password POST. Initiate it via:
 
 ```bash
-# Admin user login
-curl -X POST http://localhost:8000/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "admin@example.com",
-    "password": "secure_password"
-  }'
-
-# Use the returned token for admin operations
+# Returns the Keycloak authorization URL (+ state) for the frontend to redirect to
+curl "http://localhost:8000/auth/login?redirect_url=http://localhost:3001"
 ```
+
+The user signs in on Keycloak (authorization-code flow with PKCE) and the resulting access token is used as the Bearer token for admin operations.
 
 ### Role-Based Access Control (RBAC)
 
-MCP Admin endpoints check for:
+MCP Admin endpoints are guarded by `middleware.RequireAdmin()`, which requires the Keycloak **realm role `admin`** (or an `is_admin` attribute on the principal). There is no `mcp:admin` scope or `mcp_admin` group.
 
-- `admin` role OR
-- `mcp:admin` permission
+To grant access in Keycloak:
 
-Configure in your identity provider (Keycloak):
-
-1. Create `mcp_admin` group in Keycloak
-2. Add admin users to the group
-3. Map group to `mcp:admin` scope in JWT token
-4. Token will include `"scope": "mcp:admin"`
+1. Define (or use) the realm role `admin` in the `jan` realm.
+2. Assign that role to the admin user.
+3. The role appears in the token's realm-access claims, and `RequireAdmin` allows the request.
 
 ## Troubleshooting
 
@@ -289,9 +278,9 @@ Configure in your identity provider (Keycloak):
 
 **Solutions**:
 
-1. Verify token has admin permissions
+1. Verify the token carries the realm role `admin`
 2. Check token hasn't expired: `jwt decode YOUR_TOKEN`
-3. Ensure user is in admin group/role in Keycloak
+3. Ensure the user has the `admin` realm role assigned in Keycloak
 
 ### Filter Not Applied
 
@@ -322,7 +311,7 @@ Start with minimal tool set, enable others as needed:
 
 ```bash
 # Disable all tools initially
-curl -X PATCH http://localhost:8000/v1/admin/mcp/tools/web_scraper \
+curl -X PATCH http://localhost:8000/v1/admin/mcp-tools/web_scraper \
   -H "Authorization: Bearer <token>" \
   -d '{"enabled": false}'
 ```
@@ -368,6 +357,4 @@ For admin-related issues:
 
 ---
 
-**Last Updated**: December 23, 2025  
-**Compatibility**: Jan Server v0.0.14+  
-**Role Required**: Admin or `mcp:admin` permission
+**Role Required**: Keycloak realm role `admin`

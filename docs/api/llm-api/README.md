@@ -63,7 +63,7 @@ LOG_LEVEL=info # debug, info, warn, error
 LOG_FORMAT=json # json or text
 KEYCLOAK_BASE_URL=http://keycloak:8085 # Keycloak URL
 JWKS_URL=http://keycloak:8085/realms/jan/protocol/openid-connect/certs
-ISSUER=http://localhost:8090/realms/jan # Token issuer
+ISSUER=http://localhost:8085/realms/jan # Token issuer (must match Keycloak realm issuer)
 ACCOUNT=account # JWT audience/account claim
 ```
 
@@ -73,11 +73,13 @@ ACCOUNT=account # JWT audience/account claim
 OTEL_ENABLED=false # Enable OpenTelemetry
 OTEL_SERVICE_NAME=llm-api # Service name for tracing
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 # Jaeger endpoint
-MEDIA_RESOLVE_URL=http://kong:8000/media/v1/media/resolve # Default Media API resolver via Kong
+MEDIA_RESOLVE_URL=http://media-api:8285/v1/media # Media API base used to resolve jan_* IDs
 MEDIA_RESOLVE_TIMEOUT=5s # Media resolution timeout
 ```
 
-> Override `MEDIA_RESOLVE_URL` only if you need to call the Media API directly (e.g., `http://media-api:8285/v1/media/resolve` inside Docker).
+> `MEDIA_RESOLVE_URL` points at the Media API `/v1/media` base; the client appends
+> `/<id>/metadata` to look an ID up. To route through Kong instead, set it to
+> `http://kong:8000/media/media`.
 
 ## Main Endpoints
 
@@ -546,13 +548,15 @@ Example error response:
 
 ## Rate Limiting
 
-Requests routed through Kong inherit its rate-limiting plugin:
+Requests routed through Kong inherit its rate-limiting plugin (enforced in all environments):
 
-- Default (development): 100 requests per minute **per client IP** (`kong/kong-dev-full.yml`)
-- Headers: `X-RateLimit-Limit-minute`, `X-RateLimit-Remaining-minute`
-- Exceeding the limit returns HTTP 429
+- A global limit of 600/min (10000/hour) per client IP applies, plus per-route overrides.
+- The `/v1` LLM API routes are capped at 120/min; the `/llm` proxy at 120/min per consumer.
+- Exceeding a limit returns HTTP 429.
 
-Calling the service directly on port 8080 bypasses the gateway rate limiter (useful for internal health checks).
+Exact values live in [integrations/kong/kong.yml](../../../integrations/kong/kong.yml). Calling
+the service directly on port 8080 bypasses the gateway rate limiter (useful for internal health
+checks) but still requires a valid JWT.
 
 ## See Also
 

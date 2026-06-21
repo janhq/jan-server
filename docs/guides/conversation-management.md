@@ -151,14 +151,14 @@ curl -H "Authorization: Bearer <token>" \
 
 ### Update Conversation Title
 
-**PATCH** `/v1/conversations/{conv_id}`
+**POST** `/v1/conversations/{conv_id}`
 
 Update conversation metadata.
 
 **Request:**
 
 ```bash
-curl -X PATCH http://localhost:8000/v1/conversations/conv_123 \
+curl -X POST http://localhost:8000/v1/conversations/conv_123 \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -200,14 +200,14 @@ curl -X POST http://localhost:8000/v1/conversations/conv_123/items \
 
 ### Edit a Message
 
-**PUT** `/v1/conversations/{conv_id}/items/{item_id}/edit`
+**POST** `/v1/conversations/{conv_id}/items/{item_id}/edit`
 
 Modify an existing message (useful for regenerating AI responses).
 
 **Request:**
 
 ```bash
-curl -X PUT http://localhost:8000/v1/conversations/conv_123/items/item_2/edit \
+curl -X POST http://localhost:8000/v1/conversations/conv_123/items/item_2/edit \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -262,30 +262,24 @@ curl -X DELETE http://localhost:8000/v1/conversations/conv_123 \
 
 **Response:** `204 No Content`
 
-### Bulk Delete Conversations
+### Delete All Conversations
 
-**POST** `/v1/conversations/bulk-delete`
+**DELETE** `/v1/conversations`
 
-Delete multiple conversations at once.
+Permanently delete every conversation owned by the authenticated user.
 
 **Request:**
 
 ```bash
-curl -X POST http://localhost:8000/v1/conversations/bulk-delete \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "conversation_ids": ["conv_123", "conv_456", "conv_789"]
-  }'
+curl -X DELETE http://localhost:8000/v1/conversations \
+  -H "Authorization: Bearer <token>"
 ```
 
 **Response:**
 
 ```json
 {
-  "deleted_count": 3,
-  "failed_count": 0,
-  "failed_ids": []
+  "deleted_count": 3
 }
 ```
 
@@ -295,7 +289,7 @@ curl -X POST http://localhost:8000/v1/conversations/bulk-delete \
 
 **POST** `/v1/conversations/{conv_id}/share`
 
-Create a shareable link to your conversation.
+Create a shareable link to your conversation. Set `scope` to `conversation` to share the whole thread, or `item` (with `item_id`) to share a single message - both use this same endpoint.
 
 **Request:**
 
@@ -304,8 +298,22 @@ curl -X POST http://localhost:8000/v1/conversations/conv_123/share \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "expires_in": 86400,
-    "read_only": true
+    "scope": "conversation",
+    "title": "My shared chat",
+    "include_images": true
+  }'
+```
+
+To share a single message instead:
+
+```bash
+curl -X POST http://localhost:8000/v1/conversations/conv_123/share \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "scope": "item",
+    "item_id": "item_5",
+    "include_context_messages": true
   }'
 ```
 
@@ -313,51 +321,41 @@ curl -X POST http://localhost:8000/v1/conversations/conv_123/share \
 
 ```json
 {
-  "share_id": "share_abc123",
-  "url": "http://localhost:8000/conversations/share/share_abc123",
-  "expires_at": "2025-12-24T10:00:00Z",
-  "read_only": true
+  "id": "share_abc123",
+  "object": "conversation.share",
+  "slug": "a1b2c3d4",
+  "share_url": "http://localhost:8000/v1/public/shares/a1b2c3d4",
+  "visibility": "public",
+  "view_count": 0,
+  "created_at": 1735036800
 }
 ```
 
-### Share a Single Message
+The public share is viewable (unauthenticated) at `GET /v1/public/shares/{slug}`.
 
-**POST** `/v1/conversations/{conv_id}/items/{item_id}/share`
+### List Share Links
 
-Create a shareable link to a specific message.
+**GET** `/v1/conversations/{conv_id}/shares`
+
+List the active share links for a conversation. (You can also list all of your shares across conversations via `GET /v1/shares`.)
 
 **Request:**
 
 ```bash
-curl -X POST http://localhost:8000/v1/conversations/conv_123/items/item_5/share \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "expires_in": 3600,
-    "include_context": true
-  }'
-```
-
-**Response:**
-
-```json
-{
-  "share_id": "msg_share_xyz789",
-  "url": "http://localhost:8000/conversations/share/msg_share_xyz789",
-  "expires_at": "2025-12-23T11:00:00Z"
-}
+curl -H "Authorization: Bearer <token>" \
+  http://localhost:8000/v1/conversations/conv_123/shares
 ```
 
 ### Revoke Share Link
 
-**DELETE** `/v1/conversations/{conv_id}/share/{share_id}`
+**DELETE** `/v1/conversations/{conv_id}/shares/{share_id}`
 
 Disable a previously shared link.
 
 **Request:**
 
 ```bash
-curl -X DELETE http://localhost:8000/v1/conversations/conv_123/share/share_abc123 \
+curl -X DELETE http://localhost:8000/v1/conversations/conv_123/shares/share_abc123 \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -407,10 +405,10 @@ curl -X POST http://localhost:8000/v1/conversations \
   }'
 ```
 
-Or update existing conversation:
+Or update an existing conversation:
 
 ```bash
-curl -X PATCH http://localhost:8000/v1/conversations/conv_123 \
+curl -X POST http://localhost:8000/v1/conversations/conv_123 \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -418,20 +416,16 @@ curl -X PATCH http://localhost:8000/v1/conversations/conv_123 \
   }'
 ```
 
-### List Project Conversations
+### List Conversations in a Project
 
-**GET** `/v1/projects/{project_id}/conversations`
-
-List all conversations in a project.
+There is no dedicated project-conversations route; use the conversation list endpoint and filter by `project_id`.
 
 **Request:**
 
 ```bash
 curl -H "Authorization: Bearer <token>" \
-  http://localhost:8000/v1/projects/proj_abc123/conversations
+  "http://localhost:8000/v1/conversations?project_id=proj_abc123"
 ```
-
-## Python Examples
 
 ## JavaScript Examples
 
@@ -452,14 +446,14 @@ const response = await fetch(
     method: "POST",
     headers,
     body: JSON.stringify({
-      expires_in: 86400,
-      read_only: true,
+      scope: "conversation",
+      include_images: true,
     }),
   },
 );
 
 const share = await response.json();
-console.log(`Share link: ${share.url}`);
+console.log(`Share link: ${share.share_url}`);
 ```
 
 ## Best Practices
@@ -473,9 +467,8 @@ console.log(`Share link: ${share.url}`);
 
 ## Limitations & Known Issues
 
-- Conversations limited to 10,000 messages per conversation
-- Bulk delete limited to 100 conversations per request
-- Share links are public (anyone with the link can view)
+- `DELETE /v1/conversations` removes all of your conversations in one call (there is no per-id bulk endpoint)
+- Public share links are viewable by anyone who has the slug
 - Deleted conversations cannot be recovered
 
 ## Related Documentation
@@ -484,8 +477,3 @@ console.log(`Share link: ${share.url}`);
 - [Chat Completions](../api/llm-api/README.md#chat-completions) - Send messages with AI responses
 - [User Settings](user-settings-personalization.md) - Personalize responses
 - [Projects Management](../api/llm-api/README.md#projects) - Organize conversations
-
----
-
-**Last Updated**: December 23, 2025  
-**Compatibility**: Jan Server v0.0.14+

@@ -18,8 +18,7 @@ Before you begin, ensure you have:
 
 Optional (for development):
 
-- Go 1.21+
-- Go 1.23+ (for jan-cli api-test)
+- Go 1.24+ (for building services and the jan-cli api-test runner)
 
 ## Quick Setup
 
@@ -36,7 +35,7 @@ cd jan-server
 make quickstart
 ```
 
-`make quickstart` launches the `jan-cli` wizard. It prompts for your LLM provider (local vLLM vs remote API), MCP search provider, and Media API preference, then writes `.env` plus `config/secrets.env`. When configuration finishes it automatically starts Docker Compose. Re-run the command anytime to update settings (answer **Y** when asked to overwrite `.env`).
+`make quickstart` launches the `jan-cli` wizard. It prompts for your LLM provider (local vLLM vs remote API), MCP search provider, and Media API preference, then writes a single root `.env` file. When configuration finishes it automatically starts Docker Compose. Re-run the command anytime to update settings (answer **Y** when asked to overwrite `.env`).
 
 #### Wizard options at a glance
 
@@ -53,13 +52,11 @@ make quickstart
 ### Manual configuration (if you cannot run the wizard)
 
 ```bash
-# Copy templates
+# Copy the template
 cp .env.template .env
-cp config/secrets.env.example config/secrets.env
 
-# Edit with your values
+# Edit with your values (provider URLs, API keys, secrets)
 nano .env
-nano config/secrets.env
 
 # Populate defaults and validate
 make setup
@@ -69,11 +66,11 @@ make setup
 
 **Configuration details:**
 
+- All configuration and secrets live in a single root `.env` file (copied from `.env.template`)
 - Canonical defaults live in `config/defaults.yaml` (generated from Go structs)
-- Secrets belong in `config/secrets.env` (copied from `config/secrets.env.example`)
 - Environment templates (Docker/Kubernetes) are documented in [Configuration System](configuration/README.md)
 
-### 3. Start Services (skip if quickstart already did this)
+### 3. Start Services (skip if the wizard already did this)
 
 ```bash
 # Start full stack (CPU inference)
@@ -92,11 +89,11 @@ make logs
 ### What the wizard does
 
 1. Prompts for LLM/search/media choices.
-2. Writes `.env` and `config/secrets.env`.
+2. Writes a single root `.env` file.
 3. Checks Docker availability and networks.
 4. Starts the Compose stack and waits for health (about 30 seconds).
 
-### 5. Verify Installation
+### 4. Verify Installation
 
 ```bash
 make health-check
@@ -116,8 +113,6 @@ Once running, you can access:
 | **Response API**       | http://localhost:8082                        | `Authorization: Bearer <token>`       |
 | **Media API**          | http://localhost:8285                        | `Authorization: Bearer <token>`       |
 | **MCP Tools**          | http://localhost:8091                        | `Authorization: Bearer <token>`       |
-| **Memory Tools**       | http://localhost:8090                        | `Authorization: Bearer <token>`       |
-| **Realtime API**       | http://localhost:8186                        | `Authorization: Bearer <token>`       |
 | **Keycloak Console**   | http://localhost:8085                        | admin/admin                           |
 | **Grafana Dashboards** | http://localhost:3331                        | admin/admin (after `make monitor-up`) |
 | **Prometheus**         | http://localhost:9090                        | - (after `make monitor-up`)           |
@@ -126,7 +121,7 @@ Once running, you can access:
 **Service activation**:
 
 - vLLM starts only if you choose the local provider (GPU). Use the remote provider option for a lighter stack.
-- MCP Tools and Vector Store always run; the search choice only affects which search provider is used.
+- MCP Tools always run; the search choice only affects which search provider is used.
 - Media API is optional based on the wizard choice.
 
 ## Your First API Call
@@ -137,7 +132,7 @@ Once running, you can access:
 curl -X POST http://localhost:8000/llm/auth/guest-login
 ```
 
-All traffic to `http://localhost:8000` flows through the Kong gateway, which validates Keycloak-issued JWTs or API keys (use `Authorization: Bearer <token>` or `X-API-Key: sk_*` headers).
+All traffic to `http://localhost:8000` flows through the Kong gateway, which validates Keycloak-issued JWTs or API keys (use `Authorization: Bearer <token>` or `X-API-Key: sk_live...` headers).
 
 Response:
 

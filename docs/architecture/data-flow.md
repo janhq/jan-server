@@ -21,7 +21,7 @@
 
 - Executes JSON-RPC request against MCP Tools (`/v1/mcp`).
 - Records execution metadata in PostgreSQL.
-- Applies depth/timeout limits (`MAX_TOOL_EXECUTION_DEPTH`, `TOOL_EXECUTION_TIMEOUT`).
+- Applies depth/timeout limits (`RESPONSE_MAX_TOOL_DEPTH`, `TOOL_EXECUTION_TIMEOUT`).
 
 4. Final synthesis request is sent to LLM API.
 5. Completed response is stored and streamed back to the caller (SSE `response.*` events).
@@ -42,7 +42,7 @@
 1. Response API or external clients send MCP JSON-RPC requests to `mcp-tools:8091`.
 2. MCP Tools selects the proper backend:
 
-- Web search -> Serper or SearXNG (via redis-searxng cache)
+- Web search -> cascading fallback chain Serper -> Exa -> Tavily -> SearXNG (SearXNG via redis-searxng cache)
 - Scrape -> HTTP fetcher with metadata
 - File search -> vector-store service
 - Python exec -> SandboxFusion container

@@ -71,17 +71,27 @@ Add these variables to your `.env` file:
 # Create at: https://github.com/settings/developers
 GITHUB_CLIENT_ID=your_github_client_id
 GITHUB_CLIENT_SECRET=your_github_client_secret
-GITHUB_ENABLED=true
+GITHUB_CONNECTOR_ENABLED=true
 
 # --- Google OAuth (Gmail, Drive, Calendar) ---
 # Create at: https://console.cloud.google.com/apis/credentials
+# NOTE: These connector Google credentials are DISTINCT from the
+# Keycloak Google identity-provider credentials (GOOGLE_IDP_CLIENT_ID /
+# GOOGLE_IDP_CLIENT_SECRET) used for "Sign in with Google". Do not reuse
+# the same OAuth client for both - they request different scopes.
 GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
-GOOGLE_ENABLED=true
+GOOGLE_CONNECTOR_ENABLED=true
 
 # --- Token Encryption ---
-# Generate with: openssl rand -base64 32
-CONNECTOR_ENCRYPTION_KEY=your_32_byte_base64_encoded_key
+# 32-byte key as 64 HEX characters (AES-256). Generate with: openssl rand -hex 32
+CONNECTOR_TOKEN_ENCRYPTION_KEY=your_64_char_hex_key
+CONNECTOR_TOKEN_ENCRYPTION_KEY_ID=v1
+
+# --- OAuth State (CSRF protection for the OAuth flow) ---
+# Hex secret used to sign OAuth state; generate with: openssl rand -hex 32
+OAUTH_STATE_SECRET=your_hex_state_secret
+OAUTH_STATE_EXPIRATION=5m
 
 # --- OAuth URLs ---
 # Base URL for OAuth callbacks (your server's public URL)
@@ -99,7 +109,7 @@ OAUTH_FRONTEND_URL=http://localhost:3001
 3. Fill in:
    - **Application name:** Jan Server
    - **Homepage URL:** `http://localhost:3001`
-   - **Authorization callback URL:** `http://localhost:8000/api/v1/connectors/github/callback`
+   - **Authorization callback URL:** `http://localhost:8000/v1/connectors/github/callback`
 4. Copy Client ID and Client Secret
 
 #### Google OAuth Credentials
@@ -113,9 +123,9 @@ OAUTH_FRONTEND_URL=http://localhost:3001
 4. Create OAuth 2.0 Client ID:
    - **Application type:** Web application
    - **Authorized redirect URIs:**
-     - `http://localhost:8000/api/v1/connectors/gmail/callback`
-     - `http://localhost:8000/api/v1/connectors/google_drive/callback`
-     - `http://localhost:8000/api/v1/connectors/google_calendar/callback`
+     - `http://localhost:8000/v1/connectors/gmail/callback`
+     - `http://localhost:8000/v1/connectors/google_drive/callback`
+     - `http://localhost:8000/v1/connectors/google_calendar/callback`
 5. Copy Client ID and Client Secret
 
 ---
@@ -184,17 +194,42 @@ GET /v1/connectors/{type}/status
 }
 ```
 
-#### Initiate OAuth Connection
+#### Get OAuth Authorization URL
 ```http
-POST /v1/connectors/{type}/connect
+GET /v1/connectors/{type}/auth-url
 ```
+
+Initiates the OAuth flow (generates the PKCE challenge and signed state) and returns the provider authorization URL to redirect the user to.
 
 **Response:**
 ```json
 {
-  "auth_url": "https://github.com/login/oauth/authorize?client_id=...&state=...&code_challenge=..."
+  "auth_url": "https://github.com/login/oauth/authorize?client_id=...&state=...&code_challenge=...",
+  "state": "base64url-state"
 }
 ```
+
+#### Complete Connection (code exchange)
+```http
+POST /v1/connectors/{type}/connect
+```
+
+Alternative to the redirect callback: complete the OAuth flow by posting the `code` and `state` your client received from the provider.
+
+**Request:**
+```json
+{
+  "code": "authorization_code_from_provider",
+  "state": "state_from_auth_url"
+}
+```
+
+#### Get Access Token (internal)
+```http
+GET /v1/connectors/{type}/token
+```
+
+Returns the decrypted access token for the connector. Intended for internal service use (e.g. MCP Tools) rather than end-user clients.
 
 #### Disconnect Connector
 ```http
@@ -434,16 +469,10 @@ CREATE TABLE llm_api.connector_audit_log (
 
 ### API Tests
 
-Run the Postman collection:
+Run the connectors Postman collection with jan-cli api-test:
 ```bash
-make test-connectors
-```
-
-Or use newman:
-```bash
-newman run tests/e2e/automation/collections/connectors.postman.json \
-  --env-var gateway_url=http://localhost:8000 \
-  --env-var access_token=$TOKEN
+jan-cli api-test run tests/e2e/automation/collections/connectors.postman.json \
+  --env-var "kong_url=http://localhost:8000"
 ```
 
 ### Playwright Tests
@@ -457,8 +486,8 @@ npx playwright test
 ### Manual Testing
 
 ```bash
-# Get access token
-TOKEN=$(curl -s -X POST http://localhost:8000/auth/guest-login \
+# Get access token (note the /llm prefix on the guest-login route)
+TOKEN=$(curl -s -X POST http://localhost:8000/llm/auth/guest-login \
   -H "Content-Type: application/json" -d '{}' | jq -r '.access_token')
 
 # List connectors
@@ -477,7 +506,7 @@ curl -s http://localhost:8000/v1/connectors/github/status \
 ### Common Issues
 
 #### "Connector not enabled"
-- Check that `GITHUB_ENABLED=true` or `GOOGLE_ENABLED=true` is set
+- Check that `GITHUB_CONNECTOR_ENABLED=true` or `GOOGLE_CONNECTOR_ENABLED=true` is set
 - Verify client ID and secret are configured
 
 #### "OAuth state expired"
@@ -540,6 +569,103 @@ cd services/mcp-tools && go run ./cmd/server
 # Run frontend
 cd apps/web && npm run dev
 ```
+
+---
+
+## Admin Setup
+
+Step-by-step instructions for administrators configuring the OAuth providers. You need admin access to the deployment, the ability to create OAuth apps on GitHub and Google Cloud, and the ability to set environment variables on the server.
+
+### 1. Generate the token-encryption key
+
+OAuth tokens are encrypted at rest with AES-256, so the key must be **32 bytes encoded as 64 hex characters**:
+
+```bash
+openssl rand -hex 32
+```
+
+Save the output as `CONNECTOR_TOKEN_ENCRYPTION_KEY`. Generate a separate hex secret for `OAUTH_STATE_SECRET` the same way.
+
+> **Warning:** If you lose the encryption key (or rotate it without migration), all stored OAuth tokens become unreadable and users must reconnect.
+
+### 2. Create the GitHub OAuth App
+
+1. Go to **Settings → Developer settings → OAuth Apps** (https://github.com/settings/developers).
+2. Click **New OAuth App** and fill in:
+
+| Field | Value |
+|-------|-------|
+| Application name | `Jan Server` |
+| Homepage URL | Your frontend URL (e.g. `https://jan.example.com`) |
+| Authorization callback URL | `https://your-api-domain.com/v1/connectors/github/callback` |
+
+   For local development use `http://localhost:3001` (homepage) and `http://localhost:8000/v1/connectors/github/callback` (callback).
+
+3. Copy the **Client ID**, then **Generate a new client secret** and copy it (shown once). These become `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`.
+
+### 3. Create Google Cloud OAuth credentials
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project.
+2. Under **APIs & Services → Library**, enable **Gmail API**, **Google Drive API**, and **Google Calendar API** (or via gcloud):
+
+   ```bash
+   gcloud services enable gmail.googleapis.com
+   gcloud services enable drive.googleapis.com
+   gcloud services enable calendar-json.googleapis.com
+   ```
+
+3. Configure the **OAuth consent screen** (Internal for a Workspace org, External otherwise; External apps need test users or verification).
+4. Add the scopes:
+
+   ```
+   https://www.googleapis.com/auth/gmail.readonly
+   https://www.googleapis.com/auth/drive.readonly
+   https://www.googleapis.com/auth/drive.metadata.readonly
+   https://www.googleapis.com/auth/calendar.readonly
+   https://www.googleapis.com/auth/calendar.events
+   ```
+
+5. Create an **OAuth client ID** of type **Web application** with:
+   - **Authorized JavaScript origins:** your frontend origin (and `http://localhost:3001` for dev)
+   - **Authorized redirect URIs:**
+     ```
+     https://your-api-domain.com/v1/connectors/gmail/callback
+     https://your-api-domain.com/v1/connectors/google_drive/callback
+     https://your-api-domain.com/v1/connectors/google_calendar/callback
+     ```
+     (add the `http://localhost:8000/...` equivalents for local development)
+
+6. Copy the **Client ID** and **Client Secret** into `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`.
+
+   > Reminder: these connector credentials are separate from the Keycloak Google identity-provider credentials (`GOOGLE_IDP_CLIENT_ID` / `GOOGLE_IDP_CLIENT_SECRET`) used for app sign-in.
+
+### 4. Set environment variables and restart
+
+Add the values from the steps above (`CONNECTOR_TOKEN_ENCRYPTION_KEY`, `OAUTH_STATE_SECRET`, `GITHUB_CLIENT_*`, `GOOGLE_CLIENT_*`, `*_CONNECTOR_ENABLED`, `OAUTH_REDIRECT_BASE_URL`, `OAUTH_FRONTEND_URL`) to your `.env`, then restart:
+
+```bash
+make down
+make up-full
+make health-check
+```
+
+### 5. Verify
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8000/llm/auth/guest-login \
+  -H "Content-Type: application/json" -d '{}' | jq -r '.access_token')
+
+curl -s http://localhost:8000/v1/connectors \
+  -H "Authorization: Bearer $TOKEN" | jq .   # enabled connectors should appear
+```
+
+Then open the web app, go to **Profile → Connectors**, and run the GitHub connect flow end to end.
+
+### Rotating credentials
+
+**GitHub / Google client secret:** generate a new secret in the provider console, update `GITHUB_CLIENT_SECRET` / `GOOGLE_CLIENT_SECRET`, restart services, then delete the old secret in the provider console.
+
+**Encryption key:** rotating `CONNECTOR_TOKEN_ENCRYPTION_KEY` invalidates all stored tokens unless you migrate. To rotate with continuity, set the new key in `CONNECTOR_TOKEN_ENCRYPTION_KEY` / `CONNECTOR_TOKEN_ENCRYPTION_KEY_ID` and move the old values into `CONNECTOR_TOKEN_ENCRYPTION_KEY_PREVIOUS` / `CONNECTOR_TOKEN_ENCRYPTION_KEY_ID_PREVIOUS` so existing tokens can still be decrypted, then restart. Without the previous key configured, plan a maintenance window and have users reconnect.
 
 ---
 

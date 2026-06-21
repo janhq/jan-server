@@ -5,7 +5,7 @@ This guide explains how to set up and use custom Kong plugins in the jan-server 
 ## Directory Structure
 
 ```
-kong/
+integrations/kong/
 +-- kong.yml # Main Kong declarative config
 +-- kong-dev-full.yml # Dev-Full/Hybrid mode config (host routing)
 +-- plugins/ # Custom plugins directory
@@ -26,7 +26,7 @@ environment:
   KONG_PLUGINS: bundled,keycloak-apikey # Load bundled + custom plugins
   KONG_LUA_PACKAGE_PATH: /usr/local/kong/plugins/?.lua;; # Plugin search path
 
-volumes: -../kong/plugins:/usr/local/kong/plugins:ro # Mount plugins directory
+volumes: - ../integrations/kong/plugins:/usr/local/kong/plugins:ro # Mount plugins directory
 ```
 
 ### Verification
@@ -47,7 +47,7 @@ curl http://localhost:8001/plugins/enabled
 ### 1. Create Plugin Directory
 
 ```bash
-mkdir -p kong/plugins/my-plugin
+mkdir -p integrations/kong/plugins/my-plugin
 ```
 
 ### 2. Create handler.lua
@@ -88,7 +88,7 @@ return {
 
 ### 4. Register Plugin
 
-Update `docker/infrastructure.yml`:
+Update `infra/docker/infrastructure.yml`:
 
 ```yaml
 environment:

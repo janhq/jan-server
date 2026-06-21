@@ -40,7 +40,7 @@ Send Webhook Notification (async, non-blocking)
 **Request:**
 
 ```http
-POST /responses
+POST /v1/responses
 Content-Type: application/json
 Authorization: Bearer <token>
 
@@ -77,7 +77,7 @@ Authorization: Bearer <token>
 **Request:**
 
 ```http
-GET /responses/resp_abc123
+GET /v1/responses/resp_abc123
 Authorization: Bearer <token>
 ```
 
@@ -115,7 +115,7 @@ Authorization: Bearer <token>
 **Request:**
 
 ```http
-POST /responses/resp_abc123/cancel
+POST /v1/responses/resp_abc123/cancel
 Authorization: Bearer <token>
 ```
 
@@ -135,6 +135,146 @@ Authorization: Bearer <token>
 - If status is `queued`: Immediately marks cancelled, prevents worker pickup
 - If status is `in_progress`: Marks cancelled, but task may complete normally (cooperative cancellation)
 - If status is `completed` or `failed`: No-op, returns current state
+
+## Polling & Execution Control
+
+When a response is created with `background: true`, the API returns immediately with a `response_id`. You can then poll for status, inspect detailed plan/step progress, and control execution (cancel, resume).
+
+> URLs below use the direct service port (`http://localhost:8082`). Through Kong, prefix the path with the `/responses` route, e.g. `http://localhost:8000/responses/v1/responses/{response_id}` (Kong strips `/responses` before forwarding to `/v1/responses`).
+
+### Polling Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/v1/responses/{response_id}` | GET | Current response status (no plan details) |
+| `/v1/responses/{response_id}/full` | GET | Response plus full plan (tasks and steps) |
+| `/v1/responses/{response_id}/plan` | GET | Plan metadata |
+| `/v1/responses/{response_id}/plan/details` | GET | Plan with all tasks and steps |
+| `/v1/responses/{response_id}/plan/progress` | GET | Lightweight progress info (for progress bars) |
+| `/v1/responses/{response_id}/plan/tasks` | GET | List all tasks in a plan |
+| `/v1/responses/{response_id}/cancel` | POST | Cancel the response |
+| `/v1/responses/{response_id}/plan/cancel` | POST | Cancel plan execution |
+| `/v1/responses/{response_id}/plan/input` | POST | Submit user input to resume a waiting plan |
+
+**Basic polling:**
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8082/v1/responses/resp_abc123
+```
+
+**Lightweight progress (for progress bars):**
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8082/v1/responses/resp_abc123/plan/progress
+```
+
+```json
+{
+  "plan_id": "plan_xyz789",
+  "status": "in_progress",
+  "progress": 0.45,
+  "estimated_steps": 6,
+  "completed_steps": 3,
+  "failed_steps": 0,
+  "current_task": {
+    "task_id": "task_002",
+    "title": "Analyze search results",
+    "status": "in_progress"
+  }
+}
+```
+
+Use `/full` when you need everything for a rich UI in a single call (response + plan + tasks + steps); use `/plan/progress` for lightweight polling.
+
+### Submit User Input (Resume)
+
+When a plan reaches `wait_for_user`, submit input to resume execution:
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"selection": "option_1", "approval": true, "message": "optional note"}' \
+  http://localhost:8082/v1/responses/resp_abc123/plan/input
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `selection` | string | User's selection from provided options |
+| `approval` | boolean | Approval for a pending action |
+| `message` | string | Additional free-form message |
+
+The plan status changes from `wait_for_user` back to `in_progress` after input is submitted.
+
+### Example: Bash Polling Loop
+
+```bash
+TOKEN="your_access_token"
+RESPONSE_ID="resp_abc123"
+BASE_URL="http://localhost:8082/v1/responses"
+
+while true; do
+  RESULT=$(curl -s -H "Authorization: Bearer $TOKEN" "$BASE_URL/$RESPONSE_ID")
+  STATUS=$(echo "$RESULT" | jq -r '.status')
+  echo "Status: $STATUS"
+
+  case "$STATUS" in
+    completed|failed|cancelled)
+      echo "$RESULT" | jq
+      break ;;
+    wait_for_user)
+      curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/json" \
+        -d '{"approval": true}' \
+        "$BASE_URL/$RESPONSE_ID/plan/input" ;;
+  esac
+  sleep 2
+done
+```
+
+### Status Reference
+
+**Response status**
+
+| Status | Description | Terminal |
+|--------|-------------|----------|
+| `queued` | Waiting in queue for a worker | No |
+| `in_progress` | Being processed by a worker | No |
+| `completed` | Successfully finished | Yes |
+| `failed` | Execution failed | Yes |
+| `cancelled` | Cancelled by user/system | Yes |
+
+**Plan status**
+
+| Status | Description | Terminal |
+|--------|-------------|----------|
+| `pending` | Plan created, not started | No |
+| `planning` | Agent creating execution plan | No |
+| `in_progress` | Tasks being executed | No |
+| `wait_for_user` | Waiting for user input | No |
+| `completed` | All tasks finished successfully | Yes |
+| `failed` | Execution failed (may be retryable) | Yes |
+| `cancelled` | Cancelled by user | Yes |
+| `expired` | Timed out waiting for user | Yes |
+
+**Valid status transitions**
+
+```
+pending → planning, in_progress, failed, cancelled
+planning → in_progress, failed, cancelled
+in_progress → wait_for_user, completed, failed, cancelled
+wait_for_user → in_progress, expired, cancelled
+failed → in_progress (retry)
+```
+
+### Polling Best Practices
+
+1. Use `/full` for rich UI updates (single call) and `/plan/progress` for lightweight progress bars.
+2. Always handle `wait_for_user` — prompt the user or auto-approve.
+3. Implement exponential backoff; don't hammer the server.
+4. Exit the polling loop immediately on a terminal status.
+5. For production, prefer webhooks (configure `webhook_url` in metadata) over polling.
 
 ## Webhook Notifications
 
@@ -326,21 +466,23 @@ Workers log structured events:
 
 ### jan-cli api-test Collection
 
-Run the Postman collection for background mode:
+Background-mode flows are covered by the Response API collection:
 
 ```bash
-jan-cli api-test run tests/postman/responses-background-webhook.json \
-  --environment tests/postman/environments/local.json \
-  --delay-request 1000 \
-  --timeout-request 60000
+make test-response
+# equivalently:
+jan-cli api-test run tests/e2e/automation/collections/response.postman.json \
+  --timeout-request 120000
 ```
 
 ### Manual Testing
 
+Direct service port shown below (`8082`); through Kong the same paths are reached at `http://localhost:8000/responses/v1/responses/...` (Kong strips the `/responses` route prefix).
+
 1. **Create Background Task**:
 
    ```bash
-   curl -X POST http://localhost:8082/responses \
+   curl -X POST http://localhost:8082/v1/responses \
      -H "Content-Type: application/json" \
      -d '{
        "model": "gpt-4",
@@ -354,12 +496,12 @@ jan-cli api-test run tests/postman/responses-background-webhook.json \
 2. **Poll Status**:
 
    ```bash
-   curl http://localhost:8082/responses/resp_abc123
+   curl http://localhost:8082/v1/responses/resp_abc123
    ```
 
 3. **Cancel Task**:
    ```bash
-   curl -X POST http://localhost:8082/responses/resp_abc123/cancel
+   curl -X POST http://localhost:8082/v1/responses/resp_abc123/cancel
    ```
 
 ## Migration Guide

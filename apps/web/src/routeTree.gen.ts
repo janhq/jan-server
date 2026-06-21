@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProfileIndexRouteImport } from './routes/profile/index'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
@@ -20,7 +21,6 @@ import { Route as ThreadsTemporaryRouteImport } from './routes/threads/temporary
 import { Route as ThreadsConversationIdRouteImport } from './routes/threads/$conversationId'
 import { Route as ShareSlugRouteImport } from './routes/share/$slug'
 import { Route as ProjectsProjectIdRouteImport } from './routes/projects/$projectId'
-import { Route as DocsRoadmapRouteImport } from './routes/docs/roadmap'
 import { Route as DocsQuickstartRouteImport } from './routes/docs/quickstart'
 import { Route as DashboardUsageRouteImport } from './routes/dashboard/usage'
 import { Route as DashboardApiKeysRouteImport } from './routes/dashboard/api-keys'
@@ -56,6 +56,11 @@ import { Route as AdminModelsProvidersRouteImport } from './routes/admin/models/
 import { Route as AdminModelsProviderModelsRouteImport } from './routes/admin/models/provider-models'
 import { Route as AdminModelsCatalogsRouteImport } from './routes/admin/models/catalogs'
 
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -109,11 +114,6 @@ const ShareSlugRoute = ShareSlugRouteImport.update({
 const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
   id: '/projects/$projectId',
   path: '/projects/$projectId',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DocsRoadmapRoute = DocsRoadmapRouteImport.update({
-  id: '/docs/roadmap',
-  path: '/docs/roadmap',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DocsQuickstartRoute = DocsQuickstartRouteImport.update({
@@ -295,6 +295,7 @@ const AdminModelsCatalogsRoute = AdminModelsCatalogsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/admin/mcp-tools': typeof AdminMcpToolsRoute
   '/admin/prompt-templates': typeof AdminPromptTemplatesRoute
   '/admin/usage': typeof AdminUsageRoute
@@ -303,7 +304,6 @@ export interface FileRoutesByFullPath {
   '/dashboard/api-keys': typeof DashboardApiKeysRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
-  '/docs/roadmap': typeof DocsRoadmapRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/share/$slug': typeof ShareSlugRoute
   '/threads/$conversationId': typeof ThreadsConversationIdRoute
@@ -343,6 +343,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/admin/mcp-tools': typeof AdminMcpToolsRoute
   '/admin/prompt-templates': typeof AdminPromptTemplatesRoute
   '/admin/usage': typeof AdminUsageRoute
@@ -351,7 +352,6 @@ export interface FileRoutesByTo {
   '/dashboard/api-keys': typeof DashboardApiKeysRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
-  '/docs/roadmap': typeof DocsRoadmapRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/share/$slug': typeof ShareSlugRoute
   '/threads/$conversationId': typeof ThreadsConversationIdRoute
@@ -392,6 +392,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/admin/mcp-tools': typeof AdminMcpToolsRoute
   '/admin/prompt-templates': typeof AdminPromptTemplatesRoute
   '/admin/usage': typeof AdminUsageRoute
@@ -400,7 +401,6 @@ export interface FileRoutesById {
   '/dashboard/api-keys': typeof DashboardApiKeysRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/docs/quickstart': typeof DocsQuickstartRoute
-  '/docs/roadmap': typeof DocsRoadmapRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/share/$slug': typeof ShareSlugRoute
   '/threads/$conversationId': typeof ThreadsConversationIdRoute
@@ -442,6 +442,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/login'
     | '/admin/mcp-tools'
     | '/admin/prompt-templates'
     | '/admin/usage'
@@ -450,7 +451,6 @@ export interface FileRouteTypes {
     | '/dashboard/api-keys'
     | '/dashboard/usage'
     | '/docs/quickstart'
-    | '/docs/roadmap'
     | '/projects/$projectId'
     | '/share/$slug'
     | '/threads/$conversationId'
@@ -490,6 +490,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/login'
     | '/admin/mcp-tools'
     | '/admin/prompt-templates'
     | '/admin/usage'
@@ -498,7 +499,6 @@ export interface FileRouteTypes {
     | '/dashboard/api-keys'
     | '/dashboard/usage'
     | '/docs/quickstart'
-    | '/docs/roadmap'
     | '/projects/$projectId'
     | '/share/$slug'
     | '/threads/$conversationId'
@@ -538,6 +538,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/login'
     | '/admin/mcp-tools'
     | '/admin/prompt-templates'
     | '/admin/usage'
@@ -546,7 +547,6 @@ export interface FileRouteTypes {
     | '/dashboard/api-keys'
     | '/dashboard/usage'
     | '/docs/quickstart'
-    | '/docs/roadmap'
     | '/projects/$projectId'
     | '/share/$slug'
     | '/threads/$conversationId'
@@ -587,6 +587,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LoginRoute: typeof LoginRoute
   AdminMcpToolsRoute: typeof AdminMcpToolsRoute
   AdminPromptTemplatesRoute: typeof AdminPromptTemplatesRoute
   AdminUsageRoute: typeof AdminUsageRoute
@@ -595,7 +596,6 @@ export interface RootRouteChildren {
   DashboardApiKeysRoute: typeof DashboardApiKeysRoute
   DashboardUsageRoute: typeof DashboardUsageRoute
   DocsQuickstartRoute: typeof DocsQuickstartRoute
-  DocsRoadmapRoute: typeof DocsRoadmapRoute
   ProjectsProjectIdRoute: typeof ProjectsProjectIdRoute
   ShareSlugRoute: typeof ShareSlugRoute
   ThreadsConversationIdRoute: typeof ThreadsConversationIdRoute
@@ -636,6 +636,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -711,13 +718,6 @@ declare module '@tanstack/react-router' {
       path: '/projects/$projectId'
       fullPath: '/projects/$projectId'
       preLoaderRoute: typeof ProjectsProjectIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/docs/roadmap': {
-      id: '/docs/roadmap'
-      path: '/docs/roadmap'
-      fullPath: '/docs/roadmap'
-      preLoaderRoute: typeof DocsRoadmapRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/docs/quickstart': {
@@ -963,6 +963,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LoginRoute: LoginRoute,
   AdminMcpToolsRoute: AdminMcpToolsRoute,
   AdminPromptTemplatesRoute: AdminPromptTemplatesRoute,
   AdminUsageRoute: AdminUsageRoute,
@@ -971,7 +972,6 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardApiKeysRoute: DashboardApiKeysRoute,
   DashboardUsageRoute: DashboardUsageRoute,
   DocsQuickstartRoute: DocsQuickstartRoute,
-  DocsRoadmapRoute: DocsRoadmapRoute,
   ProjectsProjectIdRoute: ProjectsProjectIdRoute,
   ShareSlugRoute: ShareSlugRoute,
   ThreadsConversationIdRoute: ThreadsConversationIdRoute,

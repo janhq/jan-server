@@ -21,6 +21,6 @@ function DashboardProfileRoute() {
   );
 }
 
-export const Route = createFileRoute("/dashboard/" as "/")({
+export const Route = createFileRoute("/dashboard/")({
   component: DashboardProfileRoute,
 });

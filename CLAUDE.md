@@ -39,7 +39,7 @@ make down-clean              # Stop containers and remove volumes
 
 | Component        | Technology           | Version   |
 |------------------|----------------------|-----------|
-| Language         | Go                   | 1.25.0    |
+| Language         | Go                   | 1.24.0    |
 | HTTP Framework   | Gin                  | v1.11.0   |
 | ORM              | GORM + GORM Gen      | v1.26.0   |
 | Database         | PostgreSQL           | 18        |
@@ -277,8 +277,9 @@ log.Error().
 | Media API       | 8285  | File upload, jan_* ID resolution     |
 | MCP Tools       | 8091  | Search, scrape, code exec tools      |
 | **Infra**       |       |                                      |
-| Keycloak        | 8085  | Auth admin console                   |
-| PostgreSQL      | 5432  | Database                             |
+| Keycloak        | 8085  | Auth admin console (realm `jan`)     |
+| PostgreSQL (app)| 5432  | Application database (app-db)        |
+| PostgreSQL (kc) | 5433  | Keycloak database (keycloak-db)      |
 | Grafana         | 3331  | Dashboards                           |
 | Prometheus      | 9090  | Metrics                              |
 | Jaeger          | 16686 | Tracing                              |
@@ -303,9 +304,9 @@ make health-check         # Check all service health
 
 ```bash
 # Hybrid development (Docker infra + native service)
-make dev-full                    # Start Docker with host routing
-./jan-cli.sh dev run llm-api     # Run service natively (Linux/Mac)
-.\jan-cli.ps1 dev run llm-api    # Run service natively (Windows)
+make dev-full                          # Start Docker with host routing
+tools/jan-cli.sh dev run llm-api       # Run service natively (Linux/Mac)
+tools\jan-cli.ps1 dev run llm-api      # Run service natively (Windows)
 
 # Code quality
 go fmt ./...                     # Format Go code
@@ -375,8 +376,7 @@ pnpm build                       # Build all packages/apps
 ### Creating a New Microservice
 
 ```bash
-./scripts/new-service-from-template.sh my-service  # Linux/Mac
-./scripts/new-service-from-template.ps1 -Name my-service  # Windows
+jan-cli dev scaffold my-service   # Generate a new service from the template
 
 # Template includes:
 # - Go service skeleton with Gin HTTP server
@@ -483,8 +483,7 @@ When working on this codebase:
 6. **Update docs:** If you change APIs or configuration, update the docs
 7. **Check conventions:** Follow the naming and structure conventions in `docs/conventions/`
 
-For detailed patterns, see:
+For detailed patterns, see `docs/conventions/`:
 - `docs/conventions/design-patterns.md` - Code patterns
 - `docs/conventions/architecture-patterns.md` - Structure patterns
 - `docs/conventions/workflow.md` - Development workflow
-- `AGENTS.md` - Detailed agent guidelines

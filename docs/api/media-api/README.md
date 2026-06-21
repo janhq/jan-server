@@ -14,11 +14,11 @@ Examples: [API examples index](../examples/README.md) includes uploads, jan\_\* 
 
 ## What You Can Do
 
-- **Upload images** - From URLs or base64 data. See [Upload Method Guide](../decision-guides.md#media-upload-methods) to choose the best approach.
+- **Ingest images** - From remote URLs, base64 data URLs, or multipart upload. See [Upload Method Guide](../decision-guides.md#media-upload-methods) to choose the best approach.
 - **Get jan\_\* IDs** - Unique identifiers for each image. See [Jan ID System Guide](../decision-guides.md#jan-id-system) to understand how they work.
-- **Generate download links** - Temporary URLs that expire after 7 days. See [Presigned URL Workflow](../decision-guides.md#presigned-url-workflow).
-- **Prevent duplicates** - Same image uploaded twice gets same ID
-- **Store in S3** - Images saved to cloud storage
+- **Serve media** - Fetch bytes by ID (authenticated) or embed via the public `/api/media/{id}` route.
+- **Prevent duplicates** - The same content uploaded twice returns the same `jan_*` ID.
+- **Store in S3 or locally** - Backend selected by `MEDIA_STORAGE_BACKEND`.
 
 ## Service Ports & Configuration
 
@@ -86,9 +86,9 @@ All endpoints require authentication through the Kong gateway.
 # Get guest token
 TOKEN=$(curl -s -X POST http://localhost:8000/llm/auth/guest-login | jq -r '.access_token')
 
-# Use in requests
+# Use in requests (Kong strips /media, so /media/media -> service /media)
 curl -H "Authorization: Bearer $TOKEN" \
- http://localhost:8000/media/v1/media
+ http://localhost:8000/media/media/jan_01hqr8v9k2x3f4g5h6j7k8m9n0/metadata
 ```
 
 **Key points:**
@@ -99,41 +99,52 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 Direct calls to port 8285 still honor JWT validation when `AUTH_ENABLED=true` on the service. Use the gateway whenever possible so rate-limiting/cors policies apply consistently.
 
-## Main Endpoints
+## Endpoints
 
-### Upload Media
+The Media API exposes a small, fixed set of routes. There is **no** presigned-upload, resolve,
+presign, or bulk-delete endpoint. (`/v1/files`, `/v1/files/upload`, `/v1/files/{id}`, and
+`/v1/files/{id}/metadata` exist as aliases of the `/v1/media*` routes below.)
+
+| Service path              | Method | Description                                                  |
+| ------------------------- | ------ | ------------------------------------------------------------ |
+| `/v1/media`               | POST   | Ingest a data URL or remote URL; returns the `jan_*` ID      |
+| `/v1/media/upload`        | POST   | Multipart file upload; returns the `jan_*` ID                |
+| `/v1/media/{id}`          | GET    | Stream the media bytes (or a direct URL if proxying is off)  |
+| `/v1/media/{id}/metadata` | GET    | Get media metadata                                           |
+| `/api/media/{id}`         | GET    | Public read-only serving via Kong (no auth; used in `img src`) |
+
+> Via Kong the protected routes are reached under `/media` (`strip_path`), e.g.
+> `POST http://localhost:8000/media/media`. The public route is `GET http://localhost:8000/api/media/{id}`.
+
+### Ingest Media
 
 **POST** `/v1/media`
 
-Upload media from a remote URL or base64 data. Examples below go through Kong (recommended); replace the host with `http://localhost:8285` if you need to hit the service directly.
+Ingest media from a remote URL or a base64 data URL. The request body is an `IngestRequest`
+with a `source` whose `type` is `remote_url` or `data_url`.
 
 ```bash
-# Upload from remote URL
-curl -X POST http://localhost:8000/media/v1/media \
+# From a remote URL
+curl -X POST http://localhost:8000/media/media \
  -H "Authorization: Bearer <token>" \
  -H "Content-Type: application/json" \
  -d '{
- "source": {
- "type": "remote_url",
- "url": "https://example.com/image.jpg"
- },
- "user_id": "user123"
+   "source": { "type": "remote_url", "url": "https://example.com/image.jpg" },
+   "filename": "image.jpg",
+   "user_id": "user123"
  }'
 
-# Upload from data URL (base64 image)
-curl -X POST http://localhost:8000/media/v1/media \
+# From a data URL (base64)
+curl -X POST http://localhost:8000/media/media \
  -H "Authorization: Bearer <token>" \
  -H "Content-Type: application/json" \
  -d '{
- "source": {
- "type": "data_url",
- "data_url": "data:image/jpeg;base64,/9j/4AAQSkZJRg..."
- },
- "user_id": "user123"
+   "source": { "type": "data_url", "data_url": "data:image/jpeg;base64,/9j/4AAQSkZJRg..." },
+   "user_id": "user123"
  }'
 ```
 
-**Response:**
+**Response** (same shape for `/v1/media` and `/v1/media/upload`):
 
 ```json
 {
@@ -141,98 +152,46 @@ curl -X POST http://localhost:8000/media/v1/media \
   "mime": "image/jpeg",
   "bytes": 45678,
   "deduped": false,
-  "presigned_url": "https://s3.menlo.ai/platform-dev/images/jan_...?X-Amz-Signature=..."
+  "url": "http://localhost:8000/api/media/jan_01hqr8v9k2x3f4g5h6j7k8m9n0"
 }
 ```
 
-### Prepare Upload (Presigned URL)
+The `url` is a direct, embeddable link served through the public `/api/media/{id}` route.
 
-**POST** `/v1/media/prepare-upload`
+### Multipart Upload
 
-Get a presigned URL for client-side S3 upload.
+**POST** `/v1/media/upload`
 
-```bash
-curl -X POST http://localhost:8000/media/v1/media/prepare-upload \
- -H "Authorization: Bearer <token>" \
- -H "Content-Type: application/json" \
- -d '{
- "content_type": "image/jpeg",
- "user_id": "user123"
- }'
-```
-
-### Direct Upload (Local Storage Only)
-
-If `MEDIA_STORAGE_BACKEND=local`, presigned uploads are disabled. Use the multipart endpoint instead:
+Upload a raw file (any storage backend). The `file` form field is required; `user_id` is optional.
 
 ```bash
-curl -X POST http://localhost:8000/media/v1/media/upload \
+curl -X POST http://localhost:8000/media/media/upload \
  -H "Authorization: Bearer <token>" \
  -F "file=@/path/to/image.png" \
  -F "user_id=user123"
 ```
 
-The service converts the upload to a data URL and stores it on disk (`MEDIA_LOCAL_STORAGE_PATH`).
+Returns the same `{id, mime, bytes, deduped, url}` body as `/v1/media`.
 
-**Response:**
-
-```json
-{
-  "jan_id": "jan_01hqr8v9k2x3f4g5h6j7k8m9n0",
-  "presigned_url": "https://s3.menlo.ai/platform-dev/images/jan_...?X-Amz-Signature=...",
-  "presigned_post": {
-    "url": "https://s3.menlo.ai",
-    "fields": {
-      "key": "images/jan_01hqr8v9k2x3f4g5h6j7k8m9n0",
-      "policy": "...",
-      "x-amz-signature": "...",
-      "x-amz-date": "..."
-    }
-  }
-}
-```
-
-### Resolve Media IDs
-
-**POST** `/v1/media/resolve`
-
-Resolve `jan_*` IDs to presigned URLs.
-
-```bash
-curl -X POST http://localhost:8000/media/v1/media/resolve \
- -H "Authorization: Bearer <token>" \
- -H "Content-Type: application/json" \
- -d '{
- "ids": [
- "jan_01hqr8v9k2x3f4g5h6j7k8m9n0",
- "jan_01hqr8v9k2x3f4g5h6j7k8m9n1"
- ]
- }'
-```
-
-**Response:**
-
-```json
-{
-  "media": [
-    {
-      "id": "jan_01hqr8v9k2x3f4g5h6j7k8m9n0",
-      "presigned_url": "https://s3.menlo.ai/platform-dev/images/jan_...?X-Amz-Signature=...",
-      "expires_at": "2025-11-10T10:35:00Z"
-    }
-  ]
-}
-```
-
-### Get Media
+### Get Media Bytes
 
 **GET** `/v1/media/{id}`
 
-Retrieve media metadata and presigned URL.
+Streams the media content. If `MEDIA_PROXY_DOWNLOAD=false`, returns `{"url": "..."}` with a
+direct link instead of streaming.
 
 ```bash
 curl -H "Authorization: Bearer <token>" \
- http://localhost:8000/media/v1/media/jan_01hqr8v9k2x3f4g5h6j7k8m9n0
+ http://localhost:8000/media/media/jan_01hqr8v9k2x3f4g5h6j7k8m9n0 --output image.jpg
+```
+
+### Get Media Metadata
+
+**GET** `/v1/media/{id}/metadata`
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+ http://localhost:8000/media/media/jan_01hqr8v9k2x3f4g5h6j7k8m9n0/metadata
 ```
 
 **Response:**
@@ -240,41 +199,23 @@ curl -H "Authorization: Bearer <token>" \
 ```json
 {
   "id": "jan_01hqr8v9k2x3f4g5h6j7k8m9n0",
-  "mime": "image/jpeg",
-  "bytes": 45678,
-  "created_at": "2025-11-10T10:30:00Z",
-  "presigned_url": "https://s3.menlo.ai/...",
-  "expires_at": "2025-11-10T10:35:00Z"
+  "url": "http://localhost:8000/api/media/jan_01hqr8v9k2x3f4g5h6j7k8m9n0",
+  "content_type": "image/jpeg",
+  "filename": "image.jpg",
+  "size": 45678
 }
 ```
 
-### Get Presigned URL
+### Public Serving
 
-**GET** `/v1/media/{id}/presign`
+**GET** `/api/media/{id}` (no authentication)
 
-Get a temporary signed URL for downloading media by jan_id. This is the dedicated endpoint for obtaining presigned URLs without additional metadata.
+Serves the media bytes directly through Kong. Use this URL in `<img src>` or other public
+contexts.
 
 ```bash
-curl -H "Authorization: Bearer <token>" \
- http://localhost:8000/media/v1/media/jan_01hqr8v9k2x3f4g5h6j7k8m9n0/presign
+curl http://localhost:8000/api/media/jan_01hqr8v9k2x3f4g5h6j7k8m9n0 --output image.jpg
 ```
-
-**Response:**
-
-```json
-{
-  "id": "jan_01hqr8v9k2x3f4g5h6j7k8m9n0",
-  "url": "https://s3.menlo.ai/platform-dev/images/jan_...?X-Amz-Signature=...",
-  "expires_in": 300
-}
-```
-
-**Use Cases:**
-
-- Get download URL after client-side upload via `prepare-upload`
-- Refresh expired presigned URLs
-- Obtain direct S3 access for large file downloads
-- Integration with external services requiring temporary URLs
 
 ### Health Check
 
@@ -290,25 +231,25 @@ curl http://localhost:8285/healthz
 
 ## Jan ID System
 
-**Format**: `jan_` prefix + 26-character base32 identifier
+**Format**: `jan_` prefix + a lowercased 26-character ULID (Crockford base32).
 
 ### Characteristics
 
-- **Globally Unique**: No collision across instances
-- **Sortable**: Sequential generation ensures chronological ordering
-- **Opaque**: No encoded information (privacy-preserving)
-- **Example**: `jan_01hqr8v9k2x3f4g5h6j7k8m9n0`
+- **Globally Unique**: ULID-based, no collision across instances
+- **Sortable**: ULIDs are time-ordered, so IDs sort chronologically
+- **Opaque**: Treat as an identifier; do not parse meaning from it
+- **Example**: `jan_01hqr8v9k2x3f4g5h6j7k8m9n0` (the part after `jan_` is exactly 26 chars)
 
 ### Usage in Other Services
 
-Reference `jan_*` IDs in LLM API for media:
+Reference `jan_*` IDs in the LLM API for media:
 
 ```bash
 curl -X POST http://localhost:8000/v1/chat/completions \
  -H "Authorization: Bearer <token>" \
  -H "Content-Type: application/json" \
  -d '{
- "model": "jan-v2-30b",
+ "model": "jan-v1-4b",
  "messages": [{
  "role": "user",
  "content": [
@@ -333,58 +274,37 @@ Media is deduplicated by content hash (SHA-256):
 ```json
 {
   "id": "jan_01hqr8v9k2x3f4g5h6j7k8m9n0",
-  "deduped": true
+  "mime": "image/jpeg",
+  "bytes": 45678,
+  "deduped": true,
+  "url": "http://localhost:8000/api/media/jan_01hqr8v9k2x3f4g5h6j7k8m9n0"
 }
 ```
 
-## Presigned URL Management
+## Storage Backends
 
-### TTL Configuration
+The backend is chosen by `MEDIA_STORAGE_BACKEND` (`s3` or `local`).
 
-Default: 7 days (604800 seconds)
+- **S3** (`s3`): objects are stored in the configured bucket. When `MEDIA_S3_URL_ENABLED=true`,
+  the service may hand back S3 URLs whose lifetime is governed by `MEDIA_S3_PRESIGN_TTL`
+  (default `168h`). Otherwise bytes are served through the API / public `/api/media/{id}` route
+  (controlled by `MEDIA_PROXY_DOWNLOAD`).
+- **Local** (`local`): bytes are stored under `MEDIA_LOCAL_STORAGE_PATH` and served by ID.
 
-```bash
-MEDIA_S3_PRESIGN_TTL=168h # 7 days
-MEDIA_S3_PRESIGN_TTL=30m # 30 minutes
-MEDIA_S3_PRESIGN_TTL=1h # 1 hour
-```
-
-### Expiration
-
-- URLs are valid for specified TTL
-- Each request to resolve/get generates new presigned URL
-- Expired URLs are no longer valid
-
-## Storage Flow
-
-### 1. Remote URL Upload
+### Upload & Fetch Flow
 
 ```
-Client -> Media API (remote_url)
- v
-Media API -> Remote Server (fetch)
- v
-Media API -> S3 (upload)
- v
-Media API <- S3 (confirmed)
- v
-Client <- Media API (jan_id + presigned_url)
-```
+# Ingest (remote URL or data URL)
+Client -> POST /v1/media -> Media API fetches/decodes -> stores in backend
+Client <- { id: jan_*, url: /api/media/jan_* }
 
-### 2. Client-Side Direct Upload
+# Multipart upload
+Client -> POST /v1/media/upload (file) -> Media API stores in backend
+Client <- { id: jan_*, url: /api/media/jan_* }
 
-```
-Client -> Media API (prepare-upload request)
- v
-Media API -> Client (presigned_url + jan_id)
- v
-Client -> S3 (direct upload using presigned_url)
- v
-Client <- S3 (upload confirmed)
- v
-Client -> Media API GET /v1/media/{jan_id}/presign
- v
-Client <- Media API (download presigned_url)
+# Fetch later
+Client -> GET /v1/media/{id}            # authenticated stream
+Anyone -> GET /api/media/{id}           # public stream (e.g. <img src>)
 ```
 
 ## Error Handling

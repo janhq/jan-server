@@ -1,7 +1,5 @@
 # Jan Server Documentation
 
-**Last updated:** February 2025
-
 Jan Server is an enterprise-grade microservices LLM API platform with Model Context Protocol (MCP) tool integration.
 
 ---
@@ -10,7 +8,7 @@ Jan Server is an enterprise-grade microservices LLM API platform with Model Cont
 
 | Step | Action | Command |
 |------|--------|---------|
-| 1 | Clone repository | `git clone https://github.com/janhq/jan-server.git` |
+| 1 | Clone repository | `git clone https://github.com/janhq/server.git` |
 | 2 | Run setup wizard | `cd jan-server && make quickstart` |
 | 3 | Verify health | `make health-check` |
 
@@ -46,7 +44,7 @@ Jan Server is an enterprise-grade microservices LLM API platform with Model Cont
 | [Testing Guide](guides/testing.md) | Integration tests, unit tests |
 | [Configuration](configuration/README.md) | Environment variables, config precedence |
 | [Service Template](guides/services-template.md) | Generate new microservices |
-| [Conventions](conventions/README.md) | Code style, patterns, workflow |
+| [Conventions](conventions/conventions.md) | Code style, patterns, workflow |
 
 ### Deployment & Operations
 
@@ -71,14 +69,13 @@ Jan Server is an enterprise-grade microservices LLM API platform with Model Cont
 | Response API | 8082 | Tool orchestration |
 | Media API | 8285 | File storage, jan_* IDs |
 | MCP Tools | 8091 | Search, scrape, code execution |
-| Memory Tools | 8090 | Semantic memory |
 
 ### Technology Stack
 
 | Component | Technology |
 |-----------|------------|
 | Gateway | Kong 3.5 |
-| Services | Go 1.25+, Gin, Zerolog, Wire |
+| Services | Go 1.24, Gin, Zerolog, Wire |
 | Database | PostgreSQL 18 |
 | Auth | Keycloak 24.0.5 |
 | MCP | mark3labs/mcp-go v0.7.0 |
@@ -99,13 +96,15 @@ docs/
 │   ├── media-api/           # Media API reference
 │   ├── mcp-tools/           # MCP Tools reference
 │   ├── examples/            # Code examples
-│   ├── endpoint-matrix.md   # All endpoints
-│   └── rate-limiting.md     # Rate limits
+│   └── endpoint-matrix.md   # All endpoints
 ├── architecture/            # Architecture docs
 │   ├── README.md            # Architecture overview
+│   ├── system-design.md     # How the pieces fit together
 │   ├── services.md          # Service breakdown
 │   ├── data-flow.md         # Request flow
-│   └── security.md          # Security model
+│   ├── security.md          # Security model
+│   ├── observability.md     # Monitoring and tracing
+│   └── test-flows.md        # Test suite flows
 ├── guides/                  # How-to guides
 │   ├── README.md            # Guides overview
 │   ├── development.md       # Development setup
@@ -119,7 +118,6 @@ docs/
 │   ├── env-var-mapping.md   # Environment variables
 │   └── docker-compose.md    # Docker setup
 ├── conventions/             # Code standards
-│   ├── README.md            # Conventions overview
 │   ├── conventions.md       # Coding standards
 │   └── workflow.md          # Git workflow
 └── runbooks/                # Operational procedures

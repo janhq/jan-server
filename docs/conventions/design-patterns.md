@@ -44,8 +44,8 @@ type User struct {
 
 // Conversion pattern in NewSchemaUser() - create pointer from value
 func NewSchemaUser(u *user.User) *User {
- enabled:= u.Enabled
- amount:= u.Amount
+ enabled := u.Enabled
+ amount := u.Amount
  return &User{
  Enabled: &enabled, // Always non-nil pointer
  Amount: &amount,
@@ -54,11 +54,11 @@ func NewSchemaUser(u *user.User) *User {
 
 // Conversion pattern in EtoD() - dereference with nil-check
 func (u *User) EtoD() *user.User {
- enabled:= false // Default value
+ enabled := false // Default value
  if u.Enabled != nil {
  enabled = *u.Enabled
  }
- amount:= 0.0 // Default value
+ amount := 0.0 // Default value
  if u.Amount != nil {
  amount = *u.Amount
  }
@@ -107,7 +107,7 @@ func (e *Organization) EtoD() *domain.Organization {
  if e == nil {
  return nil
  }
- active:= true // Default
+ active := true // Default
  if e.Active != nil {
  active = *e.Active
  }
@@ -126,7 +126,7 @@ func NewSchemaOrganization(d *domain.Organization) *Organization {
  if d == nil {
  return nil
  }
- active:= d.Active
+ active := d.Active
  return &Organization{
  BaseModel: BaseModel{
  ID: d.ID,
@@ -158,9 +158,9 @@ type OrganizationRepository struct {
 
 // Create returns the created entity with generated fields
 func (r *OrganizationRepository) Create(ctx context.Context, org *domain.Organization) (*domain.Organization, error) {
- dbOrg:= dbschema.NewSchemaOrganization(org)
+ dbOrg := dbschema.NewSchemaOrganization(org)
 
- if err:= r.db.GetQuery(ctx).Organization.WithContext(ctx).Create(dbOrg); err != nil {
+ if err := r.db.GetQuery(ctx).Organization.WithContext(ctx).Create(dbOrg); err != nil {
  return nil, platformerrors.NewError(ctx, platformerrors.LayerRepository,
  platformerrors.ErrorTypeDatabaseError, "failed to create organization", err,
  "c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f") // Unique UUID
@@ -171,8 +171,8 @@ func (r *OrganizationRepository) Create(ctx context.Context, org *domain.Organiz
 
 // FindByID uses GORM gen for type-safe queries
 func (r *OrganizationRepository) FindByID(ctx context.Context, id string) (*domain.Organization, error) {
- o:= r.db.GetQuery(ctx).Organization
- dbOrg, err:= o.WithContext(ctx).Where(o.PublicID.Eq(id)).First()
+ o := r.db.GetQuery(ctx).Organization
+ dbOrg, err := o.WithContext(ctx).Where(o.PublicID.Eq(id)).First()
 
  if err != nil {
  if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -190,9 +190,9 @@ func (r *OrganizationRepository) FindByID(ctx context.Context, id string) (*doma
 
 // Update uses.Save() - works correctly with pointer types
 func (r *OrganizationRepository) Update(ctx context.Context, org *domain.Organization) (*domain.Organization, error) {
- dbOrg:= dbschema.NewSchemaOrganization(org)
+ dbOrg := dbschema.NewSchemaOrganization(org)
 
- if err:= r.db.GetQuery(ctx).Organization.WithContext(ctx).
+ if err := r.db.GetQuery(ctx).Organization.WithContext(ctx).
  Where(r.db.GetQuery(ctx).Organization.ID.Eq(org.ID)).
  Save(dbOrg); err != nil {
  return nil, platformerrors.NewError(ctx, platformerrors.LayerRepository,
@@ -205,8 +205,8 @@ func (r *OrganizationRepository) Update(ctx context.Context, org *domain.Organiz
 
 // List with filters and pagination
 func (r *OrganizationRepository) List(ctx context.Context, filter *OrganizationFilter) ([]*domain.Organization, int64, error) {
- o:= r.db.GetQuery(ctx).Organization
- query:= o.WithContext(ctx)
+ o := r.db.GetQuery(ctx).Organization
+ query := o.WithContext(ctx)
 
  // Apply filters
  if filter.Active != nil {
@@ -217,7 +217,7 @@ func (r *OrganizationRepository) List(ctx context.Context, filter *OrganizationF
  }
 
  // Count total
- total, err:= query.Count()
+ total, err := query.Count()
  if err != nil {
  return nil, 0, platformerrors.NewError(ctx, platformerrors.LayerRepository,
  platformerrors.ErrorTypeDatabaseError, "failed to count", err, "uuid-here")
@@ -231,15 +231,15 @@ func (r *OrganizationRepository) List(ctx context.Context, filter *OrganizationF
  query = query.Limit(filter.Pagination.Limit)
  }
 
- dbOrgs, err:= query.Find()
+ dbOrgs, err := query.Find()
  if err != nil {
  return nil, 0, platformerrors.NewError(ctx, platformerrors.LayerRepository,
  platformerrors.ErrorTypeDatabaseError, "failed to list", err, "uuid-here")
  }
 
  // Convert to domain
- orgs:= make([]*domain.Organization, len(dbOrgs))
- for i, dbOrg:= range dbOrgs {
+ orgs := make([]*domain.Organization, len(dbOrgs))
+ for i, dbOrg := range dbOrgs {
  orgs[i] = dbOrg.EtoD()
  }
 
@@ -280,8 +280,8 @@ make gormgen
 
 ```go
 // Good: Compile-time safe
-o:= query.Use(db).Organization
-orgs, err:= o.WithContext(ctx).
+o := query.Use(db).Organization
+orgs, err := o.WithContext(ctx).
  Where(o.Active.Is(true)).
  Order(o.CreatedAt.Desc()).
  Limit(100).
@@ -299,13 +299,13 @@ db.Where("active = ?", true).
 
 ```go
 // Use transaction wrapper
-err:= r.db.Transaction(func(tx *gorm.DB) error {
+err := r.db.Transaction(func(tx *gorm.DB) error {
  // All operations in this function are transactional
- if err:= tx.Create(&org).Error; err != nil {
+ if err := tx.Create(&org).Error; err != nil {
  return err // Rolls back
  }
 
- if err:= tx.Create(&user).Error; err != nil {
+ if err := tx.Create(&user).Error; err != nil {
  return err // Rolls back
  }
 
@@ -329,8 +329,8 @@ err:= r.db.Transaction(func(tx *gorm.DB) error {
 
 ```go
 func (r *UserRepository) FindByID(ctx context.Context, id string) (*domain.User, error) {
- u:= query.Use(r.db.GetDB()).User
- dbUser, err:= u.WithContext(ctx).Where(u.PublicID.Eq(id)).First()
+ u := query.Use(r.db.GetDB()).User
+ dbUser, err := u.WithContext(ctx).Where(u.PublicID.Eq(id)).First()
 
  if err != nil {
  if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -366,7 +366,7 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*domain.User,
 ```go
 // Option 1: Add context with AsError()
 func (s *UserService) GetUser(ctx context.Context, id string) (*User, error) {
- user, err:= s.repo.FindByID(ctx, id)
+ user, err := s.repo.FindByID(ctx, id)
  if err != nil {
  return nil, platformerrors.AsError(ctx, platformerrors.LayerDomain, err,
  "failed to retrieve user")
@@ -385,9 +385,9 @@ func (s *UserService) GetUserSimple(ctx context.Context, id string) (*User, erro
 ```go
 // Use HandleError for errors from services
 func (r *UserRoute) GetUser(c *gin.Context) {
- id:= c.Param("id")
+ id := c.Param("id")
 
- user, err:= r.service.GetUser(c.Request.Context(), id)
+ user, err := r.service.GetUser(c.Request.Context(), id)
  if err != nil {
  responses.HandleError(c, err) // Converts PlatformError to HTTP response
  return
@@ -398,13 +398,13 @@ func (r *UserRoute) GetUser(c *gin.Context) {
 // Use HandleNewError for errors at route level
 func (r *UserRoute) CreateUser(c *gin.Context) {
  var req CreateUserRequest
- if err:= c.ShouldBindJSON(&req); err != nil {
+ if err := c.ShouldBindJSON(&req); err != nil {
  responses.HandleNewError(c, platformerrors.LayerRoute,
  platformerrors.ErrorTypeValidation, "invalid request", err)
  return
  }
 
- user, err:= r.service.CreateUser(c.Request.Context(), req.ToDomain())
+ user, err := r.service.CreateUser(c.Request.Context(), req.ToDomain())
  if err != nil {
  responses.HandleError(c, err)
  return
@@ -455,12 +455,12 @@ type OrganizationService struct {
 
 // Work directly with domain entities
 func (s *OrganizationService) Create(ctx context.Context, org *Organization) (*Organization, error) {
- if err:= org.Normalize(); err != nil {
+ if err := org.Normalize(); err != nil {
  return nil, platformerrors.NewError(ctx, platformerrors.LayerDomain,
  platformerrors.ErrorTypeValidation, "invalid organization", err, "uuid-here")
  }
 
- created, err:= s.repo.Create(ctx, org)
+ created, err := s.repo.Create(ctx, org)
  if err != nil {
  return nil, err // Already wrapped at repository
  }
@@ -487,13 +487,13 @@ type OrganizationRoute struct {
 
 func (r *OrganizationRoute) Create(c *gin.Context) {
  var req CreateOrganizationRequest
- if err:= c.ShouldBindJSON(&req); err != nil {
+ if err := c.ShouldBindJSON(&req); err != nil {
  responses.HandleNewError(c, platformerrors.LayerRoute,
  platformerrors.ErrorTypeValidation, "invalid request", err)
  return
  }
 
- org, err:= r.service.Create(c.Request.Context(), req.ToDomain())
+ org, err := r.service.Create(c.Request.Context(), req.ToDomain())
  if err != nil {
  responses.HandleError(c, err)
  return
@@ -511,8 +511,8 @@ func (r *OrganizationRoute) Create(c *gin.Context) {
 
 ```go
 // Bad: N+1 query problem
-users, _:= db.Find(&users)
-for _, user:= range users {
+users, _ := db.Find(&users)
+for _, user := range users {
  db.First(&profile, "user_id = ?", user.ID) // Query per user!
 }
 
@@ -529,14 +529,14 @@ db.Joins("JOIN profiles ON profiles.user_id = users.id").
 
 ```go
 // Good: Cursor-based (scales well)
-u:= query.Use(db).User
-users, err:= u.WithContext(ctx).
+u := query.Use(db).User
+users, err := u.WithContext(ctx).
  Where(u.ID.Gt(lastID)). // lastID from previous page
  Limit(pageSize).
  Find()
 
 // Acceptable for small datasets: Offset pagination
-users, err:= u.WithContext(ctx).
+users, err := u.WithContext(ctx).
  Offset(page * pageSize).
  Limit(pageSize).
  Find()
@@ -547,13 +547,13 @@ users, err:= u.WithContext(ctx).
 ```go
 func (s *OrganizationService) GetByID(ctx context.Context, id string) (*Organization, error) {
  // Try cache first
- cacheKey:= fmt.Sprintf("org:%s", id)
- if cached, err:= s.cache.Get(ctx, cacheKey); err == nil {
+ cacheKey := fmt.Sprintf("org:%s", id)
+ if cached, err := s.cache.Get(ctx, cacheKey); err == nil {
  return cached, nil
  }
 
  // Cache miss: fetch from DB
- org, err:= s.repo.FindByID(ctx, id)
+ org, err := s.repo.FindByID(ctx, id)
  if err != nil {
  return nil, err
  }
@@ -566,13 +566,13 @@ func (s *OrganizationService) GetByID(ctx context.Context, id string) (*Organiza
 
 // Invalidate cache on updates
 func (s *OrganizationService) Update(ctx context.Context, org *Organization) (*Organization, error) {
- updated, err:= s.repo.Update(ctx, org)
+ updated, err := s.repo.Update(ctx, org)
  if err != nil {
  return nil, err
  }
 
  // Invalidate cache
- cacheKey:= fmt.Sprintf("org:%s", org.PublicID)
+ cacheKey := fmt.Sprintf("org:%s", org.PublicID)
  go s.cache.Delete(context.Background(), cacheKey)
 
  return updated, nil
@@ -583,10 +583,10 @@ func (s *OrganizationService) Update(ctx context.Context, org *Organization) (*O
 
 ```go
 // Set timeouts for external calls
-ctx, cancel:= context.WithTimeout(ctx, 10*time.Second)
+ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 defer cancel()
 
-resp, err:= httpClient.Get(ctx, url)
+resp, err := httpClient.Get(ctx, url)
 ```
 
 ### Batch Operations
@@ -596,7 +596,7 @@ resp, err:= httpClient.Get(ctx, url)
 db.CreateInBatches(users, 100) // Insert in batches of 100
 
 // Good: Bulk update with IN clause
-u:= query.Use(db).User
+u := query.Use(db).User
 u.WithContext(ctx).
  Where(u.ID.In(ids...)).
  Update(u.Active, false)

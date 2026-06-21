@@ -4,6 +4,17 @@
 
 ---
 
+## Unreleased
+
+### Removed
+
+- **Realtime API** (LiveKit-based real-time communication) — service and all references removed.
+- **Memory Tools** service — removed.
+- **Platform web app** (Next.js admin/docs site) — removed; the React + Vite web app (`apps/web`) is the only frontend.
+- **slide_creator agent** and slide generation — removed.
+
+---
+
 ## December 2025
 
 ### [v0.0.14] - Multi-vLLM Provider, MCP Tools & User Experience Enhancements

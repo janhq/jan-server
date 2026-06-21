@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { useAuth } from "@/stores/auth-store";
 import { URL_PARAM } from "@/constants";
 
-export const Route = createFileRoute("/login" as "/")({
+export const Route = createFileRoute("/login")({
   component: LoginRoute,
 });
 

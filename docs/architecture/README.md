@@ -24,10 +24,10 @@ Jan Server is built from multiple small services (microservices) that work toget
 | **Response API** | 8082  | Internal; streaming SSE via Kong `/responses`                                 |
 | **Media API**    | 8285  | Internal; proxied by Kong `/media`                                            |
 | **MCP Tools**    | 8091  | Internal; routed through Kong `/mcp`                                          |
-| **Memory Tools** | 8090  | Internal; semantic memory service                                             |
-| **Realtime API** | 8186  | Internal; WebRTC session management                                           |
 | **Template API** | 8185  | Dev scaffold (not deployed by default)                                        |
 | **Keycloak**     | 8085  | Admin console (protect behind VPN/SSO in production)                          |
+| **app-db (PostgreSQL)** | 5432 | Application database (LLM/Response/Media metadata)                       |
+| **keycloak-db (PostgreSQL)** | 5433 | Keycloak realm and client storage                                   |
 | **vLLM**         | 8101  | Inference backend (local GPU/CPU profile)                                     |
 | **Prometheus**   | 9090  | Dev-only monitoring UI (`make monitor-up`)                                    |
 | **Jaeger**       | 16686 | Trace UI                                                                      |
@@ -38,16 +38,16 @@ Jan Server is built from multiple small services (microservices) that work toget
 | Component     | Technology                                   |
 | ------------- | -------------------------------------------- |
 | API Gateway   | Kong 3.5 + `keycloak-apikey` plugin          |
-| Services      | Go 1.21+ (Gin framework, zerolog, wire DI)   |
+| Services      | Go 1.24 (Gin framework, zerolog, wire DI)    |
 | MCP Server    | mark3labs/mcp-go v0.7.0                      |
 | ORM           | GORM + goose migrations                      |
-| Database      | PostgreSQL 15/16 (Docker) / managed service  |
+| Database      | PostgreSQL 18 (Docker) / managed service     |
 | Auth          | Keycloak (OpenID Connect)                    |
 | Inference     | vLLM (OpenAI-compatible) or remote providers |
 | Observability | OpenTelemetry Collector                      |
-| Metrics       | Prometheus 2.48                              |
-| Tracing       | Jaeger 1.51                                  |
-| Dashboards    | Grafana 10.2                                 |
+| Metrics       | Prometheus                                   |
+| Tracing       | Jaeger                                       |
+| Dashboards    | Grafana                                      |
 
 ## How to Run It
 

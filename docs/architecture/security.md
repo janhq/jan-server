@@ -2,11 +2,13 @@
 
 ## Identity and Access
 
-- **OAuth2/OIDC** via Keycloak (`keycloak/` Dockerfile).
-- **Kong gateway** (`http://localhost:8000`) protects every `/llm/*` route using the built-in `jwt` plugin (validating Keycloak tokens) plus the custom `keycloak-apikey` plugin (`X-API-Key: sk_*` -> `POST /auth/validate-api-key`).
+- **OAuth2/OIDC** via Keycloak (`jan` realm).
+- **Kong gateway** (`http://localhost:8000`) protects the `/llm`, `/v1`, `/responses`, `/media`, and `/mcp` route groups using the built-in `jwt` plugin (validating Keycloak tokens) plus the custom `keycloak-apikey` plugin (`X-API-Key: sk_live...` -> `POST /auth/validate-api-key`).
+- **JWT validation is pinned, not dynamic**: Kong stores Keycloak's RSA public key and issuer **statically** in `integrations/kong/kong.yml` (`jwt_secrets` with `rsa_public_key` + `key: <issuer>`). There is no dynamic JWKS fetch at the gateway, so rotating Keycloak's signing keys requires updating `kong.yml` and reloading Kong.
 - **Clients** obtain tokens using:
 - Guest endpoint (`POST /llm/auth/guest-login` via Kong) for quick local access; the LLM API coordinates with Keycloak.
 - OAuth2 (code/password/device) flows against the `jan` realm in Keycloak for registered users.
+- API keys with the `sk_live` prefix, presented as `X-API-Key`, validated by the `keycloak-apikey` plugin.
 - **Services** validate tokens with:
 - `AUTH_ENABLED=true`
 - `AUTH_ISSUER`, `ACCOUNT`, `AUTH_JWKS_URL`
@@ -29,14 +31,13 @@
 
 ## Secrets Lifecycle
 
-1. Add new variables to `.env.template` with clear comments.
-2. Mirror them in `config/secrets.env.example`.
-3. Document usage in `config/README.md` and relevant service README.
-4. For production, load values from secret managers or Kubernetes secrets instead of `.env`.
+1. Add new variables to `.env.template` with clear comments (a single root `.env` holds all configuration and secrets).
+2. Document usage in the relevant service README and the configuration docs.
+3. For production, load values from secret managers or Kubernetes secrets instead of `.env`.
 
 ## Threat Mitigations
 
-- **JWT validation**: services reject expired or mismatched tokens and refresh their JWKS cache periodically.
+- **JWT validation**: services reject expired or mismatched tokens. Kong validates signatures against the RSA public key pinned in `kong.yml` (static, not a periodic JWKS refresh); rotating Keycloak keys requires editing Kong's config.
 - **Tool execution**: SandboxFusion isolates python code; `SANDBOX_FUSION_REQUIRE_APPROVAL` can force manual approval.
 - **Web fetches**: SearXNG provides result filtering; Response API enforces depth/time budgets.
 - **Media uploads**: requests require a Bearer token plus `MEDIA_MAX_BYTES`/content-type validation before accepting bytes.

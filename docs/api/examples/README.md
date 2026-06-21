@@ -31,10 +31,10 @@ A collection of ready-to-use API examples for Jan Server.
 ## Media API
 
 - **[Comprehensive Examples](../media-api/comprehensive-examples.md)** - Image handling including:
-  - Upload from URL
-  - Upload from base64/data URL
-  - Direct S3 upload (presigned URL)
-  - Jan ID resolution
+  - Ingest from a remote URL
+  - Ingest from a base64/data URL
+  - Multipart file upload
+  - Fetching bytes and metadata by `jan_*` ID
   - Integration with LLM API (vision models)
 
 ## MCP Tools
@@ -52,20 +52,20 @@ A collection of ready-to-use API examples for Jan Server.
 ### Vision + Chat (Media + LLM)
 
 ```bash
-# 1. Upload image via Media API
-IMAGE_RESP=$(curl -s -X POST http://localhost:8000/media/v1/media/upload \
+# 1. Ingest the image via the Media API (Kong strips /media -> service /media)
+IMAGE_RESP=$(curl -s -X POST http://localhost:8000/media/media \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"remote_url": "https://example.com/image.jpg"}')
+  -d '{"url": "https://example.com/image.jpg"}')
 
-JAN_ID=$(echo $IMAGE_RESP | jq -r '.jan_id')
+JAN_ID=$(echo $IMAGE_RESP | jq -r '.id')
 
 # 2. Use in chat completion
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "jan-v2-30b",
+    "model": "jan-v1-4b",
     "messages": [{
       "role": "user",
       "content": [
@@ -80,16 +80,17 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 
 ```bash
 # Multi-step: Search, scrape, analyze
-curl -X POST http://localhost:8000/response/v1/responses \
+# Kong route /responses has strip_path=true, so /responses/v1/responses -> service /v1/responses
+curl -X POST http://localhost:8000/responses/v1/responses \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
+    "model": "jan-v1-4b",
     "input": "Research the latest AI model releases and summarize",
     "tools": [
       {"name": "google_search"},
       {"name": "scrape"}
-    ],
-    "max_depth": 5
+    ]
   }'
 ```
 

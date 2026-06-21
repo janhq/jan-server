@@ -16,7 +16,7 @@ make test-all
 
 ```bash
 make test-auth           # Authentication tests
-make test-conversations  # Conversation tests
+make test-conversation   # Conversation tests
 make test-response       # Response API tests
 make test-media          # Media API tests
 make test-mcp            # MCP Tools tests
@@ -74,10 +74,10 @@ Windows CI focuses on CLI and build verification. Full Docker tests run on Ubunt
 
 ## Troubleshooting
 
-### Permission Denied on jan-cli.sh
+### Permission Denied on tools/jan-cli.sh
 
 ```bash
-chmod +x jan-cli.sh
+chmod +x tools/jan-cli.sh
 ```
 
 ### Docker Commands Fail

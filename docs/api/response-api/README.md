@@ -32,7 +32,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 ## What You Can Do
 
 - **Run tools automatically** - AI decides which tools to use
-- **Chain tools together** - Use output from one tool as input to another (up to 8 steps)
+- **Chain tools together** - Use output from one tool as input to another (depth capped by `RESPONSE_MAX_TOOL_DEPTH`, default 50)
 - **Get final answers** - LLM generates natural language response from tool results
 - **Track execution** - See which tools ran and how long they took
 
@@ -60,8 +60,8 @@ RESPONSE_LLM_API_URL=http://llm-api:8080
 RESPONSE_MCP_TOOLS_URL=http://mcp-tools:8091
 
 # Tool execution limits
-RESPONSE_MAX_TOOL_DEPTH=8
-TOOL_EXECUTION_TIMEOUT=45s
+RESPONSE_MAX_TOOL_DEPTH=50      # Max sequential tool calls per response (default 50)
+TOOL_EXECUTION_TIMEOUT=300s     # Per-tool-call timeout (default 300s)
 ```
 
 ### Optional Configuration
@@ -91,7 +91,7 @@ curl -X POST http://localhost:8000/responses/v1/responses \
  -H "Authorization: Bearer <token>" \
  -H "Content-Type: application/json" \
  -d '{
- "model": "jan-v2-30b",
+ "model": "jan-v1-4b",
  "input": "Search for the latest AI news and summarize the top 3 results",
  "temperature": 0.3,
  "tool_choice": {"type": "auto"},
@@ -117,20 +117,21 @@ curl -X POST http://localhost:8000/responses/v1/responses \
 ```json
 {
   "id": "resp_01hqr8v9k2x3f4g5h6j7k8m9n0",
-  "model": "jan-v2-30b",
+  "model": "jan-v1-4b",
   "input": "Search for the latest AI news and summarize the top 3 results",
   "output": "Here are the latest AI news items...",
   "tool_executions": [
     {
       "id": "toolexec_123",
-      "tool": "google_search",
+      "tool_name": "google_search",
       "input": { "q": "latest AI news", "num": 3 },
       "output": "...",
-      "duration_ms": 250
+      "execution_time_ms": 250,
+      "depth": 0
     }
   ],
   "execution_metadata": {
-    "max_depth": 8,
+    "max_depth": 50,
     "actual_depth": 1,
     "total_duration_ms": 2500,
     "status": "completed"
@@ -150,7 +151,7 @@ curl -N http://localhost:8000/responses/v1/responses \
  -H "Content-Type: application/json" \
  -H "Accept: text/event-stream" \
  -d '{
- "model": "jan-v2-30b",
+ "model": "jan-v1-4b",
  "input": "Search for the latest AI news and summarize the top 3 results",
  "stream": true
  }'
@@ -198,7 +199,41 @@ curl -H "Authorization: Bearer <token>" \
  http://localhost:8000/responses/v1/responses/resp_01hqr8v9k2x3f4g5h6j7k8m9n0/input_items
 ```
 
-> The Response API does **not** currently expose a list endpoint for all responses. Persisted executions can be queried directly from the service database.
+> The Response API does **not** expose a list endpoint for all responses. (Artifacts and agents
+> have their own list endpoints — see below.)
+
+### Other Response Routes
+
+| Service path                                | Method | Purpose                                |
+| ------------------------------------------- | ------ | -------------------------------------- |
+| `/v1/responses/{id}/full`                   | GET    | Response with full execution detail    |
+| `/v1/responses/{id}/retry`                  | POST   | Retry a failed response                |
+| `/v1/responses/{id}/plan`                   | GET    | Execution plan for the response        |
+| `/v1/responses/{id}/plan/details`           | GET    | Plan with step details                 |
+| `/v1/responses/{id}/plan/progress`          | GET    | Plan progress                          |
+| `/v1/responses/{id}/plan/cancel`            | POST   | Cancel plan execution                  |
+| `/v1/responses/{id}/plan/input`             | POST   | Submit user input to a waiting plan    |
+| `/v1/responses/{id}/plan/tasks`             | GET    | List plan tasks                        |
+
+### Artifacts and Agents (Kong-routed at `/v1/...`)
+
+Unlike `/responses`, the artifact and agent routes are exposed by Kong **without** path
+stripping, so they are reached at `http://localhost:8000/v1/artifacts` and
+`http://localhost:8000/v1/agents` directly.
+
+| Path                                          | Method | Purpose                              |
+| --------------------------------------------- | ------ | ------------------------------------ |
+| `/v1/artifacts`                               | GET    | List artifacts for the current user  |
+| `/v1/artifacts/{artifact_id}`                 | GET    | Get an artifact                      |
+| `/v1/artifacts/{artifact_id}/versions`        | GET    | List artifact versions               |
+| `/v1/artifacts/{artifact_id}/download`        | GET    | Download artifact content            |
+| `/v1/artifacts/{artifact_id}`                 | DELETE | Delete an artifact                   |
+| `/v1/responses/{id}/artifacts`                | GET    | Artifacts produced by a response     |
+| `/v1/responses/{id}/artifacts/latest`         | GET    | Latest artifact for a response       |
+| `/v1/agents`                                  | GET    | List available agents                |
+| `/v1/agents/capabilities`                     | GET    | List agent capabilities              |
+| `/v1/agents/{type}`                           | GET    | Get an agent by type                 |
+| `/v1/agents/{type}/schema`                    | GET    | Get an agent input schema            |
 
 ### Health Check
 
@@ -227,8 +262,8 @@ curl http://localhost:8082/healthz
 ### 3. Iterative Execution
 
 - Execute tools in sequence/parallel as needed
-- Apply depth limit (max 8)
-- Apply timeout per tool (45s)
+- Apply depth limit (`RESPONSE_MAX_TOOL_DEPTH`, default 50)
+- Apply timeout per tool (`TOOL_EXECUTION_TIMEOUT`, default 300s)
 
 ### 4. LLM Delegation
 
@@ -243,21 +278,21 @@ curl http://localhost:8082/healthz
 
 ## Tool Execution Parameters
 
-### Max Tool Execution Depth
+### Max Tool Execution Depth (`RESPONSE_MAX_TOOL_DEPTH`)
 
-Limits how deep tool calls can chain:
+Limits how many sequential tool calls a single response may make:
 
-- **Value**: 1-15 (default: 8)
-- **Meaning**: Maximum recursive depth of tool calls
-- **Example**: search -> extract -> summarize = depth 2
+- **Default**: 50 (any value `<= 0` falls back to 50)
+- **Meaning**: Maximum number of chained tool calls
+- **Example**: search -> extract -> summarize = depth 3
 
-### Tool Execution Timeout
+### Tool Execution Timeout (`TOOL_EXECUTION_TIMEOUT`)
 
-Per-tool call timeout:
+Per-tool-call timeout:
 
-- **Value**: Duration string (default: 45s)
-- **Example**: "30s", "1m", "500ms"
-- **Behavior**: Cancels tool if it exceeds timeout
+- **Value**: Duration string (default: `300s`)
+- **Example**: `"30s"`, `"1m"`, `"500ms"`
+- **Behavior**: Cancels the tool call if it exceeds the timeout
 
 ## Error Handling
 
@@ -292,15 +327,15 @@ Example error:
 ### Quick Response (Single Tool)
 
 ```bash
-MAX_TOOL_EXECUTION_DEPTH=1 # Single tool call only
+RESPONSE_MAX_TOOL_DEPTH=1 # Single tool call only
 TOOL_EXECUTION_TIMEOUT=15s # Short timeout
 ```
 
 ### Complex Workflows (Deep Chains)
 
 ```bash
-MAX_TOOL_EXECUTION_DEPTH=8 # Allow up to 8 levels
-TOOL_EXECUTION_TIMEOUT=120s # Long timeout for complex work
+RESPONSE_MAX_TOOL_DEPTH=50 # Allow long chains (default)
+TOOL_EXECUTION_TIMEOUT=300s # Long timeout for complex work
 ```
 
 ## See Also
@@ -390,7 +425,7 @@ curl -X POST http://localhost:8000/responses/v1/responses \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "jan-v2-30b",
+    "model": "jan-v1-4b",
     "input": "Write a comprehensive analysis of quantum computing trends",
     "background": true,
     "store": true,
@@ -412,7 +447,7 @@ curl -X POST http://localhost:8000/responses/v1/responses \
   "store": true,
   "queued_at": 1705315800,
   "created_at": 1705315800,
-  "model": "jan-v2-30b",
+  "model": "jan-v1-4b",
   "input": "Write a comprehensive analysis...",
   "metadata": {
     "webhook_url": "https://example.com/webhooks/responses",
@@ -603,7 +638,7 @@ RESP_ID=$(curl -s -X POST http://localhost:8000/responses/v1/responses \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "jan-v2-30b",
+    "model": "jan-v1-4b",
     "input": "Write a haiku about coding",
     "background": true,
     "store": true,

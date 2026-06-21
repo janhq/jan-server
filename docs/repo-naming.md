@@ -57,9 +57,8 @@ services/
 ├── llm-api/           # LLM API service
 ├── mcp-tools/         # MCP tools service
 ├── media-api/         # Media API service
-├── memory-tools/      # Memory tools service
-├── realtime-api/      # Realtime API service
-└── response-api/      # Response API service
+├── response-api/      # Response API service
+└── template-api/      # Service scaffold template
 ```
 
 **Rules:**
@@ -169,12 +168,12 @@ infra/docker/
 
 ### 3.2 Docker Images
 
-**Format**: `registry.domain.com/server/{service}:{tag}`
+**Format**: `registry.menlo.ai/jan-server/{service}:{tag}`
 
 **Examples:**
 
-- `registry.menlo.ai/server/llm-api:dev-abc123`
-- `registry.menlo.ai/server/mcp-tools:prod-v1.2.3`
+- `registry.menlo.ai/jan-server/llm-api:dev-abc123`
+- `registry.menlo.ai/jan-server/mcp-tools:prod-v1.2.3`
 
 **Rules:**
 
@@ -219,8 +218,6 @@ infra/k8s/
 **Scopes** (optional but recommended for monorepo):
 
 - `web` - Web app changes
-- `admin` - Admin app changes
-- `platform` - Platform app changes
 - `services` - Backend services (general)
 - `llm-api`, `mcp-tools`, etc. - Specific service
 - `shared` - Shared packages
@@ -254,31 +251,31 @@ _Without scope (for cross-cutting changes):_
 
 ### 5.1 NPM Packages
 
-**Format**: `@jan/{package-name}`
+**Format**: `@janhq/{package-name}`
 
 **Examples:**
 
-- `@jan/shared-ui`
-- `@jan/shared-types`
-- `@jan/shared-utils`
+- `@janhq/interfaces`
+- `@janhq/shared-types`
+- `@janhq/shared-utils`
 
 ### 5.2 Docker Images
 
-**Format**: `server/{service-name}:{tag}`
+**Format**: `registry.menlo.ai/jan-server/{service-name}:{tag}`
 
 **Examples:**
 
-- `server/llm-api:latest`
-- `server/mcp-tools:dev-abc123`
+- `registry.menlo.ai/jan-server/llm-api:latest`
+- `registry.menlo.ai/jan-server/mcp-tools:dev-abc123`
 
 ### 5.3 Go Modules
 
-**Format**: `github.com/janhq/server/{path}`
+**Format**: `github.com/janhq/jan-server/{path}`
 
 **Examples:**
 
-- `github.com/janhq/server/tools/jan-cli`
-- `github.com/janhq/server/pkg/config`
+- `github.com/janhq/jan-server/tools/jan-cli`
+- `github.com/janhq/jan-server/packages/go-common`
 
 ---
 
@@ -291,14 +288,8 @@ All workflows live in `.github/workflows/` with the following organization:
 ```
 .github/workflows/
 ├── ci-backend-dev.yml           # Backend services (dev/main branches)
-├── ci-backend-prod.yml          # Backend services (release branch)
 ├── ci-app-web-dev.yml           # Web app dev/main
-├── ci-app-web-prod.yml          # Web app release
-├── ci-app-admin-dev.yml         # Admin app dev/main
-├── ci-app-admin-prod.yml        # Admin app release
-├── ci-app-platform-dev.yml      # Platform app dev/main
-├── ci-app-platform-prod.yml     # Platform app release
-├── ci-packages.yml              # Shared packages validation
+├── publish-interfaces.yml       # Publish @janhq/interfaces package
 ├── config-drift.yml             # Config validation
 └── _reusable-docker.yml         # Reusable Docker build template
 ```
@@ -310,7 +301,7 @@ All workflows live in `.github/workflows/` with the following organization:
 **Components:**
 
 - `backend` - Backend microservices
-- `app-{name}` - Frontend applications (web, admin, platform)
+- `app-{name}` - Frontend applications (e.g., `app-web`)
 - `packages` - Shared packages/libraries
 - Component-specific names (e.g., `config-drift`)
 
@@ -384,22 +375,21 @@ jobs:
 2. **Workflows**:
    - `ci-app-new-app-dev.yml`
    - `ci-app-new-app-prod.yml`
-3. **Package**: `@jan/new-app`
+3. **Package**: `@janhq/new-app`
 4. **Branch**: `feat/add-new-app`
 
 ### Adding a New Backend Service
 
 1. **Directory**: `services/new-service/`
-2. **Workflow**: Include in `ci-backend-dev.yml` and `ci-backend-prod.yml`
-3. **Docker**: `server/new-service:tag`
+2. **Workflow**: Include in `ci-backend-dev.yml`
+3. **Docker**: `registry.menlo.ai/jan-server/new-service:tag`
 4. **Compose**: Add to `infra/docker/services-api.yml`
 
 ### Adding a New Shared Package
 
 1. **Directory**: `packages/shared-new/`
-2. **Workflow**: Include in `ci-packages.yml`
-3. **NPM**: `@jan/shared-new`
-4. **Workspace**: Auto-detected by `pnpm-workspace.yaml`
+2. **NPM**: `@janhq/shared-new`
+3. **Workspace**: Auto-detected by `pnpm-workspace.yaml`
 
 ---
 
@@ -414,7 +404,7 @@ Before committing new files/directories, verify:
 - [ ] No spaces or special characters (except `-` and `_`)
 - [ ] Consistent with existing naming patterns
 - [ ] Git branch follows `{type}/{description}` format
-- [ ] Package names use organization scope (`@jan/`)
+- [ ] Package names use organization scope (`@janhq/`)
 
 ---
 
@@ -424,7 +414,7 @@ When migrating an existing app into the monorepo:
 
 1. **Rename directory** to match `apps/` or `services/` convention
 2. **Create workflows** following `ci-app-{name}-{env}.yml` pattern
-3. **Update package.json** name to `@jan/{name}` if applicable
+3. **Update package.json** name to `@janhq/{name}` if applicable
 4. **Add to workspace** in `pnpm-workspace.yaml` (auto if in `apps/`)
 5. **Update imports** to use monorepo package references
 6. **Document** in `docs/` with matching kebab-case filename

@@ -9,10 +9,8 @@ Jan Server is a microservices platform that exposes OpenAI-compatible APIs throu
 - **LLM API (8080)** - chat completions, conversations, projects, model catalog.
 - **Response API (8082)** - multi-step orchestration and MCP tool coordination.
 - **Media API (8285)** - binary ingestion, jan\_\* IDs, presigned URL management.
-- **MCP Tools (8091)** - JSON-RPC endpoint that proxies Serper/SearXNG search, scraping, file search, and SandboxFusion execution.
-- **Memory Tools (8090)** - semantic memory using BGE-M3 embeddings with caching and batch processing.
-- **Realtime API (8186)** - WebRTC session management via LiveKit for real-time audio/video communication.
-- **Shared infrastructure** - Kong (8000), Keycloak (8085), PostgreSQL, vLLM (8101), observability stack.
+- **MCP Tools (8091)** - JSON-RPC endpoint that proxies web search (Serper -> Exa -> Tavily -> SearXNG fallback chain), scraping, file search, and SandboxFusion execution.
+- **Shared infrastructure** - Kong (8000), Keycloak (8085), PostgreSQL (`api-db` 5432, `keycloak-db` 5433), vLLM (8101), observability stack.
 
 Note: Template API (8185) is a development scaffold and not part of the deployed stack.
 
@@ -23,8 +21,8 @@ Kong terminates TLS (in production), validates JWT/API keys, applies rate limits
 | Layer             | Components                                                              | Notes                                                             |
 | ----------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | **Edge**          | Kong Gateway, Keycloak                                                  | Centralized auth, rate limiting, guest-token endpoint.            |
-| **Application**   | LLM API, Response API, Media API, MCP Tools, Memory Tools, Realtime API | Written in Go using Gin + zerolog, configured via `pkg/config`.   |
-| **Tooling**       | SearXNG, Serper, SandboxFusion, vector-store                            | Only accessible from MCP Tools.                                   |
+| **Application**   | LLM API, Response API, Media API, MCP Tools                             | Written in Go using Gin + zerolog.                                |
+| **Tooling**       | Serper, Exa, Tavily, SearXNG, SandboxFusion, vector-store               | Only accessible from MCP Tools.                                   |
 | **Data/Storage**  | PostgreSQL (`api-db`, `keycloak-db`), S3-compatible storage             | Media files live in object storage; metadata lives in PostgreSQL. |
 | **Inference**     | vLLM (local) or remote OpenAI-compatible providers                      | Selected per request using the provider metadata catalog.         |
 | **Observability** | OpenTelemetry Collector, Prometheus, Grafana, Jaeger                    | Enabled with `OTEL_ENABLED=true` + `make monitor-up`.             |
@@ -39,33 +37,27 @@ Kong terminates TLS (in production), validates JWT/API keys, applies rate limits
                              v
                    +-------------------+
                    |   Kong Gateway    | 8000
-                   +---+---+----+------+
-                       |   |    |
-        +--------------+   |    +----------------+
-        |                  |                     |
-        v                  v                     v
-  +-----------+    +---------------+      +---------------+
-  |  LLM API  |    |  Response API |      |   Media API   |
-  | (8080)    |    |    (8082)     |      |    (8285)     |
-  +-----+-----+    +-------+-------+      +-------+-------+
-        |                  |                     |
-        |                  v                     |
-        |        +-------------------+           |
-        +------->|    MCP Tools      |<----------+
-        |        |     (8091)        |
-        |        +----+---+----+-----+
-        |             |   |    |
-        |             |   |    +--> SandboxFusion
-        |             |   +-------> Vector Store
-        |             +-----------> SearXNG / Serper
-        |
-        v
-  +---------------+      +----------------+
-  | Memory Tools  |      | Realtime API   |
-  |   (8090)      |      |    (8186)      |
-  +---------------+      +----------------+
+                   +---+----+-----+----+
+                       |    |     |
+        +--------------+    |     +----------------+
+        |                   |                      |
+        v                   v                      v
+  +-----------+     +---------------+       +---------------+
+  |  LLM API  |     |  Response API |       |   Media API   |
+  | (8080)    |     |    (8082)     |       |    (8285)     |
+  +-----+-----+     +-------+-------+       +---------------+
+        |                   |
+        |                   v
+        |          +-------------------+
+        +--------->|    MCP Tools      |
+                   |     (8091)        |
+                   +----+---+----+-----+
+                        |   |    |
+                        |   |    +--> SandboxFusion
+                        |   +-------> Vector Store
+                        +-----------> Serper -> Exa -> Tavily -> SearXNG
 
-Shared dependencies (not shown): PostgreSQL (api-db), S3/Object storage, Keycloak (JWT issuer), vLLM (8101), BGE-M3 (embeddings), LiveKit (WebRTC).
+Shared dependencies (not shown): PostgreSQL (api-db 5432, keycloak-db 5433), S3/Object storage, Keycloak (JWT issuer), vLLM (8101).
 ```
 
 ## 4. Request Lifecycles
@@ -93,7 +85,7 @@ Shared dependencies (not shown): PostgreSQL (api-db), S3/Object storage, Keycloa
 ### MCP JSON-RPC
 
 1. Response API or external automation sends JSON-RPC requests to `POST /v1/mcp`.
-2. MCP Tools validates the method (`tools/list`, `tools/call`, `prompts/*`, `resources/*`) and dispatches to the Serper/SearXNG/SandboxFusion clients.
+2. MCP Tools validates the method (`tools/list`, `tools/call`, `prompts/*`, `resources/*`) and dispatches to the search (Serper/Exa/Tavily/SearXNG), scrape, and SandboxFusion clients.
 3. Results are returned as SSE events (streaming) or plain JSON when the response fits a single chunk.
 
 ## 5. Data & Network Topology
@@ -112,7 +104,7 @@ Shared dependencies (not shown): PostgreSQL (api-db), S3/Object storage, Keycloa
 | **Local (recommended)** | `make quickstart` prompts for providers, writes `.env`, and runs `docker compose up` with all services. | `make quickstart`                                  |
 | **Profiles**            | Start a subset of services (API only, MCP only, GPU inference).                                         | `make up-api`, `make up-mcp`, `make up-gpu`        |
 | **Monitoring stack**    | Optional Prometheus/Grafana/Jaeger.                                                                     | `make monitor-up`                                  |
-| **Kubernetes**          | Use `k8s/jan-server` Helm chart. Values mirror `pkg/config` defaults.                                   | `helm install jan ./k8s/jan-server -f values.yaml` |
+| **Kubernetes**          | Use `infra/k8s/jan-server` Helm chart. Values mirror `packages/go-common/config` defaults.                                   | `helm install jan ./infra/k8s/jan-server -f values.yaml` |
 
 ## 7. Change Impact Checklist
 
@@ -121,9 +113,5 @@ When modifying the system architecture:
 1. Update the relevant service README and API docs.
 2. Reflect new ports/paths in Kong configuration.
 3. Adjust `docs/architecture/services.md` and `docs/architecture/data-flow.md`.
-4. Regenerate configuration artifacts (`make config-generate`) if `pkg/config` changes.
+4. Regenerate configuration artifacts (`make config-generate`) if shared config changes.
 5. Update Kubernetes values and Helm defaults as needed.
-
----
-
-**Maintainer:** Jan Server Architecture Group - **Last Reviewed:** November 2025

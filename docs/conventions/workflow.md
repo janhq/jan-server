@@ -25,7 +25,7 @@
 git clone https://github.com/janhq/jan-server.git
 cd jan-server
 
-# 2. Create .env and docker/.env, verify Docker, etc.
+# 2. Create the root .env, verify Docker, etc.
 make setup
 
 # 3. Start full stack (PostgreSQL, Keycloak, Kong, APIs, MCP)
@@ -41,7 +41,7 @@ Use dev-full when you want to run a service natively with IDE tooling while the 
 
 ```bash
 make dev-full                 # Boot stack with host.docker.internal routing
-./jan-cli.sh dev run llm-api  # macOS/Linux (stops container + runs host process)
+tools/jan-cli.sh dev run llm-api  # macOS/Linux (stops container + runs host process)
 .\jan-cli.ps1 dev run llm-api # Windows PowerShell
 ```
 
@@ -50,7 +50,7 @@ Stop dev-full with `make dev-full-stop` (containers paused) or `make dev-full-do
 ### Environment Variables
 
 - `.env` (created by `make setup`) is the single source of truth. Copy from `.env.template` and set secrets (HF token, SERPER key, etc.).
-- `docker/.env` is automatically kept in sync so Docker Compose uses the same values.
+- Docker Compose loads this same root `.env` into every service via `env_file: ${ENV_FILE:-../../.env}`---there is no separate `docker/.env`.
 - When running a service natively, pass the environment via `jan-cli dev run <service> --env path/to/env` or export manually.
 
 ---
@@ -118,7 +118,7 @@ Run generators whenever you change schema structs or API contracts, then commit 
 
 - Secrets (`HF_TOKEN`, `SERPER_API_KEY`, `BACKEND_CLIENT_SECRET`, etc.) stay in `.env` only.
 - Never log access tokens, API keys, or PII. Use structured logging fields (`logger.With(...)`) instead.
-- Kong + Keycloak enforce JWT/API key validation�never bypass them in service routes.
+- Kong + Keycloak enforce JWT/API key validation---never bypass them in service routes.
 - Use HTTPS when transmitting secrets externally; assume `.env` values will be different in production.
 
 ---
